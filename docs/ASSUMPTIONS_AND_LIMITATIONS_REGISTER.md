@@ -1,9 +1,9 @@
 # Assumptions and Limitations Register — Reserved 2025/26 – 2026/27
 
 > **Status:** Preview (private beta, October 2026)
-> **Supported tax years:** 2025/26, 2026/27
-> **Rules versions:** `uk-2025-26-v1`, `uk-2026-27-v1`
-> **Last verified:** 2026-08-06
+> **Supported periods of assessment:** 2025/26, 2026/27
+> **Rules versions:** `uk-2025-26-v2`, `uk-2026-27-v4`
+> **Last release gate run:** 2026-08-14 (a gate result, not an absolute "verified" claim)
 
 ---
 
@@ -299,7 +299,7 @@ end-to-end with a realistic taxpayer profile.
 _Workings:_
 - start_income = £55,000; end_income = £65,000
 - ANI = £65,000 − £5,000 = £60,000 → full PA (£12,570)
-- Extended basic-rate limit = £50,270 + £5,000 = £55,270
+- Extended higher-rate threshold = £50,270 + £5,000 = £55,270
 - NI on freelance profit only: £15,000 → £25,000, all within main band
 
 **Note:** Gabriel gives identical results in 2025/26 and 2026/27 because his
@@ -325,6 +325,9 @@ sufficient gross is available.
 | 2026-08-04 | `uk-2025-26-v1` | Added 2025/26 config; multi-year engine (tax_year parameter); boundary test suite; EL-001 documented |
 | 2026-08-06 | engine v2.0.0 | EL-001 resolved: true before/after differential in _total_income_tax |
 | 2026-08-06 | engine v2.0.1 | EL-003 resolved: eBRL capped at ART in _total_income_tax (min(BRL+pension, ART)); 24 regression tests added |
+| 2026-08-13 | engine v3.0.0 | PA taper taxable-band coordinate defect resolved; rules re-derived against HMRC |
+| 2026-08-14 | engine v4.0.0 / `uk-2026-27-v4` | Relief-at-Source pension extends both basic-rate and higher-rate limits (PTM056120); supersedes the v2.0.1 eBRL-cap treatment |
+| 2026-08-14 | terminology | Assurance metadata/UI: "period of assessment" replaces the ambiguous "tax year" label; "generated_on" replaces "verified_date" (no absolute "verified" claim); "Extended basic-rate limit = £50,270" corrected to "Extended higher-rate threshold"; retired `reserved-engine-2.0.0` bundle referenced only as historical evidence |
 
 ---
 
@@ -347,7 +350,9 @@ sufficient gross is available.
 - [x] ROUND_HALF_UP verified (not ROUND_HALF_EVEN) with sub-penny test cases
 - [x] EL-001 (PA-taper methodology limitation) resolved in v2.0.0 and pinned by regression test
 - [x] EL-003 (eBRL not capped at ART when pension > £74,870) resolved in v2.0.1 and pinned by regression test (24 workspace + 13 bundle tests)
-- [x] Automated test suite passes with zero failures (699 workspace + 165 bundle as at 2026-08-06)
+- [x] Automated release gate passes with zero failures (root + artefact + Optimise suites; mandatory RW3 fixture gate 43/43)
+- [x] Assurance metadata and UI avoid absolute "verified" claims ("generated_on" + "release gate passed")
+- [x] "period of assessment" used for the annual period; stale "Extended basic-rate limit = £50,270" corrected
 
 **Open items (future versions):**
 - [ ] Scottish income tax bands

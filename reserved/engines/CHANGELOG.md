@@ -52,6 +52,24 @@ and the Optimise/artefact band-extension tests.
 **Status:** derived from authoritative material and implemented with explicit
 workings; awaiting subsequent independent re-review.
 
+### Assurance terminology and metadata (2026-08-14)
+
+No engine behaviour change; engine version remains `4.0.0`.  This records the
+assurance-facing terminology decisions so the UI and metadata cannot be read
+as an absolute claim of correctness.
+
+* The assurance metadata field `verified_date` is renamed to `generated_on`,
+  and the top-level `status` is either `release_gate_passed` or
+  `release_gate_failed`.  "Verified" is deliberately avoided.
+* The annual period is labelled **period of assessment** (value `2026/27`)
+  rather than the ambiguous "tax year".  The engine's `tax_year` code
+  identifier is unchanged.
+* The golden-persona wording "Extended basic-rate limit = £50,270 + £5,000"
+  is corrected to **Extended higher-rate threshold = £50,270 + £5,000**
+  (£50,270 is the higher-rate threshold, not the £37,700 basic-rate limit).
+* The assurance metadata now records the mandatory RW3 fixture-gate result,
+  its classification counts, and the artefact source identity.
+
 ---
 
 ## [3.0.0] — 2026-08-13

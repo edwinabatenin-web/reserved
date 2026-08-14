@@ -1,5 +1,7 @@
 {
-  "tax_year": "2026/27",
+  "schema": "reserved-assurance-metadata-1",
+  "status": "release_gate_passed",
+  "period_of_assessment": "2026/27",
   "rules_version": "uk-2026-27-v4",
   "engine_version": "4.0.0",
   "engine_artefact": {
@@ -32,9 +34,28 @@
     },
     "source_path": "reserved/engines"
   },
-  "verified_date": "2026-08-14T21:45:18Z",
+  "rw3_fixture_gate": {
+    "gate_passed": true,
+    "classification_complete": true,
+    "classification_counts": {
+      "historical": 0,
+      "outside_engine_surface": 61,
+      "pending_founder_decision": 0,
+      "pending_unsupported_fail_closed": 3,
+      "applicable_not_executable": 0,
+      "mandatory_executable": 43
+    },
+    "corpus_id": "RW3-WP7-DRAFT-CORPUS-1",
+    "artefact": {
+      "engine_version": "4.0.0",
+      "rules_version": "uk-2026-27-v4",
+      "source_commit": "8468f5e4a6d4c1de4ca4c1c12f95ef2ea80f1e9a",
+      "content_hash": "82ff3d1792682d703285a770eee0fa8b6af12205587cce3b3f031f592fd3d1ea"
+    }
+  },
+  "generated_on": "2026-08-14T21:53:09Z",
   "test_counts": {
-    "passed": 1214,
+    "passed": 1221,
     "failed": 0,
     "errors": 0
   },

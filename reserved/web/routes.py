@@ -533,9 +533,10 @@ def tax_assurance():
         metadata = json.loads(meta_path.read_text())
     else:
         metadata = {
-            "tax_year": tax_config.TAX_YEAR,
+            "status": None,
+            "period_of_assessment": tax_config.TAX_YEAR,
             "rules_version": tax_config.RULES_VERSION,
-            "verified_date": None,
+            "generated_on": None,
             "test_counts": None,
             "all_tests_passed": None,
             "scope": {

@@ -4,7 +4,7 @@ Generate tax-assurance metadata for the Reserved dev-tools page.
 
 Runs the full current release gate and writes
 ``reserved/assurance_metadata.json`` so the /tax-assurance route can display
-live verification statistics, engine version and engine-artefact provenance.
+live gate results, engine version and engine-artefact provenance.
 
 The gate
 --------
@@ -12,17 +12,18 @@ The gate
 2. current engine artefact suite    ``engine-artefact-assurance/tests/``
    (correctness + production↔artefact parity)
 3. current Optimise assurance       ``reserved-optimise-assurance/tests/``
-
-(The independent RW3 fixture-adapter assurance runs inside ``tests/``.)
+4. mandatory RW3 fixture gate       ``reserved_west.rw3_gate``
+   (distinct executable gate; the RW3 adapter unit tests live inside ``tests/``)
 
 Usage
 -----
     python scripts/generate_assurance_metadata.py
 
-Exit code is non-zero if any gate suite fails, so this can be used as a CI gate.
+Exit code is non-zero if any gate fails, so this can be used as a CI gate.
 
-The ``verified_date`` is deterministic: it honours ``SOURCE_DATE_EPOCH`` and
-falls back to the current git commit timestamp.
+The ``generated_on`` timestamp is deterministic: it honours ``SOURCE_DATE_EPOCH``
+and falls back to the current git commit timestamp.  It records when the
+metadata was *generated*, not an assertion that the release is "verified".
 """
 from __future__ import annotations
 
@@ -74,7 +75,7 @@ def _git(args: list[str], default: str | None = None) -> str | None:
     return proc.stdout.strip() if proc.returncode == 0 else default
 
 
-def verified_date() -> str:
+def generated_on() -> str:
     epoch = os.environ.get("SOURCE_DATE_EPOCH")
     if epoch:
         try:
@@ -104,8 +105,24 @@ def engine_metadata() -> dict:
     return {
         "engine_version": engine.ENGINE_VERSION,
         "rules_version": engine.tax_config.RULES_VERSION,
-        "tax_year": engine.tax_config.TAX_YEAR,
+        "period_of_assessment": engine.tax_config.TAX_YEAR,
         "engine_artefact": provenance,
+    }
+
+
+def rw3_gate_metadata() -> dict:
+    """Mandatory RW3 fixture-gate result and classification counts."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from reserved_west.rw3_gate import run_mandatory_rw3_gate
+
+    result = run_mandatory_rw3_gate()
+    return {
+        "gate_passed": bool(result["gate_passed"]),
+        "classification_complete": bool(result["classification_complete"]),
+        "classification_counts": result["classification_counts"],
+        "corpus_id": result["corpus_id"],
+        "artefact": result["artefact"],
     }
 
 
@@ -144,12 +161,19 @@ def run_gate() -> dict:
 def build_metadata() -> dict:
     test_summary = run_gate()
     eng = engine_metadata()
+    rw3 = rw3_gate_metadata()
+
+    gate_passed = bool(test_summary["all_passed"]) and rw3["gate_passed"]
     metadata = {
-        "tax_year": eng["tax_year"],
+        "schema": "reserved-assurance-metadata-1",
+        # A status, not an absolute claim: "verified" is deliberately avoided.
+        "status": "release_gate_passed" if gate_passed else "release_gate_failed",
+        "period_of_assessment": eng["period_of_assessment"],
         "rules_version": eng["rules_version"],
         "engine_version": eng["engine_version"],
         "engine_artefact": eng["engine_artefact"],
-        "verified_date": verified_date(),
+        "rw3_fixture_gate": rw3,
+        "generated_on": generated_on(),
         "test_counts": {
             "passed": test_summary["passed"],
             "failed": test_summary["failed"],

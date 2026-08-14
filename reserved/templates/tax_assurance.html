@@ -12,30 +12,32 @@
 </div>
 
 {# ── Status banner ─────────────────────────────────────────────────────── #}
-{% if meta.all_tests_passed is none %}
-<div class="assurance-banner assurance-banner--pending">
-    <span class="assurance-banner__icon">⚠</span>
-    <div>
-        <strong>Test results not yet generated.</strong>
-        Run <code>python scripts/generate_assurance_metadata.py</code> to produce live test counts.
-    </div>
-</div>
-{% elif meta.all_tests_passed %}
+{% if meta.status == 'release_gate_passed' %}
 <div class="assurance-banner assurance-banner--pass">
     <span class="assurance-banner__icon">✓</span>
     <div>
-        <strong>All tests passed.</strong>
-        {{ meta.test_counts.passed }} tests verified on {{ meta.verified_date }}.
+        <strong>Release gate passed.</strong>
+        {{ meta.test_counts.passed }} tests passed across all suites and the
+        mandatory RW3 fixture gate, generated on {{ meta.generated_on }}.
+        This records gate execution, not an absolute "verified" claim.
     </div>
 </div>
-{% else %}
+{% elif meta.status == 'release_gate_failed' %}
 <div class="assurance-banner assurance-banner--fail">
     <span class="assurance-banner__icon">✗</span>
     <div>
-        <strong>Test failures detected.</strong>
+        <strong>Release gate did not pass.</strong>
         {{ meta.test_counts.failed }} failed, {{ meta.test_counts.errors }} errors,
         {{ meta.test_counts.passed }} passed.
-        Run <code>pytest tests/ -v</code> to diagnose.
+        Run <code>python scripts/run_release_gate.py</code> to diagnose.
+    </div>
+</div>
+{% else %}
+<div class="assurance-banner assurance-banner--pending">
+    <span class="assurance-banner__icon">⚠</span>
+    <div>
+        <strong>Gate results not yet generated.</strong>
+        Run <code>python scripts/generate_assurance_metadata.py</code> to produce live gate results.
     </div>
 </div>
 {% endif %}
@@ -43,17 +45,17 @@
 {# ── Metadata cards ────────────────────────────────────────────────────── #}
 <div class="metrics-grid" style="margin-top: var(--space-6);">
     <div class="metric-card">
-        <div class="metric-label">Tax year</div>
-        <div class="metric-value">{{ meta.tax_year }}</div>
+        <div class="metric-label">Period of assessment</div>
+        <div class="metric-value">{{ meta.period_of_assessment }}</div>
     </div>
     <div class="metric-card">
         <div class="metric-label">Rules version</div>
         <div class="metric-value" style="font-size: var(--text-lg);">{{ meta.rules_version }}</div>
     </div>
     <div class="metric-card">
-        <div class="metric-label">Last verified</div>
+        <div class="metric-label">Generated on</div>
         <div class="metric-value" style="font-size: var(--text-xl);">
-            {{ meta.verified_date if meta.verified_date else '—' }}
+            {{ meta.generated_on if meta.generated_on else '—' }}
         </div>
     </div>
     {% if meta.test_counts %}
@@ -134,7 +136,7 @@
             <ul class="assurance-list assurance-list--neutral" style="font-size: var(--text-sm); font-family: var(--font-mono, monospace);">
                 <li>start_income = £55,000 &nbsp;&nbsp; end_income = £65,000</li>
                 <li>ANI = £60,000 → full PA (£12,570)</li>
-                <li>Extended BRL = £50,270 + £5,000 = £55,270</li>
+                <li>Extended higher-rate threshold = £50,270 + £5,000 = £55,270</li>
                 <li>IT: 20%×270 + 40%×9,730 = £54 + £3,892</li>
                 <li>NI: 6%×10,000 (main band only)</li>
                 <li>SL: 9%×10,000 (Plan 2 threshold £29,385)</li>

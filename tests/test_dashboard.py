@@ -92,7 +92,7 @@ def test_today_is_passed_through():
 #
 # start=42000, end=60000
 # ANI = 60000−2500 = 57500 → PA = 12570
-# Extended BRL = 50270+2500 = 52770
+# Extended HRT (higher-rate threshold) = 50270+2500 = 52770
 #
 # IT:  20%×(52770−42000) + 40%×(60000−52770)
 #    = 20%×10770          + 40%×7230
@@ -234,9 +234,9 @@ def test_allocation_reconciles():
 # Default profile, invoice £4,800:
 # start=60000, end=64800
 # ANI = 64800−2500 = 62300 → PA = 12570
-# Extended BRL = 50270+2500 = 52770
+# Extended HRT (higher-rate threshold) = 50270+2500 = 52770
 #
-# IT (60000→64800, BRL=52770):
+# IT (60000→64800, HRT=52770):
 #   60000 > 52770 → all higher rate
 #   40% × 4800 = 1920.00
 #
