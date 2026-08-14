@@ -15,7 +15,10 @@ MANDATORY (each covers one or more of the five release gates)
       - correctness (Package C)
       - production↔artefact parity (Package B)
   * current Optimise assurance       ``reserved-optimise-assurance/tests/``
-  (independent RW3 fixture-adapter assurance runs inside ``tests/``)
+  * distinct mandatory RW3 fixture gate (``reserved_west.rw3_gate``), which
+    executes the classified mandatory executable corpus against the release
+    artefact and requires PASS — separate from the adapter unit tests in
+    ``tests/``.
 
 DIAGNOSTIC (reported, never blocking)
   * Reserved West historical harness pointed at the current artefact.  It is
@@ -76,6 +79,15 @@ def run_suite(suite: str) -> tuple[int, int, int, bool]:
     return passed, failed, errors, result.returncode == 0
 
 
+def run_mandatory_rw3() -> dict:
+    """Run the distinct mandatory RW3 fixture gate against the artefact."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from reserved_west.rw3_gate import run_mandatory_rw3_gate
+
+    return run_mandatory_rw3_gate()
+
+
 def run_diagnostic() -> dict:
     """Run the Reserved West historical harness (non-blocking)."""
     if str(ROOT) not in sys.path:
@@ -112,6 +124,27 @@ def main() -> int:
         mandatory_ok = mandatory_ok and ok
         status = "PASS" if ok else "FAIL"
         print(f"  {status:<4} {suite:<42} {passed} passed, {failed} failed, {errors} errors")
+
+    print("\n[MANDATORY — RW3 fixture gate]")
+    try:
+        rw3 = run_mandatory_rw3()
+        m = rw3["mandatory_executable"]
+        fc = rw3["pending_unsupported_fail_closed"]
+        counts = rw3["classification_counts"]
+        rw3_ok = bool(rw3["gate_passed"])
+        mandatory_ok = mandatory_ok and rw3_ok
+        print(f"  {'PASS' if rw3_ok else 'FAIL':<4} mandatory approved fixtures "
+              f"{m['passed']}/{m['count']} passed, {m['failed']} failed, "
+              f"{m['unexpected_error']} unexpected-error, {m['missing_adapter']} missing-adapter")
+        print(f"       expected fail-closed {fc['expected_fail_closed']}/{fc['count']}; "
+              f"excluded: outside-surface {counts['outside_engine_surface']}, "
+              f"applicable-not-executable {counts['applicable_not_executable']}")
+        print(f"       artefact engine {rw3['artefact']['engine_version']} "
+              f"rules {rw3['artefact']['rules_version']} "
+              f"content {rw3['artefact']['content_hash'][:16]}")
+    except Exception as exc:  # noqa: BLE001 — a broken gate must block release
+        mandatory_ok = False
+        print(f"  FAIL  RW3 fixture gate raised: {exc}")
 
     print("\n[DIAGNOSTIC]  (reported, non-blocking)")
     try:

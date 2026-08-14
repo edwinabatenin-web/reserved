@@ -35,3 +35,18 @@ def test_historical_bundle_is_not_a_mandatory_suite():
 
 def test_parse_counts_basic():
     assert GATE.parse_counts("1179 passed in 20.00s\n") == (1179, 0, 0)
+
+
+def test_rw3_gate_is_a_distinct_mandatory_step():
+    # The mandatory RW3 fixture gate is a distinct executable step, not a pytest
+    # suite and not equivalent to the adapter unit tests inside tests/.
+    assert hasattr(GATE, "run_mandatory_rw3")
+    assert not any("rw3" in suite.lower() for suite in GATE.MANDATORY_SUITES)
+
+
+def test_mandatory_rw3_gate_executes_corpus():
+    result = GATE.run_mandatory_rw3()
+    assert result["gate_passed"] is True
+    assert result["mandatory_executable"]["count"] == 43
+    assert result["mandatory_executable"]["passed"] == 43
+    assert result["classification_counts"]["outside_engine_surface"] == 61
