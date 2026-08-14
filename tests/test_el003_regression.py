@@ -43,10 +43,8 @@ Any failure is classified as an EL-003 regression.
 from decimal import Decimal as D
 
 import pytest
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "reserved-engine-2.0.0"))
 
-from reserved_engine.income_tax import estimate_incremental_liability
+from reserved.engines.income_tax import estimate_incremental_liability
 from reserved_west.reference_calculator import ref_estimate
 
 TAX_YEAR = "2026/27"

@@ -133,10 +133,15 @@ def _normalise(value):
 
 
 def compare_fixture(fixture, adapters):
-    adapter_name = fixture["inputs"]["adapter"]
-    if adapter_name not in adapters:
-        return {"id": fixture["id"], "outcome": "ERROR", "error": f"No adapter: {adapter_name}"}
-    actual = adapters[adapter_name](fixture["inputs"])
+    adapter_name = fixture["inputs"].get("adapter")
+    if adapter_name is None or adapter_name not in adapters:
+        return {"id": fixture["id"], "outcome": "ERROR", "error": f"No adapter: {adapter_name!r}"}
+    try:
+        actual = adapters[adapter_name](fixture["inputs"])
+    except Exception as exc:
+        # Fail closed: an engine unsupported-state refusal (or any adapter
+        # error) is surfaced as ERROR, never a partial or invented figure.
+        return {"id": fixture["id"], "outcome": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
     variances = {}
     for field, expected_value in fixture["expected"].items():
         if field not in actual:
