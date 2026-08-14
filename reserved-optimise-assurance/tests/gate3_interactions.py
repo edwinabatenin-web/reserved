@@ -105,12 +105,14 @@ class TestPensionPlusHICBC:
     def test_full_hicbc_elimination(self):
         """Pension that brings ANI below £60,000 eliminates HICBC entirely."""
         from reserved.engines.optimise import model_pension_scenario
-        # ANI starts at £70k → need £10k pension to clear
+        # ANI starts at £70k (50 complete steps → charge £703) → £10k pension
+        # clears to exactly £60k (no charge).
         result = model_pension_scenario(
             Decimal("70000"), Decimal("0"), Decimal("10000"), "HICBC", annual_cb=CB1
         )
         assert result.after.hicbc == Decimal("0")
-        assert result.hicbc_reduction == CB1 * Decimal("0.5")   # 50 % of CB
+        # 50 % of the floored relevant benefit: floor(1406.60) × 50 / 100 = 703.
+        assert result.hicbc_reduction == Decimal("703.00")
 
     def test_hicbc_reduction_matches_reference(self):
         """Product HICBC saving must match reference to the penny."""

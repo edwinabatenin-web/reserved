@@ -347,17 +347,16 @@ class TestRWI001Regression:
         assert diff == p(Decimal("4860") * Decimal("0.45"))
 
     def test_el003_ebrl_cap_defect_not_reintroduced(self):
-        """EL-003 regression: pension > £74,870 must not suppress the 45% rate.
+        """EL-003 regression: a large pension extends the basic band, not the 45 % band.
 
-        Verified against the known post-fix expected value.
+        £200k income, £80k pension → ANI = 120,000 → PA = 12,570 − 10,000 = 2,570.
+        Taxable = 197,430.  Extended basic band = min(37,700 + 80,000, 125,140)
+        = 117,700 (uncapped here).  The 45 % band above £125,140 is preserved.
+
+          Basic:      117,700 @ 20 % = 23,540.00
+          Higher:       7,440 @ 40 % =  2,976.00   (117,700 → 125,140)
+          Additional: 72,290 @ 45 % = 32,530.50   (125,140 → 197,430)
+          Total = 59,046.50
         """
-        # £200k income, £80k pension: eBRL capped at ART (£125,140)
-        # Without cap fix: eBRL = £130,270 → absorbs ART → wrong 45% tax
         it = income_tax_total_ref(Decimal("200000"), Decimal("80000"))
-        # ANI = 120000, PA = 12570 - 10000 = 2570
-        # eBRL = min(50270+80000, 125140) = 125140
-        # Basic: 125140 - 2570 = 122570 at 20% = 24514.00
-        # Higher: 0 (ART reached)
-        # Additional: 200000 - 125140 = 74860 at 45% = 33687.00
-        # Total = 58201.00
-        assert it == Decimal("58201.00")
+        assert it == Decimal("59046.50")

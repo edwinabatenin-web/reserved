@@ -7,7 +7,7 @@ No code shared with reserved.engines.
 Source: Finance Act 2004 s.192; HMRC PTM044100.
 """
 from decimal import Decimal
-from .common import p, income_tax_total_ref, BRL, ART
+from .common import p, income_tax_total_ref, PA, BRL, ART
 
 # Standard Annual Allowance 2026/27
 ANNUAL_ALLOWANCE = Decimal("60000")
@@ -43,12 +43,15 @@ def basic_rate_relief(gross: Decimal) -> Decimal:
 
 
 def extended_brl(pension: Decimal) -> Decimal:
-    """Extended basic-rate limit after RaS pension contributions.
+    """Extended basic-rate *band* after RaS pension contributions.
 
-    Capped at the Additional Rate Threshold (£125,140).
-    Source: HMRC PTM044100 — BRL extended by gross pension amount.
+    The statutory basic-rate band is £37,700 of taxable income (= BRL − PA).
+    A gross Relief-at-Source contribution extends that band by the gross
+    amount, capped at the Additional Rate Threshold (£125,140).
+
+    Source: HMRC PTM044100; Finance Act 2004 s.192.
     """
-    return min(BRL + pension, ART)
+    return min((BRL - PA) + pension, ART)
 
 
 def it_saving_from_pension(

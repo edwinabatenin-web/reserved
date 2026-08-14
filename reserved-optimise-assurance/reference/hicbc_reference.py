@@ -8,19 +8,23 @@ Threshold revised April 2024 (Finance Act 2024): £60,000 → £80,000 taper.
 Previous threshold (2012–2023/24): £50,000 → £60,000 — NOT implemented here.
 
 2026/27 Child Benefit weekly rates (England / Wales / NI):
-  Eldest child:      £26.60 / week = £1,383.20 / year
-  Additional child:  £17.60 / week = £  915.20 / year
+  Eldest or only child:  £27.05 / week = £1,406.60 / year
+  Each additional child: £17.90 / week = £  930.80 / year
+
+Source: HMRC Child Benefit rates 2026/27 (Annex A, Budget 2025 rates and
+allowances); cross-checked against the independently reviewed RW3-HICBC
+fixture derivations (RW3-HICBC-006: 27.05 + 17.90 = 44.95/week).
 """
 from decimal import Decimal
 from .common import p, hicbc_ref, HICBC_LOWER, HICBC_UPPER
 
 # 2026/27 Child Benefit weekly rates
-CB_WEEKLY_ELDEST     = Decimal("26.60")
-CB_WEEKLY_ADDITIONAL = Decimal("17.60")
+CB_WEEKLY_ELDEST     = Decimal("27.05")
+CB_WEEKLY_ADDITIONAL = Decimal("17.90")
 CB_WEEKS             = Decimal("52")
 
-CB_ANNUAL_ELDEST     = p(CB_WEEKLY_ELDEST     * CB_WEEKS)   # £1,383.20
-CB_ANNUAL_ADDITIONAL = p(CB_WEEKLY_ADDITIONAL * CB_WEEKS)   # £ 915.20
+CB_ANNUAL_ELDEST     = p(CB_WEEKLY_ELDEST     * CB_WEEKS)   # £1,406.60
+CB_ANNUAL_ADDITIONAL = p(CB_WEEKLY_ADDITIONAL * CB_WEEKS)   # £  930.80
 
 
 def annual_cb_for_children(n: int) -> Decimal:
@@ -57,7 +61,13 @@ def pension_to_eliminate_hicbc(ani: Decimal) -> Decimal:
 
 
 def charge_percentage(ani: Decimal) -> Decimal:
-    """Percentage of CB recovered by HMRC at a given ANI (0–100)."""
+    """Statutory 'appropriate percentage' of Child Benefit recovered at an ANI.
+
+    ITEPA 2003 s.681C(3): the percentage rises by 1 for each *complete* £200 of
+    adjusted net income above £60,000 and is capped at 100.  Each incomplete
+    £200 step is ignored (floored): £60,199 → 0, £60,200 → 1, £80,000 → 100.
+    """
     if ani <= HICBC_LOWER:
         return Decimal("0")
-    return min(Decimal("100"), (ani - HICBC_LOWER) / Decimal("200"))
+    complete_steps = (ani - HICBC_LOWER) // Decimal("200")
+    return min(Decimal("100"), complete_steps)

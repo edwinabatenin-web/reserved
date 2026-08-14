@@ -21,7 +21,7 @@ PA taper (Finance (No.2) Act 2015):
 HICBC (Finance Act 2012 s.681B, revised April 2024):
   Threshold: £60,000  Taper: 1 % per £200  Full charge: £80,000
 """
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 PA              = Decimal("12570")
@@ -92,13 +92,21 @@ def income_tax_total_ref(income: Decimal, pension: Decimal) -> Decimal:
 
 
 def hicbc_ref(ani: Decimal, annual_cb: Decimal) -> Decimal:
-    """High Income Child Benefit Charge.
+    """High Income Child Benefit Charge with statutory staged flooring.
 
-    Source: Finance Act 2012 s.681B (revised April 2024).
-    Formula: charge_pct = min(100, max(0, (ANI − 60,000) / 200))
-             HICBC = annual_cb × charge_pct / 100
+    Source: Finance Act 2012 s.681B (revised April 2024); ITEPA 2003 s.681C(3).
+
+    Staged whole-pound flooring (matching HMRC CH2300C and the independently
+    reviewed RW3-HICBC fixtures):
+      1. appropriate percentage = floor((ANI − 60,000) / 200), capped at 100;
+      2. relevant total benefit  = floor(annual_cb);
+      3. charge = floor(relevant_benefit × percentage / 100).
     """
     if ani <= HICBC_LOWER or annual_cb <= Decimal("0"):
         return Decimal("0")
-    charge_pct = min(Decimal("100"), (ani - HICBC_LOWER) / Decimal("200"))
-    return p(annual_cb * charge_pct / Decimal("100"))
+    charge_pct = min(Decimal("100"), (ani - HICBC_LOWER) // Decimal("200"))
+    relevant_benefit = annual_cb.to_integral_value(rounding=ROUND_FLOOR)
+    charge = (relevant_benefit * charge_pct / Decimal("100")).to_integral_value(
+        rounding=ROUND_FLOOR
+    )
+    return charge

@@ -77,26 +77,30 @@ class TestHICBCLowerBoundary:
         assert hicbc_ref(Decimal("60000"), CB1) == Decimal("0")
 
     def test_charge_at_60001(self):
-        """ANI = £60,001 → 0.005 % of CB = £0.01 minimum charge."""
-        charge = hicbc_ref(Decimal("60001"), CB1)
-        # (1 / 200) % × CB1 = 0.005 % × ~£1383.20 ≈ £0.07
-        assert charge > Decimal("0")
-        assert charge < Decimal("1")
+        """ANI = £60,001 → no complete £200 step yet → £0 (staged flooring)."""
+        assert hicbc_ref(Decimal("60001"), CB1) == Decimal("0")
+        assert hicbc_ref(Decimal("60199"), CB1) == Decimal("0")
+
+    def test_first_complete_step_at_60200(self):
+        """ANI = £60,200 → 1 complete step → 1 % of floored CB.
+
+        relevant benefit = floor(1406.60) = 1406; 1406 × 1 / 100 = 14.06 → 14.
+        """
+        assert hicbc_ref(Decimal("60200"), CB1) == Decimal("14")
 
     def test_half_charge_at_70k(self):
-        """ANI = £70,000 → 50 % of CB charged."""
+        """ANI = £70,000 → 50 complete steps → 50 % of CB, staged-floor = £703."""
         charge = hicbc_ref(Decimal("70000"), CB1)
-        expected = p(CB1 * Decimal("50") / Decimal("100"))
-        assert charge == expected
+        assert charge == Decimal("703")
 
     def test_full_charge_at_80k(self):
-        """ANI = £80,000 → 100 % of CB charged."""
-        assert hicbc_ref(Decimal("80000"), CB1) == CB1
+        """ANI = £80,000 → 100 % charge floored to whole pounds = £1,406."""
+        assert hicbc_ref(Decimal("80000"), CB1) == Decimal("1406")
 
     def test_full_charge_above_80k(self):
-        """ANI > £80,000 → charge capped at CB amount."""
-        assert hicbc_ref(Decimal("100000"), CB1) == CB1
-        assert hicbc_ref(Decimal("130000"), CB1) == CB1
+        """ANI > £80,000 → charge capped at the floored relevant benefit."""
+        assert hicbc_ref(Decimal("100000"), CB1) == Decimal("1406")
+        assert hicbc_ref(Decimal("130000"), CB1) == Decimal("1406")
 
     def test_product_matches_reference_at_70k(self):
         from reserved.engines.optimise import calculate_position
@@ -213,7 +217,7 @@ class TestCombinedTaperAndHICBC:
     def test_total_benefit_includes_both_savings(self):
         from reserved.engines.optimise import model_pension_scenario
         # HICBC is at 100 % for ANI £80,000 or above.  At ANI=£110,000 the HICBC
-        # is already fully charged (£2,298.40 for 2 children).  To reduce HICBC we
+        # is already fully charged (£2,337.40 for 2 children).  To reduce HICBC we
         # need ANI to fall below £80,000.
         # Adding £35,000 pension: total = £40,000, ANI = 115,000 − 40,000 = £75,000.
         # HICBC_after = CB2 × (75,000−60,000)/200/100 = CB2 × 0.75 (partial charge).
