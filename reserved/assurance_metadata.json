@@ -5,16 +5,16 @@
   "rules_version": "uk-2026-27-v4",
   "engine_version": "4.0.0",
   "engine_artefact": {
-    "content_hash": "82ff3d1792682d703285a770eee0fa8b6af12205587cce3b3f031f592fd3d1ea",
+    "content_hash": "25b9637b3fc3a034ea0400752d32d69653b15216475c10a9c0b63b572b30bd61",
     "engine_version": "4.0.0",
     "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
     "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-    "generated_on": "2026-08-14T21:45:18Z",
+    "generated_on": "2026-08-14T22:05:16Z",
     "rules_version": "uk-2026-27-v4",
     "schema": "reserved-engine-artefact-provenance-1",
-    "source_commit": "8468f5e4a6d4c1de4ca4c1c12f95ef2ea80f1e9a",
+    "source_commit": "dd83ce9c07f96d69efd3cfafbeeddbe1d5d7f0ff",
     "source_files": {
-      "CHANGELOG.md": "0b1633ecbb8fa08d053187e61e62178be67df64db11c3fdaa64f80df1bbd734b",
+      "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
       "allocation.py": "a8859ae01f017b9b18e689d81c9906deac7aac4193c6c748dd60f39b3779fad6",
       "annual_loan_reconciliation.py": "c43bd43f6616fac5b8b0dc197e04851973df9d7b32f266ff5c67aa0270277cef",
@@ -38,22 +38,22 @@
     "gate_passed": true,
     "classification_complete": true,
     "classification_counts": {
-      "historical": 0,
-      "outside_engine_surface": 61,
-      "pending_founder_decision": 0,
       "pending_unsupported_fail_closed": 3,
       "applicable_not_executable": 0,
-      "mandatory_executable": 43
+      "pending_founder_decision": 0,
+      "mandatory_executable": 43,
+      "historical": 0,
+      "outside_engine_surface": 61
     },
     "corpus_id": "RW3-WP7-DRAFT-CORPUS-1",
     "artefact": {
       "engine_version": "4.0.0",
       "rules_version": "uk-2026-27-v4",
-      "source_commit": "8468f5e4a6d4c1de4ca4c1c12f95ef2ea80f1e9a",
-      "content_hash": "82ff3d1792682d703285a770eee0fa8b6af12205587cce3b3f031f592fd3d1ea"
+      "source_commit": "dd83ce9c07f96d69efd3cfafbeeddbe1d5d7f0ff",
+      "content_hash": "25b9637b3fc3a034ea0400752d32d69653b15216475c10a9c0b63b572b30bd61"
     }
   },
-  "generated_on": "2026-08-14T21:53:09Z",
+  "generated_on": "2026-08-14T22:05:16Z",
   "test_counts": {
     "passed": 1221,
     "failed": 0,
