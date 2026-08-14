@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Connections — Reserved™{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Connections</p>
+        <h1>Bring the right financial context together.</h1>
+        <p>Connect the accounts and tools that help Reserved understand where your income comes from and what it represents.</p>
+    </div>
+</section>
+
+<section class="connection-grid">
+    <article class="panel connection-card featured">
+        <span class="provider-logo" aria-hidden="true">M</span>
+        <div>
+            <span class="pill pill-live">Connected</span>
+            <h2>Mettle</h2>
+            <p>Your business current account is connected and ready to help Reserved identify incoming payments.</p>
+        </div>
+        <button class="button button-secondary" type="button" disabled>Connected</button>
+    </article>
+
+    <article class="panel connection-card">
+        <span class="provider-logo" aria-hidden="true">fd</span>
+        <div>
+            <span class="pill pill-live">Connected</span>
+            <h2>first direct</h2>
+            <p>Your personal current account is connected so Reserved can build a more complete picture of your income.</p>
+        </div>
+        <button class="button button-secondary" type="button" disabled>Connected</button>
+    </article>
+
+    <article class="panel connection-card">
+        <span class="provider-logo" aria-hidden="true">R</span>
+        <div>
+            <span class="pill">Planned for launch</span>
+            <h2>Reserved account</h2>
+            <p>A dedicated place for money set aside for tax.</p>
+            <p><strong>Preview balance: £6,982.00</strong></p>
+        </div>
+        <button class="button button-secondary" type="button" disabled>Preview only</button>
+    </article>
+
+    <article class="panel connection-card">
+        <span class="provider-logo" aria-hidden="true">F</span>
+        <div>
+            <span class="pill">Planned</span>
+            <h2>FreeAgent</h2>
+            <p>Use invoice and payment information to help Reserved explain incoming income and improve timing estimates.</p>
+        </div>
+        <button class="button button-secondary" type="button" disabled>Planned after launch</button>
+    </article>
+
+    <article class="panel connection-card">
+        <span class="provider-logo" aria-hidden="true">X</span>
+        <div>
+            <span class="pill">Planned</span>
+            <h2>Xero</h2>
+            <p>Bring in invoice and payment information to improve matching and forecasting.</p>
+        </div>
+        <button class="button button-secondary" type="button" disabled>Planned after launch</button>
+    </article>
+
+    <article class="panel connection-card">
+        <span class="provider-logo" aria-hidden="true">Q</span>
+        <div>
+            <span class="pill">Planned</span>
+            <h2>QuickBooks</h2>
+            <p>Use invoice and payment status to help Reserved understand what has been earned and what is still outstanding.</p>
+        </div>
+        <button class="button button-secondary" type="button" disabled>Planned after launch</button>
+    </article>
+</section>
+
+<div class="panel" style="margin-top:24px;">
+    <div class="panel-heading">
+        <div>
+            <h2>Supported financial institutions</h2>
+            <p>The launch version will support a broad range of UK banks and building societies.</p>
+        </div>
+        <a class="button button-secondary" href="#">View supported banks →</a>
+    </div>
+    <small>The account connections shown are illustrative. The launch version of Reserved will allow you to securely connect your own financial accounts.</small>
+</div>
+{% endblock %}

@@ -1,0 +1,998 @@
+{
+  "pack_id": "RW3-CORE-2026-27-DRAFT-1",
+  "status": "independent_validation",
+  "tax_year": "2026/27",
+  "territory": "England, Wales and Northern Ireland",
+  "derived_by": "Codex builder stream",
+  "derived_on": "2026-08-13",
+  "review": {
+    "reviewer": "Codex independent second-person split review stream",
+    "reviewed_on": "2026-08-13",
+    "decision": "approved",
+    "notes": "43 supportable fixtures independently re-reviewed after isolating three simultaneous-multiple-undergraduate annual-SA fixtures in RW3_CORE_MULTI_UNDERGRADUATE_PENDING_FIXTURES.json. See docs/RW3_CORE_FORMAL_REVIEW.md."
+  },
+  "rounding": "Income Tax and Class 4 outputs are fixed to pounds and pence. Half-pound allowance values are preserved. Student and postgraduate loan figures are annual Self Assessment liabilities rounded down to whole pounds per component, not payroll-period deductions.",
+  "sources": [
+    {
+      "title": "Income Tax rates and allowances",
+      "url": "https://www.gov.uk/government/publications/rates-and-allowances-income-tax/income-tax-rates-and-allowances-current-and-past",
+      "supports": "Personal Allowance, taxable bands, dividend allowance and rates"
+    },
+    {
+      "title": "Self-employed National Insurance rates",
+      "url": "https://www.gov.uk/self-employed-national-insurance-rates",
+      "supports": "Class 4 thresholds and rates"
+    },
+    {
+      "title": "Employer Bulletin December 2025",
+      "url": "https://www.gov.uk/government/publications/employer-bulletin-december-2025/december-2025-issue-of-the-employer-bulletin",
+      "supports": "2026/27 loan thresholds and rates"
+    },
+    {
+      "title": "Agent Update issue 140",
+      "url": "https://www.gov.uk/government/publications/agent-update-issue-140/issue-140-of-agent-update",
+      "supports": "lowest threshold where more than one undergraduate plan is indicated"
+    },
+    {
+      "title": "Student and Postgraduate Loan deduction tables 2026/27",
+      "url": "https://www.gov.uk/government/publications/sl3-student-loan-deduction-tables/2026-to-2027-student-and-postgraduate-loan-deduction-tables",
+      "supports": "Payroll-period deduction distinction only; not relied on for annual Self Assessment rounding"
+    },
+    {
+      "title": "SA110 Tax Calculation Summary notes",
+      "url": "https://www.gov.uk/government/publications/self-assessment-tax-calculation-summary-sa110",
+      "supports": "Annual Self Assessment student and postgraduate loan calculation entries and whole-pound treatment"
+    },
+    {
+      "title": "Tell HMRC about a student or postgraduate loan in your tax return",
+      "url": "https://www.gov.uk/guidance/tell-hmrc-about-a-student-loan-in-your-tax-return",
+      "supports": "Annual Self Assessment loan reporting, deductions already made and multiple-plan context"
+    },
+    {
+      "title": "HMRC Tax Logic service guide — Tax calculation",
+      "url": "https://developer.service.hmrc.gov.uk/guides/tax-logic-service-guide/documentation/tax-calculation.html",
+      "supports": "Annual Self Assessment loan income basis, pension deduction and whole-pound flooring before PAYE deduction reconciliation"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "RW3-IT-001",
+      "family": "non_savings_income_tax",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "99999",
+        "gross_ras_pension": "0"
+      },
+      "expected": {
+        "income_tax": "27431.60"
+      },
+      "derivation": [
+        "Personal Allowance is 12570 below taper",
+        "Taxable income is 87429",
+        "37700 at 20% is 7540; 49729 at 40% is 19891.60"
+      ]
+    },
+    {
+      "id": "RW3-IT-002",
+      "family": "personal_allowance_taper",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "100000",
+        "gross_ras_pension": "0"
+      },
+      "expected": {
+        "income_tax": "27432.00"
+      },
+      "derivation": [
+        "Full Personal Allowance remains at the inclusive threshold",
+        "Taxable income is 87430",
+        "37700 at 20%; 49730 at 40%"
+      ]
+    },
+    {
+      "id": "RW3-IT-003",
+      "family": "personal_allowance_taper",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "100001",
+        "gross_ras_pension": "0"
+      },
+      "expected": {
+        "personal_allowance": "12569.50",
+        "income_tax": "27432.60"
+      },
+      "derivation": [
+        "Allowance reduces by 0.50",
+        "Taxable income is 87431.50",
+        "37700 at 20%; 49731.50 at 40%"
+      ]
+    },
+    {
+      "id": "RW3-IT-004",
+      "family": "personal_allowance_taper",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "110000",
+        "gross_ras_pension": "0"
+      },
+      "expected": {
+        "personal_allowance": "7570.00",
+        "income_tax": "33432.00"
+      },
+      "derivation": [
+        "Allowance reduction is 5000",
+        "Taxable income is 102430",
+        "37700 at 20%; 64730 at 40%"
+      ]
+    },
+    {
+      "id": "RW3-IT-005",
+      "family": "personal_allowance_taper",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "125140",
+        "gross_ras_pension": "0"
+      },
+      "expected": {
+        "personal_allowance": "0.00",
+        "income_tax": "42516.00"
+      },
+      "derivation": [
+        "Personal Allowance is fully withdrawn",
+        "37700 at 20% is 7540; 87440 at 40% is 34976"
+      ]
+    },
+    {
+      "id": "RW3-PEN-001",
+      "family": "pension_ras_ani",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "110000",
+        "gross_ras_pension": "10000"
+      },
+      "expected": {
+        "adjusted_net_income": "100000.00",
+        "personal_allowance": "12570.00",
+        "income_tax": "29432.00"
+      },
+      "derivation": [
+        "Gross RaS pension reduces ANI to 100000",
+        "Full allowance gives taxable income 97430",
+        "Basic band extends to 47700; remaining 49730 at 40%"
+      ]
+    },
+    {
+      "id": "RW3-NI-001",
+      "family": "class_4_ni",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "60000",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": []
+        }
+      },
+      "expected": {
+        "national_insurance": "2456.60"
+      },
+      "derivation": [
+        "37700 between the limits at 6% is 2262",
+        "9730 above the upper limit at 2% is 194.60"
+      ]
+    },
+    {
+      "id": "RW3-IT-006",
+      "family": "additional_rate_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "125141",
+        "gross_ras_pension": "0"
+      },
+      "expected": {
+        "personal_allowance": "0.00",
+        "income_tax": "42516.45"
+      },
+      "derivation": [
+        "Tax at 125140 is 42516",
+        "The next pound is above the additional-rate threshold and adds 45 pence"
+      ]
+    },
+    {
+      "id": "RW3-IT-007",
+      "family": "additional_rate",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "130000",
+        "gross_ras_pension": "0"
+      },
+      "expected": {
+        "personal_allowance": "0.00",
+        "income_tax": "44703.00"
+      },
+      "derivation": [
+        "37700 at 20% is 7540",
+        "87440 at 40% is 34976",
+        "4860 at 45% is 2187"
+      ]
+    },
+    {
+      "id": "RW3-PEN-002",
+      "family": "pension_ani_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "125140",
+        "gross_ras_pension": "25140"
+      },
+      "expected": {
+        "adjusted_net_income": "100000.00",
+        "personal_allowance": "12570.00",
+        "income_tax": "32460.00"
+      },
+      "derivation": [
+        "Pension reduces ANI exactly to 100000 and restores full allowance",
+        "Taxable income is 112570",
+        "Extended basic band is 62840 at 20%; remaining 49730 at 40%"
+      ]
+    },
+    {
+      "id": "RW3-NI-002",
+      "family": "class_4_lower_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "12570",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": []
+        }
+      },
+      "expected": {
+        "national_insurance": "0.00"
+      },
+      "derivation": [
+        "Class 4 is due only on profits above the 12570 lower profits limit"
+      ]
+    },
+    {
+      "id": "RW3-NI-003",
+      "family": "class_4_lower_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "12571",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": []
+        }
+      },
+      "expected": {
+        "national_insurance": "0.06"
+      },
+      "derivation": [
+        "One pound is above the lower profits limit",
+        "One pound at 6% is 0.06"
+      ]
+    },
+    {
+      "id": "RW3-NI-004",
+      "family": "class_4_upper_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "50270",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": []
+        }
+      },
+      "expected": {
+        "national_insurance": "2262.00"
+      },
+      "derivation": [
+        "37700 between the lower and upper limits at 6% is 2262"
+      ]
+    },
+    {
+      "id": "RW3-NI-005",
+      "family": "class_4_upper_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "50271",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": []
+        }
+      },
+      "expected": {
+        "national_insurance": "2262.02"
+      },
+      "derivation": [
+        "37700 at 6% is 2262",
+        "One pound above the upper limit at 2% adds 0.02"
+      ]
+    },
+    {
+      "id": "RW3-SL-003",
+      "family": "plan_2_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "29385",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            2
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Plan 2 repayment applies only above the 29385 threshold"
+      ]
+    },
+    {
+      "id": "RW3-SL-004",
+      "family": "plan_2_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "29386",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            2
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "One pound is above the Plan 2 annual threshold",
+        "Nine pence is rounded down to zero whole pounds for annual Self Assessment liability"
+      ]
+    },
+    {
+      "id": "RW3-SL-005",
+      "family": "postgraduate_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "21001",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            "postgraduate"
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "One pound is above the postgraduate annual threshold",
+        "Six pence is rounded down to zero whole pounds for annual Self Assessment liability"
+      ]
+    },
+    {
+      "id": "RW3-IT-008",
+      "family": "basic_higher_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "50269",
+        "gross_ras_pension": "0"
+      },
+      "expected": {
+        "personal_allowance": "12570.00",
+        "income_tax": "7539.80"
+      },
+      "derivation": [
+        "Taxable income is 37699",
+        "37699 at 20% is 7539.80"
+      ]
+    },
+    {
+      "id": "RW3-IT-009",
+      "family": "basic_higher_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "50270",
+        "gross_ras_pension": "0"
+      },
+      "expected": {
+        "personal_allowance": "12570.00",
+        "income_tax": "7540.00"
+      },
+      "derivation": [
+        "Taxable income is exactly the 37700 basic-rate band",
+        "37700 at 20% is 7540"
+      ]
+    },
+    {
+      "id": "RW3-IT-010",
+      "family": "basic_higher_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "50271",
+        "gross_ras_pension": "0"
+      },
+      "expected": {
+        "personal_allowance": "12570.00",
+        "income_tax": "7540.40"
+      },
+      "derivation": [
+        "37700 taxable income is at 20%",
+        "The next pound is at 40%"
+      ]
+    },
+    {
+      "id": "RW3-IT-011",
+      "family": "personal_allowance_taper",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "125139",
+        "gross_ras_pension": "0"
+      },
+      "expected": {
+        "adjusted_net_income": "125139.00",
+        "personal_allowance": "0.50",
+        "income_tax": "42515.40"
+      },
+      "derivation": [
+        "Allowance reduction is 12569.50, leaving 0.50",
+        "Taxable income is 125138.50",
+        "37700 at 20% and 87438.50 at 40% gives 42515.40"
+      ]
+    },
+    {
+      "id": "RW3-PEN-003",
+      "family": "pension_ani_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "110001",
+        "gross_ras_pension": "10000"
+      },
+      "expected": {
+        "adjusted_net_income": "100001.00",
+        "personal_allowance": "12569.50",
+        "income_tax": "29432.60"
+      },
+      "derivation": [
+        "Pension reduces ANI to one pound above the taper threshold",
+        "Taxable income is 97431.50",
+        "47700 extended basic band at 20% and 49731.50 at 40%"
+      ]
+    },
+    {
+      "id": "RW3-PEN-004",
+      "family": "pension_ani_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "110001",
+        "gross_ras_pension": "10001"
+      },
+      "expected": {
+        "adjusted_net_income": "100000.00",
+        "personal_allowance": "12570.00",
+        "income_tax": "29432.20"
+      },
+      "derivation": [
+        "Pension reduces ANI exactly to the taper threshold and restores full allowance",
+        "Taxable income is 97431",
+        "47701 extended basic band at 20% and 49730 at 40%"
+      ]
+    },
+    {
+      "id": "RW3-PEN-005",
+      "family": "pension_additional_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "annual_income_tax",
+        "income": "125141",
+        "gross_ras_pension": "1"
+      },
+      "expected": {
+        "adjusted_net_income": "125140.00",
+        "personal_allowance": "0.00",
+        "income_tax": "42516.20"
+      },
+      "derivation": [
+        "ANI is exactly 125140 so Personal Allowance is zero",
+        "The gross pension extends the basic-rate limit to 37701 and the higher-rate limit to 125141",
+        "37701 at 20% is 7540.20 and 87440 at 40% is 34976; no income remains at 45%"
+      ]
+    },
+    {
+      "id": "RW3-NI-006",
+      "family": "class_4_lower_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "12569",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": []
+        }
+      },
+      "expected": {
+        "national_insurance": "0.00"
+      },
+      "derivation": [
+        "Profit is one pound below the 12570 lower profits limit"
+      ]
+    },
+    {
+      "id": "RW3-NI-007",
+      "family": "class_4_upper_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "50269",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": []
+        }
+      },
+      "expected": {
+        "national_insurance": "2261.94"
+      },
+      "derivation": [
+        "37699 of profit is above the lower limit and below the upper limit",
+        "37699 at 6% is 2261.94"
+      ]
+    },
+    {
+      "id": "RW3-SL-006",
+      "family": "plan_2_rounding",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "29397",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            2
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "1.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Twelve pounds above the threshold at 9% is 1.08",
+        "Annual liability rounds down to one whole pound"
+      ]
+    },
+    {
+      "id": "RW3-SL-007",
+      "family": "postgraduate_rounding",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "21017",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            "postgraduate"
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "1.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Seventeen pounds above the threshold at 6% is 1.02",
+        "Annual liability rounds down to one whole pound"
+      ]
+    },
+    {
+      "id": "RW3-SL-008",
+      "family": "plan_5_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "25012",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            5
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "1.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Twelve pounds above the Plan 5 threshold at 9% is 1.08",
+        "Annual liability rounds down to one whole pound"
+      ]
+    },
+    {
+      "id": "RW3-SL-010",
+      "family": "plan_1_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "26899",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            1
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Income is one pound below the Plan 1 annual threshold"
+      ]
+    },
+    {
+      "id": "RW3-SL-011",
+      "family": "plan_1_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "26900",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            1
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Income is exactly the Plan 1 annual threshold"
+      ]
+    },
+    {
+      "id": "RW3-SL-012",
+      "family": "plan_1_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "26901",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            1
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Nine pence before statutory whole-pound flooring produces zero annual liability"
+      ]
+    },
+    {
+      "id": "RW3-SL-013",
+      "family": "plan_1_rounding",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "26912",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            1
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "1.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Twelve pounds over threshold at 9% is 1.08, floored to one pound"
+      ]
+    },
+    {
+      "id": "RW3-SL-014",
+      "family": "plan_2_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "29384",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            2
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Income is one pound below the Plan 2 annual threshold"
+      ]
+    },
+    {
+      "id": "RW3-SL-015",
+      "family": "plan_4_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "33794",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            4
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Income is one pound below the Plan 4 annual threshold"
+      ]
+    },
+    {
+      "id": "RW3-SL-016",
+      "family": "plan_4_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "33795",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            4
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Income is exactly the Plan 4 annual threshold"
+      ]
+    },
+    {
+      "id": "RW3-SL-017",
+      "family": "plan_4_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "33796",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            4
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Nine pence before statutory whole-pound flooring produces zero annual liability"
+      ]
+    },
+    {
+      "id": "RW3-SL-018",
+      "family": "plan_4_rounding",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "33807",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            4
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "1.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Twelve pounds over threshold at 9% is 1.08, floored to one pound"
+      ]
+    },
+    {
+      "id": "RW3-SL-019",
+      "family": "plan_5_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "24999",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            5
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Income is one pound below the Plan 5 annual threshold"
+      ]
+    },
+    {
+      "id": "RW3-SL-020",
+      "family": "plan_5_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "25000",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            5
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Income is exactly the Plan 5 annual threshold"
+      ]
+    },
+    {
+      "id": "RW3-SL-021",
+      "family": "plan_5_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "25001",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            5
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Nine pence before statutory whole-pound flooring produces zero annual liability"
+      ]
+    },
+    {
+      "id": "RW3-SL-022",
+      "family": "postgraduate_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "20999",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            "postgraduate"
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Income is one pound below the postgraduate annual threshold"
+      ]
+    },
+    {
+      "id": "RW3-SL-023",
+      "family": "postgraduate_boundary",
+      "status": "independent_validation",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "21000",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            "postgraduate"
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "0.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Income is exactly the postgraduate annual threshold"
+      ]
+    }
+  ]
+}

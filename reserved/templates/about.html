@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}About — Reserved™{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">About Reserved™</p>
+        <h1>Built for variable income.</h1>
+        <p>A preview of income tracking and scoped tax estimates for variable income.</p>
+    </div>
+</section>
+
+<div class="about-grid">
+
+    <article class="about-section panel">
+        <div class="about-section-icon">§</div>
+        <div>
+            <h2>The problem Reserved solves</h2>
+            <p>When you work for yourself, every payment you receive includes a portion owed to HMRC as Income Tax, National Insurance contributions, and – if you carry student debt – loan repayments. The amount varies with every invoice, with your annual total, and with decisions you make about pensions and allowances.</p>
+            <p>Without a running picture of that obligation, it is straightforward to spend money that later turns into a tax bill you cannot cover. This is a common problem for the self-employed in the UK, and one that current tools do little to address.</p>
+        </div>
+    </article>
+
+    <article class="about-section panel">
+        <div class="about-section-icon">◎</div>
+        <div>
+            <h2>What Reserved does</h2>
+            <p>The current preview models incremental Income Tax, Class 4 NI and supported student-loan amounts from entered employment and freelance income. It is not a complete annual tax position.</p>
+            <p>It uses the income and tax information available to produce an estimate under the configured rules for the relevant tax year. Reserved v1 does not estimate Capital Gains Tax or Scottish Income Tax.</p>
+            <p>As income changes, the estimate updates automatically. The figures are estimates based on your declared income and profile – not a guaranteed final tax bill.</p>
+        </div>
+    </article>
+
+    <article class="about-section panel">
+        <div class="about-section-icon">✦</div>
+        <div>
+            <h2>Who it is for</h2>
+            <p>Reserved v1 is designed for people subject to England, Wales or Northern Ireland Income Tax whose finances are not fully explained by a fixed monthly salary. That includes sole traders, freelancers, independent contractors, landlords, and people who combine PAYE employment with income from self-employment, dividends, property or other sources.</p>
+            <p>The preview lets you explore how entered employment and freelance income affect its limited estimate. Savings, dividends, property, HICBC, tax already paid and other reliefs are not included in that dashboard figure.</p>
+        </div>
+    </article>
+
+    <article class="about-section panel">
+        <div class="about-section-icon">◇</div>
+        <div>
+            <h2>Why we built it</h2>
+            <p>Most financial tools are designed for the employed majority, whose tax is deducted before they ever see it. The self-employed are largely left to estimate their obligations manually – often with spreadsheets, broad rules, or guesswork.</p>
+            <p>The freelance and self-employed economy is large, growing, and largely underserved by financial tools designed for the employed majority. Reserved is built to close that gap.</p>
+        </div>
+    </article>
+
+    <article class="about-section panel about-section--preview">
+        <div class="about-section-icon">⊞</div>
+        <div>
+            <h2>About this Preview Release</h2>
+            <p>The version you are exploring now is a Preview Release. Everything you see is based on a <strong>fictional freelance designer</strong> – the figures, account balances, and transactions are illustrative examples of how Reserved would behave with real data. None of it reflects real accounts or real money.</p>
+            <ul class="about-list">
+                <li>The <strong>tax calculations are real</strong> and use current HMRC thresholds, verified independently against over 160 test cases.</li>
+                <li>The <strong> account connections</strong> shown are illustrative. The launch version of Reserved will allow you to securely connect your own financial accounts.</li>
+                <li>The <strong>Reserved account</strong> – a dedicated pot for your tax reserve – is planned for the launch version of Reserved.</li>
+                <li>No real payments are processed or stored in this preview.</li>
+            </ul>
+            <p><p>We aim to release Reserved to a small group of early users in October 2026.</p>
+
+                <p>You can register your interest or share your feedback using the buttons at the bottom of any page.</p>
+</p>
+        </div>
+    </article>
+
+</div>
+{% endblock %}

@@ -1,0 +1,347 @@
+{
+  "pack_id": "RW3-V1-PREIMPLEMENTATION-2026-27-DRAFT-1",
+  "status": "independent_validation",
+  "purpose": "Fixed expected-result candidates created before WP8 implementation. Engine output must not be used to alter them.",
+  "tax_year": "2026/27",
+  "territory": "England, Wales and Northern Ireland",
+  "derived_by": "Codex builder stream",
+  "derived_on": "2026-08-13",
+  "review": {"reviewer": "Codex independent second-person review stream", "reviewed_on": "2026-08-13", "decision": "approved", "notes": "All 53 fixtures independently reviewed against cited official sources for applicability, arithmetic, rounding, semantics and deliberate limitations. HICBC fixtures were re-derived after identifying an incomplete prior interpretation of staged section 681C(3) rounding; RW3-HICBC-004 and RW3-HICBC-012 were corrected from 1392 to 1391. See docs/RW3_V1_PREIMPLEMENTATION_FORMAL_REVIEW.md."},
+  "rounding": "Monetary liabilities fixed to pounds and pence except HICBC, for which the relevant total Child Benefit amount, percentage and calculated charge are each rounded down at their statutory stage under ITEPA 2003 s681C(3). Dividend literals avoid fractional-penny ambiguity. No periodic PAYE or student-loan rounding is inferred from these fixtures.",
+  "sources": [
+    {"title": "Income Tax rates and allowances", "url": "https://www.gov.uk/government/publications/rates-and-allowances-income-tax/income-tax-rates-and-allowances-current-and-past", "supports": "Taxable bands, starting rate for savings, dividend allowance and rates"},
+    {"title": "Budget 2025 Annex A", "url": "https://www.gov.uk/government/publications/budget-2025-overview-of-tax-legislation-and-rates-ootlar/annex-a-rates-and-allowances", "supports": "2026/27 Personal Savings Allowance and Dividend Allowance"},
+    {"title": "Tax on savings interest", "url": "https://www.gov.uk/apply-tax-free-interest-on-savings", "supports": "Starting-rate erosion, Personal Savings Allowance by tax band and income ordering"},
+    {"title": "Tax on dividends", "url": "https://www.gov.uk/tax-on-dividends", "supports": "2026/27 Dividend Allowance, dividend rates and band ordering"},
+    {"title": "Child Benefit rates", "url": "https://www.gov.uk/child-benefit/what-youll-get", "supports": "2026/27 weekly Child Benefit and charge range"},
+    {"title": "Finance Act 2012 Schedule 1, ITEPA s681C", "url": "https://www.legislation.gov.uk/ukpga/2012/14/schedule/1/enacted", "supports": "HICBC formula and mandatory whole-number rounding"},
+    {"title": "High Income Child Benefit Charge", "url": "https://www.gov.uk/child-benefit-tax-charge", "supports": "Adjusted net income, partner liability and 60000 to 80000 charge range"},
+    {"title": "Tax on foreign income: residence", "url": "https://www.gov.uk/tax-foreign-income/residence", "supports": "UK residents normally taxed on UK and foreign income"},
+    {"title": "Foreign income taxed twice", "url": "https://www.gov.uk/tax-foreign-income/taxed-twice", "supports": "Foreign Tax Credit Relief depends on treaty and facts"},
+    {"title": "Work out rental income", "url": "https://www.gov.uk/guidance/income-tax-when-you-rent-out-a-property-working-out-your-rental-income", "supports": "UK property aggregation, joint ownership shares, loss carry-forward and residential finance-cost restriction"},
+    {"title": "MTD eligibility", "url": "https://www.gov.uk/guidance/find-out-if-and-when-you-need-to-use-making-tax-digital-for-income-tax", "supports": "Phased thresholds and qualifying sources"},
+    {"title": "MTD agent toolkit", "url": "https://www.gov.uk/guidance/get-ready-for-mtd-an-agent-toolkit/understanding-making-tax-digital-for-income-tax", "supports": "Qualifying income is gross self-employment and property income before expenses"}
+  ],
+  "fixtures": [
+    {
+      "id": "RW3-SAV-001", "family": "savings_starting_rate", "status": "independent_validation",
+      "inputs": {"employment_income": "15570", "sole_trade_profit": "0", "uk_property_profit": "0", "foreign_property_profit": "0", "savings_interest": "7000", "dividends": "0", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "600.00", "savings_tax": "800.00", "dividend_tax": "0.00", "income_tax": "1400.00"},
+      "derivation": ["Personal Allowance leaves 3000 taxable non-savings at 20%", "Taxable non-savings reduces the 5000 savings starting-rate band to 2000", "1000 Personal Savings Allowance is nil-rated", "Remaining 4000 savings is taxed at 20%"]
+    },
+    {
+      "id": "RW3-SAV-002", "family": "savings_starting_rate", "status": "independent_validation",
+      "inputs": {"employment_income": "10000", "sole_trade_profit": "0", "uk_property_profit": "0", "foreign_property_profit": "0", "savings_interest": "6000", "dividends": "0", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "0.00", "savings_tax": "0.00", "dividend_tax": "0.00", "income_tax": "0.00"},
+      "derivation": ["2570 unused Personal Allowance covers savings", "Remaining 3430 savings is within the 5000 starting-rate band"]
+    },
+    {
+      "id": "RW3-SAV-003", "family": "savings_starting_rate_boundary", "status": "independent_validation",
+      "inputs": {"employment_income": "12570", "savings_interest": "6000", "dividends": "0", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "0.00", "savings_tax": "0.00", "income_tax": "0.00"},
+      "derivation": ["Employment uses the 12570 Personal Allowance", "The full 5000 savings starting-rate band plus the 1000 basic-rate Personal Savings Allowance covers 6000 interest"]
+    },
+    {
+      "id": "RW3-SAV-004", "family": "savings_starting_rate_boundary", "status": "independent_validation",
+      "inputs": {"employment_income": "12571", "savings_interest": "6000", "dividends": "0", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "0.20", "savings_tax": "0.20", "income_tax": "0.40"},
+      "derivation": ["One pound of employment is taxable at 20%", "That pound reduces the 5000 starting-rate band to 4999", "The 1000 Personal Savings Allowance leaves one pound of interest taxable at 20%"]
+    },
+    {
+      "id": "RW3-SAV-005", "family": "personal_savings_allowance_transition", "status": "independent_validation",
+      "inputs": {"employment_income": "49770", "savings_interest": "1000", "dividends": "0", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "7440.00", "savings_tax": "200.00", "income_tax": "7640.00", "personal_savings_allowance": "500.00"},
+      "derivation": ["Employment leaves 37200 taxable non-savings income and 500 of the basic band", "Adding all interest places the taxpayer in the higher-rate band, so the Personal Savings Allowance is 500", "The remaining 500 interest is taxed at 40%"]
+    },
+    {
+      "id": "RW3-SAV-006", "family": "personal_savings_allowance_additional", "status": "independent_validation",
+      "inputs": {"employment_income": "125140", "savings_interest": "1000", "dividends": "0", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "42516.00", "savings_tax": "450.00", "income_tax": "42966.00", "personal_savings_allowance": "0.00"},
+      "derivation": ["Adjusted net income exceeds 125140 so Personal Allowance is zero", "Non-savings tax at 125140 is 42516", "An additional-rate taxpayer has no Personal Savings Allowance and the 1000 interest is taxed at 45%"]
+    },
+    {
+      "id": "RW3-DIV-001", "family": "dividend_ordering", "status": "independent_validation",
+      "inputs": {"employment_income": "45000", "sole_trade_profit": "0", "uk_property_profit": "0", "foreign_property_profit": "0", "savings_interest": "0", "dividends": "5000", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "6486.00", "savings_tax": "0.00", "dividend_tax": "483.75", "income_tax": "6969.75"},
+      "derivation": ["Employment taxable income is 32430 at 20%", "Dividends stack after employment with 5270 basic-band space", "500 Dividend Allowance is nil-rated and 4500 is taxed at 10.75%"]
+    },
+    {
+      "id": "RW3-DIV-002", "family": "dividend_allowance_boundary", "status": "independent_validation",
+      "inputs": {"employment_income": "45000", "savings_interest": "0", "dividends": "500", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "6486.00", "dividend_tax": "0.00", "income_tax": "6486.00"},
+      "derivation": ["Employment taxable income is 32430 at 20%, giving 6486", "The 500 dividends are entirely within the 2026/27 Dividend Allowance"]
+    },
+    {
+      "id": "RW3-DIV-003", "family": "dividend_allowance_boundary", "status": "independent_validation",
+      "inputs": {"employment_income": "45000", "savings_interest": "0", "dividends": "504", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "6486.00", "dividend_tax": "0.43", "income_tax": "6486.43"},
+      "derivation": ["The first 500 dividends are within the Dividend Allowance", "The remaining four pounds are in the basic band and 4 at 10.75% is exactly 43 pence"]
+    },
+    {
+      "id": "RW3-DIV-004", "family": "dividend_band_crossing", "status": "independent_validation",
+      "inputs": {"employment_income": "50000", "savings_interest": "0", "dividends": "1000", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "7486.00", "dividend_tax": "178.75", "income_tax": "7664.75"},
+      "derivation": ["Employment leaves 37430 taxable non-savings income and 270 of the basic band", "The 500 Dividend Allowance is nil-rated but uses tax-band capacity", "The remaining 500 dividends are in the higher band at 35.75%, giving 178.75"]
+    },
+    {
+      "id": "RW3-DIV-005", "family": "dividend_additional_rate", "status": "independent_validation",
+      "inputs": {"employment_income": "125140", "savings_interest": "0", "dividends": "1000", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "42516.00", "dividend_tax": "196.75", "income_tax": "42712.75"},
+      "derivation": ["Adjusted net income exceeds 125140 so Personal Allowance is zero", "The 500 Dividend Allowance is nil-rated but remains within the additional band", "The remaining 500 dividends are taxed at the 2026/27 additional dividend rate of 39.35%, giving 196.75"]
+    },
+    {
+      "id": "RW3-PROP-001", "family": "uk_property_non_savings", "status": "independent_validation",
+      "inputs": {"employment_income": "30000", "sole_trade_profit": "0", "uk_property_profit": "10000", "foreign_property_profit": "0", "savings_interest": "0", "dividends": "0", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "5486.00", "class_4_ni": "0.00", "income_tax": "5486.00"},
+      "derivation": ["Combined non-savings income is 40000", "After Personal Allowance, 27430 is taxed at 20%", "Property profit does not become sole-trade profit for Class 4 NI"]
+    },
+    {
+      "id": "RW3-PROP-002", "family": "uk_property_loss", "status": "independent_validation",
+      "inputs": {"employment_income": "30000", "uk_property_receipts": "10000", "uk_property_allowable_expenses": "12000", "other_uk_property_profit": "0", "brought_forward_uk_property_loss": "0"},
+      "expected": {"current_uk_property_profit": "0.00", "uk_property_loss_to_carry_forward": "2000.00", "employment_income_reduction": "0.00"},
+      "derivation": ["Receipts less allowable expenses produces a 2000 UK property-business loss", "A UK property loss is carried forward against future profits of the same property business, not deducted from employment income"]
+    },
+    {
+      "id": "RW3-PROP-003", "family": "uk_property_aggregation", "status": "independent_validation",
+      "inputs": {"employment_income": "30000", "uk_property_results": ["5000", "-2000"], "brought_forward_uk_property_loss": "0"},
+      "expected": {"net_uk_property_profit": "3000.00", "non_savings_tax": "4086.00", "income_tax": "4086.00"},
+      "derivation": ["UK lettings are treated as one property business: 5000 profit less 2000 loss is 3000", "Combined non-savings income is 33000", "20430 after Personal Allowance at 20% is 4086"]
+    },
+    {
+      "id": "RW3-PROP-004", "family": "uk_property_joint_share", "status": "independent_validation",
+      "inputs": {"employment_income": "30000", "joint_property_total_profit": "10000", "taxpayer_share_percentage": "50"},
+      "expected": {"taxpayer_property_profit": "5000.00", "non_savings_tax": "4486.00", "income_tax": "4486.00"},
+      "derivation": ["The fixture explicitly supplies a 50% taxable share, giving 5000 property profit", "Combined non-savings income is 35000", "22430 after Personal Allowance at 20% is 4486"],
+      "limitations": ["Does not infer legal or beneficial ownership; the applicable taxable share must be established as an input"]
+    },
+    {
+      "id": "RW3-PROP-005", "family": "residential_finance_cost_deferred", "status": "independent_validation",
+      "inputs": {"individual_landlord": true, "residential_property": true, "employment_income": "30000", "rental_income": "10000", "non_finance_allowable_expenses": "2000", "residential_finance_costs": "3000"},
+      "expected": {"property_profit_before_finance_cost_reducer": "8000.00", "finance_cost_tax_reduction": null, "calculation_status": "unsupported_pending_separate_validation"},
+      "derivation": ["For an individual residential landlord, finance costs are not deducted as ordinary property expenses", "Receipts less non-finance expenses gives 8000 property profit before any basic-rate tax reduction", "The reducer depends on bounded statutory limits and is deliberately not calculated by this fixture pack"]
+    },
+    {
+      "id": "RW3-FPROP-001", "family": "foreign_property_pre_credit", "status": "independent_validation",
+      "inputs": {"uk_resident": true, "employment_income": "30000", "sole_trade_profit": "0", "uk_property_profit": "0", "foreign_property_profit": "10000", "foreign_tax_paid": "0", "savings_interest": "0", "dividends": "0", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax_before_foreign_tax_credit": "5486.00", "foreign_tax_credit": "0.00", "income_tax": "5486.00"},
+      "derivation": ["Fixture assumes UK residence for the full tax year", "Combined non-savings income is 40000", "27430 after Personal Allowance at 20% is 5486"],
+      "limitations": ["Does not validate residence, split-year treatment, remittance rules, treaty relief or Foreign Tax Credit Relief"]
+    },
+    {
+      "id": "RW3-FPROP-002", "family": "foreign_property_residence_unknown", "status": "independent_validation",
+      "inputs": {"uk_resident": null, "foreign_property_profit": "10000", "foreign_tax_paid": "0"},
+      "expected": {"uk_tax_before_foreign_tax_credit": null, "calculation_status": "residence_facts_incomplete"},
+      "derivation": ["UK taxation of foreign property income depends on residence and other facts", "The engine must not assume UK residence when the fact is unknown"]
+    },
+    {
+      "id": "RW3-FPROP-003", "family": "foreign_tax_credit_deferred", "status": "independent_validation",
+      "inputs": {"uk_resident": true, "employment_income": "30000", "foreign_property_profit": "10000", "foreign_tax_paid": "1500"},
+      "expected": {"non_savings_tax_before_foreign_tax_credit": "5486.00", "foreign_tax_paid_recorded": "1500.00", "foreign_tax_credit": null, "calculation_status": "credit_relief_unsupported_pending_separate_validation"},
+      "derivation": ["UK tax before credit is calculated on combined non-savings income of 40000", "27430 after Personal Allowance at 20% is 5486", "Foreign tax is recorded but credit is not assumed because treaty, source and relief limits require separate validation"]
+    },
+    {
+      "id": "RW3-FPROP-004", "family": "foreign_property_net_profit", "status": "independent_validation",
+      "inputs": {"uk_resident": true, "employment_income": "30000", "foreign_property_gross_receipts": "14000", "foreign_property_allowable_expenses": "4000", "foreign_tax_paid": "0"},
+      "expected": {"foreign_property_profit": "10000.00", "non_savings_tax_before_foreign_tax_credit": "5486.00", "income_tax": "5486.00"},
+      "derivation": ["14000 gross receipts less 4000 allowable expenses gives 10000 foreign property profit", "Combined non-savings income is 40000", "27430 after Personal Allowance at 20% is 5486"]
+    },
+    {
+      "id": "RW3-FPROP-005", "family": "foreign_property_residence_false", "status": "independent_validation",
+      "inputs": {"uk_resident": false, "foreign_property_profit": "10000", "foreign_tax_paid": "0"},
+      "expected": {"uk_tax_before_foreign_tax_credit": null, "calculation_status": "outside_supported_uk_resident_case"},
+      "derivation": ["This v1 fixture pack validates only the explicitly bounded full-year UK-resident case", "It does not infer UK tax for a non-resident from the income amount alone"]
+    },
+    {
+      "id": "RW3-HICBC-001", "family": "hicbc_liability", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 0, "weeks_entitled": 52},
+      "expected": {"annual_child_benefit": "1406.60", "hicbc": "703.00"},
+      "derivation": ["27.05 weekly for 52 weeks is 1406.60", "ANI is halfway through the 60000 to 80000 charge range", "50% of benefit is 703.30 and the statutory charge is rounded down to 703 whole pounds"]
+    },
+    {
+      "id": "RW3-HICBC-002", "family": "hicbc_liability", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "60199", "annual_child_benefit": "1406.60"},
+      "expected": {"charge_percentage": "0", "hicbc": "0.00"},
+      "derivation": ["199 divided by 200 is not a whole percentage", "Section 681C(3) rounds the percentage down to zero"]
+    },
+    {
+      "id": "RW3-HICBC-003", "family": "hicbc_liability", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "60200", "annual_child_benefit": "1406.60"},
+      "expected": {"charge_percentage": "1", "hicbc": "14.00"},
+      "derivation": ["200 over the threshold produces 1%", "1% of 1406.60 is 14.066 and the statutory charge is rounded down to 14 whole pounds"]
+    },
+    {
+      "id": "RW3-HICBC-004", "family": "hicbc_liability", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "79999", "annual_child_benefit": "1406.60"},
+      "expected": {"charge_percentage": "99", "hicbc": "1391.00"},
+      "derivation": ["19999 divided by 200 is 99.995 and the percentage is rounded down to 99", "The relevant total benefit 1406.60 is first rounded down to 1406", "99% of 1406 is 1391.94 and the calculated charge is rounded down to 1391 whole pounds"]
+    },
+    {
+      "id": "RW3-HICBC-005", "family": "hicbc_liability", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "80000", "annual_child_benefit": "1406.60"},
+      "expected": {"charge_percentage": "100", "hicbc": "1406.00"},
+      "derivation": ["20000 divided by 200 produces the capped 100%", "The non-whole benefit charge is rounded down to 1406 whole pounds"]
+    },
+    {
+      "id": "RW3-HICBC-006", "family": "hicbc_liability", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 1, "weeks_entitled": 52},
+      "expected": {"annual_child_benefit": "2337.40", "charge_percentage": "50", "hicbc": "1168.00"},
+      "derivation": ["27.05 plus 17.90 is 44.95 a week", "44.95 for 52 weeks is 2337.40", "50% is 1168.70 and the charge rounds down to 1168 whole pounds"]
+    },
+    {
+      "id": "RW3-HICBC-007", "family": "hicbc_liability", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 0, "weeks_entitled": 26},
+      "expected": {"child_benefit_for_entitled_weeks": "703.30", "charge_percentage": "50", "hicbc": "351.00"},
+      "derivation": ["27.05 for 26 entitled weeks is 703.30", "50% is 351.65 and the charge rounds down to 351 whole pounds"]
+    },
+    {
+      "id": "RW3-HICBC-008", "family": "hicbc_pension_ani", "status": "independent_validation",
+      "inputs": {"income_before_ras_pension": "70000", "gross_ras_pension": "10000", "annual_child_benefit": "1406.60"},
+      "expected": {"adjusted_net_income": "60000.00", "charge_percentage": "0", "hicbc": "0.00"},
+      "derivation": ["Gross relief-at-source pension contributions reduce adjusted net income", "70000 less 10000 is the 60000 threshold, at which no charge applies"]
+    },
+    {
+      "id": "RW3-HICBC-009", "family": "hicbc_lower_boundary", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "59999", "annual_child_benefit": "1406.60"},
+      "expected": {"charge_percentage": "0", "hicbc": "0.00"},
+      "derivation": ["Adjusted net income is below the 60000 threshold"]
+    },
+    {
+      "id": "RW3-HICBC-010", "family": "hicbc_lower_boundary", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "60000", "annual_child_benefit": "1406.60"},
+      "expected": {"charge_percentage": "0", "hicbc": "0.00"},
+      "derivation": ["The charge begins only when adjusted net income is over 60000"]
+    },
+    {
+      "id": "RW3-HICBC-011", "family": "hicbc_lower_boundary", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "60001", "annual_child_benefit": "1406.60"},
+      "expected": {"charge_percentage": "0", "hicbc": "0.00"},
+      "derivation": ["One pound over the threshold is less than one complete 200 step", "The statutory percentage rounds down to zero"]
+    },
+    {
+      "id": "RW3-HICBC-012", "family": "hicbc_upper_boundary", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "79800", "annual_child_benefit": "1406.60"},
+      "expected": {"charge_percentage": "99", "hicbc": "1391.00"},
+      "derivation": ["19800 over the lower threshold is 99 complete 200 steps", "The relevant total benefit 1406.60 is first rounded down to 1406", "99% of 1406 is 1391.94 and the calculated charge rounds down to 1391"]
+    },
+    {
+      "id": "RW3-HICBC-013", "family": "hicbc_upper_boundary", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "80001", "annual_child_benefit": "1406.60"},
+      "expected": {"charge_percentage": "100", "hicbc": "1406.00"},
+      "derivation": ["The charge is capped at 100% from 80000", "The final charge rounds down to 1406 whole pounds"]
+    },
+    {
+      "id": "RW3-HICBC-014", "family": "hicbc_partner_responsibility", "status": "independent_validation",
+      "inputs": {"person_adjusted_net_income": "70000", "partner_adjusted_net_income": "75000", "annual_child_benefit_received_by_person": "1406.60"},
+      "expected": {"liable_person": "partner", "person_hicbc": "0.00", "household_charge_percentage": "75", "household_hicbc": "1054.00"},
+      "derivation": ["Where both partners exceed the threshold, the partner with the higher adjusted net income is liable", "75000 is 15000 over the threshold, giving 75%", "75% of 1406.60 is 1054.95 and the charge rounds down to 1054"]
+    },
+    {
+      "id": "RW3-HICBC-015", "family": "hicbc_payment_opt_out", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "75000", "child_benefit_entitlement_retained": true, "child_benefit_payments_received": "0"},
+      "expected": {"hicbc": "0.00", "calculation_status": "no_child_benefit_payments_to_charge"},
+      "derivation": ["The claimant has opted not to receive Child Benefit payments", "No charge is due on payments that were not received, while entitlement may be retained"]
+    },
+    {
+      "id": "RW3-MTD-001", "family": "mtd_readiness", "status": "independent_validation",
+      "inputs": {"assessment_tax_year": "2024/25", "gross_self_employment_income": "30000", "gross_property_income": "20000"},
+      "expected": {"qualifying_income": "50000.00", "mandatory_from": null, "threshold_result": "not_over"},
+      "derivation": ["Qualifying income is combined gross self-employment and property income before expenses", "The rule is more than 50000, so exactly 50000 does not meet it"]
+    },
+    {
+      "id": "RW3-MTD-002", "family": "mtd_readiness", "status": "independent_validation",
+      "inputs": {"assessment_tax_year": "2024/25", "gross_self_employment_income": "30000", "gross_property_income": "20001", "registered_for_self_assessment": true, "exemption_applies": false},
+      "expected": {"qualifying_income": "50001.00", "mandatory_from": "2026-04-06", "threshold_result": "over"},
+      "derivation": ["Combined qualifying income is 50001", "This is over the 2024/25 return threshold and requires MTD from 6 April 2026, subject to exemption and other eligibility conditions"]
+    },
+    {
+      "id": "RW3-MTD-003", "family": "mtd_readiness", "status": "independent_validation",
+      "inputs": {"assessment_tax_year": "2025/26", "gross_self_employment_income": "10000", "gross_property_income": "20000"},
+      "expected": {"qualifying_income": "30000.00", "mandatory_from": null, "threshold_result": "not_over"},
+      "derivation": ["Combined qualifying income is exactly 30000", "The 2025/26 test is more than 30000, so equality does not meet it"]
+    },
+    {
+      "id": "RW3-MTD-004", "family": "mtd_readiness", "status": "independent_validation",
+      "inputs": {"assessment_tax_year": "2025/26", "gross_self_employment_income": "10000", "gross_property_income": "20001", "registered_for_self_assessment": true, "exemption_applies": false},
+      "expected": {"qualifying_income": "30001.00", "mandatory_from": "2027-04-06", "threshold_result": "over"},
+      "derivation": ["Combined qualifying income is 30001", "This is over the 2025/26 threshold and requires MTD from 6 April 2027, subject to exemptions and eligibility"]
+    },
+    {
+      "id": "RW3-MTD-005", "family": "mtd_readiness", "status": "independent_validation",
+      "inputs": {"assessment_tax_year": "2026/27", "gross_self_employment_income": "20000", "gross_property_income": "0"},
+      "expected": {"qualifying_income": "20000.00", "mandatory_from": null, "threshold_result": "not_over"},
+      "derivation": ["Qualifying income is exactly 20000", "The 2026/27 test is more than 20000, so equality does not meet it"]
+    },
+    {
+      "id": "RW3-MTD-006", "family": "mtd_readiness", "status": "independent_validation",
+      "inputs": {"assessment_tax_year": "2026/27", "gross_self_employment_income": "20001", "gross_property_income": "0", "registered_for_self_assessment": true, "exemption_applies": false},
+      "expected": {"qualifying_income": "20001.00", "mandatory_from": "2028-04-06", "threshold_result": "over"},
+      "derivation": ["Qualifying income is 20001", "This is over the 2026/27 threshold and requires MTD from 6 April 2028, subject to exemptions and eligibility"]
+    },
+    {
+      "id": "RW3-MTD-007", "family": "mtd_readiness", "status": "independent_validation",
+      "inputs": {"assessment_tax_year": "2024/25", "gross_self_employment_income": "50001", "gross_property_income": "0", "registered_for_self_assessment": null, "exemption_applies": null},
+      "expected": {"qualifying_income": "50001.00", "mandatory_from": null, "threshold_result": "eligibility_incomplete"},
+      "derivation": ["Income alone exceeds the threshold", "The official rule requires all conditions to apply and exemptions can prevent mandatory use", "Without Self Assessment registration and exemption facts, an unconditional mandatory date is not supported"]
+    },
+    {
+      "id": "RW3-MTD-008", "family": "mtd_readiness", "status": "independent_validation",
+      "inputs": {"assessment_tax_year": "2024/25", "gross_self_employment_income": "50001", "gross_property_income": "0", "registered_for_self_assessment": true, "exemption_applies": true},
+      "expected": {"qualifying_income": "50001.00", "mandatory_from": null, "threshold_result": "exempt"},
+      "derivation": ["Income exceeds the threshold and Self Assessment registration is confirmed", "A confirmed exemption means MTD does not apply, while Self Assessment reporting continues"]
+    },
+    {
+      "id": "RW3-MTD-009", "family": "mtd_excluded_income", "status": "independent_validation",
+      "inputs": {"assessment_tax_year": "2024/25", "gross_self_employment_income": "20000", "gross_property_income": "10000", "employment_income": "50000", "dividends": "10000", "savings_interest": "5000"},
+      "expected": {"qualifying_income": "30000.00", "mandatory_from": null, "threshold_result": "not_over"},
+      "derivation": ["Qualifying income is gross self-employment plus property income only", "Employment, dividends and savings do not increase the MTD qualifying-income total", "30000 is not over the 50000 threshold"]
+    },
+    {
+      "id": "RW3-MTD-010", "family": "mtd_gross_before_expenses", "status": "independent_validation",
+      "inputs": {"assessment_tax_year": "2024/25", "self_employment_gross_receipts": "40000", "self_employment_expenses": "25000", "property_gross_receipts": "10001", "property_expenses": "9000", "registered_for_self_assessment": true, "exemption_applies": false},
+      "expected": {"qualifying_income": "50001.00", "combined_taxable_profit": "16001.00", "mandatory_from": "2026-04-06", "threshold_result": "over"},
+      "derivation": ["MTD qualifying income uses 40000 plus 10001 gross receipts before expenses", "Taxable profit is a separate 15000 plus 1001", "The gross qualifying total is over 50000"]
+    },
+    {
+      "id": "RW3-MTD-011", "family": "mtd_operational_readiness", "status": "independent_validation",
+      "inputs": {"assessment_tax_year": "2024/25", "gross_self_employment_income": "50001", "registered_for_self_assessment": true, "exemption_applies": false, "submitted_return_within_last_two_years": false},
+      "expected": {"statutory_mandatory_from": "2026-04-06", "sign_up_readiness": "recent_return_requirement_not_met"},
+      "derivation": ["Income and scope facts support the statutory obligation date", "HMRC sign-up guidance separately requires a submitted tax return in the last two years", "The output distinguishes obligation from operational sign-up readiness"]
+    },
+    {
+      "id": "RW3-MTD-012", "family": "mtd_partnership_income", "status": "independent_validation",
+      "inputs": {"assessment_tax_year": "2024/25", "partnership_gross_income": "60000", "sole_trade_gross_income": "0", "property_gross_income": "0"},
+      "expected": {"qualifying_income": "0.00", "mandatory_from": null, "threshold_result": "partnership_timeline_not_yet_set"},
+      "derivation": ["Current individual MTD scope applies to sole traders and landlords", "HMRC says the partnership timeline will be set later", "Partnership income alone is not treated as current qualifying sole-trade/property income"]
+    },
+    {
+      "id": "RW3-MIX-001", "family": "mixed_income_ordering", "status": "independent_validation",
+      "inputs": {"employment_income": "30000", "sole_trade_profit": "10000", "uk_property_profit": "0", "foreign_property_profit": "0", "savings_interest": "2000", "dividends": "5000", "gross_ras_pension": "0"},
+      "expected": {"non_savings_tax": "5486.00", "savings_tax": "200.00", "dividend_tax": "483.75", "income_tax": "6169.75", "class_4_ni": "0.00"},
+      "derivation": ["Combined non-savings income is 40000; taxable 27430 at 20% gives 5486", "No starting-rate band remains because non-savings exceeds Personal Allowance plus 5000", "1000 PSA leaves 1000 savings taxed at 20%", "Savings uses the basic band before dividends, leaving 8270", "500 Dividend Allowance is nil-rated and 4500 remains in the basic band at 10.75%"]
+    },
+    {
+      "id": "RW3-SAV-007", "family": "savings_ani_personal_allowance_taper", "status": "independent_validation",
+      "inputs": {"employment_income": "99500", "sole_trade_profit": "0", "uk_property_profit": "0", "foreign_property_profit": "0", "savings_interest": "1000", "dividends": "0", "gross_ras_pension": "0"},
+      "expected": {"adjusted_net_income": "100500.00", "personal_allowance": "12320.00", "non_savings_tax": "27332.00", "personal_savings_allowance": "500.00", "savings_tax": "200.00", "income_tax": "27532.00"},
+      "derivation": ["Savings is included in adjusted net income, producing ANI of 100500", "The allowance is reduced by 250 to 12320", "Taxable non-savings income is 87180: 37700 at 20% and 49480 at 40%", "Higher-rate status gives a 500 Personal Savings Allowance and the remaining 500 interest is taxed at 40%"]
+    },
+    {
+      "id": "RW3-DIV-006", "family": "dividend_ani_personal_allowance_taper", "status": "independent_validation",
+      "inputs": {"employment_income": "99500", "sole_trade_profit": "0", "uk_property_profit": "0", "foreign_property_profit": "0", "savings_interest": "0", "dividends": "1000", "gross_ras_pension": "0"},
+      "expected": {"adjusted_net_income": "100500.00", "personal_allowance": "12320.00", "non_savings_tax": "27332.00", "dividend_allowance": "500.00", "dividend_tax": "178.75", "income_tax": "27510.75"},
+      "derivation": ["Dividends are included in adjusted net income, producing ANI of 100500", "The allowance is reduced by 250 to 12320", "Taxable non-savings income is 87180: 37700 at 20% and 49480 at 40%", "The 500 Dividend Allowance is nil-rated and the remaining 500 is taxed at 35.75%"]
+    },
+    {
+      "id": "RW3-DIV-007", "family": "dividend_basic_higher_split", "status": "independent_validation",
+      "inputs": {"employment_income": "49498", "sole_trade_profit": "0", "uk_property_profit": "0", "foreign_property_profit": "0", "savings_interest": "0", "dividends": "1500", "gross_ras_pension": "0"},
+      "expected": {"personal_allowance": "12570.00", "non_savings_tax": "7385.60", "dividend_allowance": "500.00", "basic_rate_taxable_dividends": "272.00", "higher_rate_taxable_dividends": "728.00", "dividend_tax": "289.50", "income_tax": "7675.10"},
+      "derivation": ["Taxable non-savings income is 36928 and tax at 20% is 7385.60", "The basic-rate band has 772 remaining; the 500 nil-rate Dividend Allowance consumes band capacity", "272 is taxed at 10.75% giving 29.24 and 728 at 35.75% gives 260.26"]
+    },
+    {
+      "id": "RW3-HICBC-016", "family": "hicbc_upper_cap", "status": "independent_validation",
+      "inputs": {"adjusted_net_income": "80200", "annual_child_benefit": "1406.60", "taxpayer_is_higher_ani_partner": true, "payments_received_for_full_charge_period": true},
+      "expected": {"charge_percentage": "100", "hicbc": "1406.00"},
+      "derivation": ["ANI is at least 20000 over 60000, so the percentage is capped at 100", "The full 1406.60 benefit is charged and the statutory calculation rounds down to 1406 whole pounds"]
+    }
+  ]
+}

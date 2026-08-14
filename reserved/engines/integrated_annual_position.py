@@ -1,0 +1,420 @@
+"""Bounded 2026/27 annual tax-position calculation.
+
+This module is deliberately isolated from the incremental invoice estimator and
+from PAYE reconciliation.  It calculates only the independently validated
+annual families below and reports excluded or fact-incomplete families at the
+same boundary.  In particular, a pre-credit or pre-finance-cost-reduction
+amount is never presented as a complete tax position.
+"""
+
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation, ROUND_FLOOR, ROUND_HALF_UP
+from typing import Any
+
+from .tax_config import get_config
+
+
+PENNY = Decimal("0.01")
+ZERO = Decimal("0")
+
+
+def _decimal(value: Any, name: str, *, default: str = "0") -> Decimal:
+    if value is None:
+        value = default
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be monetary, not boolean")
+    try:
+        result = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise ValueError(f"{name} must be numeric") from None
+    if not result.is_finite() or result < ZERO:
+        raise ValueError(f"{name} must be finite and non-negative")
+    return result
+
+
+def _signed_decimal(value: Any, name: str) -> Decimal:
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be monetary, not boolean")
+    try:
+        result = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise ValueError(f"{name} must be numeric") from None
+    if not result.is_finite():
+        raise ValueError(f"{name} must be finite")
+    return result
+
+
+def _money(value: Decimal) -> Decimal:
+    return value.quantize(PENNY, rounding=ROUND_HALF_UP)
+
+
+@dataclass(frozen=True)
+class AnnualPositionResult:
+    """Internal engine result aligned to the WP7U estimate-envelope boundary.
+
+    ``total_liability`` is populated only when every applicable liability
+    family included in the request is supported and sufficiently evidenced.
+    ``income_tax_before_limitations`` remains useful for review when a named
+    downstream limitation (currently FTCR or residential finance costs) is
+    unresolved.
+    """
+
+    contract_version: str
+    tax_year: str
+    ruleset_version: str
+    calculation_status: str
+    adjusted_net_income: Decimal
+    personal_allowance: Decimal
+    non_savings_tax: Decimal
+    savings_tax: Decimal
+    dividend_tax: Decimal
+    income_tax_before_limitations: Decimal | None
+    class_4_ni: Decimal
+    hicbc: Decimal | None
+    hicbc_household_charge: Decimal | None
+    hicbc_charge_percentage: int | None
+    child_benefit_amount: Decimal | None
+    hicbc_liable_person: str | None
+    total_liability: Decimal | None
+    personal_savings_allowance: Decimal
+    dividend_allowance: Decimal
+    uk_property_profit: Decimal
+    uk_property_loss_to_carry_forward: Decimal
+    foreign_property_profit: Decimal | None
+    foreign_tax_paid_recorded: Decimal
+    included_families: tuple[str, ...]
+    unsupported_families: tuple[str, ...]
+    limitations: tuple[str, ...]
+
+
+def _personal_allowance(ani: Decimal, cfg: dict) -> Decimal:
+    if ani <= cfg["PERSONAL_ALLOWANCE_TAPER_START"]:
+        return cfg["PERSONAL_ALLOWANCE"]
+    reduction = (ani - cfg["PERSONAL_ALLOWANCE_TAPER_START"]) / Decimal("2")
+    return max(ZERO, cfg["PERSONAL_ALLOWANCE"] - reduction)
+
+
+def _ordinary_tax(amount: Decimal, cursor: Decimal, basic_limit: Decimal, cfg: dict) -> Decimal:
+    """Tax ``amount`` stacked from taxable-income ``cursor``."""
+    tax = ZERO
+    end = cursor + amount
+    bands = (
+        (basic_limit, cfg["INCOME_TAX_RATES"]["basic"]),
+        (cfg["ADDITIONAL_RATE_THRESHOLD"], cfg["INCOME_TAX_RATES"]["higher"]),
+        (Decimal("Infinity"), cfg["INCOME_TAX_RATES"]["additional"]),
+    )
+    for ceiling, rate in bands:
+        taxable = max(ZERO, min(end, ceiling) - cursor)
+        if taxable:
+            tax += taxable * rate
+            cursor += taxable
+        if cursor >= end:
+            break
+    return tax
+
+
+def _dividend_tax(amount: Decimal, cursor: Decimal, basic_limit: Decimal, cfg: dict) -> Decimal:
+    tax = ZERO
+    end = cursor + amount
+    bands = (
+        (basic_limit, cfg["DIVIDEND_TAX_RATES"]["basic"]),
+        (cfg["ADDITIONAL_RATE_THRESHOLD"], cfg["DIVIDEND_TAX_RATES"]["higher"]),
+        (Decimal("Infinity"), cfg["DIVIDEND_TAX_RATES"]["additional"]),
+    )
+    for ceiling, rate in bands:
+        taxable = max(ZERO, min(end, ceiling) - cursor)
+        if taxable:
+            tax += taxable * rate
+            cursor += taxable
+        if cursor >= end:
+            break
+    return tax
+
+
+def _class_4(profit: Decimal, cfg: dict) -> Decimal:
+    rules = cfg["CLASS_4_NI"]
+    main = max(ZERO, min(profit, rules["upper_profits_limit"]) - rules["lower_profits_limit"])
+    upper = max(ZERO, profit - rules["upper_profits_limit"])
+    return _money(main * rules["main_rate"] + upper * rules["upper_rate"])
+
+
+def _child_benefit(facts: dict, cfg: dict) -> tuple[Decimal | None, str | None]:
+    if "child_benefit_payments_received" in facts:
+        return _decimal(facts["child_benefit_payments_received"], "child_benefit_payments_received"), None
+    for key in ("annual_child_benefit", "annual_child_benefit_received_by_person"):
+        if key in facts:
+            return _decimal(facts[key], key), None
+    if "eldest_or_only_children" in facts or "additional_children" in facts:
+        eldest = int(facts.get("eldest_or_only_children", 0))
+        additional = int(facts.get("additional_children", 0))
+        weeks = int(facts.get("weeks_entitled", 52))
+        if eldest not in (0, 1) or additional < 0 or not 0 <= weeks <= 53:
+            raise ValueError("Child Benefit child counts or entitled weeks are invalid")
+        weekly = eldest * cfg["CHILD_BENEFIT"]["eldest_weekly"] + additional * cfg["CHILD_BENEFIT"]["additional_weekly"]
+        return _money(weekly * weeks), None
+    if facts.get("child_benefit_applicable") is True:
+        return None, "hicbc_facts_incomplete"
+    return None, None
+
+
+def _hicbc(ani: Decimal, benefit: Decimal, cfg: dict) -> tuple[int, Decimal]:
+    rules = cfg["HICBC"]
+    points = int(max(ZERO, ani - rules["lower_threshold"]) // rules["income_per_percentage_point"])
+    percentage = min(100, points)
+    # Statutory staging: round the relevant Child Benefit down to whole pounds,
+    # apply the whole complete-£200 percentage, then round the charge down.
+    whole_pound_benefit = benefit.to_integral_value(rounding=ROUND_FLOOR)
+    charge = (whole_pound_benefit * Decimal(percentage) / Decimal("100")).to_integral_value(
+        rounding=ROUND_FLOOR
+    )
+    return percentage, _money(charge)
+
+
+def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") -> AnnualPositionResult:
+    """Calculate a bounded annual position from explicit, synthetic-safe facts.
+
+    The function does not read fixtures, providers, persistence, PAYE records or
+    student-loan data. Negative property results are carried forward within the
+    UK property business and never offset against employment or trade income.
+    """
+    if tax_year != "2026/27":
+        raise ValueError("The integrated annual-position tranche supports 2026/27 only")
+    cfg = get_config(tax_year)
+    property_modes = sum((
+        "uk_property_results" in facts,
+        "uk_property_receipts" in facts or "uk_property_allowable_expenses" in facts,
+        "joint_property_total_profit" in facts or "taxpayer_share_percentage" in facts,
+        "rental_income" in facts or "non_finance_allowable_expenses" in facts,
+        "uk_property_profit" in facts,
+    ))
+    if property_modes > 1:
+        raise ValueError("UK property must use exactly one input representation")
+    if ("foreign_property_profit" in facts) and (
+        "foreign_property_gross_receipts" in facts or "foreign_property_allowable_expenses" in facts
+    ):
+        raise ValueError("Foreign property must use profit or receipts/expenses, not both")
+    benefit_modes = sum((
+        "child_benefit_payments_received" in facts,
+        "annual_child_benefit" in facts,
+        "annual_child_benefit_received_by_person" in facts,
+        "eldest_or_only_children" in facts or "additional_children" in facts,
+    ))
+    if benefit_modes > 1:
+        raise ValueError("Child Benefit must use exactly one amount representation")
+    if "person_adjusted_net_income" in facts and "adjusted_net_income" in facts:
+        if _decimal(facts["person_adjusted_net_income"], "person_adjusted_net_income") != _decimal(
+            facts["adjusted_net_income"], "adjusted_net_income"
+        ):
+            raise ValueError("Person and supplied adjusted net income facts contradict")
+    if "partner_adjusted_net_income" in facts and not (
+        "person_adjusted_net_income" in facts or "adjusted_net_income" in facts
+    ):
+        raise ValueError("Partner ANI requires the person's explicit ANI for responsibility comparison")
+    employment = _decimal(facts.get("employment_income"), "employment_income")
+    trade = _decimal(facts.get("sole_trade_profit"), "sole_trade_profit")
+    savings = _decimal(facts.get("savings_interest"), "savings_interest")
+    dividends = _decimal(facts.get("dividends"), "dividends")
+    pension = _decimal(facts.get("gross_ras_pension"), "gross_ras_pension")
+    if "income_before_ras_pension" in facts and "adjusted_net_income" in facts:
+        derived_ani = max(
+            ZERO,
+            _decimal(facts["income_before_ras_pension"], "income_before_ras_pension") - pension,
+        )
+        if derived_ani != _decimal(facts["adjusted_net_income"], "adjusted_net_income"):
+            raise ValueError("Adjusted net income contradicts income before the supplied gross pension")
+
+    # Property inputs may be a precomputed result, component results, or
+    # explicit receipts/expenses. The engine never infers ownership shares.
+    property_loss = ZERO
+    if "uk_property_results" in facts:
+        raw_result = sum(
+            (_signed_decimal(value, "uk_property_results item") for value in facts["uk_property_results"]),
+            ZERO,
+        )
+    elif "uk_property_receipts" in facts or "uk_property_allowable_expenses" in facts:
+        raw_result = _decimal(facts.get("uk_property_receipts"), "uk_property_receipts") - _decimal(
+            facts.get("uk_property_allowable_expenses"), "uk_property_allowable_expenses"
+        )
+    elif "joint_property_total_profit" in facts:
+        share = _decimal(facts.get("taxpayer_share_percentage"), "taxpayer_share_percentage")
+        if share > 100:
+            raise ValueError("taxpayer_share_percentage must not exceed 100")
+        raw_result = _decimal(facts["joint_property_total_profit"], "joint_property_total_profit") * share / 100
+    elif "rental_income" in facts or "non_finance_allowable_expenses" in facts:
+        raw_result = _decimal(facts.get("rental_income"), "rental_income") - _decimal(
+            facts.get("non_finance_allowable_expenses"), "non_finance_allowable_expenses"
+        )
+    else:
+        raw_result = _signed_decimal(facts.get("uk_property_profit", "0"), "uk_property_profit")
+    brought_forward = _decimal(facts.get("brought_forward_uk_property_loss"), "brought_forward_uk_property_loss")
+    if raw_result < ZERO:
+        property_profit = ZERO
+        property_loss = brought_forward + abs(raw_result)
+    else:
+        property_profit = max(ZERO, raw_result - brought_forward)
+        property_loss = max(ZERO, brought_forward - raw_result)
+
+    unsupported: list[str] = []
+    limitations: list[str] = ["paye_reconciliation_not_performed", "student_loan_not_calculated"]
+    residential_finance_costs = _decimal(
+        facts.get("residential_finance_costs"), "residential_finance_costs"
+    )
+    if residential_finance_costs > ZERO and not (
+        facts.get("individual_landlord") is True and facts.get("residential_property") is True
+    ):
+        raise ValueError(
+            "Residential finance costs require explicit individual-landlord and residential-property facts"
+        )
+    if residential_finance_costs > ZERO:
+        unsupported.append("residential_finance_cost_reduction")
+        limitations.append("income_tax_is_before_residential_finance_cost_reduction")
+
+    foreign_tax = _decimal(facts.get("foreign_tax_paid"), "foreign_tax_paid")
+    foreign_profit: Decimal | None = ZERO
+    if "foreign_property_gross_receipts" in facts or "foreign_property_allowable_expenses" in facts:
+        foreign_profit = _decimal(facts.get("foreign_property_gross_receipts"), "foreign_property_gross_receipts") - _decimal(
+            facts.get("foreign_property_allowable_expenses"), "foreign_property_allowable_expenses"
+        )
+    else:
+        foreign_profit = _decimal(facts.get("foreign_property_profit"), "foreign_property_profit")
+    if foreign_profit and facts.get("uk_resident") is not True:
+        status = "residence_facts_incomplete" if facts.get("uk_resident") is None else "outside_supported_uk_resident_case"
+        unsupported.append("foreign_property_residence")
+        limitations.append(status)
+        foreign_included = ZERO
+    else:
+        foreign_included = foreign_profit
+    if foreign_tax > ZERO:
+        unsupported.append("foreign_tax_credit_relief")
+        limitations.append("income_tax_is_before_foreign_tax_credit_relief")
+
+    gross_non_savings = employment + trade + property_profit + foreign_included
+    gross_total = gross_non_savings + savings + dividends
+    ani = max(ZERO, gross_total - pension)
+    allowance = _personal_allowance(ani, cfg)
+    pa_left = allowance
+    taxable_ns = max(ZERO, gross_non_savings - pa_left)
+    pa_left = max(ZERO, pa_left - gross_non_savings)
+    taxable_savings = max(ZERO, savings - pa_left)
+    pa_left = max(ZERO, pa_left - savings)
+    taxable_dividends = max(ZERO, dividends - pa_left)
+
+    basic_limit = min(cfg["BASIC_RATE_BAND"] + pension, cfg["ADDITIONAL_RATE_THRESHOLD"])
+    non_savings_tax = _money(_ordinary_tax(taxable_ns, ZERO, basic_limit, cfg))
+    cursor = taxable_ns
+
+    starting_rate = min(taxable_savings, max(ZERO, cfg["SAVINGS"]["starting_rate_limit"] - taxable_ns))
+    savings_after_starting = taxable_savings - starting_rate
+    cursor += starting_rate
+    total_taxable = taxable_ns + taxable_savings + taxable_dividends
+    if total_taxable > cfg["ADDITIONAL_RATE_THRESHOLD"]:
+        psa = cfg["SAVINGS"]["personal_savings_allowance_additional"]
+    elif total_taxable > basic_limit:
+        psa = cfg["SAVINGS"]["personal_savings_allowance_higher"]
+    else:
+        psa = cfg["SAVINGS"]["personal_savings_allowance_basic"]
+    psa_used = min(psa, savings_after_starting)
+    cursor += psa_used
+    taxable_savings_after_allowances = savings_after_starting - psa_used
+    savings_tax = _money(_ordinary_tax(taxable_savings_after_allowances, cursor, basic_limit, cfg))
+    cursor += taxable_savings_after_allowances
+
+    dividend_allowance = min(cfg["DIVIDEND_ALLOWANCE"], taxable_dividends)
+    cursor += dividend_allowance
+    dividend_tax = _money(_dividend_tax(taxable_dividends - dividend_allowance, cursor, basic_limit, cfg))
+    income_tax = _money(non_savings_tax + savings_tax + dividend_tax)
+    class_4 = _class_4(trade, cfg)
+
+    benefit, hicbc_fact_status = _child_benefit(facts, cfg)
+    hicbc: Decimal | None = None
+    household_hicbc: Decimal | None = None
+    hicbc_percentage: int | None = None
+    liable_person: str | None = None
+    if hicbc_fact_status:
+        unsupported.append("hicbc")
+        limitations.append(hicbc_fact_status)
+    elif benefit is not None:
+        explicit_ani = facts.get("adjusted_net_income")
+        if explicit_ani is None and "income_before_ras_pension" in facts:
+            explicit_ani = max(
+                ZERO,
+                _decimal(facts["income_before_ras_pension"], "income_before_ras_pension") - pension,
+            )
+        person_ani = _decimal(facts.get("person_adjusted_net_income", explicit_ani if explicit_ani is not None else ani), "adjusted_net_income")
+        partner_raw = facts.get("partner_adjusted_net_income")
+        responsibility_ambiguous = facts.get("taxpayer_is_higher_ani_partner") is False and partner_raw is None
+        if partner_raw is not None and _decimal(partner_raw, "partner_adjusted_net_income") == person_ani:
+            responsibility_ambiguous = True
+        if responsibility_ambiguous:
+            unsupported.append("hicbc")
+            limitations.append("hicbc_responsibility_facts_ambiguous")
+        elif partner_raw is not None and _decimal(partner_raw, "partner_adjusted_net_income") > person_ani:
+            partner_ani = _decimal(partner_raw, "partner_adjusted_net_income")
+            hicbc_percentage, household_hicbc = _hicbc(partner_ani, benefit, cfg)
+            liable_person = "partner"
+            limitations.append("hicbc_liability_belongs_to_higher_ani_partner")
+            hicbc = ZERO
+        else:
+            hicbc_percentage, hicbc = _hicbc(person_ani, benefit, cfg)
+            household_hicbc = hicbc
+            liable_person = "person"
+
+        if (
+            benefit == ZERO
+            and facts.get("child_benefit_entitlement_retained") is True
+            and "child_benefit_payments_received" in facts
+        ):
+            limitations.append("no_child_benefit_payments_to_charge")
+
+    reported_ani = ani
+    if "adjusted_net_income" in facts:
+        reported_ani = _decimal(facts["adjusted_net_income"], "adjusted_net_income")
+    elif "person_adjusted_net_income" in facts:
+        reported_ani = _decimal(facts["person_adjusted_net_income"], "person_adjusted_net_income")
+    elif "income_before_ras_pension" in facts:
+        reported_ani = max(
+            ZERO,
+            _decimal(facts["income_before_ras_pension"], "income_before_ras_pension") - pension,
+        )
+
+    complete = not unsupported
+    total = _money(income_tax + class_4 + (hicbc or ZERO)) if complete else None
+    if complete:
+        status = "calculated"
+    elif any(family in unsupported for family in (
+        "foreign_tax_credit_relief", "residential_finance_cost_reduction"
+    )) or "outside_supported_uk_resident_case" in limitations:
+        status = "unsupported_rule"
+    else:
+        status = "insufficient_facts"
+    included = ["income_tax", "class_4_ni"]
+    if benefit is not None and "hicbc" not in unsupported:
+        included.append("hicbc")
+    return AnnualPositionResult(
+        contract_version="reserved-estimate-envelope/1.0-internal",
+        tax_year=tax_year,
+        ruleset_version=cfg["rules_version"],
+        calculation_status=status,
+        adjusted_net_income=_money(reported_ani),
+        personal_allowance=_money(allowance),
+        non_savings_tax=non_savings_tax,
+        savings_tax=savings_tax,
+        dividend_tax=dividend_tax,
+        income_tax_before_limitations=income_tax if gross_non_savings or savings or dividends else ZERO,
+        class_4_ni=class_4,
+        hicbc=hicbc,
+        hicbc_household_charge=household_hicbc,
+        hicbc_charge_percentage=hicbc_percentage,
+        child_benefit_amount=_money(benefit) if benefit is not None else None,
+        hicbc_liable_person=liable_person,
+        total_liability=total,
+        personal_savings_allowance=_money(psa),
+        dividend_allowance=_money(dividend_allowance),
+        uk_property_profit=_money(property_profit),
+        uk_property_loss_to_carry_forward=_money(property_loss),
+        foreign_property_profit=_money(foreign_profit) if foreign_profit is not None else None,
+        foreign_tax_paid_recorded=_money(foreign_tax),
+        included_families=tuple(included),
+        unsupported_families=tuple(dict.fromkeys(unsupported)),
+        limitations=tuple(limitations),
+    )

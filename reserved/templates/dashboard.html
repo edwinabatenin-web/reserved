@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% block title %}Overview — Reserved™{% endblock %}
+{% block content %}
+{% if liability.calculation_status == 'unsupported_rule' %}
+<section class="panel" role="status" aria-live="polite">
+    <h1>Estimate unavailable for this loan-plan combination</h1>
+    <p>Reserved cannot verify the annual Self Assessment treatment for the supplied loan-plan combination. No student-loan amount, total, allocation or set-aside figure has been calculated.</p>
+    <p>{{ liability.verification_requirement }}</p>
+</section>
+{% else %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">{{ today.strftime("%A, %-d %B %Y") }}</p>
+        <h1>Good {{ greeting }}, {{ profile.first_name }}.</h1>
+        <p>An illustrative invoice estimate using the limited income in your profile.</p>
+    </div>
+    <a class="button button-secondary" href="{{ url_for('web.settings') }}">{% if is_demo %}Set up your profile{% else %}Review your profile{% endif %}</a>
+</section>
+
+{% if is_demo %}
+<div class="demo-intro" id="demo-intro">
+    <div class="demo-intro-head">
+        <span class="preview-badge">Preview Release</span>
+        <button class="demo-intro-dismiss" id="demo-intro-dismiss" aria-label="Dismiss introduction">✕</button>
+    </div>
+    <h2 class="demo-intro-tagline">This preview estimates the incremental Income Tax, Class 4 NI and supported student-loan amount associated with entered freelance income.</h2>
+    <p class="demo-intro-copy">You're exploring a <strong>fictional example</strong> where the user is a freelance designer – the figures below are illustrative and show how Reserved would work in practice.</p>
+    <nav class="what-today-grid" aria-label="What would you like to do today?">
+        <button class="what-today-card" id="start-tour-btn" type="button">
+            <div class="what-today-card-icon" aria-hidden="true">◎</div>
+            <div class="what-today-card-body">
+                <h3>See how it works</h3>
+                <p>A short guided tour of the key features</p>
+            </div>
+            <span class="what-today-card-cta" aria-hidden="true">→</span>
+        </button>
+        <a class="what-today-card" href="{{ url_for('web.settings') }}">
+            <div class="what-today-card-icon" aria-hidden="true">⊞</div>
+            <div class="what-today-card-body">
+                <h3>Try your own figures</h3>
+                <p>Enter your income and see a real estimate</p>
+            </div>
+            <span class="what-today-card-cta" aria-hidden="true">→</span>
+        </a>
+        <a class="what-today-card" href="#calculation-panel">
+            <div class="what-today-card-icon" aria-hidden="true">§</div>
+            <div class="what-today-card-body">
+                <h3>Review the tax maths</h3>
+                <p>Income Tax, NI and student loans broken out</p>
+            </div>
+            <span class="what-today-card-cta" aria-hidden="true">→</span>
+        </a>
+        <a class="what-today-card" href="{{ url_for('web.future') }}">
+            <div class="what-today-card-icon" aria-hidden="true">◇</div>
+            <div class="what-today-card-body">
+                <h3>Explore what's coming</h3>
+                <p>Bank connections, forecasting and more</p>
+            </div>
+            <span class="what-today-card-cta" aria-hidden="true">→</span>
+        </a>
+    </nav>
+</div>
+{% endif %}
+
+<section class="hero-balance" data-tour="estimated-tax">
+    <div class="hero-copy">
+        <p class="hero-label">Limited incremental estimate to date</p>
+        <p class="hero-value" data-count-up="{{ summary.protected }}">£0.00</p>
+        <div class="hero-meta">
+            {% if summary.income_ytd > 0 %}
+            <span class="trend-chip">≈ £{{ "{:,.0f}".format(summary.annual_target) }} projected this tax year</span>
+            {% endif %}
+            <span>Excludes savings, dividends, property, HICBC, tax already paid and other reliefs</span>
+        </div>
+    </div>
+    <div class="hero-orbit" style="--progress: {{ summary.funding_percentage }};" aria-label="{{ summary.funding_percentage }} per cent of entered freelance income attributed by the limited model">
+        <div>
+            <span>{{ summary.funding_percentage }}%</span>
+            <small>{% if summary.income_ytd > 0 %}of income{% else %}reserved{% endif %}</small>
+        </div>
+    </div>
+</section>
+
+<section class="metric-grid">
+    <article class="metric-card">
+        <div class="metric-icon green">✓</div>
+        <div>
+            <p>Run-rate projection of this limited estimate</p>
+            <strong data-count-up="{{ summary.annual_target }}">£0.00</strong>
+            {% if summary.annual_target > 0 %}
+            <small>Not a complete annual tax position</small>
+            {% else %}
+            <small>Add income to see your target</small>
+            {% endif %}
+        </div>
+    </article>
+    <article class="metric-card">
+        <div class="metric-icon blue">↗</div>
+        <div>
+            <p>Freelance income to date</p>
+            <strong data-count-up="{{ summary.income_ytd }}">£0.00</strong>
+            <small>{{ liability.tax_year }} · {% if is_demo %}Example data{% else %}From your profile{% endif %}</small>
+        </div>
+    </article>
+    <article class="metric-card">
+        <div class="metric-icon amber">31</div>
+        <div>
+            <p>Next key deadline</p>
+            <strong>31 January 2027</strong>
+            <small data-deadline="2027-01-31">Calculating time remaining…</small>
+        </div>
+    </article>
+</section>
+
+<div class="content-grid">
+    <section class="panel panel-large calculation-panel" id="calculation-panel" data-tour="calculation">
+        <div class="panel-heading">
+            <div>
+                <p class="eyebrow">Try the core experience</p>
+                <h2>What happens when income arrives?</h2>
+            </div>
+            <span class="pill pill-live">Interactive</span>
+        </div>
+
+        <form class="income-form" action="{{ url_for('web.calculate') }}" method="post" data-calculation-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label for="invoice_amount">Incoming invoice payment</label>
+            <div class="money-field">
+                <span>£</span>
+                <input id="invoice_amount" name="invoice_amount" type="number" min="0.01" step="0.01" value="{{ invoice_amount }}">
+                <button class="button button-primary" type="submit">
+                    <span class="button-label">Calculate</span>
+                    <span class="button-spinner" hidden></span>
+                </button>
+            </div>
+        </form>
+
+        <div class="allocation-summary">
+            <div>
+                <p>Estimated reserve for this payment</p>
+                <strong>£{{ "{:,.2f}".format(allocation.tax_reserve) }}</strong>
+            </div>
+        </div>
+
+        <div class="allocation-list">
+            <div>
+                <span class="legend legend-tax"></span>
+                <p>Illustrative incremental amount for this payment</p>
+                <strong>{{ (allocation.tax_reserve / allocation.gross_amount * 100)|round|int }}%</strong>
+            </div>
+        </div>
+
+        <div class="breakdown">
+            <div><span>Income Tax</span><strong>£{{ "{:,.2f}".format(liability.income_tax) }}</strong></div>
+            <div><span>National Insurance</span><strong>£{{ "{:,.2f}".format(liability.national_insurance) }}</strong></div>
+            <div><span>Student loan</span><strong>£{{ "{:,.2f}".format(liability.student_loan) }}</strong></div>
+        </div>
+        <p class="calc-note">The reserve rate on a single payment may be higher than your overall cumulative rate if more of that payment falls in the 40% tax band.</p>
+        <p class="disclaimer">Illustrative incremental estimate for {{ liability.tax_year }}. It omits savings, dividends, property income, HICBC, tax already paid and other reliefs; it is not a complete bill or assured set-aside amount.</p>
+    </section>
+
+    <aside class="panel" data-tour="connections">
+        <div class="panel-heading">
+            <div>
+                <p class="eyebrow">Connected accounts</p>
+                <h2>Where your money lives</h2>
+            </div>
+            <a href="{{ url_for('web.connections') }}">Manage →</a>
+        </div>
+        <div class="account-stack">
+            {% for account in connections %}
+            <article class="account-card">
+                <div class="provider-badge">{{ account.initials }}</div>
+                <div>
+                    <strong>{{ account.name }}</strong>
+                    <p>{{ account.account_type }} · {{ account.updated }}</p>
+                </div>
+                {% if account.show_balance %}
+                <div class="account-balance">
+                    <strong>£{{ "{:,.2f}".format(account.balance) }}</strong>
+                    <span>{{ account.status }}</span>
+                </div>
+                {% else %}
+                <div class="account-balance account-status-only">
+                    <span class="connection-pill">{{ account.status }}</span>
+                </div>
+                {% endif %}
+            </article>
+            {% endfor %}
+        </div>
+        <a class="button button-secondary button-full" href="{{ url_for('web.connections') }}">Add a connection</a>
+    </aside>
+</div>
+
+<section class="panel chart-panel" data-tour="chart">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Seven-month view</p>
+            <h2>Income and reserves</h2>
+        </div>
+        <div class="chart-legend">
+            <span><i class="income-dot"></i> Income</span>
+            <span><i class="reserve-dot"></i> Reserved</span>
+        </div>
+    </div>
+    <div class="chart-wrap">
+        <canvas
+            id="incomeReserveChart"
+            width="980"
+            height="330"
+            data-labels='{{ chart.labels|tojson }}'
+            data-income='{{ chart.income|tojson }}'
+            data-reserved='{{ chart.reserved|tojson }}'
+            aria-label="Income and reserve chart"
+        ></canvas>
+    </div>
+</section>
+
+<div class="content-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <p class="eyebrow">Latest</p>
+                <h2>Recent activity</h2>
+            </div>
+        </div>
+        <div class="timeline">
+            {% for item in activity %}
+            <div class="timeline-item">
+                <span></span>
+                <div>
+                    <strong>{{ item.title }}</strong>
+                    <p>{{ item.detail }}</p>
+                    <small>{{ item.meta }} · {{ item.time }}</small>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="panel insight-card">
+        <span class="insight-icon">✦</span>
+        <p class="eyebrow">Reserved Insight</p>
+        {% if summary.income_ytd > 0 %}
+        <h2>{{ summary.funding_percentage }}% of your freelance income goes to tax.</h2>
+        <p>On the entered employment and freelance figures, this limited model attributes about £{{ summary.funding_percentage }} of each £100 to Income Tax, NI{% if liability.student_loan > 0 %}, and student loan{% endif %}. It is not a complete annual position.</p>
+        <div class="insight-stat">
+            <strong>£{{ "{:,.2f}".format(summary.protected) }}</strong>
+            <span>estimated liability to date</span>
+        </div>
+        {% else %}
+        <h2>Add your income to see your reserve estimate.</h2>
+        <p>Enter your freelance income to date in Settings and the engine will estimate how much you may need to set aside.</p>
+        <div class="insight-stat">
+            <strong>—</strong>
+            <span>update profile to calculate</span>
+        </div>
+        {% endif %}
+        <small>Based on {{ liability.tax_year }} rules. Not professional advice.</small>
+    </section>
+</div>
+
+<section class="panel roadmap-strip">
+    <div class="panel-heading">
+        <div>
+            <p class="eyebrow">Built around your financial life</p>
+            <h2>More than a tax calculator</h2>
+        </div>
+        <a href="{{ url_for('web.future') }}">View roadmap →</a>
+    </div>
+    <div class="feature-row">
+        {% for feature in features %}
+        <article>
+            <div class="feature-icon">{{ feature.icon }}</div>
+            <span class="pill">{{ feature.status }}</span>
+            <h3>{{ feature.title }}</h3>
+            <p>{{ feature.description }}</p>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+{% endblock %}

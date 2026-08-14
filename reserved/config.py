@@ -1,0 +1,30 @@
+import os
+from datetime import timedelta
+
+
+class Config:
+    # ── Core ──────────────────────────────────────────────────────────────────
+    SECRET_KEY        = os.environ.get("SESSION_SECRET", "reserved-local-preview-only")
+    JSON_SORT_KEYS    = False
+    DEMO_MODE         = os.environ.get("RESERVED_DEMO_MODE", "1") == "1"
+    DATABASE_URL      = os.environ.get("DATABASE_URL")
+
+    # ── CSRF ──────────────────────────────────────────────────────────────────
+    WTF_CSRF_TIME_LIMIT = 7200          # tokens expire after 2 hours
+
+    # ── Session & cookies ─────────────────────────────────────────────────────
+    # Cookies are always HttpOnly (Flask default).
+    # Secure flag is set so cookies are only sent over HTTPS.  In local dev
+    # (HTTP) Werkzeug still sets the flag but the browser ignores it — no
+    # functional impact on development.
+    SESSION_COOKIE_HTTPONLY  = True
+    SESSION_COOKIE_SAMESITE  = "Lax"    # CSRF protection without breaking OAuth flows
+    SESSION_COOKIE_SECURE    = True     # require HTTPS in transit; browsers ignore on localhost
+    SESSION_COOKIE_NAME      = "rsvd_session"
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
+
+    # ── Cloudflare Turnstile (bot protection on public forms) ─────────────────
+    # Set both vars to activate Turnstile.  When unset the widget is hidden and
+    # server-side verification is skipped — dev/test previews work unchanged.
+    TURNSTILE_SITE_KEY   = os.environ.get("TURNSTILE_SITE_KEY",   "")
+    TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}What’s next — Reserved™{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">What’s next</p>
+        <h1>See what Reserved could help you with next.</h1>
+        <p>The first release focuses on helping you understand variable income and prepare for tax. Future features will build on the same financial picture.</p>
+    </div>
+</section>
+<section class="future-grid">
+{% for feature in features %}
+<article class="panel future-card">
+    <span class="pill">{{ feature.status }}</span>
+    <h2>{{ feature.title }}</h2>
+    <p>{{ feature.description }}</p>
+    <div class="future-line"></div>
+    <small>Planned feature – not yet available in this Preview Release.</small>
+</article>
+{% endfor %}
+</section>
+{% endblock %}

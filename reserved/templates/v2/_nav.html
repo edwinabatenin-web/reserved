@@ -1,0 +1,21 @@
+{# ── V2 secondary navigation ──────────────────────────────────────────────
+   Include this after the dev banner in every V2 page template.
+   review_count is optional; badge only appears when > 0.
+   Transactions is absent: raw banking data is not surfaced in the
+   customer-facing Reserved UI (regulatory + product philosophy).
+   Review is combined with Invoices into a single coherent experience.
+#}
+<nav class="v2-nav" aria-label="Reserved navigation">
+    <a class="v2-nav-link {% if request.endpoint == 'v2.index' %}active{% endif %}"
+       href="{{ url_for('v2.index') }}">Dashboard</a>
+    <a class="v2-nav-link {% if request.endpoint == 'v2.connections' %}active{% endif %}"
+       href="{{ url_for('v2.connections') }}">Connections</a>
+    <a class="v2-nav-link {% if request.endpoint == 'v2.invoices' %}active{% endif %}"
+       href="{{ url_for('v2.invoices') }}">Invoices{% if review_count is defined and review_count > 0 %}<span class="v2-nav-badge">{{ review_count }}</span>{% endif %}</a>
+    <a class="v2-nav-link {% if request.endpoint == 'v2.settings_page' %}active{% endif %}"
+       href="{{ url_for('v2.settings_page') }}">Settings</a>
+    <form method="post" action="{{ url_for('v2.logout') }}" class="v2-nav-signout-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="v2-nav-link v2-nav-signout">Sign out</button>
+    </form>
+</nav>

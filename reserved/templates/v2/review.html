@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Review — Reserved™{% endblock %}
+
+{% block extra_head %}
+<meta name="robots" content="noindex, nofollow">
+{% endblock %}
+
+{% block content %}
+
+{# ── Internal preview banner ─────────────────────────────────────────────── #}
+<div class="v2-dev-banner" role="note" aria-label="Internal preview notice">
+    <span class="v2-dev-banner-badge">V2</span>
+    <span class="v2-dev-banner-text">
+        <strong>Review queue</strong> · Items requiring your confirmation.
+    </span>
+    <span class="v2-dev-banner-date">Targeting: October 2026 beta</span>
+</div>
+
+{# ── V2 navigation ───────────────────────────────────────────────────────── #}
+{% include 'v2/_nav.html' %}
+
+<div class="page-content" style="padding: 0 32px 56px;">
+
+    <div class="v2-dash-header">
+        <div>
+            <p class="eyebrow">Review</p>
+            <h1 class="page-title">Needs your confirmation</h1>
+            <p style="color:var(--ink-muted);max-width:520px;margin-bottom:0;font-size:14px;">
+                Reserved couldn't automatically categorise everything.
+                Confirming these items updates the limited tax summary shown in this preview.
+                {% if not db_source %}<br><strong>Demo data.</strong>{% endif %}
+            </p>
+        </div>
+    </div>
+
+    {% set total_items = (unclassified|length) + (pending|length) %}
+
+    {% if total_items == 0 %}
+    {# ── All-clear ────────────────────────────────────────────────────────── #}
+    <div class="panel" style="padding:48px 32px;text-align:center;">
+        <div style="font-size:28px;margin-bottom:12px;color:var(--green);">✓</div>
+        <p style="font-size:16px;font-weight:750;margin-bottom:6px;">Nothing needs attention</p>
+        <p style="color:var(--ink-soft);max-width:360px;margin:0 auto;">
+            Reserved has categorised all activity it found and matched all invoices it could.
+        </p>
+    </div>
+
+    {% else %}
+
+    {# ── Unclassified payments — aggregate, no raw descriptions ───────────── #}
+    {% if unclassified %}
+    <section class="v2-dash-section" aria-labelledby="unclassified-heading">
+        <h2 class="v2-dash-section-title" id="unclassified-heading">
+            Payments needing confirmation
+            <span class="v2-nav-badge" style="background:var(--blue);color:#fff;">{{ unclassified|length }}</span>
+        </h2>
+        <div class="panel" style="padding:24px 28px;">
+            <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:200px;">
+                    <p style="font-size:22px;font-weight:750;color:var(--blue);margin:0 0 6px;">
+                        {{ unclassified|length }}
+                        payment{{ 's' if unclassified|length != 1 }}
+                        couldn't be categorised
+                    </p>
+                    <p style="color:var(--ink-soft);font-size:13px;margin:0;max-width:440px;line-height:1.6;">
+                        Reserved found {{ unclassified|length }}
+                        payment{{ 's' if unclassified|length != 1 }} that
+                        {{ 'don\'t' if unclassified|length != 1 else 'doesn\'t' }}
+                        clearly match any tax category.
+                        These may include personal spending or transfers that Reserved
+                        shouldn't count — but they could also include taxable income
+                        or deductible costs.
+                        Manual confirmation will be available in a later release.
+                    </p>
+                </div>
+                <div style="flex-shrink:0;display:flex;flex-direction:column;gap:8px;min-width:140px;">
+                    {% set income_items = unclassified | selectattr('category', 'equalto', 'unknown') | list %}
+                    {% set low_conf_items = unclassified | rejectattr('category', 'equalto', 'unknown') | list %}
+                    {% if low_conf_items %}
+                    <div style="background:var(--surface-soft);border:1px solid var(--line);border-radius:10px;padding:12px 14px;text-align:center;">
+                        <div style="font-size:18px;font-weight:750;color:var(--ink);">{{ low_conf_items|length }}</div>
+                        <div style="font-size:11px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Low confidence</div>
+                    </div>
+                    {% endif %}
+                    {% if income_items %}
+                    <div style="background:var(--surface-soft);border:1px solid var(--line);border-radius:10px;padding:12px 14px;text-align:center;">
+                        <div style="font-size:18px;font-weight:750;color:var(--ink);">{{ income_items|length }}</div>
+                        <div style="font-size:11px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;">Uncategorised</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    {# ── Invoice matches needing review ───────────────────────────────────── #}
+    {% if pending %}
+    <section class="v2-dash-section" aria-labelledby="pending-heading">
+        <h2 class="v2-dash-section-title" id="pending-heading">
+            Invoice matches needing review
+            <span class="v2-nav-badge" style="background:var(--blue);color:#fff;">{{ pending|length }}</span>
+        </h2>
+        <p style="color:var(--ink-muted);font-size:13px;margin-bottom:16px;">
+            These invoices are unmatched, ambiguous, or have a missing currency.
+            Confirm or reject actions will be available in a later release.
+        </p>
+        <div class="inv-table-wrap">
+            <table class="inv-table" aria-label="Invoice matches needing review">
+                <thead>
+                    <tr>
+                        <th>Invoice</th>
+                        <th class="right">Amount</th>
+                        <th>Status</th>
+                        <th>Why it needs review</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for m in pending %}
+                {% set ms = m.match_status or 'unmatched' %}
+                <tr>
+                    <td>
+                        <div class="inv-ref">{{ m.reference }}</div>
+                        <div class="inv-client">{{ m.client_name }}</div>
+                    </td>
+                    <td class="inv-amount">
+                        {{ m.currency or 'GBP' }} {{ "%.2f"|format(m.amount_due|float) }}
+                    </td>
+                    <td>
+                        {% if m.method == 'currency_missing' %}
+                            <span class="inv-status-badge inv-badge-missing-ccy">Missing currency</span>
+                        {% elif ms == 'unmatched' %}
+                            <span class="inv-status-badge inv-badge-unmatched">Not matched</span>
+                        {% elif ms == 'likely_match' %}
+                            <span class="inv-status-badge inv-badge-likely">Possible match</span>
+                        {% elif ms == 'partial_payment' %}
+                            <span class="inv-status-badge inv-badge-partial">Partial</span>
+                        {% else %}
+                            <span class="inv-status-badge inv-badge-pending">{{ ms }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if m.method == 'currency_missing' %}
+                            <div class="inv-explain">Currency not recorded — can't auto-match.</div>
+                        {% elif ms == 'unmatched' %}
+                            <div class="inv-explain">No payment found that matches this invoice.</div>
+                        {% elif m.explanation %}
+                            <div class="inv-explain">{{ m.explanation }}</div>
+                        {% else %}
+                            <div class="inv-missing">Needs manual review.</div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    {% endif %}{# total_items == 0 #}
+
+</div>
+
+{# Badge styles shared with invoices.html ─ inline to avoid a new stylesheet #}
+<style>
+.inv-status-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 750; letter-spacing: .03em; text-transform: uppercase;
+}
+.inv-badge-matched     { background: var(--blue-soft); color: var(--blue); }
+.inv-badge-likely      { background: var(--blue-soft); color: var(--blue); }
+.inv-badge-partial     { background: var(--surface-soft); color: var(--ink-soft); }
+.inv-badge-unmatched   { background: var(--surface-soft); color: var(--ink-muted); }
+.inv-badge-pending     { background: var(--surface-soft); color: var(--ink-soft); }
+.inv-badge-missing-ccy { background: var(--surface-soft); color: var(--ink-soft); }
+</style>
+{% endblock %}

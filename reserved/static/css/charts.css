@@ -1,0 +1,25 @@
+.chart-panel { overflow: hidden; }
+.chart-wrap {
+    position: relative;
+    min-height: 330px;
+    width: 100%;
+}
+.chart-wrap canvas {
+    display: block;
+    width: 100%;
+    height: 330px;
+}
+.chart-legend {
+    display: flex;
+    gap: 18px;
+    color: var(--ink-soft);
+    font-size: 12px;
+    font-weight: 750;
+}
+.chart-legend span { display: inline-flex; gap: 7px; align-items: center; }
+.chart-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.income-dot { background: #2864dc; }
+.reserve-dot { background: #625bdc; }
+
+html[data-theme="dark"] .income-dot { background: #82a9ff; }
+html[data-theme="dark"] .reserve-dot { background: #aaa5ff; }

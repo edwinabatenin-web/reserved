@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reserved.invalid/schemas/sandbox-evidence-1.0.json",
+  "title": "Reserved synthetic sandbox execution evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "provider", "environment", "run_id", "started_at",
+    "completed_at", "build_reference", "synthetic_dataset_id", "executor",
+    "overall_status", "secret_scan_passed", "test_cases", "open_findings"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "provider": {"enum": ["hmrc", "freeagent", "xero", "quickbooks", "yapily_ais", "google_sign_in", "apple_sign_in"]},
+    "environment": {"enum": ["sandbox", "test", "demo"]},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{8,80}$"},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": ["string", "null"], "format": "date-time"},
+    "build_reference": {"type": "string", "minLength": 7, "maxLength": 120},
+    "api_versions": {"type": "array", "items": {"type": "string", "maxLength": 100}, "uniqueItems": true},
+    "synthetic_dataset_id": {"type": "string", "minLength": 1, "maxLength": 120},
+    "executor": {"type": "string", "minLength": 1, "maxLength": 120},
+    "overall_status": {"enum": ["pass", "fail", "blocked", "in_progress"]},
+    "secret_scan_passed": {"type": "boolean"},
+    "test_cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case_id", "title", "status", "started_at", "completed_at", "assertions", "artefacts"],
+        "properties": {
+          "case_id": {"type": "string", "pattern": "^[A-Z0-9_-]{3,50}$"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 200},
+          "status": {"enum": ["pass", "fail", "blocked", "not_applicable"]},
+          "started_at": {"type": "string", "format": "date-time"},
+          "completed_at": {"type": ["string", "null"], "format": "date-time"},
+          "http_statuses": {"type": "array", "items": {"type": "integer", "minimum": 100, "maximum": 599}},
+          "provider_correlation_ids_redacted": {"type": "array", "items": {"type": "string", "maxLength": 160}},
+          "page_count": {"type": "integer", "minimum": 0},
+          "source_record_count": {"type": "integer", "minimum": 0},
+          "normalised_record_count": {"type": "integer", "minimum": 0},
+          "assertions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["description", "passed"],
+              "properties": {
+                "description": {"type": "string", "minLength": 1, "maxLength": 300},
+                "passed": {"type": "boolean"},
+                "actual_redacted": {"type": ["string", "number", "boolean", "null"]}
+              }
+            }
+          },
+          "artefacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "sha256", "redaction_reviewed"],
+              "properties": {
+                "kind": {"enum": ["request_summary", "response_summary", "log_excerpt", "screenshot", "mapping_report"]},
+                "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "redaction_reviewed": {"const": true},
+                "secure_location_reference": {"type": "string", "maxLength": 300}
+              }
+            }
+          },
+          "notes": {"type": "string", "maxLength": 2000}
+        }
+      }
+    },
+    "open_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding_id", "severity", "summary", "owner", "status"],
+        "properties": {
+          "finding_id": {"type": "string", "pattern": "^[A-Z0-9_-]{3,50}$"},
+          "severity": {"enum": ["critical", "high", "medium", "low"]},
+          "summary": {"type": "string", "minLength": 1, "maxLength": 500},
+          "owner": {"type": "string", "minLength": 1, "maxLength": 120},
+          "status": {"enum": ["open", "accepted", "resolved", "deferred"]}
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewer", "reviewed_at", "decision"],
+      "properties": {
+        "reviewer": {"type": "string", "minLength": 1, "maxLength": 120},
+        "reviewed_at": {"type": "string", "format": "date-time"},
+        "decision": {"enum": ["accepted", "rejected", "conditional"]},
+        "notes": {"type": "string", "maxLength": 2000}
+      }
+    }
+  }
+}

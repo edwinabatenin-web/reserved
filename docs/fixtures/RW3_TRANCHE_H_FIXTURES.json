@@ -1,0 +1,205 @@
+{
+  "pack_id": "RW3-TRANCHE-H-2026-27-ADMITTED-1",
+  "status": "independent_validation",
+  "purpose": "Narrow pre-FTCR validation of independently derived mixed-income component arithmetic, including ordering, pension interactions, Personal Allowance taper, HICBC and annual Self Assessment student-loan components. This pack does not validate a complete annual bill, amount due, reserve figure, foreign tax credit, evidence precedence or customer presentation.",
+  "tax_year": "2026/27",
+  "territory": "England, Wales and Northern Ireland",
+  "derived_by": "Codex independent Tranche H derivation stream",
+  "derived_on": "2026-08-13",
+  "review": {
+    "reviewer": "Codex independent Tranche H assurance review stream",
+    "reviewed_on": "2026-08-13",
+    "decision": "approved",
+    "notes": "HMX-001 and HMX-002 approved only within their narrow pre-FTCR component purposes after independent source, applicability, arithmetic and rounding review. HMX-003 is not included or admitted. See docs/TRANCHE_H_INDEPENDENT_ASSURANCE_REVIEW.md, docs/TRANCHE_H_SOURCE_AUTHORITY_NOTE.md and docs/ANNUAL_STUDENT_LOAN_SOURCE_AUTHORITY.md."
+  },
+  "rounding": "Income Tax and Class 4 amounts are fixed to pounds and pence. For each applicable annual Self Assessment student-loan plan, the calculated repayment is rounded down to a whole pound before that plan's evidenced deduction is subtracted. HICBC percentage steps, benefit amount and charge are rounded down as stated in the derivations and cited authority.",
+  "sources": [
+    {
+      "title": "Income Tax rates and allowances for current and previous tax years",
+      "url": "https://www.gov.uk/government/publications/rates-and-allowances-income-tax/income-tax-rates-and-allowances-current-and-past",
+      "supports": "2026/27 Personal Allowance, taper, bands, savings starting rate, dividend allowance and dividend rates"
+    },
+    {
+      "title": "Income Tax Act 2007 section 16",
+      "url": "https://www.legislation.gov.uk/ukpga/2007/3/section/16",
+      "supports": "Ordering of non-savings, savings and dividend income"
+    },
+    {
+      "title": "HMRC SAIM1080",
+      "url": "https://www.gov.uk/hmrc-internal-manuals/savings-and-investment-manual/saim1080",
+      "supports": "Personal Savings Allowance is a nil rate rather than an income deduction"
+    },
+    {
+      "title": "HMRC SAIM1090",
+      "url": "https://www.gov.uk/hmrc-internal-manuals/savings-and-investment-manual/saim1090",
+      "supports": "Dividend allowance is a nil rate and dividend income remains in band ordering"
+    },
+    {
+      "title": "Tax on your private pension contributions: tax relief",
+      "url": "https://www.gov.uk/tax-on-your-private-pension/pension-tax-relief",
+      "supports": "Relief at source and additional higher-rate relief"
+    },
+    {
+      "title": "Adjusted net income",
+      "url": "https://www.gov.uk/guidance/adjusted-net-income",
+      "supports": "ANI includes taxable income and is reduced by gross relief-at-source pension contributions"
+    },
+    {
+      "title": "Self-employed National Insurance rates",
+      "url": "https://www.gov.uk/self-employed-national-insurance-rates",
+      "supports": "2026/27 Class 4 thresholds and rates"
+    },
+    {
+      "title": "High Income Child Benefit Charge",
+      "url": "https://www.gov.uk/child-benefit-tax-charge",
+      "supports": "£60,000 to £80,000 ANI charge range, £200 percentage steps and higher-ANI partner responsibility"
+    },
+    {
+      "title": "Finance Act 2012 Schedule 1",
+      "url": "https://www.legislation.gov.uk/ukpga/2012/14/schedule/1",
+      "supports": "HICBC whole-number downward rounding and charge formula"
+    },
+    {
+      "title": "Child Benefit: what you'll get",
+      "url": "https://www.gov.uk/child-benefit/what-youll-get",
+      "supports": "2026/27 weekly Child Benefit rates"
+    },
+    {
+      "title": "Student and postgraduate loan thresholds and rates for 2026 to 2027",
+      "url": "https://www.gov.uk/government/publications/employer-bulletin-december-2025/december-2025-issue-of-the-employer-bulletin",
+      "supports": "2026/27 Plan 2 and postgraduate thresholds and 9%/6% rates"
+    },
+    {
+      "title": "Tell HMRC about a student or postgraduate loan in your tax return",
+      "url": "https://www.gov.uk/guidance/tell-hmrc-about-a-student-loan-in-your-tax-return",
+      "supports": "Separate annual undergraduate and postgraduate Self Assessment components and credit for deductions already made"
+    },
+    {
+      "title": "HMRC Tax Logic service guide — tax calculation",
+      "url": "https://developer.service.hmrc.gov.uk/guides/tax-logic-service-guide/documentation/tax-calculation.html",
+      "supports": "Annual Self Assessment student-loan income basis and per-plan whole-pound downward rounding before the relevant deduction is netted"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "RW3-HMX-001",
+      "family": "mixed_income_ordering_with_pension",
+      "status": "independent_validation",
+      "inputs": {
+        "employment_income": "30000",
+        "employment_tax_deducted": "7000",
+        "sole_trade_profit": "15000",
+        "uk_property_profit": "5000",
+        "foreign_property_profit": "5000",
+        "foreign_tax_paid": "500",
+        "savings_interest": "2000",
+        "dividends": "3000",
+        "gross_ras_pension": "5000",
+        "annual_child_benefit": "1406.60",
+        "student_loan_plans": []
+      },
+      "expected": {
+        "total_income": "60000.00",
+        "adjusted_net_income": "55000.00",
+        "personal_allowance": "12570.00",
+        "extended_basic_rate_band": "42700.00",
+        "non_savings_tax": "8486.00",
+        "personal_savings_allowance": "500.00",
+        "savings_tax": "600.00",
+        "dividend_allowance": "500.00",
+        "dividend_tax": "893.75",
+        "income_tax_before_foreign_tax_credit": "9979.75",
+        "foreign_tax_credit": null,
+        "class_4_ni": "145.80",
+        "hicbc": "0.00",
+        "employment_tax_deducted_evidence": "7000.00"
+      },
+      "derivation": [
+        "Total income is 30000 + 15000 + 5000 + 5000 + 2000 + 3000 = 60000",
+        "Gross RaS pension reduces ANI to 55000 and extends the basic-rate band from 37700 to 42700",
+        "Non-savings income is 55000; after PA, 42430 is taxed at 20%, giving 8486",
+        "Total taxable income exceeds the extended basic band, so PSA is 500; 1500 savings is taxed at 40%, giving 600",
+        "After the 500 Dividend Allowance, 2500 dividends are taxed at 35.75%, giving 893.75",
+        "Foreign tax is recorded but FTCR is not calculated; pre-credit Income Tax is 9979.75",
+        "Class 4 is 6% of sole-trade profit above 12570: 2430 at 6% is 145.80",
+        "ANI is not over 60000, so HICBC is zero",
+        "PAYE tax deducted is evidence and does not reduce the independently stated annual Income Tax liability"
+      ],
+      "limitations": [
+        "This validates pre-FTCR mixed-income components only, not a complete annual bill, amount due or reserve figure",
+        "UK and foreign property inputs are assumed to be valid taxable profits and no unmodelled losses or reliefs alter section 23 income",
+        "The gross relief-at-source pension amount is assumed to qualify for relief",
+        "Foreign Tax Credit Relief is deliberately not calculated",
+        "Employment tax evidence is not assigned a confidence or precedence classification"
+      ]
+    },
+    {
+      "id": "RW3-HMX-002",
+      "family": "mixed_income_taper_hicbc_and_student_loans",
+      "status": "independent_validation",
+      "inputs": {
+        "employment_income": "80000",
+        "employment_tax_deducted": "15000",
+        "sole_trade_profit": "20000",
+        "uk_property_profit": "5000",
+        "foreign_property_profit": "5000",
+        "foreign_tax_paid": "1000",
+        "savings_interest": "1000",
+        "dividends": "2000",
+        "gross_ras_pension": "10000",
+        "annual_child_benefit": "1406.60",
+        "taxpayer_is_higher_ani_partner": true,
+        "student_loan_plans": [2, "postgraduate"],
+        "undergraduate_payroll_deductions": "3000",
+        "postgraduate_payroll_deductions": "1800"
+      },
+      "expected": {
+        "total_income": "113000.00",
+        "adjusted_net_income": "103000.00",
+        "personal_allowance": "11070.00",
+        "extended_basic_rate_band": "47700.00",
+        "non_savings_tax": "30032.00",
+        "personal_savings_allowance": "500.00",
+        "savings_tax": "200.00",
+        "dividend_allowance": "500.00",
+        "dividend_tax": "536.25",
+        "income_tax_before_foreign_tax_credit": "30768.25",
+        "foreign_tax_credit": null,
+        "class_4_ni": "445.80",
+        "hicbc_percentage": "100",
+        "hicbc": "1406.00",
+        "student_loan_income_basis": "103000.00",
+        "plan_2_annual_liability": "6625.00",
+        "postgraduate_annual_liability": "4920.00",
+        "combined_annual_student_loan_liability": "11545.00",
+        "evidenced_payroll_loan_deductions": "4800.00",
+        "remaining_plan_2_self_assessment_amount": "3625.00",
+        "remaining_postgraduate_self_assessment_amount": "3120.00",
+        "remaining_combined_self_assessment_loan_amount": "6745.00"
+      },
+      "derivation": [
+        "Total income is 80000 + 20000 + 5000 + 5000 + 1000 + 2000 = 113000",
+        "Gross RaS pension reduces ANI to 103000; PA falls by 1500 to 11070 and the basic-rate band extends to 47700",
+        "Non-savings income is 110000; taxable non-savings is 98930: 47700 at 20% and 51230 at 40%, giving 30032",
+        "Higher-rate PSA is 500; the remaining 500 savings is taxed at 40%, giving 200",
+        "After the 500 Dividend Allowance, 1500 dividends are taxed at 35.75%, giving 536.25",
+        "Pre-credit Income Tax is 30032 + 200 + 536.25 = 30768.25",
+        "Class 4 is 7430 at 6%, giving 445.80",
+        "ANI is at least 80000 and the taxpayer is the higher-ANI partner, so HICBC is 100% of benefit, floored to 1406",
+        "Annual loan income after gross pension is 103000; Plan 2 is 9% of 73615 = 6625.35, floored to 6625",
+        "PGL is 6% of 82000 = 4920; combined annual liability is 11545",
+        "Separate evidenced deductions of 3000 and 1800 leave 3625 Plan 2 and 3120 PGL, combined 6745"
+      ],
+      "limitations": [
+        "This validates pre-FTCR mixed-income and annual student-loan components only, not a complete annual bill, amount due or reserve figure",
+        "Loan calculations are annual Self Assessment liabilities, not payroll-period deduction calculations",
+        "All stated property, savings and dividend amounts are assumed to be valid step-1 taxable income; unearned income exceeds £2,000 so the whole relevant amount is included",
+        "The full gross relief-at-source pension amount is assumed to receive qualifying relief and not already be excluded from total income",
+        "The Child Benefit amount assumes a full benefit period and the taxpayer is assumed to be the higher-ANI partner",
+        "This fixture covers one undergraduate plan plus a postgraduate plan and must not be generalised to simultaneous multiple-undergraduate-plan selection",
+        "Foreign Tax Credit Relief is deliberately not calculated",
+        "No policy confidence label is assigned to payroll evidence"
+      ]
+    }
+  ]
+}

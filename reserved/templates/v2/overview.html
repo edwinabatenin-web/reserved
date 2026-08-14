@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Overview — Reserved™{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+
+{# ── Hero ─────────────────────────────────────────────────────────────────── #}
+<section class="ov-hero">
+    <div class="ov-hero-inner">
+        <p class="eyebrow">Preview Release</p>
+        <p class="ov-greeting" id="ov-greeting" aria-live="polite">Good morning – welcome to the Reserved Preview!</p>
+        <p class="ov-greeting-sub">The examples on this site show a limited incremental estimate from entered employment and freelance income. Use the buttons below if you'd like early access or to share your feedback.</p>
+        <h1 class="ov-headline">Explore how entered income changes a scoped tax estimate.</h1>
+        <p class="ov-subhead">
+            The current preview estimates incremental Income Tax, Class 4 NI and supported student-loan amounts.
+            It is not a complete annual tax position or assured set-aside figure.
+        </p>
+        <div class="ov-actions">
+            <a class="button button-primary" href="{{ url_for('v2.dashboard_view') }}">Explore your dashboard →</a>
+            <a class="button button-secondary" href="{{ url_for('v2.dashboard_view') }}?tour=1">Take a tour ◎</a>
+            <a class="button button-secondary ov-scroll-link" href="#how-it-works">See how Reserved works</a>
+        </div>
+    </div>
+</section>
+
+{# ── Headline figures ─────────────────────────────────────────────────────── #}
+<section class="ov-figures">
+    <article class="ov-figure-card">
+        <p class="ov-figure-label">Limited incremental estimate to date</p>
+        <p class="ov-figure-value">£{{ "{:,.2f}".format(summary.protected) }}</p>
+        <p class="ov-figure-sub">Estimated cumulative liability on income received so far.</p>
+    </article>
+    <article class="ov-figure-card">
+        <p class="ov-figure-label">Freelance income to date</p>
+        <p class="ov-figure-value">£{{ "{:,.2f}".format(summary.income_ytd) }}</p>
+        <p class="ov-figure-sub">Total freelance income in the current tax year.</p>
+    </article>
+    <article class="ov-figure-card">
+        <p class="ov-figure-label">Run-rate projection of the limited estimate</p>
+        <p class="ov-figure-value">£{{ "{:,.2f}".format(summary.annual_target) }}</p>
+        <p class="ov-figure-sub">Projected from current run rate; updated as income changes.</p>
+    </article>
+</section>
+
+{# ── How Reserved works ───────────────────────────────────────────────────── #}
+<section class="ov-how" id="how-it-works">
+    <h2 class="ov-section-title">How Reserved works</h2>
+    <ol class="ov-steps">
+        <li class="ov-step">
+            <div class="ov-step-marker">1</div>
+            <div class="ov-step-body">
+                <strong>Income arrives</strong>
+                <p>Reserved recognises income from connected financial accounts and other sources.</p>
+            </div>
+        </li>
+        <li class="ov-step">
+            <div class="ov-step-marker">2</div>
+            <div class="ov-step-body">
+                <strong>Reserved adds context</strong>
+                <p>The user confirms what the income represents, with support from invoice and accounting information where available.</p>
+            </div>
+        </li>
+        <li class="ov-step">
+            <div class="ov-step-marker">3</div>
+            <div class="ov-step-body">
+                <strong>Tax is estimated</strong>
+                <p>Reserved estimates the Income Tax, National Insurance and other liabilities associated with the income.</p>
+            </div>
+        </li>
+        <li class="ov-step">
+            <div class="ov-step-marker">4</div>
+            <div class="ov-step-body">
+                <strong>Tax reserve updates</strong>
+                <p>Reserved updates its limited model as entered freelance income changes; this does not establish the total amount due for the tax period.</p>
+            </div>
+        </li>
+    </ol>
+</section>
+
+{# ── Why Reserved ─────────────────────────────────────────────────────────── #}
+<section class="ov-why">
+    <h2 class="ov-section-title">Why Reserved</h2>
+    <div class="ov-benefit-grid">
+        <article class="ov-benefit-card">
+            <div class="ov-benefit-icon">◷</div>
+            <strong>Fewer tax surprises</strong>
+            <p>Understand how income may affect your tax position before the bill arrives.</p>
+        </article>
+        <article class="ov-benefit-card">
+            <div class="ov-benefit-icon">⊕</div>
+            <strong>One clearer financial picture</strong>
+            <p>Bring together PAYE income, self-employment, company income, property income and other relevant sources.</p>
+        </article>
+        <article class="ov-benefit-card">
+            <div class="ov-benefit-icon">✓</div>
+            <strong>A scoped estimate for entered income</strong>
+            <p>The preview omits savings, dividends, property, HICBC, tax already paid and other reliefs, so its figure is not a complete reserve requirement.</p>
+        </article>
+    </div>
+</section>
+
+{# ── Preview notice ───────────────────────────────────────────────────────── #}
+<section class="ov-preview-notice">
+    <p>
+        You're exploring a fictional example where the user is a freelance designer – the figures are illustrative
+        and show how Reserved would work in practice.
+    </p>
+    <p>
+        The account connections shown are illustrative. The launch version of Reserved will allow users to securely
+        connect their own financial accounts.
+    </p>
+</section>
+
+{# ── Closing CTA ──────────────────────────────────────────────────────────── #}
+<section class="ov-close">
+    <h2>Ready to see the detail?</h2>
+    <p class="ov-close-sub">Explore how entered employment and freelance income affect a limited illustrative estimate.</p>
+    <div class="ov-actions">
+        <a class="button button-primary" href="{{ url_for('v2.dashboard_view') }}">Open the dashboard →</a>
+        <button class="button button-secondary" type="button" id="early-access-btn-close">Join Early Access</button>
+    </div>
+</section>
+
+{% endblock %}
+
+{% block extra_body %}
+<script>
+(function () {
+    // Time-based greeting
+    var h   = new Date().getHours();
+    var tod = h < 12 ? 'morning' : (h < 17 ? 'afternoon' : 'evening');
+    var el  = document.getElementById('ov-greeting');
+    if (el) el.textContent = 'Good ' + tod + ' \u2013 welcome to the Reserved Preview!';
+
+    // Smooth-scroll for "See how Reserved works"
+    var scrollLinks = document.querySelectorAll('.ov-scroll-link');
+    scrollLinks.forEach(function (link) {
+        link.addEventListener('click', function (e) {
+            var target = document.querySelector(link.getAttribute('href'));
+            if (target) {
+                e.preventDefault();
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    });
+
+    // Wire the closing "Join Early Access" button to the existing modal trigger
+    var closeCta = document.getElementById('early-access-btn-close');
+    var mainBtn  = document.getElementById('early-access-btn');
+    if (closeCta && mainBtn) {
+        closeCta.addEventListener('click', function () { mainBtn.click(); });
+    }
+})();
+</script>
+{% endblock %}

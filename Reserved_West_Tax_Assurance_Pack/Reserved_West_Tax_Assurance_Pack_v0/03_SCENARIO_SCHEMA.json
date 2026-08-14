@@ -1,0 +1,8 @@
+{
+  "scenario_id": "RW-000001",
+  "groups": [
+    "representative"
+  ],
+  "envelope": "intended",
+  "inputs": {}
+}

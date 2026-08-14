@@ -1,0 +1,31 @@
+Scenario ID,Title,Groups,Envelope,Type,Tax Year,Engine Version,Reference Version,Expected (Total/CGT),Actual (Total/CGT),Primary Variance,Outcome,EL-001 Zone,Notes
+RW-S1-001,"Basic rate salary, invoice well within basic rate band",representative,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,1000.00,1000.00,0.00,PASS,No,
+RW-S1-002,Invoice straddles basic-rate / higher-rate boundary,representative; boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,3146.00,3146.00,0.00,PASS,No,
+RW-S1-003,Higher rate payer — invoice fully at higher rate,representative,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,2000.00,2000.00,0.00,PASS,No,
+RW-S1-004,Additional rate payer — invoice fully at 45%,representative,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,2250.00,2250.00,0.00,PASS,No,
+RW-S1-005,Pure freelancer — invoice crosses PA and NI LPL,representative,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,1931.80,1931.80,0.00,PASS,No,
+RW-S1-006,Pure freelancer — invoice crosses NI upper profits limit,representative,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,2100.00,2100.00,0.00,PASS,No,
+RW-S1-007,"Salary + prior YTD + invoice, NI crosses LPL",representative,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,1925.80,1925.80,0.00,PASS,No,
+RW-S1-008,Gabriel persona (canonical),representative,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,1596.00,1596.00,0.00,PASS,No,
+RW-S1-009,Invoice crosses Personal Allowance from zero,boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,631.80,631.80,0.00,PASS,No,
+RW-S1-010,Invoice starts exactly at basic-rate limit,boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,2000.00,2000.00,0.00,PASS,No,
+RW-S1-011,Pure freelancer — NI straddles main/upper rate boundary,boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,1736.80,1736.80,0.00,PASS,No,
+RW-S1-012,Invoice enters PA taper zone (EL-001 expected),boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,2400.00,2400.00,0.00,PASS,Yes,EL-001 zone: PA taper zone scenario; engine v2.0.0 resolved this defect
+RW-S1-013,Invoice fully within PA taper zone (EL-001 expected),boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,2500.00,2500.00,0.00,PASS,Yes,EL-001 zone: PA taper zone scenario; engine v2.0.0 resolved this defect
+RW-S1-014,Income crosses PA elimination threshold (EL-001 expected),boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,4657.00,4657.00,0.00,PASS,Yes,EL-001 zone: PA taper zone scenario; engine v2.0.0 resolved this defect
+RW-S1-015,"Tiny invoice — below PA, no tax",boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,0.00,0.00,0,PASS,No,
+RW-S1-016,Very large invoice crossing all bands from zero,boundary,extended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,55445.60,55445.60,0.00,PASS,Yes,EL-001 zone: PA taper zone scenario; engine v2.0.0 resolved this defect
+RW-S1-017,"Plan 2 SL — income below threshold, no repayment",representative,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,1000.00,1000.00,0.00,PASS,No,
+RW-S1-018,Plan 2 SL — invoice crosses threshold,boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,1235.35,1235.35,0.00,PASS,No,
+RW-S1-019,Plan 1 SL — invoice crosses threshold (2026/27),boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,1189.00,1189.00,0.00,PASS,No,
+RW-S1-020,Plan 4 SL — invoice crosses threshold (2026/27),boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,1198.45,1198.45,0.00,PASS,No,
+RW-S1-021,Plan 5 SL — invoice crosses threshold,boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,490.00,490.00,0.00,PASS,No,
+RW-S1-022,Postgraduate loan — invoice crosses threshold,boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,720.00,720.00,0.00,PASS,No,
+RW-S1-023,Plan 2 + postgraduate loan — dual simultaneous repayment,interaction,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,1535.35,1535.35,0.00,PASS,No,
+RW-S1-024,"Pension RaS extends basic-rate band, saves higher-rate tax",interaction,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,1346.00,1346.00,0.00,PASS,No,
+RW-S1-025,"Large pension keeps ANI at PA taper boundary, no EL-001",interaction; boundary,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,2000.00,2000.00,0.00,PASS,No,
+RW-S1-026,"Pension RaS — basic rate payer, no band extension benefit",representative,intended,income_tax,2026/27,uk-2026-27-v1,ref-2026/27-v1.0,1000.00,1000.00,0.00,PASS,No,
+RW-S1-027,CGT — disposal gain below Annual Exempt Amount,representative,intended,cgt,2026/27,uk-cgt-2026-27-preview-v1,ref-cgt-2026/27-v1.0,0.00,0.00,0,PASS,No,
+RW-S1-028,"CGT — disposal above AEA, basic rate taxpayer",representative,intended,cgt,2026/27,uk-cgt-2026-27-preview-v1,ref-cgt-2026/27-v1.0,900.00,900.00,0.00,PASS,No,
+RW-S1-029,CGT — basic / higher rate split,boundary,intended,cgt,2026/27,uk-cgt-2026-27-preview-v1,ref-cgt-2026/27-v1.0,1363.80,1363.80,0.00,PASS,No,
+RW-S1-030,CGT — brought-forward losses reduce taxable gains,interaction,intended,cgt,2026/27,uk-cgt-2026-27-preview-v1,ref-cgt-2026/27-v1.0,900.00,900.00,0.00,PASS,No,

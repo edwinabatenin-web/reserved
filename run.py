@@ -1,0 +1,10 @@
+from reserved import create_app
+
+app = create_app()
+
+if __name__ == "__main__":
+    app.run(
+        host="0.0.0.0",
+        port=int(__import__("os").environ.get("PORT", "5000")),
+        debug=__import__("os").environ.get("FLASK_DEBUG", "0") == "1",
+    )

@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Reserved™{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+{% if liability.calculation_status == 'unsupported_rule' %}
+<section class="panel" role="status" aria-live="polite">
+    <h1>Estimate unavailable for this loan-plan combination</h1>
+    <p>Reserved cannot verify the annual Self Assessment treatment for the supplied loan-plan combination. No student-loan amount, total, allocation or set-aside figure has been calculated.</p>
+    <p>{{ liability.verification_requirement }}</p>
+</section>
+{% else %}
+
+{# ── Page heading ─────────────────────────────────────────────────────────── #}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Dashboard</p>
+        <h1>Your limited tax estimate</h1>
+    </div>
+    {% if review_count > 0 %}
+    <a href="{{ url_for('v2.invoices') }}"
+       class="pill"
+       style="text-decoration:none;background:var(--blue-soft);color:var(--blue);">
+        ● {{ review_count }} item{{ 's' if review_count != 1 }} need{{ '' if review_count != 1 else 's' }} confirmation
+    </a>
+    {% endif %}
+</section>
+
+{# ── Brief preview notice ─────────────────────────────────────────────────── #}
+{% if not db_source %}
+<div class="demo-intro" id="demo-intro">
+    <div class="demo-intro-head">
+        <span class="preview-badge">Illustrative bank activity</span>
+        <button class="demo-intro-dismiss" id="demo-intro-dismiss" type="button" aria-label="Dismiss">✕</button>
+    </div>
+    <p class="demo-intro-tagline">{{ sync_label }}.</p>
+    <p class="demo-intro-copy">
+        The bank-activity section below does not reflect a live account.
+        Your tax estimate is based on {% if is_demo %}the example{% else %}your saved{% endif %} tax profile.
+    </p>
+</div>
+{% endif %}
+
+{# ── Estimated tax hero ───────────────────────────────────────────────────── #}
+<section class="hero-balance" data-tour="estimated-tax">
+    <div class="hero-copy">
+        <p class="hero-label">Limited incremental estimate to date</p>
+        <p class="hero-value" data-count-up="{{ summary.protected }}">£0.00</p>
+        <div class="hero-meta">
+            {% if summary.income_ytd > 0 %}
+            <span class="trend-chip">≈ £{{ "{:,.0f}".format(summary.annual_target) }} projected this tax year</span>
+            {% endif %}
+            <span>Excludes savings, dividends, property, HICBC, tax already paid and other reliefs</span>
+        </div>
+    </div>
+    <div class="hero-orbit"
+         style="--progress: {{ summary.funding_percentage }};"
+         aria-label="{{ summary.funding_percentage }} per cent of entered freelance income attributed by the limited model">
+        <div>
+            <span>{{ summary.funding_percentage }}%</span>
+            <small>{% if summary.income_ytd > 0 %}of income{% else %}reserved{% endif %}</small>
+        </div>
+    </div>
+</section>
+
+{# ── Supporting tax metric cards ──────────────────────────────────────────── #}
+<section class="metric-grid">
+    <article class="metric-card">
+        <div class="metric-icon green">✓</div>
+        <div>
+            <p>Run-rate projection of this limited estimate</p>
+            <strong data-count-up="{{ summary.annual_target }}">£0.00</strong>
+            {% if summary.annual_target > 0 %}
+            <small>Not a complete annual tax position</small>
+            {% else %}
+            <small>Add income to see your target</small>
+            {% endif %}
+        </div>
+    </article>
+    <article class="metric-card">
+        <div class="metric-icon blue">↗</div>
+        <div>
+            <p>Freelance income to date</p>
+            <strong data-count-up="{{ summary.income_ytd }}">£0.00</strong>
+            <small>{{ liability.tax_year }} · {% if is_demo %}Example data{% else %}From your profile{% endif %}</small>
+        </div>
+    </article>
+    <article class="metric-card">
+        <div class="metric-icon amber">31</div>
+        <div>
+            <p>Next key deadline</p>
+            <strong>31 January 2027</strong>
+            <small data-deadline="2027-01-31">Calculating time remaining…</small>
+        </div>
+    </article>
+</section>
+
+{# ── What would you like to do today? ────────────────────────────────────── #}
+<p class="eyebrow" style="margin:32px 0 12px;">What would you like to do today?</p>
+<div class="what-today-grid">
+    <a class="what-today-card" href="{{ url_for('v2.invoices') }}">
+        <div class="what-today-card-icon">↗</div>
+        <div class="what-today-card-body">
+            <h3>Review invoices</h3>
+            <p>Match income transactions to the invoices they relate to.</p>
+        </div>
+        <span class="what-today-card-cta" aria-hidden="true">→</span>
+    </a>
+    <a class="what-today-card" href="{{ url_for('v2.settings_page') }}">
+        <div class="what-today-card-icon">⚙</div>
+        <div class="what-today-card-body">
+            <h3>Update your settings</h3>
+            <p>Adjust the entered profile facts to update this limited estimate.</p>
+        </div>
+        <span class="what-today-card-cta" aria-hidden="true">→</span>
+    </a>
+</div>
+
+{# ── Bank transaction data ────────────────────────────────────────────────── #}
+<p class="eyebrow" style="margin:32px 0 12px;" id="found-heading">Identified so far</p>
+<div class="metric-grid">
+    <div class="metric-card">
+        <div class="metric-icon green">↑</div>
+        <div>
+            <small>Income from connected accounts</small>
+            <strong>£{{ "%.2f"|format(tx_summary.total_income|float) }}</strong>
+            <p>Identified from bank activity</p>
+        </div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-icon blue">⊙</div>
+        <div>
+            <small>Tax payments recognised</small>
+            <strong>£{{ "%.2f"|format(tx_summary.total_tax_payments|float) }}</strong>
+            <p>Paid to HMRC</p>
+        </div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-icon amber">↓</div>
+        <div>
+            <small>Tax-deductible costs</small>
+            <strong>£{{ "%.2f"|format(tx_summary.total_expenses|float) }}</strong>
+            <p>Allowable business expenses</p>
+        </div>
+    </div>
+</div>
+
+{# ── Needs confirmation ───────────────────────────────────────────────────── #}
+{% if review_count > 0 or inv_counts.total > 0 %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin:32px 0 12px;">
+    <p class="eyebrow" id="confirm-heading" style="margin:0;">Needs your confirmation</p>
+    {% if review_count > 0 %}
+    <a href="{{ url_for('v2.invoices') }}" style="font-size:12px;font-weight:700;color:var(--green);">Review all →</a>
+    {% endif %}
+</div>
+<div class="metric-grid">
+    {% if tx_summary.unclassified_count > 0 %}
+    <div class="metric-card">
+        <div class="metric-icon amber">!</div>
+        <div>
+            <small>Payments unconfirmed</small>
+            <strong>{{ tx_summary.unclassified_count }}</strong>
+            <p><a href="{{ url_for('v2.invoices') }}" style="color:var(--green);font-weight:700;">Confirm →</a></p>
+        </div>
+    </div>
+    {% endif %}
+    {% if inv_counts.needs_review > 0 %}
+    <div class="metric-card">
+        <div class="metric-icon amber">↻</div>
+        <div>
+            <small>Invoices needing review</small>
+            <strong>{{ inv_counts.needs_review }}</strong>
+            <p><a href="{{ url_for('v2.invoices') }}" style="color:var(--green);font-weight:700;">Review →</a></p>
+        </div>
+    </div>
+    {% endif %}
+    {% if inv_counts.total == 0 %}
+    <div class="metric-card">
+        <div class="metric-icon blue">↗</div>
+        <div>
+            <small>Invoice progress</small>
+            <strong style="font-size:15px;color:var(--ink-soft);">Not started</strong>
+            <p><a href="{{ url_for('v2.invoices') }}" style="color:var(--green);font-weight:700;">Load invoices →</a></p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{# ── Invoice progress ─────────────────────────────────────────────────────── #}
+{% if inv_counts.total > 0 %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin:32px 0 12px;">
+    <p class="eyebrow" id="inv-heading" style="margin:0;">Invoice progress</p>
+    <a href="{{ url_for('v2.invoices') }}" style="font-size:12px;font-weight:700;color:var(--green);">View all →</a>
+</div>
+<div class="metric-grid">
+    <div class="metric-card">
+        <div class="metric-icon green">✓</div>
+        <div>
+            <small>Invoices matched</small>
+            <strong>{{ inv_counts.matched }}</strong>
+            <p>of {{ inv_counts.total }} total</p>
+        </div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-icon" style="background:var(--surface-soft);color:var(--ink-soft);">⌛</div>
+        <div>
+            <small>Awaiting payment</small>
+            <strong>{{ inv_counts.outstanding }}</strong>
+            <p>not yet matched</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ── What to do next — connection & setup prompts ─────────────────────────── #}
+<p class="eyebrow" style="margin:32px 0 12px;">What to do next</p>
+<div style="display:grid;gap:10px;">
+
+    {% if not user_conns %}
+    <div class="panel" style="padding:18px 22px;display:flex;align-items:center;gap:16px;">
+        <div style="flex:1;">
+            <strong>Connect a bank account</strong>
+            <p style="color:var(--ink-soft);font-size:13px;margin:4px 0 0;">
+                Reserved reads your transactions and identifies what looks like taxable income.
+            </p>
+        </div>
+        <a class="button button-primary" href="{{ url_for('web.connections') }}">Connect</a>
+    </div>
+    {% endif %}
+
+    {% if inv_counts.total == 0 %}
+    <div class="panel" style="padding:18px 22px;display:flex;align-items:center;gap:16px;">
+        <div style="flex:1;">
+            <strong>Load your invoices</strong>
+            <p style="color:var(--ink-soft);font-size:13px;margin:4px 0 0;">
+                Reserved matches invoices to income transactions automatically.
+            </p>
+        </div>
+        <a class="button button-secondary" href="{{ url_for('v2.invoices') }}">Load invoices</a>
+    </div>
+    {% endif %}
+
+    {% if review_count > 0 %}
+    <div class="panel" style="padding:18px 22px;display:flex;align-items:center;gap:16px;">
+        <div style="flex:1;">
+            <strong>{{ review_count }} item{{ 's' if review_count != 1 }} need{{ '' if review_count != 1 else 's' }} your confirmation</strong>
+            <p style="color:var(--ink-soft);font-size:13px;margin:4px 0 0;">
+                Reserved couldn't automatically categorise everything.
+                Confirming these items updates the limited figures shown here.
+            </p>
+        </div>
+        <a class="button button-secondary" href="{{ url_for('v2.invoices') }}">Review</a>
+    </div>
+    {% endif %}
+
+    {% if review_count == 0 and inv_counts.total > 0 and user_conns %}
+    <div class="panel" style="padding:18px 22px;">
+        <strong style="color:var(--green);">Everything is up to date</strong>
+        <p style="color:var(--ink-soft);font-size:13px;margin:4px 0 0;">
+            Reserved has matched all invoices and confirmed all transactions it could find.
+        </p>
+    </div>
+    {% endif %}
+
+</div>
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+{% block title %}Yapily Sandbox Checklist — Reserved™ V2{% endblock %}
+
+{% block extra_head %}
+<meta name="robots" content="noindex, nofollow">
+<style>
+/* ── Yapily sandbox checklist styles ─────────────────────────────────── */
+.v2-checklist-status { display: grid; gap: 14px; margin-bottom: 24px; }
+.v2-status-mock { border-color: color-mix(in srgb, var(--amber) 35%, var(--line)); }
+.v2-status-live { border-color: color-mix(in srgb, #2ecc88 35%, var(--line)); }
+.v2-status-row { display: flex; align-items: flex-start; gap: 12px; font-size: 13px; }
+.v2-status-dot { flex-shrink: 0; width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; }
+.v2-status-row strong { display: block; font-size: 13px; font-weight: 750; }
+.v2-status-row span   { display: block; font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+.v2-status-mode { padding-top: 14px; border-top: 1px solid var(--line); margin-top: 4px; }
+.v2-check-section { margin-bottom: 16px; }
+.v2-check-section-head {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--line);
+}
+.v2-check-section-icon { font-size: 20px; }
+.v2-check-section-head h2 { margin: 0; font-size: 16px; }
+.v2-check-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.v2-check-label {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 11px 12px; border-radius: 10px; cursor: pointer;
+    transition: background var(--transition);
+}
+.v2-check-label:hover { background: var(--surface-soft); }
+.v2-check-box { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; accent-color: var(--green); cursor: pointer; }
+.v2-check-content { flex: 1; min-width: 0; }
+.v2-check-content strong { display: block; font-size: 13px; font-weight: 750; margin-bottom: 3px; }
+.v2-check-content span   { display: block; font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
+.v2-check-content code {
+    display: inline-block; margin-top: 4px; padding: 2px 7px; border-radius: 6px;
+    background: var(--surface-soft); border: 1px solid var(--line);
+    font-size: 11px; font-family: ui-monospace, 'Cascadia Code', monospace; color: var(--blue);
+}
+.v2-approval-gate { margin-top: 24px; }
+.v2-approval-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+.v2-approval-icon { font-size: 24px; flex-shrink: 0; margin-top: 2px; }
+.v2-approval-head h2 { margin: 0 0 6px; }
+.v2-approval-head p  { margin: 0; font-size: 13px; color: var(--ink-soft); line-height: 1.55; }
+.v2-approval-progress { height: 6px; border-radius: 999px; background: var(--line); margin-bottom: 8px; overflow: hidden; }
+.v2-approval-bar { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--green), #4e86ef); transition: width .4s ease; }
+.v2-approval-count { font-size: 12px; color: var(--ink-soft); margin: 0 0 18px; font-weight: 700; }
+.v2-approval-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.v2-approval-hint { margin: 0; font-size: 12px; color: var(--ink-soft); }
+.v2-approved-msg {
+    display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+    border-radius: 12px; background: var(--mint); color: var(--green-dark);
+    font-size: 13px; font-weight: 700; margin-top: 8px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<section class="page-heading v2-page-heading">
+    <div>
+        <p class="eyebrow">Workstream 2</p>
+        <h1>Yapily sandbox checklist.</h1>
+        <p>
+            A step-by-step checklist to walk through together before enabling live or
+            sandbox credentials. Each item must be confirmed before the bank-connection
+            workstream is considered launch-ready.
+        </p>
+    </div>
+</section>
+
+{# ── Credential status ───────────────────────────────────────────────────── #}
+<div class="v2-checklist-status panel {% if mock_mode %}v2-status-mock{% else %}v2-status-live{% endif %}">
+    <div class="v2-status-row">
+        <span class="v2-status-dot {% if sandbox_uuid_set %}v2-health-ok{% else %}v2-health-amber{% endif %}"></span>
+        <div>
+            <strong>YAPILY_APPLICATION_UUID</strong>
+            <span>{{ 'Set in Replit Secrets' if sandbox_uuid_set else 'Not set — add to Replit Secrets to activate' }}</span>
+        </div>
+    </div>
+    <div class="v2-status-row">
+        <span class="v2-status-dot {% if sandbox_secret_set %}v2-health-ok{% else %}v2-health-amber{% endif %}"></span>
+        <div>
+            <strong>YAPILY_SECRET</strong>
+            <span>{{ 'Set in Replit Secrets' if sandbox_secret_set else 'Not set — add to Replit Secrets to activate' }}</span>
+        </div>
+    </div>
+    <div class="v2-status-row v2-status-mode">
+        <span class="v2-status-dot {% if not mock_mode %}v2-health-ok{% else %}v2-health-amber{% endif %}"></span>
+        <div>
+            <strong>Client mode: {{ 'MOCK (fixture data)' if mock_mode else 'LIVE / SANDBOX' }}</strong>
+            <span>
+                {% if mock_mode %}
+                Both secrets must be set for real Yapily calls.
+                All routes currently return fixture data — no network calls are made.
+                {% else %}
+                Credentials are present. Sandbox API calls will be made.
+                {% endif %}
+            </span>
+        </div>
+    </div>
+</div>
+
+{# ── Checklist sections ───────────────────────────────────────────────────── #}
+
+{% macro check_section(title, icon, items) %}
+<div class="v2-check-section panel">
+    <div class="v2-check-section-head">
+        <span class="v2-check-section-icon" aria-hidden="true">{{ icon }}</span>
+        <h2>{{ title }}</h2>
+    </div>
+    <ol class="v2-check-list">
+        {% for item in items %}
+        <li class="v2-check-item">
+            <label class="v2-check-label">
+                <input type="checkbox" class="v2-check-box" aria-label="{{ item.title }}">
+                <span class="v2-check-content">
+                    <strong>{{ item.title }}</strong>
+                    {% if item.detail %}<span>{{ item.detail }}</span>{% endif %}
+                    {% if item.endpoint %}<code>{{ item.endpoint }}</code>{% endif %}
+                </span>
+            </label>
+        </li>
+        {% endfor %}
+    </ol>
+</div>
+{% endmacro %}
+
+{# Section 1: Credentials & configuration #}
+{{ check_section("1 — Credentials and configuration", "🔑", [
+    {
+        "title": "Yapily sandbox account created",
+        "detail": "Log in to dashboard.yapily.com, create an application, and copy the Application UUID and Secret.",
+        "endpoint": None,
+    },
+    {
+        "title": "YAPILY_APPLICATION_UUID added to Replit Secrets",
+        "detail": "Must match the Application UUID shown in the Yapily dashboard.",
+        "endpoint": None,
+    },
+    {
+        "title": "YAPILY_SECRET added to Replit Secrets",
+        "detail": "This is the secret key shown once on creation. Store it immediately.",
+        "endpoint": None,
+    },
+    {
+        "title": "Callback URL registered in Yapily dashboard",
+        "detail": "Add the Reserved callback URL as an allowed redirect URI.",
+        "endpoint": "/v2/yapily/callback",
+    },
+    {
+        "title": "Client switches from MOCK to LIVE mode",
+        "detail": "After adding both secrets, reload this page — the status above should show LIVE / SANDBOX.",
+        "endpoint": "/v2/sandbox-checklist",
+    },
+]) }}
+
+{# Section 2: Institution catalogue #}
+{{ check_section("2 — Institution catalogue", "🏛", [
+    {
+        "title": "Institution list returns at least 10 UK banks",
+        "detail": "Confirms the client can authenticate and reach the Yapily API.",
+        "endpoint": None,
+    },
+    {
+        "title": "Monzo sandbox institution is present",
+        "detail": "Yapily provides sandbox institutions that simulate the authorisation flow without real credentials.",
+        "endpoint": None,
+    },
+    {
+        "title": "Featured banks grid in V2 matches available institutions",
+        "detail": "Cross-reference FEATURED_BANKS in v2.py against the live institution list.",
+        "endpoint": "/v2/connections",
+    },
+]) }}
+
+{# Section 3: Hosted Pages consent flow #}
+{{ check_section("3 — Hosted Pages consent flow", "🔒", [
+    {
+        "title": "POST /v2/yapily/connect returns a hosted_url for Monzo sandbox",
+        "detail": "Send institution_id=monzo. Confirm hosted_url is a valid yapily.com URL.",
+        "endpoint": "POST /v2/yapily/connect",
+    },
+    {
+        "title": "Hosted Pages URL opens the bank's sandbox authorisation screen",
+        "detail": "Redirect to the hosted_url in a browser. Should show the Yapily / bank authorisation UI.",
+        "endpoint": None,
+    },
+    {
+        "title": "Accepting consent redirects to /v2/yapily/callback with a consent token",
+        "detail": "Confirm the query param ?consent=... is present. Page should transition to 'returning' state.",
+        "endpoint": "GET /v2/yapily/callback",
+    },
+    {
+        "title": "Declining consent redirects to the error state",
+        "detail": "On the Hosted Pages screen, click 'Cancel' or 'Deny'. Reserved should show the error panel.",
+        "endpoint": "/v2/connections?state=error",
+    },
+    {
+        "title": "Callback signature validation passes for valid tokens",
+        "detail": "Once live, confirm validate_callback_signature() returns True for a genuine callback.",
+        "endpoint": None,
+    },
+]) }}
+
+{# Section 4: Account and transaction retrieval #}
+{{ check_section("4 — Account and transaction retrieval", "📄", [
+    {
+        "title": "list_accounts() returns at least one account after authorisation",
+        "detail": "Use the consent token from step 3. Confirm account_id, nickname and sort code/account number are present.",
+        "endpoint": None,
+    },
+    {
+        "title": "list_transactions() returns transactions for the sandbox account",
+        "detail": "Use the account_id and consent token. Confirm dates, amounts and descriptions are present.",
+        "endpoint": None,
+    },
+    {
+        "title": "Transaction history covers at least 90 days",
+        "detail": "Yapily supports up to 24 months for most UK banks. Confirm the from_date parameter works.",
+        "endpoint": None,
+    },
+]) }}
+
+{# Section 5: Consent lifecycle #}
+{{ check_section("5 — Consent lifecycle", "⏱", [
+    {
+        "title": "check_consent_status() returns AUTHORIZED for a fresh consent",
+        "detail": "Confirm the status field in the response.",
+        "endpoint": "POST /v2/yapily/refresh",
+    },
+    {
+        "title": "Expired consent returns EXPIRED status and triggers reconnect state",
+        "detail": "Use a Yapily sandbox feature or manually expire a test consent to verify the reconnect panel appears.",
+        "endpoint": "/v2/connections?state=reconnect",
+    },
+    {
+        "title": "Expiry warning shown at ≤7 days remaining",
+        "detail": "Confirm the expiring state panel appears correctly with the correct date.",
+        "endpoint": "/v2/connections?state=expiring",
+    },
+]) }}
+
+{# Section 6: Disconnect / revoke #}
+{{ check_section("6 — Disconnect and data deletion", "✕", [
+    {
+        "title": "POST /v2/yapily/disconnect revokes the consent successfully",
+        "detail": "Send the consent_token. Confirm Yapily returns 200 and the consent is no longer usable.",
+        "endpoint": "POST /v2/yapily/disconnect",
+    },
+    {
+        "title": "After revocation, list_accounts() returns an error or empty list",
+        "detail": "Confirm the consent is genuinely revoked, not just locally deleted.",
+        "endpoint": None,
+    },
+    {
+        "title": "Disconnect UI transitions to 'Monzo removed' confirmation state",
+        "detail": "Verify the disconnected panel copy and that no account card remains.",
+        "endpoint": "/v2/connections?state=disconnected",
+    },
+]) }}
+
+{# Section 7: Edge cases #}
+{{ check_section("7 — Edge cases and error handling", "⚠", [
+    {
+        "title": "Connecting an already-connected account shows the wrong-account state",
+        "detail": "Connect Monzo twice; the second attempt should show the duplicate panel.",
+        "endpoint": "/v2/connections?state=wrong-account",
+    },
+    {
+        "title": "Connecting a joint account while only sole-trader accounts are expected",
+        "detail": "Test with a sandbox joint account if available. Wrong-account state should appear.",
+        "endpoint": "/v2/connections?state=wrong-account",
+    },
+    {
+        "title": "Bank unavailable state shown when Yapily returns a 503 or institution error",
+        "detail": "Simulate by using an institution known to be in sandbox maintenance.",
+        "endpoint": "/v2/connections?state=unavailable",
+    },
+    {
+        "title": "Multiple banks can be connected simultaneously",
+        "detail": "Connect Monzo and then Barclays sandbox; both cards should appear in multi-account state.",
+        "endpoint": "/v2/connections?state=multi",
+    },
+]) }}
+
+{# Section 8: Copy and UX review #}
+{{ check_section("8 — Copy and UX sign-off (Edwina)", "✏", [
+    {
+        "title": "'Up next' label and 'You'll be redirected to your bank to securely connect your accounts to Reserved.' copy reviewed",
+        "detail": "Check pre-connection state at /v2/connections?state=empty.",
+        "endpoint": "/v2/connections?state=empty",
+    },
+    {
+        "title": "'Protected connection — Your bank credentials are never shared with Reserved.' badge reviewed",
+        "detail": "Appears on empty, connecting and reconnect states.",
+        "endpoint": "/v2/connections?state=connecting",
+    },
+    {
+        "title": "No Yapily, Stripe or 'Open Banking' branding visible on user-facing screens",
+        "detail": "Review all 11 connection states. The checklist and sandbox routes are internal only.",
+        "endpoint": "/v2/connections",
+    },
+    {
+        "title": "All 11 connection states reviewed and approved",
+        "detail": "Pre-connection · Redirecting · Returning · Connected · Multi-account · Expiring · Reconnect · Wrong-account · Error · Unavailable · Disconnected.",
+        "endpoint": "/v2/connections",
+    },
+]) }}
+
+{# ── Approval gate ───────────────────────────────────────────────────────── #}
+<div class="v2-approval-gate panel">
+    <div class="v2-approval-head">
+        <span class="v2-approval-icon" aria-hidden="true">✦</span>
+        <div>
+            <h2>Workstream 2 release gate</h2>
+            <p>
+                All items above must be confirmed before the bank-connection
+                workstream is published to the shared preview.
+                Edwina must explicitly sign off before any release.
+            </p>
+        </div>
+    </div>
+    <div class="v2-approval-progress" id="v2-approval-progress">
+        <div class="v2-approval-bar" id="v2-approval-bar" style="width:0%"></div>
+    </div>
+    <p class="v2-approval-count" id="v2-approval-count">0 of 0 items confirmed</p>
+    <div class="v2-approval-actions">
+        <button class="button button-primary" type="button"
+                id="v2-approve-btn" disabled
+                aria-describedby="v2-approve-hint">
+            ✓ Confirm Workstream 2 ready for release
+        </button>
+        <p class="v2-approval-hint" id="v2-approve-hint">
+            Complete all checklist items to enable this button.
+        </p>
+    </div>
+    <div id="v2-approved-msg" class="v2-approved-msg" hidden>
+        <span aria-hidden="true">✦</span>
+        <strong>Workstream 2 signed off.</strong>
+        Ready to batch with other completed workstreams before publishing.
+    </div>
+</div>
+
+<script>
+(function () {
+    const boxes   = document.querySelectorAll('.v2-check-box');
+    const bar     = document.getElementById('v2-approval-bar');
+    const count   = document.getElementById('v2-approval-count');
+    const btn     = document.getElementById('v2-approve-btn');
+    const hint    = document.getElementById('v2-approve-hint');
+    const msg     = document.getElementById('v2-approved-msg');
+    const total   = boxes.length;
+
+    function update() {
+        const done = Array.from(boxes).filter(b => b.checked).length;
+        const pct  = total ? Math.round((done / total) * 100) : 0;
+        if (bar)   bar.style.width = pct + '%';
+        if (count) count.textContent = done + ' of ' + total + ' items confirmed';
+        if (btn) {
+            btn.disabled = done < total;
+            if (hint) hint.hidden = done >= total;
+        }
+    }
+
+    boxes.forEach(b => b.addEventListener('change', update));
+    update();
+
+    if (btn) {
+        btn.addEventListener('click', () => {
+            btn.hidden  = true;
+            if (hint)   hint.hidden = true;
+            if (msg)    msg.hidden  = false;
+            boxes.forEach(b => { b.disabled = true; });
+        });
+    }
+})();
+</script>
+
+{% endblock %}

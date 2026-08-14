@@ -1,0 +1,139 @@
+{
+  "pack_id": "RW3-CORE-MULTI-UNDERGRADUATE-ANNUAL-SA-PENDING-1",
+  "status": "independent_fixture_review_pending",
+  "tax_year": "2026/27",
+  "territory": "England, Wales and Northern Ireland",
+  "derived_by": "Codex builder stream",
+  "derived_on": "2026-08-13",
+  "review": {
+    "reviewer": null,
+    "reviewed_on": null,
+    "decision": "pending",
+    "notes": "Split from RW3_CORE_FIXTURES.json on 13 August 2026 without changing fixture IDs, inputs, expected values or derivations. Annual Self Assessment treatment of simultaneous multiple undergraduate plans lacks express official authority and requires fresh review before validation use."
+  },
+  "rounding": "Income Tax and Class 4 outputs are fixed to pounds and pence. Half-pound allowance values are preserved. Student and postgraduate loan figures are annual Self Assessment liabilities rounded down to whole pounds per component, not payroll-period deductions.",
+  "sources": [
+    {
+      "title": "Income Tax rates and allowances",
+      "url": "https://www.gov.uk/government/publications/rates-and-allowances-income-tax/income-tax-rates-and-allowances-current-and-past",
+      "supports": "Personal Allowance, taxable bands, dividend allowance and rates"
+    },
+    {
+      "title": "Self-employed National Insurance rates",
+      "url": "https://www.gov.uk/self-employed-national-insurance-rates",
+      "supports": "Class 4 thresholds and rates"
+    },
+    {
+      "title": "Employer Bulletin December 2025",
+      "url": "https://www.gov.uk/government/publications/employer-bulletin-december-2025/december-2025-issue-of-the-employer-bulletin",
+      "supports": "2026/27 loan thresholds and rates"
+    },
+    {
+      "title": "Agent Update issue 140",
+      "url": "https://www.gov.uk/government/publications/agent-update-issue-140/issue-140-of-agent-update",
+      "supports": "lowest threshold where more than one undergraduate plan is indicated"
+    },
+    {
+      "title": "Student and Postgraduate Loan deduction tables 2026/27",
+      "url": "https://www.gov.uk/government/publications/sl3-student-loan-deduction-tables/2026-to-2027-student-and-postgraduate-loan-deduction-tables",
+      "supports": "Payroll-period deduction distinction only; not relied on for annual Self Assessment rounding"
+    },
+    {
+      "title": "SA110 Tax Calculation Summary notes",
+      "url": "https://www.gov.uk/government/publications/self-assessment-tax-calculation-summary-sa110",
+      "supports": "Annual Self Assessment student and postgraduate loan calculation entries and whole-pound treatment"
+    },
+    {
+      "title": "Tell HMRC about a student or postgraduate loan in your tax return",
+      "url": "https://www.gov.uk/guidance/tell-hmrc-about-a-student-loan-in-your-tax-return",
+      "supports": "Annual Self Assessment loan reporting, deductions already made and multiple-plan context"
+    },
+    {
+      "title": "HMRC Tax Logic service guide — Tax calculation",
+      "url": "https://developer.service.hmrc.gov.uk/guides/tax-logic-service-guide/documentation/tax-calculation.html",
+      "supports": "Annual Self Assessment loan income basis and whole-pound flooring; does not establish simultaneous multiple-undergraduate plan selection"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "RW3-SL-001",
+      "family": "multiple_student_loans",
+      "status": "independent_fixture_review_pending",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "40000",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            1,
+            2
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "1179.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Lowest applicable undergraduate threshold is Plan 1 at 26900",
+        "13100 at 9% is 1179; no second undergraduate charge"
+      ]
+    },
+    {
+      "id": "RW3-SL-002",
+      "family": "undergraduate_and_postgraduate_loans",
+      "status": "independent_fixture_review_pending",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "40000",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            1,
+            2,
+            "postgraduate"
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "2319.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Undergraduate charge is 1179 once",
+        "Postgraduate: 19000 above 21000 at 6% is 1140",
+        "Combined is 2319"
+      ]
+    },
+    {
+      "id": "RW3-SL-009",
+      "family": "multiple_student_loans",
+      "status": "independent_fixture_review_pending",
+      "inputs": {
+        "adapter": "incremental_liability",
+        "invoice_amount": "40000",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [
+            1,
+            5
+          ]
+        }
+      },
+      "expected": {
+        "student_loan": "1350.00",
+        "student_loan_basis": "annual_self_assessment_liability"
+      },
+      "derivation": [
+        "Plan 5 has the lower undergraduate threshold of 25000",
+        "15000 at 9% is 1350 once; Plan 1 is not charged separately"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+[project]
+name = "reserved"
+version = "0.2.0"
+description = "Reserved October launch preview"
+requires-python = ">=3.11"
+dependencies = [
+  "Flask==3.1.1",
+  "Flask-WTF==1.2.2",
+  "gunicorn==23.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --tb=short"
+markers = [
+    "engine: pure-computation engine tests — no Flask, session, or database dependencies (run standalone with: pytest -m engine)",
+]
+
+[tool.ruff]
+line-length = 100

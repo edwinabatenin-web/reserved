@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Settings — Reserved™{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Your account</p>
+        <h1>Make Reserved fit your finances.</h1>
+        <p>Tell Reserved a little about your finances so we can calculate tax estimates using the information you provide.</p>
+    </div>
+</section>
+
+<div class="settings-tabs" role="tablist" aria-label="Settings sections">
+    <button class="settings-tab active" type="button" data-settings-tab="profile">Profile</button>
+    <button class="settings-tab" type="button" data-settings-tab="tax">Income &amp; tax</button>
+    <button class="settings-tab" type="button" data-settings-tab="liabilities">Future liabilities</button>
+    <button class="settings-tab" type="button" data-settings-tab="preferences">Preferences</button>
+</div>
+
+<form method="post" action="{{ url_for('v2.settings_page') }}" class="settings-layout" data-settings-form novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="flash flash-error settings-error-summary" id="settings-error-summary" role="alert" tabindex="-1"{% if not settings_errors %} hidden{% else %} data-server-errors{% endif %}>
+        <strong>Check your settings</strong>
+        {% if settings_error_fields %}<ul>{% for field, error in settings_error_fields.items() %}<li><a href="#settings-field-{{ field }}" data-error-field="{{ field }}">{{ error }}</a></li>{% endfor %}</ul>{% else %}<p>Please correct the highlighted field before saving.</p>{% endif %}
+    </div>
+
+    <section class="panel settings-card settings-section active" data-settings-section="profile">
+        <div class="section-number">01</div>
+        <div>
+            <h2>About you</h2>
+            <p>Basic details used throughout your dashboard.</p>
+            <div class="form-grid">
+                <label><span>First name</span><input name="first_name" value="{{ profile.first_name if profile.first_name != 'there' else '' }}" placeholder="Your first name"></label>
+                <label><span>Trading name</span><input name="trading_name" value="{{ profile.trading_name }}" placeholder="e.g. Your Name Consulting"></label>
+                <label class="full"><span>Business structure</span>
+                    <select name="entity_type">
+                        <option value="sole_trader" {{ 'selected' if profile.entity_type == 'sole_trader' else '' }}>Sole trader</option>
+                        <option value="limited_company" {{ 'selected' if profile.entity_type == 'limited_company' else '' }}>Limited company director</option>
+                    </select>
+                    <small>Limited-company forecasting will be expanded after launch.</small>
+                </label>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel settings-card settings-section" data-settings-section="tax">
+        <div class="section-number">02</div>
+        <div>
+            <h2>Income and tax</h2>
+            <p>Use annual and year-to-date figures before the next incoming payment. All figures are for the current tax year (2026/27).</p>
+            <div class="form-grid">
+                <label><span>Annual PAYE salary</span><div class="input-prefix"><b>£</b><input type="number" name="day_job_salary" min="0" step="1" value="{{ profile.day_job_salary }}" placeholder="0"></div><small>Your gross employment income from all jobs this tax year.</small></label>
+                <label><span>Freelance profit to date</span><div class="input-prefix"><b>£</b><input type="number" name="ytd_freelance_profit" min="0" step="0.01" value="{{ profile.ytd_freelance_profit }}" placeholder="0"></div><small>Your sole-trader profit so far this tax year, based on the accounting method you use.</small></label>
+                <label><span>Personal pension contributions</span><div class="input-prefix"><b>£</b><input type="number" name="pension" min="0" step="0.01" value="{{ profile.pension }}" placeholder="0"></div><small>Enter the gross amount for this tax year. For Relief at Source, gross is the amount paid divided by 0.80.</small></label>
+                <label><span>Number of children in Child Benefit claim</span>
+                    <select name="child_benefit_children">
+                        <option value="0" {{ 'selected' if not profile.child_benefit_children else '' }}>None / not applicable</option>
+                        <option value="1" {{ 'selected' if profile.child_benefit_children == 1 else '' }}>1 child</option>
+                        <option value="2" {{ 'selected' if profile.child_benefit_children == 2 else '' }}>2 children</option>
+                        <option value="3" {{ 'selected' if profile.child_benefit_children == 3 else '' }}>3 children</option>
+                        <option value="4" {{ 'selected' if profile.child_benefit_children == 4 else '' }}>4 children</option>
+                        <option value="5" {{ 'selected' if profile.child_benefit_children and profile.child_benefit_children >= 5 else '' }}>5 or more children</option>
+                    </select>
+                    <small>If you or your partner receives Child Benefit, select the number of children in the claim. Used by the Optimise tool to assess the High Income Child Benefit Charge.</small>
+                </label>
+                <label><span>Child Benefit annual total (optional override)</span><div class="input-prefix"><b>£</b><input type="number" name="child_benefit_annual" min="0" step="0.01" value="{{ profile.child_benefit_annual or '' }}" placeholder="Leave blank to use 2026/27 standard rates"></div><small>If your actual annual award differs from the standard rates, enter it here. Check your HMRC award letter.</small></label>
+                <label><span>Student loan</span>
+                    <select name="student_loan">
+                        <option value="none" {{ 'selected' if profile.student_loan == 'none' else '' }}>None</option>
+                        <option value="plan_1" {{ 'selected' if profile.student_loan == 'plan_1' else '' }}>Plan 1</option>
+                        <option value="plan_2" {{ 'selected' if profile.student_loan == 'plan_2' else '' }}>Plan 2</option>
+                        <option value="plan_4" {{ 'selected' if profile.student_loan == 'plan_4' else '' }}>Plan 4 (Scotland)</option>
+                        <option value="plan_5" {{ 'selected' if profile.student_loan == 'plan_5' else '' }}>Plan 5</option>
+                        <option value="postgraduate" {{ 'selected' if profile.student_loan == 'postgraduate' else '' }}>Postgraduate loan</option>
+                    </select>
+                </label>
+                <label><span>Accounting basis</span>
+                    <select name="accounting_method">
+                        <option value="cash_basis" {{ 'selected' if profile.accounting_method == 'cash_basis' else '' }}>Cash basis</option>
+                        <option value="traditional_accounting" {{ 'selected' if profile.accounting_method == 'traditional_accounting' else '' }}>Traditional accounting</option>
+                    </select>
+                </label>
+                <label><span>VAT status</span>
+                    <select name="vat_status">
+                        <option value="not_vat_registered" {{ 'selected' if profile.vat_status == 'not_vat_registered' else '' }}>Not VAT registered</option>
+                        <option value="vat_registered" {{ 'selected' if profile.vat_status == 'vat_registered' else '' }}>VAT registered</option>
+                    </select>
+                    <small>VAT-reserve separation is coming in a future update.</small>
+                </label>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel settings-card settings-section" data-settings-section="liabilities">
+        <div class="section-number">03</div>
+        <div>
+            <h2>Future liabilities</h2>
+            <p>Additional tax areas may be added after the v1 calculation scope has been validated.</p>
+            <div class="setting-link muted">
+                <div><strong>Corporation Tax planning</strong><p>Planned for the limited-company release.</p></div>
+                <span class="pill">Planned</span>
+            </div>
+            <div class="setting-link muted">
+                <div><strong>Retirement readiness</strong><p>Long-term planning tools will use your Reserved history.</p></div>
+                <span class="pill">Future</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel settings-card settings-section" data-settings-section="preferences">
+        <div class="section-number">04</div>
+        <div>
+            <h2>Planned preferences</h2>
+            <p>These controls show how you will be able to personalise notifications in the launch version.</p>
+            <div class="preference-list">
+                <label class="toggle-row"><div><strong>Reserve reminders</strong><span>Prompt me when expected income is detected.</span></div><input type="checkbox" disabled></label>
+                <label class="toggle-row"><div><strong>Deadline alerts</strong><span>Notify me before important tax dates.</span></div><input type="checkbox" disabled></label>
+                <label class="toggle-row"><div><strong>Product updates</strong><span>Tell me when planned modules become available.</span></div><input type="checkbox" disabled></label>
+            </div>
+        </div>
+    </section>
+
+    <div class="sticky-save">
+        <p>Your changes will update the information used in your Reserved estimates.</p>
+        <button class="button button-primary" type="submit">Save changes</button>
+    </div>
+</form>
+{% endblock %}

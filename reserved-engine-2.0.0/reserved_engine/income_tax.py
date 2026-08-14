@@ -1,0 +1,323 @@
+"""
+Incremental income-tax, Class 4 NI, and student-loan liability estimator.
+
+Methodology
+-----------
+The engine uses a *before/after* differential approach:
+
+    liability = total_income_tax(end_income) − total_income_tax(start_income)
+
+where ``start_income = employment_income + ytd_freelance_profit`` and
+``end_income = start_income + invoice``.
+
+Each ``total_income_tax`` call independently determines:
+
+  1. Adjusted Net Income (ANI = income − gross pension contributions)
+  2. Personal Allowance applicable at *that* income level (after taper)
+  3. Taxable income across the statutory bands
+  4. Total income-tax liability
+
+This correctly handles all Personal Allowance taper cases, including
+invoices that enter, remain within, or exit the £100,000 – £125,140 taper
+zone.
+
+Pension Relief at Source (RaS)
+-------------------------------
+Gross pension contributions do two things:
+
+  1. Reduce Adjusted Net Income (ANI) for the Personal Allowance taper test.
+  2. **Extend the basic-rate band** by the same gross amount, meaning more
+     income is taxed at 20 % rather than 40 %.
+
+Both are implemented here.  The engine does *not* model employer contributions,
+salary sacrifice, or relief-in-the-year-of-claim schemes.
+
+Multi-year support
+------------------
+Pass ``tax_year="2025/26"`` to use confirmed 2025/26 thresholds.  The default
+is ``"2026/27"``.  Income-tax and NI bands are frozen and identical in both
+supported years; only student-loan repayment thresholds differ.
+
+Change history (income-tax component)
+--------------------------------------
+v1.0.0  Initial release.  Used a single end-state ANI to fix the PA for the
+        full [start, end) range — underestimated when invoice crossed the
+        PA taper zone (EL-001).
+
+v2.0.0  EL-001 resolved.  The income-tax component now calls
+        ``_total_income_tax(end) − _total_income_tax(start)``, each with
+        the correct PA for its own income level.  Results outside the taper
+        zone (ANI < £100,000 or ANI ≥ £125,140 at both start and end) are
+        numerically unchanged.
+
+Out of scope
+------------
+  - Scottish income tax (different bands apply)
+  - Dividend tax and savings income (separate orders of priority)
+  - BADR / Investors' Relief on capital gains (handled in capital_gains.py)
+  - PAYE coding adjustments (this is a self-assessment estimate only)
+"""
+from decimal import Decimal
+from typing import Any
+
+from . import tax_config
+from .utils import money
+
+
+# ── Internal helpers (all accept a ``cfg`` dict from get_config()) ─────────────
+
+def _personal_allowance(adjusted_net_income: Decimal, cfg: dict) -> Decimal:
+    """Return the Personal Allowance after taper.
+
+    The allowance is reduced by £1 for every £2 of ANI above £100,000,
+    reaching zero at ANI ≥ £125,140.
+    """
+    allowance = cfg["PERSONAL_ALLOWANCE"]
+    if adjusted_net_income <= cfg["PERSONAL_ALLOWANCE_TAPER_START"]:
+        return allowance
+    reduction = (
+        adjusted_net_income - cfg["PERSONAL_ALLOWANCE_TAPER_START"]
+    ) / Decimal("2")
+    return max(Decimal("0"), allowance - reduction)
+
+
+def _income_tax_between(
+    start: Decimal,
+    end: Decimal,
+    basic_rate_band: Decimal,
+    cfg: dict,
+) -> Decimal:
+    """Return income-tax liability on income in the half-open interval [start, end).
+
+    The basic-rate band upper boundary is ``extended_basic_rate_limit`` rather
+    than the statutory ``BASIC_RATE_LIMIT`` so that pension RaS band extension
+    is handled by the caller, not hard-coded here.
+
+    This function applies *fixed* band boundaries.  Callers are responsible
+    for deriving the correct ``allowance`` and ``extended_basic_rate_limit``
+    for the income level being computed.  See ``_total_income_tax`` for the
+    wrapper that computes the correct PA at a given income level.
+    """
+    if end <= start:
+        return Decimal("0")
+
+    bands = [
+        (basic_rate_band,                         cfg["INCOME_TAX_RATES"]["basic"]),
+        (cfg["ADDITIONAL_RATE_THRESHOLD"],        cfg["INCOME_TAX_RATES"]["higher"]),
+        (Decimal("Infinity"),                    cfg["INCOME_TAX_RATES"]["additional"]),
+    ]
+
+    total = Decimal("0")
+    cursor = start
+    for ceiling, rate in bands:
+        if cursor >= end:
+            break
+        if cursor < ceiling:
+            slice_end = min(end, ceiling)
+            total += max(Decimal("0"), slice_end - cursor) * rate
+            cursor = slice_end
+    return money(total)
+
+
+def _total_income_tax(
+    income: Decimal,
+    pension: Decimal,
+    cfg: dict,
+) -> Decimal:
+    """Return the total income-tax liability on *income* with gross pension *pension*.
+
+    Computes the complete liability from £0 up to *income*, independently
+    deriving the Personal Allowance and extended basic-rate limit that
+    correspond to *this specific income level*.
+
+    This is the authoritative full-liability calculation used by
+    ``estimate_incremental_liability`` to produce a correct before/after
+    differential across the PA taper zone.
+
+    Pension RaS (Finance Act 2004 s.192):
+      - Reduces ANI (``ANI = income − pension``) for the PA taper test.
+      - Extends the basic-rate band ceiling by the gross pension amount.
+    """
+    if income <= Decimal("0"):
+        return Decimal("0")
+
+    ani                       = max(Decimal("0"), income - pension)
+    allowance                 = _personal_allowance(ani, cfg)
+    # Cap eBRL at ART: a pension contribution cannot extend the basic-rate band
+    # beyond the Additional Rate Threshold (£125,140).  Without the cap, an
+    # uncapped eBRL > ART causes _income_tax_between to absorb the ART and 45%
+    # band into the 20% slice, suppressing the additional rate entirely.
+    # Reference: HMRC Pensions Tax Manual PTM044100; reference_calculator.py line ~162.
+    taxable_income = max(Decimal("0"), income - allowance)
+    extended_basic_rate_limit = min(
+        cfg["BASIC_RATE_BAND"] + pension,
+        cfg["ADDITIONAL_RATE_THRESHOLD"],
+    )
+
+    return _income_tax_between(
+        Decimal("0"), taxable_income, extended_basic_rate_limit, cfg
+    )
+
+
+def _class_4_ni_between(
+    start_profit: Decimal,
+    end_profit: Decimal,
+    cfg: dict,
+) -> Decimal:
+    """Return Class 4 NI on sole-trader profit in the interval [start_profit, end_profit)."""
+    if end_profit <= start_profit:
+        return Decimal("0")
+
+    lower = cfg["CLASS_4_NI"]["lower_profits_limit"]
+    upper = cfg["CLASS_4_NI"]["upper_profits_limit"]
+    main_slice  = max(Decimal("0"), min(end_profit, upper) - max(start_profit, lower))
+    upper_slice = max(Decimal("0"), end_profit - max(start_profit, upper))
+
+    return money(
+        main_slice  * cfg["CLASS_4_NI"]["main_rate"]
+        + upper_slice * cfg["CLASS_4_NI"]["upper_rate"]
+    )
+
+
+def _student_loan_between(
+    start: Decimal,
+    end: Decimal,
+    plan: Any,
+    cfg: dict,
+) -> Decimal:
+    """Return student/postgraduate loan repayment on income in [start, end)."""
+    metadata = cfg["STUDENT_LOANS"].get(plan)
+    if not metadata:
+        return Decimal("0")
+    threshold  = metadata["threshold"]
+    chargeable = max(Decimal("0"), end - max(start, threshold))
+    return money(chargeable * metadata["rate"])
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def estimate_incremental_liability(
+    invoice_amount: Any,
+    profile: dict,
+    tax_year: str = "2026/27",
+) -> dict:
+    """Estimate the marginal tax cost of a single invoice.
+
+    Parameters
+    ----------
+    invoice_amount:
+        The gross invoice value (will be coerced to Decimal).
+    profile:
+        Dict with the following keys:
+
+        ``day_job_salary``
+            Annual PAYE employment income already received this tax year.
+        ``ytd_freelance_profit``
+            Sole-trader / freelance profit *before* this invoice.
+        ``personal_pension_contributions``
+            Gross personal pension contributions this tax year (Relief at
+            Source: gross = net paid ÷ 0.80 if your provider claims the
+            basic-rate top-up).
+        ``student_loan_plans``
+            List of active plan identifiers, e.g. ``[2]`` or
+            ``[1, "postgraduate"]``.  The legacy singular key
+            ``student_loan_plan`` is also accepted.
+
+    tax_year:
+        HMRC tax year string, e.g. ``"2026/27"`` (default) or ``"2025/26"``.
+        Use ``tax_config.SUPPORTED_TAX_YEARS`` to enumerate valid values.
+
+    Returns
+    -------
+    dict
+        ``income_tax``, ``national_insurance``, ``student_loan``, ``total``
+        (all Decimal rounded to the nearest penny), plus metadata fields.
+
+    Raises
+    ------
+    ValueError
+        If ``invoice_amount`` is not greater than zero, any profile value
+        is invalid or negative, or ``tax_year`` is not supported.
+    """
+    cfg = tax_config.get_config(tax_year)
+
+    # ── Validate invoice ──────────────────────────────────────────────────────
+    try:
+        invoice = money(invoice_amount)
+    except Exception as exc:
+        raise ValueError(f"invoice_amount is not a valid number: {exc}") from exc
+    if invoice <= Decimal("0"):
+        raise ValueError("invoice_amount must be greater than zero.")
+
+    # ── Validate and extract profile ──────────────────────────────────────────
+    def _require_nonneg(key: str) -> Decimal:
+        raw = profile.get(key, 0)
+        try:
+            val = money(raw)
+        except Exception as exc:
+            raise ValueError(
+                f"Profile field '{key}' is not a valid number: {exc}"
+            ) from exc
+        if val < Decimal("0"):
+            raise ValueError(
+                f"Profile field '{key}' must not be negative (got {val})."
+            )
+        return val
+
+    employment_income = _require_nonneg("day_job_salary")
+    prior_profit      = _require_nonneg("ytd_freelance_profit")
+    pension           = _require_nonneg("personal_pension_contributions")
+
+    # Student loan plans — accept list (preferred) or legacy singular key.
+    plans: list = profile.get("student_loan_plans") or []
+    if not plans:
+        legacy = profile.get("student_loan_plan")
+        if legacy is not None:
+            plans = [legacy]
+
+    # ── Core calculation ──────────────────────────────────────────────────────
+    start_income = employment_income + prior_profit
+    end_income   = start_income + invoice
+
+    # Income tax: total_tax(end) − total_tax(start).
+    # Each call independently determines ANI, PA, and the extended BRL for
+    # its own income level.  This correctly handles all PA taper cases,
+    # including invoices that cross or remain within the £100k–£125.14k zone.
+    income_tax = money(
+        _total_income_tax(end_income,   pension, cfg)
+        - _total_income_tax(start_income, pension, cfg)
+    )
+
+    national_insurance = _class_4_ni_between(
+        prior_profit, prior_profit + invoice, cfg
+    )
+
+    # Student loan: iterate over all active plans.
+    total_student_loan = Decimal("0")
+    student_loan_breakdown: list[dict] = []
+    for plan in plans:
+        sl = _student_loan_between(start_income, end_income, plan, cfg)
+        student_loan_breakdown.append({"plan": plan, "amount": sl})
+        total_student_loan += sl
+    total_student_loan = money(total_student_loan)
+
+    total = money(income_tax + national_insurance + total_student_loan)
+
+    # ── Build result ──────────────────────────────────────────────────────────
+    result: dict = {
+        "tax_year":           cfg["tax_year"],
+        "rules_version":      cfg["rules_version"],
+        "income_tax":         income_tax,
+        "national_insurance": national_insurance,
+        "student_loan":       total_student_loan,
+        "total":              total,
+        "assumptions": [
+            "Illustrative sole-trader estimate only; not a tax return or professional advice.",
+            "Scottish income tax, dividend tax, and savings income are outside scope.",
+            "Pension contributions are treated as Relief at Source (gross figure expected).",
+        ],
+    }
+    if len(student_loan_breakdown) > 1:
+        result["student_loan_breakdown"] = student_loan_breakdown
+
+    return result

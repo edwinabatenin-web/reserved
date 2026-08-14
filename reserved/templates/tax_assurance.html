@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}Tax Assurance — Reserved™{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Tax Assurance</h1>
+        <p class="page-subtitle">Internal engine verification — not visible to end users</p>
+    </div>
+    <div class="dev-badge">DEV ONLY</div>
+</div>
+
+{# ── Status banner ─────────────────────────────────────────────────────── #}
+{% if meta.all_tests_passed is none %}
+<div class="assurance-banner assurance-banner--pending">
+    <span class="assurance-banner__icon">⚠</span>
+    <div>
+        <strong>Test results not yet generated.</strong>
+        Run <code>python scripts/generate_assurance_metadata.py</code> to produce live test counts.
+    </div>
+</div>
+{% elif meta.all_tests_passed %}
+<div class="assurance-banner assurance-banner--pass">
+    <span class="assurance-banner__icon">✓</span>
+    <div>
+        <strong>All tests passed.</strong>
+        {{ meta.test_counts.passed }} tests verified on {{ meta.verified_date }}.
+    </div>
+</div>
+{% else %}
+<div class="assurance-banner assurance-banner--fail">
+    <span class="assurance-banner__icon">✗</span>
+    <div>
+        <strong>Test failures detected.</strong>
+        {{ meta.test_counts.failed }} failed, {{ meta.test_counts.errors }} errors,
+        {{ meta.test_counts.passed }} passed.
+        Run <code>pytest tests/ -v</code> to diagnose.
+    </div>
+</div>
+{% endif %}
+
+{# ── Metadata cards ────────────────────────────────────────────────────── #}
+<div class="metrics-grid" style="margin-top: var(--space-6);">
+    <div class="metric-card">
+        <div class="metric-label">Tax year</div>
+        <div class="metric-value">{{ meta.tax_year }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Rules version</div>
+        <div class="metric-value" style="font-size: var(--text-lg);">{{ meta.rules_version }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Last verified</div>
+        <div class="metric-value" style="font-size: var(--text-xl);">
+            {{ meta.verified_date if meta.verified_date else '—' }}
+        </div>
+    </div>
+    {% if meta.test_counts %}
+    <div class="metric-card">
+        <div class="metric-label">Tests passed</div>
+        <div class="metric-value" style="color: var(--success);">
+            {{ meta.test_counts.passed }}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{# ── Scope panels ──────────────────────────────────────────────────────── #}
+<div class="assurance-scope-grid">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">✓ In scope</h2>
+        </div>
+        <ul class="assurance-list assurance-list--pass">
+            {% for item in meta.scope.in_scope %}
+            <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">✗ Out of scope</h2>
+        </div>
+        <ul class="assurance-list assurance-list--out">
+            {% for item in meta.scope.out_of_scope %}
+            <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+{# ── Assumptions ───────────────────────────────────────────────────────── #}
+<div class="card" style="margin-top: var(--space-6);">
+    <div class="card-header">
+        <h2 class="card-title">Assumptions shown to users</h2>
+    </div>
+    <ul class="assurance-list assurance-list--neutral">
+        {% for a in meta.assumptions %}
+        <li>{{ a }}</li>
+        {% endfor %}
+    </ul>
+</div>
+
+{# ── Golden persona ────────────────────────────────────────────────────── #}
+<div class="card" style="margin-top: var(--space-6);">
+    <div class="card-header">
+        <h2 class="card-title">Golden persona — Gabriel</h2>
+        <span class="pill">Reference case</span>
+    </div>
+    <div class="assurance-persona">
+        <div class="assurance-persona__profile">
+            <h3>Profile</h3>
+            <table class="assurance-table">
+                <tr><td>Employment income</td><td>£40,000</td></tr>
+                <tr><td>YTD freelance profit</td><td>£15,000</td></tr>
+                <tr><td>Pension (gross, RaS)</td><td>£5,000</td></tr>
+                <tr><td>Student loan</td><td>Plan 2</td></tr>
+                <tr><td>Invoice</td><td>£10,000</td></tr>
+            </table>
+        </div>
+        <div class="assurance-persona__result">
+            <h3>Expected output</h3>
+            <table class="assurance-table">
+                <tr><td>Income tax</td><td class="assurance-table__amount">£3,946.00</td></tr>
+                <tr><td>Class 4 NI</td><td class="assurance-table__amount">£600.00</td></tr>
+                <tr><td>Student loan</td><td class="assurance-table__amount">£900.00</td></tr>
+                <tr class="assurance-table__total"><td><strong>Total reserve</strong></td><td class="assurance-table__amount"><strong>£5,446.00</strong></td></tr>
+            </table>
+        </div>
+        <div class="assurance-persona__workings">
+            <h3>Key workings</h3>
+            <ul class="assurance-list assurance-list--neutral" style="font-size: var(--text-sm); font-family: var(--font-mono, monospace);">
+                <li>start_income = £55,000 &nbsp;&nbsp; end_income = £65,000</li>
+                <li>ANI = £60,000 → full PA (£12,570)</li>
+                <li>Extended BRL = £50,270 + £5,000 = £55,270</li>
+                <li>IT: 20%×270 + 40%×9,730 = £54 + £3,892</li>
+                <li>NI: 6%×10,000 (main band only)</li>
+                <li>SL: 9%×10,000 (Plan 2 threshold £29,385)</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+{# ── Documentation link ────────────────────────────────────────────────── #}
+<div class="card" style="margin-top: var(--space-6);">
+    <div class="card-header">
+        <h2 class="card-title">Documentation</h2>
+    </div>
+    <p style="color: var(--text-secondary); margin: 0;">
+        Full methodology, thresholds, scope exclusions, and sign-off checklist:
+        <code>docs/ASSUMPTIONS_AND_LIMITATIONS_REGISTER.md</code>
+    </p>
+    <p style="color: var(--text-secondary); margin: var(--space-2) 0 0;">
+        To regenerate live test metadata:
+        <code>python scripts/generate_assurance_metadata.py</code>
+    </p>
+</div>
+{% endblock %}

@@ -1,0 +1,38 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+
+# macOS
+.DS_Store
+__MACOSX/
+
+# Replit
+.cache/
+
+# Runtime database (never commit user data)
+instance/
+*.db
+
+# Applied update packages and ZIP archives (already merged into canonical)
+reserved_update_01_frontend/
+reserved_ui_v2_blue/
+reserved_update_01_frontend.zip
+reserved_ui_v2_blue.zip
+zipFile.zip
+
+# OpenHands local runtime
+project/
+bash_events/
+conversations/

@@ -1,0 +1,403 @@
+"""
+Representative demo transactions for Reserved™ Workstream 3.
+
+Covers all TransactionCategory values to exercise the classification
+pipeline. Format matches the Yapily list_transactions() response shape.
+Persona: UK sole-trader / freelance designer, tax year 2025/26.
+"""
+
+from __future__ import annotations
+
+
+DEMO_TRANSACTIONS: list[dict] = [
+
+    # ── Freelance income ──────────────────────────────────────────────────────
+    {
+        "id": "txn-001",
+        "date": "2026-07-28",
+        "amount": 3200.00,
+        "currency": "GBP",
+        "description": "INV-2026-047 STUDIO CLIENT LTD",
+        "transactionInformation": "Invoice payment",
+        "proprietaryBankTransactionCode": "CREDIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-002",
+        "date": "2026-07-14",
+        "amount": 1850.00,
+        "currency": "GBP",
+        "description": "APEX DIGITAL INVOICE 2026-048",
+        "transactionInformation": "Project fee",
+        "proprietaryBankTransactionCode": "CREDIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-003",
+        "date": "2026-06-30",
+        "amount": 4500.00,
+        "currency": "GBP",
+        "description": "MERIDIAN GROUP CONSULTING FEE",
+        "transactionInformation": "INV-2026-039 design consultancy",
+        "proprietaryBankTransactionCode": "CREDIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-004",
+        "date": "2026-06-15",
+        "amount": 2700.00,
+        "currency": "GBP",
+        "description": "BLOOM CREATIVE INV-2026-035",
+        "transactionInformation": "Brand identity project fee",
+        "proprietaryBankTransactionCode": "CREDIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-005",
+        "date": "2026-05-31",
+        "amount": 1200.00,
+        "currency": "GBP",
+        "description": "KOVA AGENCY FREELANCE PAYMENT",
+        "transactionInformation": "INV-2026-029",
+        "proprietaryBankTransactionCode": "CREDIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-006",
+        "date": "2026-04-30",
+        "amount": 3900.00,
+        "currency": "GBP",
+        "description": "NORTHGATE LABS INV-2026-022",
+        "transactionInformation": "Design contract payment",
+        "proprietaryBankTransactionCode": "CREDIT",
+        "status": "BOOKED",
+    },
+
+    # ── Tax refund ────────────────────────────────────────────────────────────
+    {
+        "id": "txn-007",
+        "date": "2026-06-05",
+        "amount": 842.00,
+        "currency": "GBP",
+        "description": "HMRC PAYE REFUND",
+        "transactionInformation": "HMRC tax credit",
+        "proprietaryBankTransactionCode": "CREDIT",
+        "status": "BOOKED",
+    },
+
+    # ── Interest ──────────────────────────────────────────────────────────────
+    {
+        "id": "txn-008",
+        "date": "2026-07-01",
+        "amount": 14.32,
+        "currency": "GBP",
+        "description": "INTEREST PAID",
+        "transactionInformation": "Savings interest credit",
+        "proprietaryBankTransactionCode": "INTEREST",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-009",
+        "date": "2026-06-01",
+        "amount": 13.91,
+        "currency": "GBP",
+        "description": "SAVINGS INTEREST CREDIT",
+        "transactionInformation": "Monthly interest",
+        "proprietaryBankTransactionCode": "INTEREST",
+        "status": "BOOKED",
+    },
+
+    # ── Dividend ──────────────────────────────────────────────────────────────
+    {
+        "id": "txn-010",
+        "date": "2026-06-20",
+        "amount": 210.00,
+        "currency": "GBP",
+        "description": "VANGUARD DIVIDEND PMT",
+        "transactionInformation": "ISA dividend reinvestment (outside ISA)",
+        "proprietaryBankTransactionCode": "CREDIT",
+        "status": "BOOKED",
+    },
+
+    # ── Transfer in ───────────────────────────────────────────────────────────
+    {
+        "id": "txn-011",
+        "date": "2026-07-20",
+        "amount": 500.00,
+        "currency": "GBP",
+        "description": "TRANSFER FROM SAVINGS POT",
+        "transactionInformation": "Own account transfer",
+        "proprietaryBankTransactionCode": "CREDIT",
+        "status": "BOOKED",
+    },
+
+    # ── Tax payments ──────────────────────────────────────────────────────────
+    {
+        "id": "txn-012",
+        "date": "2026-07-31",
+        "amount": -2840.50,
+        "currency": "GBP",
+        "description": "HMRC SELF ASSESSMENT",
+        "transactionInformation": "SA payment on account",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-013",
+        "date": "2026-04-06",
+        "amount": -1420.25,
+        "currency": "GBP",
+        "description": "HMRC SA300 BALANCING PAYMENT",
+        "transactionInformation": "Self assessment balancing payment 2024/25",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-014",
+        "date": "2026-07-31",
+        "amount": -384.00,
+        "currency": "GBP",
+        "description": "HMRC NIC PAYMENT",
+        "transactionInformation": "Class 4 NI contribution",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+
+    # ── Rent payment ──────────────────────────────────────────────────────────
+    {
+        "id": "txn-015",
+        "date": "2026-08-01",
+        "amount": -1350.00,
+        "currency": "GBP",
+        "description": "RENT 15 MARSH ROAD LANDLORD",
+        "transactionInformation": "Monthly rent",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-016",
+        "date": "2026-07-01",
+        "amount": -1350.00,
+        "currency": "GBP",
+        "description": "RENT 15 MARSH ROAD LANDLORD",
+        "transactionInformation": "Monthly rent",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+
+    # ── Utilities ─────────────────────────────────────────────────────────────
+    {
+        "id": "txn-017",
+        "date": "2026-07-15",
+        "amount": -68.40,
+        "currency": "GBP",
+        "description": "OCTOPUS ENERGY",
+        "transactionInformation": "Direct debit",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-018",
+        "date": "2026-07-10",
+        "amount": -34.20,
+        "currency": "GBP",
+        "description": "THAMES WATER BILL",
+        "transactionInformation": "Water direct debit",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-019",
+        "date": "2026-07-05",
+        "amount": -178.00,
+        "currency": "GBP",
+        "description": "COUNCIL TAX HACKNEY LBC",
+        "transactionInformation": "Monthly council tax",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-020",
+        "date": "2026-07-03",
+        "amount": -28.00,
+        "currency": "GBP",
+        "description": "VODAFONE MONTHLY BILL",
+        "transactionInformation": "Mobile contract",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+
+    # ── Subscriptions (software) ──────────────────────────────────────────────
+    {
+        "id": "txn-021",
+        "date": "2026-07-22",
+        "amount": -54.99,
+        "currency": "GBP",
+        "description": "ADOBE CREATIVE CLOUD",
+        "transactionInformation": "Annual plan monthly charge",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-022",
+        "date": "2026-07-18",
+        "amount": -14.00,
+        "currency": "GBP",
+        "description": "FIGMA",
+        "transactionInformation": "Professional plan",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-023",
+        "date": "2026-07-18",
+        "amount": -16.00,
+        "currency": "GBP",
+        "description": "NOTION",
+        "transactionInformation": "Plus plan",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-024",
+        "date": "2026-07-12",
+        "amount": -22.47,
+        "currency": "GBP",
+        "description": "AWS AMAZON WEB SERVICES",
+        "transactionInformation": "Cloud hosting",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-025",
+        "date": "2026-07-01",
+        "amount": -4.00,
+        "currency": "GBP",
+        "description": "GITHUB",
+        "transactionInformation": "Pro plan",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-026",
+        "date": "2026-07-01",
+        "amount": -20.00,
+        "currency": "GBP",
+        "description": "CURSOR",
+        "transactionInformation": "AI coding assistant",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+
+    # ── Business expense — travel ──────────────────────────────────────────────
+    {
+        "id": "txn-027",
+        "date": "2026-07-09",
+        "amount": -38.50,
+        "currency": "GBP",
+        "description": "TRAINLINE COM",
+        "transactionInformation": "Manchester return — client meeting",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-028",
+        "date": "2026-06-24",
+        "amount": -12.60,
+        "currency": "GBP",
+        "description": "TFL TRAVEL",
+        "transactionInformation": "Underground — client site",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+
+    # ── Business expense — equipment ──────────────────────────────────────────
+    {
+        "id": "txn-029",
+        "date": "2026-05-14",
+        "amount": -349.00,
+        "currency": "GBP",
+        "description": "APPLE STORE",
+        "transactionInformation": "iPad accessories — studio",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+
+    # ── Student loan repayment ────────────────────────────────────────────────
+    {
+        "id": "txn-030",
+        "date": "2026-04-06",
+        "amount": -620.00,
+        "currency": "GBP",
+        "description": "SLC STUDENT LOAN REPAYMENT",
+        "transactionInformation": "SA student loan deduction",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+
+    # ── Personal spending ─────────────────────────────────────────────────────
+    {
+        "id": "txn-031",
+        "date": "2026-08-04",
+        "amount": -6.80,
+        "currency": "GBP",
+        "description": "CARD PAYMENT MONMOUTH COFFEE",
+        "transactionInformation": "Contactless",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-032",
+        "date": "2026-08-02",
+        "amount": -52.34,
+        "currency": "GBP",
+        "description": "CARD PAYMENT SAINSBURYS",
+        "transactionInformation": "Contactless grocery shop",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-033",
+        "date": "2026-07-30",
+        "amount": -18.99,
+        "currency": "GBP",
+        "description": "CARD PAYMENT DELIVEROO",
+        "transactionInformation": "Debit card",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+    {
+        "id": "txn-034",
+        "date": "2026-07-26",
+        "amount": -32.00,
+        "currency": "GBP",
+        "description": "POS PURCHASE ZARA",
+        "transactionInformation": "In-store card payment",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+
+    # ── Transfer out ──────────────────────────────────────────────────────────
+    {
+        "id": "txn-035",
+        "date": "2026-07-31",
+        "amount": -800.00,
+        "currency": "GBP",
+        "description": "TRANSFER TO SAVINGS POT",
+        "transactionInformation": "Tax reserve transfer",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+
+    # ── Unknown (no rule should match) ────────────────────────────────────────
+    {
+        "id": "txn-036",
+        "date": "2026-07-17",
+        "amount": -45.00,
+        "currency": "GBP",
+        "description": "BACS CREDIT REF 9X4K22",
+        "transactionInformation": "Miscellaneous debit",
+        "proprietaryBankTransactionCode": "DEBIT",
+        "status": "BOOKED",
+    },
+]

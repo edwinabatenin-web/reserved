@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+{% block title %}Tax opportunities — Reserved™{% endblock %}
+{% block extra_head %}
+<meta name="robots" content="noindex, nofollow">
+<style>
+/* ── Optimise page ─────────────────────────────────────────────────────────── */
+.opt-position-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:24px 0}
+.opt-metric{background:var(--surface-soft);border:1px solid var(--line);border-radius:var(--radius-small);padding:18px 20px}
+.opt-metric-label{color:var(--ink-soft);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.opt-metric-value{margin-top:6px;font-size:26px;font-weight:850;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.opt-metric-note{margin-top:4px;font-size:11px;color:var(--ink-soft)}
+.opt-metric.highlight{background:var(--blue-soft);border-color:var(--blue)}
+.opt-metric.warn{background:#fff7ed;border-color:#f97316}
+
+.opt-opp{margin-top:20px}
+.opt-opp-status{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:800;margin-bottom:14px}
+.opt-opp-status.available{background:var(--mint);color:var(--green-dark)}
+.opt-opp-status.incomplete{background:var(--blue-soft);color:var(--blue)}
+.opt-opp-trigger{color:var(--ink-soft);font-size:14px;line-height:1.6;margin:0 0 16px}
+
+.opt-hints{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.opt-hint{background:var(--surface-soft);border:1px solid var(--line);border-radius:var(--radius-small);padding:10px 14px;font-size:12px;display:flex;flex-direction:column;gap:2px}
+.opt-hint-label{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft)}
+.opt-hint-val{font-size:18px;font-weight:800;letter-spacing:-.02em}
+
+.opt-explorer{margin-top:16px;border-top:1px solid var(--line);padding-top:16px}
+.opt-explorer-title{font-weight:800;font-size:14px;margin-bottom:16px}
+
+.opt-slider-row{display:flex;align-items:center;gap:12px;margin:8px 0 4px}
+.opt-slider-row input[type=range]{flex:1;accent-color:var(--blue)}
+.opt-slider-row .input-prefix{width:160px;flex:none}
+.opt-slider-note{font-size:12px;color:var(--ink-soft);margin-bottom:16px}
+
+.opt-results{margin-top:20px;border:1px solid var(--line);border-radius:var(--radius-small);overflow:hidden}
+.opt-results-table{width:100%;border-collapse:collapse}
+.opt-results-table th,.opt-results-table td{padding:12px 16px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top}
+.opt-results-table th{background:var(--surface-soft);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft)}
+.opt-results-table tr:last-child td{border-bottom:0}
+.opt-results-table .diff.positive{color:var(--green-dark);font-weight:800}
+.opt-results-table .diff.negative{color:#c0392b;font-weight:800}
+.opt-results-table .diff.neutral{color:var(--ink-soft)}
+.opt-row-label{font-weight:700}
+
+.opt-benefit-box{background:var(--mint);border:1px solid var(--green-dark);border-radius:var(--radius-small);padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:16px}
+.opt-benefit-label{font-weight:800;font-size:13px;color:var(--green-dark)}
+.opt-benefit-value{font-size:22px;font-weight:900;letter-spacing:-.03em;color:var(--green-dark)}
+.opt-brl-note{font-size:12px;color:var(--ink-soft);margin:10px 0 16px;padding:10px 14px;background:var(--surface-soft);border-radius:var(--radius-small);border-left:3px solid var(--line)}
+
+.opt-caveats{margin-top:16px}
+.opt-caveats summary{cursor:pointer;font-size:12px;color:var(--ink-soft);font-weight:700;padding:8px 0;list-style:none;display:flex;align-items:center;gap:6px}
+.opt-caveats summary::before{content:"▸";font-size:10px}
+details[open].opt-caveats summary::before{content:"▾"}
+.opt-caveats ul{margin:8px 0 0 0;padding-left:20px;font-size:12px;color:var(--ink-soft);line-height:1.7}
+.opt-caveats li{margin-bottom:6px}
+
+.opt-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+
+.opt-missing{background:var(--blue-soft);border-radius:var(--radius-small);padding:12px 16px;margin-top:8px;font-size:13px}
+.opt-missing p{margin:0;color:var(--blue)}
+
+.opt-saved{margin-top:24px}
+.opt-saved-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.opt-saved-item{background:var(--surface-soft);border:1px solid var(--line);border-radius:var(--radius-small);padding:14px 18px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.opt-saved-meta{font-size:12px;color:var(--ink-soft);margin-top:4px}
+.opt-saved-benefit{font-size:18px;font-weight:800;color:var(--green-dark);white-space:nowrap}
+.opt-saved-delete{background:none;border:none;color:var(--ink-soft);cursor:pointer;font-size:12px;opacity:.7;padding:4px 6px}
+.opt-saved-delete:hover{opacity:1;color:#c0392b}
+
+.opt-demo-note{background:var(--surface-soft);border:1px solid var(--line);border-radius:var(--radius-small);padding:12px 16px;font-size:13px;color:var(--ink-soft);margin:16px 0}
+
+@media(max-width:900px){.opt-position-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.opt-position-grid{grid-template-columns:1fr}.opt-slider-row{flex-direction:column;align-items:stretch}.opt-slider-row .input-prefix{width:100%}}
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Planning tool</p>
+        <h1>Tax opportunities</h1>
+        <p>Reserved uses your profile and current-year projections to flag threshold interactions worth exploring. These are factual planning prompts based on your information — not financial advice.</p>
+    </div>
+</section>
+
+{% if is_demo %}
+<div class="opt-demo-note">
+    These figures are based on the <strong>demo profile</strong>. <a href="{{ url_for('v2.settings_page') }}">Update your settings</a> to see your personalised estimates.
+</div>
+{% endif %}
+
+<!-- ── Current projected position ─────────────────────────────────────────── -->
+<div class="panel">
+    <p class="eyebrow">Your projected position — 2026/27</p>
+    <div class="opt-position-grid">
+        <div class="opt-metric">
+            <p class="opt-metric-label">Projected income</p>
+            <p class="opt-metric-value">£{{ "{:,.0f}".format(pos.projected_income | float) }}</p>
+            <p class="opt-metric-note">Employment + freelance estimate</p>
+        </div>
+        <div class="opt-metric">
+            <p class="opt-metric-label">Adjusted Net Income</p>
+            <p class="opt-metric-value">£{{ "{:,.0f}".format(pos.adjusted_net_income | float) }}</p>
+            <p class="opt-metric-note">After pension deduction</p>
+        </div>
+        <div class="opt-metric {{ 'warn' if pos.personal_allowance | float == 0 else ('highlight' if pos.personal_allowance | float < 12570 else '') }}">
+            <p class="opt-metric-label">Personal Allowance</p>
+            <p class="opt-metric-value">£{{ "{:,.0f}".format(pos.personal_allowance | float) }}</p>
+            <p class="opt-metric-note">{{ "Fully eliminated" if pos.personal_allowance | float == 0 else ("Reduced by taper" if pos.personal_allowance | float < 12570 else "Full allowance") }}</p>
+        </div>
+        <div class="opt-metric">
+            <p class="opt-metric-label">Estimated income tax</p>
+            <p class="opt-metric-value">£{{ "{:,.0f}".format(pos.estimated_income_tax | float) }}</p>
+            <p class="opt-metric-note">Based on profile figures</p>
+        </div>
+        {% if pos.hicbc | float > 0 %}
+        <div class="opt-metric warn">
+            <p class="opt-metric-label">HICBC estimate</p>
+            <p class="opt-metric-value">£{{ "{:,.2f}".format(pos.hicbc | float) }}</p>
+            <p class="opt-metric-note">High Income Child Benefit Charge</p>
+        </div>
+        {% else %}
+        <div class="opt-metric">
+            <p class="opt-metric-label">Pension contributions</p>
+            <p class="opt-metric-value">£{{ "{:,.0f}".format(pos.pension | float) }}</p>
+            <p class="opt-metric-note">Gross RaS for this tax year</p>
+        </div>
+        {% endif %}
+    </div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0">
+        This scenario model uses employment, sole-trade profit, gross RaS pension and Child Benefit facts supplied in your profile.
+        <a href="{{ url_for('v2.settings_page') }}">Update your settings</a> to change those inputs.
+        It excludes savings, dividends, property, tax already paid, student loans and pension allowance eligibility; figures are illustrative comparisons, not a complete annual position or recommendation.
+    </p>
+</div>
+
+<!-- ── Opportunities ──────────────────────────────────────────────────────── -->
+{% if opportunities %}
+    {% for opp in opportunities %}
+    <div class="panel opt-opp"
+         data-opp-id="{{ opp.id }}"
+         data-projected="{{ pos.projected_income | float }}"
+         data-current-pension="{{ pos.pension | float }}"
+         data-annual-cb="{{ pos.annual_cb | float }}">
+
+        <div class="opt-opp-status {{ opp.status }}">
+            {% if opp.status == 'available' %}⚡ Available{% elif opp.status == 'incomplete' %}ⓘ Needs more information{% else %}✕ Not applicable{% endif %}
+        </div>
+        <h2 style="margin:0 0 10px">{{ opp.title }}</h2>
+        <p class="opt-opp-trigger">{{ opp.trigger }}</p>
+
+        {% if opp.status == 'available' and opp.pension_to_clear_fully is not none %}
+        <div class="opt-hints">
+            <div class="opt-hint">
+                <span class="opt-hint-label">Modelled amount to remove this trigger</span>
+                <span class="opt-hint-val">£{{ "{:,.0f}".format(opp.pension_to_clear_fully | float) }}</span>
+                <span style="font-size:11px;color:var(--ink-soft)">Additional gross pension</span>
+            </div>
+            {% if opp.pension_to_clear_capped != opp.pension_to_clear_fully %}
+            <div class="opt-hint">
+                <span class="opt-hint-label">Scenario capped at standard AA</span>
+                <span class="opt-hint-val">£{{ "{:,.0f}".format(opp.pension_to_clear_capped | float) }}</span>
+                <span style="font-size:11px;color:var(--ink-soft)">Uses the standard £60k cap; available allowance is not established</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if opp.status == 'incomplete' %}
+        <div class="opt-missing">
+            {% for item in opp.missing_data %}
+            <p>{{ item }}</p>
+            {% endfor %}
+            <a href="{{ url_for('v2.settings_page') }}" class="button button-secondary" style="margin-top:8px;font-size:12px;display:inline-flex">Open settings</a>
+        </div>
+        {% endif %}
+
+        {% if opp.status == 'available' %}
+        <button type="button" class="button button-primary opt-explore-btn"
+                data-opp="{{ opp.id }}"
+                data-suggest="{{ opp.pension_to_clear_capped | float if opp.pension_to_clear_capped is not none else 0 }}">
+            Explore scenario
+        </button>
+
+        <!-- ── Scenario explorer (hidden until toggled) ─────────────────── -->
+        <div class="opt-explorer" id="explorer-{{ opp.id }}" hidden>
+            <p class="opt-explorer-title">Model a pension contribution</p>
+
+            <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:700">Additional gross pension contribution for 2026/27</label>
+            <div class="opt-slider-row">
+                <input type="range" id="slider-{{ opp.id }}"
+                       min="0" max="60000" step="500" value="0"
+                       aria-label="Additional pension amount">
+                <div class="input-prefix">
+                    <b>£</b>
+                    <input type="number"
+                           id="amount-{{ opp.id }}"
+                           min="0" max="60000" step="500" value="0"
+                           aria-label="Additional pension amount in pounds">
+                </div>
+            </div>
+            <p class="opt-slider-note">
+                Gross Relief-at-Source amount — the total added to your pension pot.
+                If you pay net, gross = net ÷ 0.80 (e.g. £8,000 paid → £10,000 gross).
+                Subject to your remaining Annual Allowance.
+            </p>
+            <button type="button"
+                    class="button button-primary opt-calculate-btn"
+                    data-opp="{{ opp.id }}">
+                Calculate
+            </button>
+            <span class="opt-calculating" id="calc-spin-{{ opp.id }}" hidden style="margin-left:10px;font-size:12px;color:var(--ink-soft)">Calculating…</span>
+
+            <!-- Results — shown after a successful calculate call -->
+            <div id="results-{{ opp.id }}" hidden>
+                <div class="opt-results" style="margin-top:20px">
+                    <table class="opt-results-table" aria-label="Before and after comparison">
+                        <thead>
+                            <tr>
+                                <th>Measure</th>
+                                <th>Current estimate</th>
+                                <th>Scenario estimate</th>
+                                <th>Difference</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="opt-row-label">Adjusted Net Income</td>
+                                <td id="r-before-ani-{{ opp.id }}">—</td>
+                                <td id="r-after-ani-{{ opp.id }}">—</td>
+                                <td id="r-diff-ani-{{ opp.id }}" class="diff">—</td>
+                            </tr>
+                            <tr>
+                                <td class="opt-row-label">Personal Allowance</td>
+                                <td id="r-before-pa-{{ opp.id }}">—</td>
+                                <td id="r-after-pa-{{ opp.id }}">—</td>
+                                <td id="r-diff-pa-{{ opp.id }}" class="diff">—</td>
+                            </tr>
+                            <tr>
+                                <td class="opt-row-label">Estimated income tax</td>
+                                <td id="r-before-it-{{ opp.id }}">—</td>
+                                <td id="r-after-it-{{ opp.id }}">—</td>
+                                <td id="r-diff-it-{{ opp.id }}" class="diff">—</td>
+                            </tr>
+                            <tr>
+                                <td class="opt-row-label">HICBC</td>
+                                <td id="r-before-hicbc-{{ opp.id }}">—</td>
+                                <td id="r-after-hicbc-{{ opp.id }}">—</td>
+                                <td id="r-diff-hicbc-{{ opp.id }}" class="diff">—</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="opt-benefit-box">
+                    <span class="opt-benefit-label">Estimated total benefit<br><span style="font-weight:400;font-size:11px">Income tax + HICBC savings combined</span></span>
+                    <span class="opt-benefit-value" id="r-total-benefit-{{ opp.id }}">£0.00</span>
+                </div>
+
+                <p class="opt-brl-note">
+                    <strong>Also:</strong> HMRC will add basic-rate relief of
+                    <strong id="r-brl-{{ opp.id }}">£0.00</strong>
+                    to your pension pot directly. This is the 20 % top-up added
+                    to the fund itself — it is <em>not</em> a cash saving from your
+                    bank account and is not included in the benefit figure above.
+                </p>
+
+                <details class="opt-caveats">
+                    <summary>Assumptions and what to confirm before acting</summary>
+                    <ul id="r-caveats-{{ opp.id }}">
+                        {% for item in opp.what_to_confirm %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                </details>
+
+                <div class="opt-actions">
+                    <button type="button" class="button button-secondary opt-save-btn"
+                            data-opp="{{ opp.id }}">
+                        Save this comparison
+                    </button>
+                    <span id="save-feedback-{{ opp.id }}" hidden style="font-size:12px;color:var(--green-dark);align-self:center">✓ Saved</span>
+                </div>
+            </div><!-- /results -->
+        </div><!-- /explorer -->
+        {% endif %}
+
+        {% if opp.constraints %}
+        <details class="opt-caveats" style="margin-top:14px">
+            <summary>Constraints and things to verify</summary>
+            <ul>
+                {% for item in opp.constraints %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </details>
+        {% endif %}
+
+    </div><!-- /opp panel -->
+    {% endfor %}
+
+{% else %}
+<div class="panel" style="text-align:center;padding:40px">
+    <p style="font-size:28px;margin:0 0 8px">✓</p>
+    <h2 style="margin:0 0 10px">No opportunities detected at this projected income</h2>
+    <p style="color:var(--ink-soft);max-width:480px;margin:0 auto">
+        Based on your current profile, your projected Adjusted Net Income is
+        below the tax-planning thresholds (£60,000 for HICBC; £100,000 for the
+        Personal Allowance taper). If your income increases during the year,
+        Reserved will flag the relevant opportunity automatically.
+    </p>
+    <a href="{{ url_for('v2.settings_page') }}" class="button button-secondary" style="margin-top:20px;display:inline-flex">Update profile</a>
+</div>
+{% endif %}
+
+<!-- ── Saved scenarios ────────────────────────────────────────────────────── -->
+{% if saved_scenarios %}
+<div class="panel opt-saved">
+    <p class="eyebrow">Saved comparisons</p>
+    <h2 style="margin:0 0 4px">Your saved scenarios</h2>
+    <p style="color:var(--ink-soft);font-size:13px;margin:0 0 16px">
+        Comparisons you have saved for reference. These do not update automatically — recalculate to see the latest figures.
+    </p>
+    <div class="opt-saved-list" id="saved-list">
+        {% for s in saved_scenarios %}
+        <div class="opt-saved-item" id="saved-{{ s.id }}">
+            <div>
+                <strong>{{ s.label or (s.opportunity ~ " scenario") }}</strong>
+                <p class="opt-saved-meta">
+                    {{ s.opportunity }} ·
+                    Extra pension: £{{ "{:,.0f}".format(s.inputs.get("additional_pension", 0) | float) }} ·
+                    Saved {{ s.saved_at[:10] }}
+                </p>
+                {% if s.outputs.get("total_benefit") %}
+                <p class="opt-saved-meta" style="margin-top:6px;font-weight:800;color:var(--green-dark)">
+                    Estimated benefit: £{{ s.outputs.total_benefit }}
+                </p>
+                {% endif %}
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:8px">
+                <button type="button" class="opt-saved-delete"
+                        data-id="{{ s.id }}"
+                        aria-label="Delete saved scenario">✕</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- ── Disclaimer ─────────────────────────────────────────────────────────── -->
+<div style="padding:24px 0 8px;font-size:12px;color:var(--ink-soft);line-height:1.7;border-top:1px solid var(--line);margin-top:24px">
+    <strong>Important:</strong>
+    If your circumstances changed in this way, Reserved estimates the figures shown.
+    These projections are illustrative only and are not financial advice.
+    They are based on England / Wales / Northern Ireland income-tax rules for 2026/27
+    and do not account for Scottish income tax, Gift Aid, or individual pension scheme rules.
+    Always verify your remaining Annual Allowance and any carry-forward entitlement
+    with your pension provider before making a contribution.
+    Consider seeking independent financial advice before acting on any projection shown here.
+</div>
+
+<script src="{{ url_for('static', filename='js/optimise.js') }}"></script>
+{% endblock %}

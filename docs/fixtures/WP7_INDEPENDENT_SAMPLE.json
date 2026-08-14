@@ -1,0 +1,28 @@
+{
+  "status": "independent_fixture_review_pending",
+  "tax_year": "2026/27",
+  "territory": "England, Wales and Northern Ireland",
+  "derived_on": "2026-08-13",
+  "prohibition": "No production or Reserved West calculator was used to derive these fixed expected results.",
+  "sources": [
+    "https://www.gov.uk/government/publications/rates-and-allowances-income-tax/income-tax-rates-and-allowances-current-and-past",
+    "https://www.gov.uk/self-employed-national-insurance-rates",
+    "https://www.gov.uk/government/publications/employer-bulletin-december-2025/december-2025-issue-of-the-employer-bulletin",
+    "https://www.gov.uk/government/publications/agent-update-issue-140/issue-140-of-agent-update",
+    "https://www.gov.uk/child-benefit/what-youll-get"
+  ],
+  "fixtures": [
+    {"id": "WP7-IT-001", "facts": "non-savings income 99999; no pension", "expected": {"income_tax": "27431.60"}, "derivation": "taxable 87429; 37700 at 20%; 49729 at 40%"},
+    {"id": "WP7-IT-002", "facts": "non-savings income 100000; no pension", "expected": {"income_tax": "27432.00"}, "derivation": "taxable 87430; 37700 at 20%; 49730 at 40%"},
+    {"id": "WP7-IT-003", "facts": "non-savings income 100001; no pension", "expected": {"personal_allowance": "12569.50", "income_tax": "27432.60"}, "derivation": "taxable 87431.50; 37700 at 20%; 49731.50 at 40%"},
+    {"id": "WP7-IT-004", "facts": "non-savings income 110000; no pension", "expected": {"personal_allowance": "7570.00", "income_tax": "33432.00"}, "derivation": "taxable 102430; 37700 at 20%; 64730 at 40%"},
+    {"id": "WP7-IT-005", "facts": "non-savings income 125140; no pension", "expected": {"personal_allowance": "0.00", "income_tax": "42516.00"}, "derivation": "taxable 125140; 37700 at 20%; 87440 at 40%"},
+    {"id": "WP7-PEN-001", "facts": "non-savings income 110000; gross RaS pension 10000", "expected": {"adjusted_net_income": "100000.00", "personal_allowance": "12570.00", "income_tax": "29432.00", "reduction_from_no_pension": "4000.00"}, "derivation": "taxable 97430; extended basic band 47700 at 20%; 49730 at 40%"},
+    {"id": "WP7-NI-001", "facts": "sole-trade profit 60000", "expected": {"class_4_ni": "2456.60"}, "derivation": "37700 at 6%; 9730 at 2%"},
+    {"id": "WP7-SL-001", "facts": "income 40000; Plan 1 and Plan 2", "expected": {"student_loan": "1179.00"}, "derivation": "one undergraduate calculation: 13100 above lowest threshold 26900 at 9%"},
+    {"id": "WP7-SL-002", "facts": "income 40000; Plan 1, Plan 2 and postgraduate", "expected": {"student_loan": "2319.00"}, "derivation": "1179 undergraduate plus 19000 above 21000 at 6% = 1140"},
+    {"id": "WP7-HICBC-001", "facts": "ANI 70000; one child; full 2026/27 year", "expected": {"annual_child_benefit": "1406.60", "hicbc": "703.00"}, "derivation": "27.05 times 52; 50% at 10000 above 60000 gives 703.30; ITEPA 2003 s681C(3) rounds the charge down to 703 whole pounds"},
+    {"id": "WP7-SAV-001", "facts": "non-savings 30000; savings 10000", "expected": {"income_tax": "5286.00"}, "derivation": "non-savings tax 3486; no starting-rate band remains; 1000 PSA then 9000 at 20%"},
+    {"id": "WP7-DIV-001", "facts": "non-savings 45000; dividends 5000", "expected": {"income_tax": "6969.75"}, "derivation": "salary tax 6486; 500 dividend allowance then 4500 at 10.75%"}
+  ]
+}

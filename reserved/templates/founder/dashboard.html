@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <title>Founder dashboard — Reserved</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f4f5f7;
+            color: #0e1c3a;
+            min-height: 100vh;
+        }
+
+        /* ── Top bar ── */
+        .topbar {
+            background: #0e1c3a;
+            color: #fff;
+            padding: 0 24px;
+            height: 52px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .topbar-brand { display: flex; align-items: center; gap: 10px; }
+        .brand-mark {
+            width: 28px; height: 28px;
+            background: linear-gradient(145deg, #315fae, #6b9fff);
+            border-radius: 7px;
+            display: grid; place-items: center;
+            font-weight: 900; font-size: 13px; color: #fff;
+        }
+        .topbar-title { font-weight: 750; font-size: 14px; }
+        .topbar-sub { font-size: 11px; color: #94a3b8; margin-left: 6px; }
+        .logout-form { margin: 0; }
+        .logout-btn {
+            background: rgba(255,255,255,.1);
+            color: #e2e8f0;
+            border: 1px solid rgba(255,255,255,.15);
+            border-radius: 7px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .15s;
+        }
+        .logout-btn:hover { background: rgba(255,255,255,.18); }
+
+        /* ── Layout ── */
+        .page { max-width: 1100px; margin: 0 auto; padding: 28px 24px 60px; }
+
+        /* ── Stat cards ── */
+        .stats-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 32px; }
+        .stat-card {
+            background: #fff;
+            border: 1px solid #e2e4e9;
+            border-radius: 14px;
+            padding: 20px 20px 16px;
+        }
+        .stat-label { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+        .stat-value { font-size: 32px; font-weight: 850; color: #0e1c3a; line-height: 1; }
+        .stat-value.score { font-size: 28px; }
+        .stat-sub { margin-top: 4px; font-size: 11px; color: #6b7280; }
+
+        /* ── Section headers ── */
+        .section { margin-bottom: 32px; }
+        .section-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            margin-bottom: 14px;
+            gap: 12px;
+        }
+        .section-title { font-size: 15px; font-weight: 800; }
+        .export-link {
+            font-size: 12px;
+            color: #315fae;
+            text-decoration: none;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .export-link:hover { text-decoration: underline; }
+
+        /* ── Tables ── */
+        .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid #e2e4e9; }
+        table { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; }
+        thead th {
+            text-align: left;
+            padding: 11px 14px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            border-bottom: 1px solid #e2e4e9;
+            white-space: nowrap;
+            background: #f9fafb;
+        }
+        tbody td {
+            padding: 11px 14px;
+            border-bottom: 1px solid #f0f1f3;
+            vertical-align: top;
+            max-width: 320px;
+        }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr:hover td { background: #f9fafb; }
+        .cell-muted { color: #6b7280; }
+        .cell-comment { color: #374151; line-height: 1.45; }
+        .score-chip {
+            display: inline-grid;
+            place-items: center;
+            width: 26px; height: 26px;
+            border-radius: 7px;
+            font-weight: 800;
+            font-size: 13px;
+        }
+        .score-chip.high { background: #d1fae5; color: #065f46; }
+        .score-chip.mid  { background: #fef3c7; color: #92400e; }
+        .score-chip.low  { background: #fee2e2; color: #991b1b; }
+        .score-chip.none { background: #f1f5f9; color: #94a3b8; }
+
+        /* ── Would-use bar ── */
+        .would-row { display: flex; gap: 10px; flex-wrap: wrap; }
+        .would-chip {
+            padding: 6px 14px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            background: #f1f5f9;
+            color: #374151;
+        }
+        .would-chip strong { margin-left: 6px; color: #0e1c3a; }
+
+        /* ── Empty state ── */
+        .empty { padding: 32px; text-align: center; color: #9ca3af; font-size: 13px; background: #fff; border-radius: 12px; border: 1px solid #e2e4e9; }
+
+        /* ── Working style pills ── */
+        .ws-list { display: flex; gap: 8px; flex-wrap: wrap; }
+        .ws-chip { padding: 5px 12px; border-radius: 999px; background: #eff6ff; color: #1e40af; font-size: 11px; font-weight: 700; }
+
+        @media (max-width: 640px) {
+            .page { padding: 20px 16px 48px; }
+            .stats-row { grid-template-columns: 1fr 1fr; }
+            .topbar-sub { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<nav class="topbar">
+    <div class="topbar-brand">
+        <div class="brand-mark">R</div>
+        <span class="topbar-title">Reserved</span>
+        <span class="topbar-sub">Founder dashboard</span>
+    </div>
+    <form class="logout-form" method="post" action="{{ url_for('founder.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="logout-btn" type="submit">Sign out</button>
+    </form>
+</nav>
+
+<div class="page">
+
+    <!-- ── Headline stats ──────────────────────────────────────────────── -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-label">Early access</div>
+            <div class="stat-value">{{ ea_stats.total }}</div>
+            <div class="stat-sub">registrations</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Feedback forms</div>
+            <div class="stat-value">{{ feedback_stats.total }}</div>
+            <div class="stat-sub">submissions</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Avg: intuitive</div>
+            <div class="stat-value score">{{ feedback_stats.avg_intuitive or '—' }}</div>
+            <div class="stat-sub">out of 5</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Avg: useful</div>
+            <div class="stat-value score">{{ feedback_stats.avg_useful or '—' }}</div>
+            <div class="stat-sub">out of 5</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Avg: confident</div>
+            <div class="stat-value score">{{ feedback_stats.avg_trustworthy or '—' }}</div>
+            <div class="stat-sub">out of 5</div>
+        </div>
+    </div>
+
+    {% if feedback_stats.would_use %}
+    <div class="section">
+        <div class="section-head"><span class="section-title">Would use Reserved</span></div>
+        <div class="would-row">
+            {% for item in feedback_stats.would_use %}
+            <div class="would-chip">{{ item.would_use | capitalize }}<strong>{{ item.n }}</strong></div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if ea_stats.working_styles %}
+    <div class="section">
+        <div class="section-head"><span class="section-title">Early access — working styles</span></div>
+        <div class="ws-list">
+            {% for item in ea_stats.working_styles %}
+            <div class="ws-chip">{{ item.working_style | replace('_', ' ') | title }} &nbsp;{{ item.n }}</div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ── Early access registrations ────────────────────────────────── -->
+    <div class="section">
+        <div class="section-head">
+            <span class="section-title">Early access registrations</span>
+            <a class="export-link" href="{{ url_for('founder.export_early_access') }}">↓ Export CSV</a>
+        </div>
+        {% if recent_ea %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Occupation</th>
+                        <th>Working style</th>
+                        <th>Comments</th>
+                        <th>Submitted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in recent_ea %}
+                    <tr>
+                        <td>{{ row.name }}</td>
+                        <td class="cell-muted">{{ row.email }}</td>
+                        <td class="cell-muted">{{ row.occupation or '—' }}</td>
+                        <td class="cell-muted">{{ (row.working_style or '—') | replace('_', ' ') | title }}</td>
+                        <td class="cell-comment">{{ row.comments or '—' }}</td>
+                        <td class="cell-muted" style="white-space:nowrap">{{ row.submitted_at[:16] | replace('T', ' ') }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty">No registrations yet.</div>
+        {% endif %}
+    </div>
+
+    <!-- ── Feedback comments ──────────────────────────────────────────── -->
+    <div class="section">
+        <div class="section-head">
+            <span class="section-title">Feedback — comments</span>
+        </div>
+        {% if fb_with_comments %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Comment</th>
+                        <th>Int</th>
+                        <th>Use</th>
+                        <th>Conf</th>
+                        <th>Would use</th>
+                        <th>Submitted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in fb_with_comments %}
+                    <tr>
+                        <td class="cell-comment">{{ row.comments }}</td>
+                        <td>{% set s = row.intuitive %}
+                            <span class="score-chip {{ 'high' if s and s >= 4 else ('mid' if s and s == 3 else ('low' if s else 'none')) }}">{{ s or '—' }}</span>
+                        </td>
+                        <td>{% set s = row.useful %}
+                            <span class="score-chip {{ 'high' if s and s >= 4 else ('mid' if s and s == 3 else ('low' if s else 'none')) }}">{{ s or '—' }}</span>
+                        </td>
+                        <td>{% set s = row.trustworthy %}
+                            <span class="score-chip {{ 'high' if s and s >= 4 else ('mid' if s and s == 3 else ('low' if s else 'none')) }}">{{ s or '—' }}</span>
+                        </td>
+                        <td class="cell-muted">{{ (row.would_use or '—') | capitalize }}</td>
+                        <td class="cell-muted" style="white-space:nowrap">{{ row.submitted_at[:16] | replace('T', ' ') }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty">No comments yet.</div>
+        {% endif %}
+    </div>
+
+    <!-- ── All feedback scores ────────────────────────────────────────── -->
+    <div class="section">
+        <div class="section-head">
+            <span class="section-title">All feedback submissions</span>
+            <a class="export-link" href="{{ url_for('founder.export_feedback') }}">↓ Export CSV</a>
+        </div>
+        {% if recent_feedback %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Intuitive</th>
+                        <th>Useful</th>
+                        <th>Confident</th>
+                        <th>Area</th>
+                        <th>Would use</th>
+                        <th>Comment</th>
+                        <th>Submitted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in recent_feedback %}
+                    <tr>
+                        <td>{% set s = row.intuitive %}
+                            <span class="score-chip {{ 'high' if s and s >= 4 else ('mid' if s and s == 3 else ('low' if s else 'none')) }}">{{ s or '—' }}</span>
+                        </td>
+                        <td>{% set s = row.useful %}
+                            <span class="score-chip {{ 'high' if s and s >= 4 else ('mid' if s and s == 3 else ('low' if s else 'none')) }}">{{ s or '—' }}</span>
+                        </td>
+                        <td>{% set s = row.trustworthy %}
+                            <span class="score-chip {{ 'high' if s and s >= 4 else ('mid' if s and s == 3 else ('low' if s else 'none')) }}">{{ s or '—' }}</span>
+                        </td>
+                        <td class="cell-muted">{{ (row.area or '—') | replace('_', ' ') | title }}</td>
+                        <td class="cell-muted">{{ (row.would_use or '—') | capitalize }}</td>
+                        <td class="cell-comment">{{ row.comments or '—' }}</td>
+                        <td class="cell-muted" style="white-space:nowrap">{{ row.submitted_at[:16] | replace('T', ' ') }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty">No feedback yet.</div>
+        {% endif %}
+    </div>
+
+</div>
+</body>
+</html>

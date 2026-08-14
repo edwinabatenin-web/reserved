@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Invoices — Reserved™{% endblock %}
+{% block extra_head %}
+<meta name="robots" content="noindex, nofollow">
+<style>
+.invoice-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:24px 0}
+.invoice-summary .panel{padding:20px}
+.invoice-summary-label{color:var(--ink-soft);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.invoice-summary-value{margin-top:6px;font-size:30px;font-weight:850;letter-spacing:-.03em}
+.invoice-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius-small);background:var(--surface);box-shadow:var(--shadow)}
+.invoice-table{width:100%;min-width:980px;border-collapse:collapse}
+.invoice-table th,.invoice-table td{padding:14px 16px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.invoice-table th{background:var(--surface-soft);color:var(--ink-soft);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.invoice-table tr:last-child td{border-bottom:0}
+.invoice-table tr:hover td{background:var(--surface-soft)}
+.invoice-ref{font-weight:800}.invoice-client,.invoice-note{margin-top:3px;color:var(--ink-soft);font-size:12px}
+.invoice-amount{white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;font-weight:750}
+.invoice-status{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font-size:11px;font-weight:800}
+.invoice-status.matched{background:var(--mint);color:var(--green-dark)}
+.invoice-status.outstanding{background:var(--surface-soft);color:var(--ink-soft)}
+.invoice-status.review{background:var(--blue-soft);color:var(--blue)}
+.invoice-action{white-space:nowrap}.invoice-action .button{min-height:36px;padding:0 14px;font-size:12px}
+@media(max-width:800px){.invoice-summary{grid-template-columns:1fr 1fr}}
+</style>
+{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Invoices</p>
+        <h1>Match incoming payments to the invoices they relate to.</h1>
+        <p>Reserved uses invoice and transaction details to suggest matches, highlight outstanding payments and show where your confirmation is needed.</p>
+    </div>
+    <span class="pill">Demo data</span>
+</section>
+
+{% if not has_data %}
+<section class="panel empty-state">
+    <div class="empty-icon">↗</div>
+    <h2>No invoices loaded yet.</h2>
+    <p>Load the fictional demo invoices to see how Reserved handles matched, outstanding and review scenarios.</p>
+    <form method="post" action="{{ url_for('v2.invoices_seed') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="button button-primary">Load demo invoices</button>
+    </form>
+</section>
+{% else %}
+<div class="invoice-summary">
+    <article class="panel"><div class="invoice-summary-label">Matched</div><div class="invoice-summary-value">{{ inv_matched }}</div></article>
+    <article class="panel"><div class="invoice-summary-label">Outstanding</div><div class="invoice-summary-value">{{ inv_outstanding }}</div></article>
+    <article class="panel"><div class="invoice-summary-label">Needs review</div><div class="invoice-summary-value">{{ inv_review }}</div></article>
+    <article class="panel"><div class="invoice-summary-label">Total invoices</div><div class="invoice-summary-value">{{ invoices|length }}</div></article>
+</div>
+
+<div class="invoice-table-wrap">
+<table class="invoice-table" aria-label="Invoice matching results">
+<thead><tr><th>Invoice</th><th style="text-align:right">Amount due</th><th>Status</th><th style="text-align:right">Matched amount</th><th>Why</th><th>Action</th></tr></thead>
+<tbody>
+{% for inv in invoices %}
+{% set ms=inv.match_status or 'unmatched' %}{% set method=inv.method or '' %}{% set rs=inv.review_state or 'pending_review' %}
+{% if ms=='matched' and rs=='confirmed' %}{% set display_status='matched' %}{% elif ms=='unmatched' %}{% set display_status='outstanding' %}{% else %}{% set display_status='review' %}{% endif %}
+<tr>
+<td><div class="invoice-ref">{{ inv.reference }}</div><div class="invoice-client">{{ inv.client_name }}</div></td>
+<td class="invoice-amount">{{ inv.currency or 'GBP' }} {{ "%.2f"|format(inv.amount_due|float) }}</td>
+<td>{% if display_status=='matched' %}<span class="invoice-status matched">✓ Matched</span>{% elif display_status=='outstanding' %}<span class="invoice-status outstanding">Outstanding</span>{% else %}<span class="invoice-status review">Needs review</span>{% endif %}</td>
+<td class="invoice-amount">{% if inv.matched_amount %}{{ inv.currency or 'GBP' }} {{ "%.2f"|format(inv.matched_amount|float) }}{% else %}<span class="invoice-note">—</span>{% endif %}</td>
+<td>
+{% if inv.explanation %}<div class="invoice-note">{{ inv.explanation }}</div>
+{% elif method=='currency_missing' %}<div class="invoice-note">Currency information is missing.</div>
+{% elif ms=='unmatched' %}<div class="invoice-note">No matching incoming payment has been found yet.</div>
+{% elif ms=='likely_match' %}<div class="invoice-note">A likely payment was found, but Reserved needs your confirmation.</div>
+{% elif ms=='partial_payment' %}<div class="invoice-note">Only part of the invoice value appears to have been paid.</div>
+{% elif ms=='multiple_payments' %}<div class="invoice-note">More than one payment may relate to this invoice.</div>
+{% elif ms=='overpaid' %}<div class="invoice-note">The matched payment is higher than the invoice value.</div>
+{% elif ms=='underpaid' %}<div class="invoice-note">The matched payment is lower than the invoice value.</div>
+{% else %}<div class="invoice-note">Reserved needs a little more information before confirming this match.</div>{% endif %}
+</td>
+<td class="invoice-action">
+{% if display_status=='matched' %}<span class="invoice-note">No action needed</span>
+{% elif display_status=='outstanding' %}<button class="button button-secondary" type="button" disabled>Mark as unpaid</button>
+{% elif ms=='multiple_payments' %}<button class="button button-secondary" type="button" disabled>Choose payment</button>
+{% elif method=='currency_missing' %}<button class="button button-secondary" type="button" disabled>Add details</button>
+{% else %}<button class="button button-secondary" type="button" disabled>Review match</button>{% endif %}
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

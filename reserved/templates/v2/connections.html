@@ -1,0 +1,523 @@
+{% extends "base.html" %}
+{% block title %}Connections — Reserved™ V2 Preview{% endblock %}
+
+{% block extra_head %}
+<script defer src="{{ url_for('static', filename='js/v2.js') }}"></script>
+<meta name="robots" content="noindex, nofollow">
+{% endblock %}
+
+{% block content %}
+
+{# ── Internal demo state controls ────────────────────────────────────────── #}
+<div class="v2-controls" role="region" aria-label="Internal demo controls">
+    <span class="v2-controls-label">
+        <span class="v2-controls-icon">⚙</span>
+        Demo controls — internal only
+    </span>
+    <div class="v2-state-pills" role="group" aria-label="Connection state selector">
+        {% set states = [
+            ('empty',           'Pre-connection'),
+            ('connecting',      'Redirecting…'),
+            ('returning',       'Return from bank'),
+            ('connected',       'Connected'),
+            ('multi',           'Multi-account'),
+            ('expiring',        'Consent expiring'),
+            ('reconnect',       'Reconnect needed'),
+            ('wrong-account',   'Wrong / duplicate'),
+            ('error',           'Connection error'),
+            ('unavailable',     'Bank unavailable'),
+            ('disconnected',    'Disconnected'),
+        ] %}
+        {% for key, label in states %}
+        <button
+            class="v2-state-btn {% if state == key %}active{% endif %}"
+            data-state="{{ key }}"
+            type="button">{{ label }}</button>
+        {% endfor %}
+    </div>
+</div>
+
+{# ── Page heading ─────────────────────────────────────────────────────────── #}
+<section class="page-heading v2-page-heading">
+    <div>
+        <p class="eyebrow">Connections</p>
+        <h1>Connect your bank account.</h1>
+        <p>
+            Reserved uses read-only access to identify payments that may be
+            taxable income — so your reserve estimate reflects what's actually
+            landing, not just what you've told it.
+        </p>
+    </div>
+</section>
+
+{# ── Trust strip ──────────────────────────────────────────────────────────── #}
+<div class="v2-trust-strip">
+    <div class="v2-trust-item v2-trust-item--primary">
+        <span class="v2-trust-icon">🔒</span>
+        <div>
+            <strong>Protected connection</strong>
+            <span>Your bank credentials are never shared with Reserved.</span>
+        </div>
+    </div>
+    <div class="v2-trust-item">
+        <span class="v2-trust-icon">👁</span>
+        <div>
+            <strong>Read-only access</strong>
+            <span>We can see transactions. We cannot move money.</span>
+        </div>
+    </div>
+    <div class="v2-trust-item">
+        <span class="v2-trust-icon">🔐</span>
+        <div>
+            <strong>Bank-level encryption</strong>
+            <span>Data is encrypted in transit and at rest.</span>
+        </div>
+    </div>
+    <div class="v2-trust-item">
+        <span class="v2-trust-icon">✕</span>
+        <div>
+            <strong>Revoke anytime</strong>
+            <span>Disconnect in seconds. Your data is deleted immediately.</span>
+        </div>
+    </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════════
+   STATE PANELS
+   ══════════════════════════════════════════════════════════════════════════ #}
+
+{# ── empty: pre-connection ────────────────────────────────────────────────── #}
+<div class="v2-state-panel panel v2-panel-featured" id="v2-state-empty"
+     {% if state != 'empty' %}hidden{% endif %}>
+    <div class="v2-connect-hero">
+        <div class="v2-connect-icon" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="5" width="20" height="14" rx="3"/>
+                <path d="M2 10h20"/><path d="M6 15h2M10 15h4"/>
+            </svg>
+        </div>
+
+        <p class="v2-up-next-label">Up next</p>
+        <h2>Connect a bank account</h2>
+        <p class="v2-connect-sub">
+            You'll be redirected to your bank to securely connect
+            your accounts to Reserved.
+        </p>
+
+        <button class="button button-primary v2-connect-btn"
+                type="button" data-v2-action="start-connect">
+            Connect a bank account
+        </button>
+
+        <div class="v2-protection-badge" aria-label="Protected connection">
+            <span class="v2-protection-icon">🔒</span>
+            <span>Protected connection — your bank credentials are never shared with Reserved</span>
+        </div>
+    </div>
+</div>
+
+{# ── connecting: redirect in progress ─────────────────────────────────────── #}
+<div class="v2-state-panel panel" id="v2-state-connecting"
+     {% if state != 'connecting' %}hidden{% endif %}>
+    <div class="v2-connect-hero">
+        <div class="v2-connecting-spinner" aria-label="Redirecting" role="status">
+            <svg class="v2-spinner-ring" viewBox="0 0 44 44" aria-hidden="true">
+                <circle cx="22" cy="22" r="18" fill="none" stroke-width="3"/>
+            </svg>
+        </div>
+
+        <p class="v2-up-next-label">Up next</p>
+        <h2>Redirecting to your bank…</h2>
+        <p class="v2-connect-sub">
+            You'll be redirected to your bank to securely connect
+            your accounts to Reserved.
+        </p>
+
+        <div class="v2-protection-badge" aria-label="Protected connection">
+            <span class="v2-protection-icon">🔒</span>
+            <span>Protected connection — your bank credentials are never shared with Reserved</span>
+        </div>
+
+        <button class="button button-secondary v2-cancel-link"
+                type="button" data-v2-action="cancel-connect">
+            Cancel
+        </button>
+    </div>
+</div>
+
+{# ── returning: back from bank, processing auth ────────────────────────────── #}
+<div class="v2-state-panel panel" id="v2-state-returning"
+     {% if state != 'returning' %}hidden{% endif %}>
+    <div class="v2-connect-hero">
+        <div class="v2-connecting-spinner" aria-label="Processing" role="status">
+            <svg class="v2-spinner-ring" viewBox="0 0 44 44" aria-hidden="true">
+                <circle cx="22" cy="22" r="18" fill="none" stroke-width="3"/>
+            </svg>
+        </div>
+        <h2>Completing connection…</h2>
+        <p class="v2-connect-sub">
+            We're securely confirming your authorisation.
+            This usually takes a moment.
+        </p>
+        <p class="v2-connect-note">Do not close or refresh this page.</p>
+    </div>
+</div>
+
+{# ── connected: one account connected ─────────────────────────────────────── #}
+<div class="v2-state-panel" id="v2-state-connected"
+     {% if state != 'connected' %}hidden{% endif %}>
+
+    <div class="v2-success-flash panel" role="status">
+        <span class="v2-success-icon" aria-hidden="true">✓</span>
+        <div>
+            <strong>Monzo connected successfully</strong>
+            <p>Reserved is reading your transaction history. Your reserve estimate will update shortly.</p>
+        </div>
+    </div>
+
+    <div class="v2-accounts-section">
+        <div class="v2-section-head">
+            <h2>Connected accounts</h2>
+            <button class="button button-secondary v2-btn-sm"
+                    type="button" data-v2-action="add-account">+ Add another bank</button>
+        </div>
+
+        <div class="v2-account-card panel">
+            <div class="v2-bank-badge" style="background:#FF3464;color:#fff;" aria-hidden="true">M</div>
+            <div class="v2-account-info">
+                <strong>Monzo</strong>
+                <span class="v2-account-meta">Personal account · ••••7821</span>
+            </div>
+            <div class="v2-account-health">
+                <span class="v2-health-dot v2-health-ok" title="Connected and healthy"></span>
+                <div class="v2-account-sync">
+                    <strong>Synced just now</strong>
+                    <span>Connection healthy</span>
+                </div>
+            </div>
+            <button class="icon-button v2-account-menu-btn"
+                    type="button" aria-label="Account options" data-v2-menu="monzo-c">⋯</button>
+            <div class="v2-account-menu" id="v2-menu-monzo-c" hidden>
+                <button type="button" data-v2-action="refresh-sync">Refresh now</button>
+                <button type="button" class="v2-menu-danger" data-v2-action="disconnect">Remove Monzo</button>
+            </div>
+        </div>
+
+        <details class="v2-what-we-see panel">
+            <summary>What Reserved can see from this account</summary>
+            <ul class="v2-see-list">
+                <li>Incoming payment amounts and dates</li>
+                <li>Transaction descriptions (to identify likely income)</li>
+                <li>Current account balance</li>
+            </ul>
+            <p class="v2-see-note">
+                Reserved does not read outgoing transactions, direct debits,
+                standing orders, or any payment details beyond what's listed above.
+                Your bank credentials are never shared with Reserved.
+            </p>
+        </details>
+    </div>
+</div>
+
+{# ── multi: multiple accounts connected ───────────────────────────────────── #}
+<div class="v2-state-panel" id="v2-state-multi"
+     {% if state != 'multi' %}hidden{% endif %}>
+    <div class="v2-accounts-section">
+        <div class="v2-section-head">
+            <h2>Connected accounts</h2>
+            <button class="button button-secondary v2-btn-sm"
+                    type="button" data-v2-action="add-account">+ Add another bank</button>
+        </div>
+
+        <div class="v2-account-card panel">
+            <div class="v2-bank-badge" style="background:#FF3464;color:#fff;" aria-hidden="true">M</div>
+            <div class="v2-account-info">
+                <strong>Monzo</strong>
+                <span class="v2-account-meta">Personal account · ••••7821</span>
+            </div>
+            <div class="v2-account-health">
+                <span class="v2-health-dot v2-health-ok"></span>
+                <div class="v2-account-sync">
+                    <strong>Synced 4 min ago</strong>
+                    <span>Connection healthy</span>
+                </div>
+            </div>
+            <button class="icon-button v2-account-menu-btn"
+                    type="button" aria-label="Account options" data-v2-menu="monzo-m">⋯</button>
+            <div class="v2-account-menu" id="v2-menu-monzo-m" hidden>
+                <button type="button" data-v2-action="refresh-sync">Refresh now</button>
+                <button type="button" class="v2-menu-danger" data-v2-action="disconnect">Remove Monzo</button>
+            </div>
+        </div>
+
+        <div class="v2-account-card panel">
+            <div class="v2-bank-badge" style="background:#00395D;color:#fff;" aria-hidden="true">B</div>
+            <div class="v2-account-info">
+                <strong>Barclays</strong>
+                <span class="v2-account-meta">Current account · ••••3044</span>
+            </div>
+            <div class="v2-account-health">
+                <span class="v2-health-dot v2-health-ok"></span>
+                <div class="v2-account-sync">
+                    <strong>Synced 1 hr ago</strong>
+                    <span>Connection healthy</span>
+                </div>
+            </div>
+            <button class="icon-button v2-account-menu-btn"
+                    type="button" aria-label="Account options" data-v2-menu="barclays-m">⋯</button>
+            <div class="v2-account-menu" id="v2-menu-barclays-m" hidden>
+                <button type="button" data-v2-action="refresh-sync">Refresh now</button>
+                <button type="button" class="v2-menu-danger" data-v2-action="disconnect">Remove Barclays</button>
+            </div>
+        </div>
+
+        <div class="v2-health-summary panel">
+            <span class="v2-health-dot v2-health-ok"></span>
+            <div>
+                <strong>All connections healthy</strong>
+                <span>2 accounts · last synced 1 hr ago</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── expiring: consent expiring soon ──────────────────────────────────────── #}
+<div class="v2-state-panel" id="v2-state-expiring"
+     {% if state != 'expiring' %}hidden{% endif %}>
+    <div class="v2-accounts-section">
+        <div class="v2-section-head"><h2>Connected accounts</h2></div>
+
+        <div class="v2-expiry-banner" role="alert">
+            <span class="v2-expiry-icon" aria-hidden="true">⚠</span>
+            <div>
+                <strong>Consent expires in 3 days</strong>
+                <p>Your authorisation for Monzo expires on 8 August 2026.
+                   After that, Reserved won't be able to read new transactions.
+                   Renewing takes about 30 seconds.</p>
+            </div>
+            <button class="button button-primary v2-btn-sm"
+                    type="button" data-v2-action="renew">Renew access</button>
+        </div>
+
+        <div class="v2-account-card panel v2-account-expiring">
+            <div class="v2-bank-badge" style="background:#FF3464;color:#fff;" aria-hidden="true">M</div>
+            <div class="v2-account-info">
+                <strong>Monzo</strong>
+                <span class="v2-account-meta">Personal account · ••••7821</span>
+            </div>
+            <div class="v2-account-health">
+                <span class="v2-health-dot v2-health-amber"></span>
+                <div class="v2-account-sync">
+                    <strong>Expires 8 Aug 2026</strong>
+                    <span class="v2-sync-warn">Renewal needed</span>
+                </div>
+            </div>
+            <button class="icon-button v2-account-menu-btn"
+                    type="button" aria-label="Account options" data-v2-menu="monzo-e">⋯</button>
+            <div class="v2-account-menu" id="v2-menu-monzo-e" hidden>
+                <button type="button" data-v2-action="renew">Renew consent</button>
+                <button type="button" class="v2-menu-danger" data-v2-action="disconnect">Remove Monzo</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── reconnect: consent has lapsed, needs fresh authorisation ─────────────── #}
+<div class="v2-state-panel panel v2-panel-warn" id="v2-state-reconnect"
+     {% if state != 'reconnect' %}hidden{% endif %}>
+    <div class="v2-reconnect-card">
+        <div class="v2-reconnect-icon" aria-hidden="true">⟳</div>
+        <h2>Reconnect Monzo</h2>
+        <p class="v2-connect-sub">
+            Your authorisation for Monzo has expired. Reserved can no longer
+            read new transactions until you reconnect. This happens automatically
+            every 90 days as required by your bank.
+        </p>
+        <div class="v2-reconnect-detail">
+            <div class="v2-bank-badge v2-bank-badge-sm" style="background:#FF3464;color:#fff;" aria-hidden="true">M</div>
+            <div>
+                <strong>Monzo · Personal account · ••••7821</strong>
+                <span class="v2-sync-warn">Last synced 12 Aug 2026</span>
+            </div>
+        </div>
+        <div class="v2-error-actions">
+            <button class="button button-primary" type="button" data-v2-action="renew">
+                Reconnect Monzo
+            </button>
+            <button class="button button-secondary" type="button" data-v2-action="disconnect">
+                Remove instead
+            </button>
+        </div>
+        <div class="v2-protection-badge v2-protection-badge--inline" aria-label="Protected connection">
+            <span class="v2-protection-icon">🔒</span>
+            <span>Protected connection — your bank credentials are never shared with Reserved</span>
+        </div>
+    </div>
+</div>
+
+{# ── wrong-account: duplicate or unexpected account ────────────────────────── #}
+<div class="v2-state-panel panel" id="v2-state-wrong-account"
+     {% if state != 'wrong-account' %}hidden{% endif %}>
+    <div class="v2-error-card">
+        <div class="v2-error-icon v2-error-icon--amber" aria-hidden="true">!</div>
+        <h2>We couldn't add this account</h2>
+        <p class="v2-connect-sub">
+            The account you selected doesn't match what we expected,
+            or it's already connected to Reserved.
+        </p>
+        <div class="v2-error-reasons">
+            <p class="v2-error-reasons-head">This can happen when:</p>
+            <ul>
+                <li>You selected a joint account instead of your sole-trader account</li>
+                <li>This bank account is already connected</li>
+                <li>You authorised a different account than the one shown</li>
+            </ul>
+        </div>
+        <div class="v2-error-actions">
+            <button class="button button-primary" type="button" data-v2-action="retry">
+                Try again with a different account
+            </button>
+            <button class="button button-secondary" type="button" data-v2-action="go-home">
+                Back to Overview
+            </button>
+        </div>
+    </div>
+</div>
+
+{# ── error: connection failed ──────────────────────────────────────────────── #}
+<div class="v2-state-panel panel" id="v2-state-error"
+     {% if state != 'error' %}hidden{% endif %}>
+    <div class="v2-error-card">
+        <div class="v2-error-icon" aria-hidden="true">✕</div>
+        <h2>We couldn't connect to Monzo</h2>
+        <p class="v2-connect-sub">
+            The connection was interrupted before it could complete.
+            This can happen if the authorisation window was closed or
+            if there was a brief service disruption.
+        </p>
+        <div class="v2-error-reasons">
+            <p class="v2-error-reasons-head">Common reasons:</p>
+            <ul>
+                <li>The browser tab was closed during authorisation</li>
+                <li>You declined access on your bank's page</li>
+                <li>A temporary issue with your bank's service</li>
+            </ul>
+        </div>
+        <div class="v2-error-actions">
+            <button class="button button-primary" type="button" data-v2-action="retry">
+                Try again
+            </button>
+            <button class="button button-secondary" type="button" data-v2-action="start-connect">
+                Choose a different bank
+            </button>
+        </div>
+    </div>
+</div>
+
+{# ── unavailable: bank service disrupted ──────────────────────────────────── #}
+<div class="v2-state-panel panel" id="v2-state-unavailable"
+     {% if state != 'unavailable' %}hidden{% endif %}>
+    <div class="v2-unavailable-card">
+        <div class="v2-unavail-icon" aria-hidden="true">⚬</div>
+        <h2>Monzo is temporarily unavailable</h2>
+        <p class="v2-connect-sub">
+            Monzo's connection service is experiencing a brief disruption.
+            This is unrelated to your account and typically resolves within a few hours.
+        </p>
+        <div class="v2-unavail-status">
+            <span class="v2-health-dot v2-health-amber" aria-hidden="true"></span>
+            <span>Monzo · service disruption · checking every 15 min</span>
+        </div>
+        <div class="v2-error-actions">
+            <button class="button button-secondary" type="button" data-v2-action="notify-me">
+                Notify me when it's back
+            </button>
+            <button class="button button-secondary" type="button" data-v2-action="start-connect">
+                Connect a different bank instead
+            </button>
+        </div>
+    </div>
+</div>
+
+{# ── disconnected: account removed ────────────────────────────────────────── #}
+<div class="v2-state-panel panel" id="v2-state-disconnected"
+     {% if state != 'disconnected' %}hidden{% endif %}>
+    <div class="v2-connect-hero">
+        <div class="v2-connect-icon v2-connect-icon-success" aria-hidden="true">✓</div>
+        <h2>Monzo removed</h2>
+        <p class="v2-connect-sub">
+            Reserved's access to this account has been revoked. Any data
+            read from Monzo has been deleted from our servers immediately.
+        </p>
+        <div class="v2-disconnected-actions">
+            <button class="button button-primary" type="button" data-v2-action="start-connect">
+                Connect a bank account
+            </button>
+            <button class="button button-secondary" type="button" data-v2-action="go-home">
+                Back to Overview
+            </button>
+        </div>
+    </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════════
+   Supported banks — illustrative, always visible
+   ══════════════════════════════════════════════════════════════════════════ #}
+<section class="v2-banks-section">
+    <div class="v2-banks-head">
+        <h2>Supported banks</h2>
+        <p>A selection of UK institutions — illustrative only, not an endorsement.</p>
+    </div>
+    <div class="v2-bank-grid">
+        {% for bank in featured_banks %}
+        <div class="v2-bank-tile">
+            <div class="v2-bank-logo" style="background:{{ bank.colour }};color:{{ bank.text }};">
+                {{ bank.name[0]|upper }}
+            </div>
+            <span class="v2-bank-name">{{ bank.name }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="v2-banks-footer">
+        <button class="v2-all-banks-btn" type="button" data-v2-action="view-all-banks">
+            View supported banks →
+        </button>
+    </div>
+</section>
+
+{# ── All banks modal ──────────────────────────────────────────────────────── #}
+<div id="v2-all-banks-modal" class="v2-modal-backdrop" hidden
+     role="dialog" aria-modal="true" aria-labelledby="v2-all-banks-title">
+    <div class="v2-modal-sheet">
+        <div class="v2-modal-head">
+            <h3 id="v2-all-banks-title">All supported banks</h3>
+            <button class="icon-button" type="button" id="v2-all-banks-close" aria-label="Close">✕</button>
+        </div>
+        <p class="v2-modal-sub">
+            Connections are available for {{ all_banks|length }}+ UK institutions.
+            The full list is shown during the connection flow.
+        </p>
+        <div class="v2-all-banks-grid">
+            {% for bank in all_banks %}
+            <div class="v2-bank-tile v2-bank-tile-sm">
+                <div class="v2-bank-logo v2-bank-logo-sm"
+                     style="background:{{ bank.colour }};color:{{ bank.text }};">
+                    {{ bank.name[0]|upper }}
+                </div>
+                <span class="v2-bank-name">{{ bank.name }}</span>
+            </div>
+            {% endfor %}
+            <div class="v2-bank-tile v2-bank-tile-sm">
+                <div class="v2-bank-logo v2-bank-logo-sm v2-bank-logo-more">+120</div>
+                <span class="v2-bank-name">More</span>
+            </div>
+        </div>
+        <p class="v2-modal-footer-note">
+            Don't see your bank? The full list is available during the connection flow.
+            Coverage expands regularly.
+        </p>
+    </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,21 @@
+{
+  "corpus_id": "RW3-WP7-DRAFT-CORPUS-1",
+  "status": "not_fit_review_pending",
+  "included_fixture_packs": [
+    "RW3_CORE_FIXTURES.json",
+    "RW3_CORE_MULTI_UNDERGRADUATE_PENDING_FIXTURES.json",
+    "RW3_PAYE_EVIDENCE_FIXTURES.json",
+    "RW3_TRANCHE_H_FIXTURES.json",
+    "RW3_V1_PREIMPLEMENTATION_FIXTURES.json"
+  ],
+  "excluded_from_accuracy_pass_counts": [
+    "reserved_west/reference_calculator.py",
+    "reserved_west/output/**",
+    "reserved-optimise-assurance/reference/**",
+    "reserved-engine-2.0.0/tests/**",
+    "tests/test_el001_regression.py",
+    "tests/test_income_tax_boundaries.py"
+  ],
+  "reason": "Historical paths share production lineage or are production regression evidence. They may inform defect history but cannot contribute an independent accuracy PASS.",
+  "gate_rule": "Only packs listed in included_fixture_packs, hash-matched by WP7_FIXTURE_INTEGRITY.json and independently approved may contribute to a future WP7 accuracy pass."
+}

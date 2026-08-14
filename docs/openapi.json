@@ -1,0 +1,188 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Reserved internal HTTP contract inventory",
+    "version": "0.2.0",
+    "description": "Implementation-derived preview inventory dated 13 August 2026. This is not a public API commitment, production integration contract or permission to call provider services. HTML-only routes and founder exports are catalogued separately in docs/API_CONTRACT_GAP_REPORT.md."
+  },
+  "x-reserved-contract-status": "internal-preview-non-production",
+  "x-reserved-stability": "unstable",
+  "x-reserved-source-of-truth": "Current Flask route implementations; this document does not create capabilities or endpoints.",
+  "x-reserved-exclusions": [
+    "No public or partner API compatibility commitment",
+    "No provider API credentials, OAuth endpoints or live adapter capability",
+    "No complete annual tax-position API",
+    "No production deployment or availability commitment"
+  ],
+  "servers": [{"url": "/", "description": "Current application origin"}],
+  "tags": [
+    {"name": "Service"},
+    {"name": "Public forms"},
+    {"name": "Authentication"},
+    {"name": "Bank connection UI"},
+    {"name": "Tax scenario UI"}
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["Service"],
+        "summary": "Check application and database availability",
+        "responses": {
+          "200": {"description": "Application and database available", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}},
+          "503": {"description": "Application available but database query failed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}}
+        }
+      }
+    },
+    "/feedback": {
+      "post": {
+        "tags": ["Public forms"],
+        "summary": "Submit product feedback",
+        "description": "Browser form endpoint. Requires the application's CSRF token and a valid Turnstile response when Turnstile is configured. Rate limited per IP.",
+        "requestBody": {"required": true, "content": {"application/x-www-form-urlencoded": {"schema": {"$ref": "#/components/schemas/FeedbackForm"}}}},
+        "responses": {
+          "200": {"description": "Stored", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Ok"}}}},
+          "400": {"$ref": "#/components/responses/JsonInputError"},
+          "429": {"$ref": "#/components/responses/JsonRateLimitError"},
+          "500": {"$ref": "#/components/responses/JsonServerError"}
+        }
+      }
+    },
+    "/early-access": {
+      "post": {
+        "tags": ["Public forms"],
+        "summary": "Register interest in early access",
+        "description": "Browser form endpoint. Requires the application's CSRF token and a valid Turnstile response when Turnstile is configured. Rate limited per IP.",
+        "requestBody": {"required": true, "content": {"application/x-www-form-urlencoded": {"schema": {"$ref": "#/components/schemas/EarlyAccessForm"}}}},
+        "responses": {
+          "200": {"description": "Stored or recognised as a duplicate", "content": {"application/json": {"schema": {"type": "object", "required": ["ok"], "properties": {"ok": {"type": "boolean"}, "duplicate": {"type": "boolean"}}}}}},
+          "400": {"$ref": "#/components/responses/JsonInputError"},
+          "429": {"$ref": "#/components/responses/JsonRateLimitError"},
+          "500": {"$ref": "#/components/responses/JsonServerError"}
+        }
+      }
+    },
+    "/v2/auth/verify": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Exchange a Clerk session JWT for an application session",
+        "description": "UI-private endpoint. CSRF-exempt because it verifies the supplied Clerk JWT before creating the cookie-backed application session.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["token"], "properties": {"token": {"type": "string", "minLength": 1}}}}}},
+        "responses": {
+          "200": {"description": "Session established", "headers": {"Set-Cookie": {"schema": {"type": "string"}}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Ok"}}}},
+          "400": {"$ref": "#/components/responses/JsonInputError"},
+          "401": {"$ref": "#/components/responses/JsonInputError"},
+          "500": {"$ref": "#/components/responses/JsonServerError"}
+        }
+      }
+    },
+    "/v2/yapily/connect": {
+      "post": {
+        "tags": ["Bank connection UI"],
+        "summary": "Start the current Yapily consent UI flow",
+        "description": "UI-private, session-authenticated and CSRF-protected. The provider flow remains subject to sandbox verification.",
+        "security": [{"sessionCookie": []}],
+        "requestBody": {"required": true, "content": {"application/x-www-form-urlencoded": {"schema": {"type": "object", "required": ["institution_id"], "properties": {"institution_id": {"type": "string", "minLength": 1}}}}}},
+        "responses": {
+          "200": {"description": "Consent journey created", "content": {"application/json": {"schema": {"type": "object", "required": ["ok", "hosted_url", "consent_token", "mock"], "properties": {"ok": {"type": "boolean", "enum": [true]}, "hosted_url": {"type": "string"}, "consent_token": {"type": "string"}, "mock": {"type": "boolean"}}}}}},
+          "400": {"$ref": "#/components/responses/JsonInputError"},
+          "500": {"$ref": "#/components/responses/JsonServerError"}
+        }
+      }
+    },
+    "/v2/yapily/callback": {
+      "get": {
+        "tags": ["Bank connection UI"],
+        "summary": "Handle return from the current Yapily consent UI flow",
+        "description": "Browser redirect endpoint, not a webhook. Requires an authenticated application session and validates session-bound state, except for the explicitly non-production mock path.",
+        "security": [{"sessionCookie": []}],
+        "parameters": [
+          {"name": "consent", "in": "query", "schema": {"type": "string"}},
+          {"name": "institution", "in": "query", "schema": {"type": "string"}},
+          {"name": "state", "in": "query", "schema": {"type": "string"}},
+          {"name": "error", "in": "query", "schema": {"type": "string"}},
+          {"name": "mock", "in": "query", "description": "Non-production fixture flow only", "schema": {"type": "string"}}
+        ],
+        "responses": {"302": {"description": "Redirect to connections page with returning or error state"}}
+      }
+    },
+    "/v2/yapily/disconnect": {
+      "post": {
+        "tags": ["Bank connection UI"],
+        "summary": "Revoke a connection owned by the current user",
+        "security": [{"sessionCookie": []}],
+        "requestBody": {"required": true, "content": {"application/x-www-form-urlencoded": {"schema": {"$ref": "#/components/schemas/ConsentTokenForm"}}}},
+        "responses": {
+          "200": {"description": "Revoked", "content": {"application/json": {"schema": {"type": "object", "required": ["ok", "mock"], "properties": {"ok": {"type": "boolean"}, "mock": {"type": "boolean"}}}}}},
+          "403": {"description": "Missing connection or not owned by current user; response is HTML under the current global handler"},
+          "502": {"$ref": "#/components/responses/JsonServerError"},
+          "500": {"$ref": "#/components/responses/JsonServerError"}
+        }
+      }
+    },
+    "/v2/yapily/refresh": {
+      "post": {
+        "tags": ["Bank connection UI"],
+        "summary": "Read consent status for a connection owned by the current user",
+        "security": [{"sessionCookie": []}],
+        "requestBody": {"required": true, "content": {"application/x-www-form-urlencoded": {"schema": {"$ref": "#/components/schemas/ConsentTokenForm"}}}},
+        "responses": {
+          "200": {"description": "Status read", "content": {"application/json": {"schema": {"type": "object", "required": ["ok", "status", "mock"], "properties": {"ok": {"type": "boolean", "enum": [true]}, "status": {"type": "string"}, "mock": {"type": "boolean"}}}}}},
+          "403": {"description": "Missing connection or not owned by current user; response is HTML under the current global handler"},
+          "500": {"$ref": "#/components/responses/JsonServerError"}
+        }
+      }
+    },
+    "/v2/optimise/calculate": {
+      "post": {
+        "tags": ["Tax scenario UI"],
+        "summary": "Calculate the current pension scenario comparison",
+        "description": "UI-private modelling endpoint; not a full annual tax calculation API and not a recommendation. Session-authenticated and currently CSRF-exempt.",
+        "security": [{"sessionCookie": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OptimiseRequest"}}}},
+        "responses": {
+          "200": {"description": "Modelled comparison", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OptimiseResponse"}}}},
+          "400": {"$ref": "#/components/responses/JsonInputError"}
+        }
+      }
+    },
+    "/v2/optimise/save-scenario": {
+      "post": {
+        "tags": ["Tax scenario UI"],
+        "summary": "Save UI-supplied scenario inputs and outputs",
+        "description": "UI-private persistence endpoint. The server does not recalculate the submitted outputs. Session-authenticated and currently CSRF-exempt.",
+        "security": [{"sessionCookie": []}],
+        "requestBody": {"required": false, "content": {"application/json": {"schema": {"type": "object", "properties": {"label": {"type": "string", "maxLength": 80}, "opportunity_id": {"type": "string"}, "inputs": {"type": "object", "additionalProperties": true}, "outputs": {"type": "object", "additionalProperties": true}}}}}},
+        "responses": {"200": {"description": "Saved", "content": {"application/json": {"schema": {"type": "object", "required": ["ok", "id"], "properties": {"ok": {"type": "boolean", "enum": [true]}, "id": {"type": "integer"}}}}}}}
+      }
+    },
+    "/v2/optimise/saved/{scenario_id}": {
+      "delete": {
+        "tags": ["Tax scenario UI"],
+        "summary": "Delete a saved scenario owned by the current user",
+        "description": "Session-authenticated and currently CSRF-exempt.",
+        "security": [{"sessionCookie": []}],
+        "parameters": [{"name": "scenario_id", "in": "path", "required": true, "schema": {"type": "integer"}}],
+        "responses": {"200": {"description": "Deletion result", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Ok"}}}}}
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {"sessionCookie": {"type": "apiKey", "in": "cookie", "name": "session", "description": "Flask application session cookie; browser-oriented, not service-client authentication"}},
+    "schemas": {
+      "Ok": {"type": "object", "required": ["ok"], "properties": {"ok": {"type": "boolean"}}},
+      "JsonError": {"type": "object", "required": ["ok", "error"], "properties": {"ok": {"type": "boolean", "enum": [false]}, "error": {"type": "string"}}},
+      "Health": {"type": "object", "required": ["status", "service", "db"], "properties": {"status": {"type": "string", "enum": ["ok", "degraded"]}, "service": {"type": "string", "enum": ["reserved"]}, "db": {"type": "string", "enum": ["ok", "error"]}}},
+      "FeedbackForm": {"type": "object", "properties": {"intuitive": {"type": "integer", "minimum": 1, "maximum": 5}, "useful": {"type": "integer", "minimum": 1, "maximum": 5}, "trustworthy": {"type": "integer", "minimum": 1, "maximum": 5}, "confusing": {"type": "string", "maxLength": 2000}, "area": {"type": "string", "maxLength": 200}, "would_use": {"type": "string", "maxLength": 50}, "email": {"type": "string", "maxLength": 254}, "page_url": {"type": "string", "maxLength": 500}, "cf-turnstile-response": {"type": "string"}}, "anyOf": [{"required": ["intuitive"]}, {"required": ["useful"]}, {"required": ["trustworthy"]}]},
+      "EarlyAccessForm": {"type": "object", "required": ["name", "email"], "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 100}, "email": {"type": "string", "format": "email", "maxLength": 254}, "occupation": {"type": "string", "maxLength": 100}, "working_style": {"type": "string", "maxLength": 100}, "referral_source": {"type": "string", "maxLength": 200}, "comments": {"type": "string", "maxLength": 2000}, "cf-turnstile-response": {"type": "string"}}},
+      "ConsentTokenForm": {"type": "object", "required": ["consent_token"], "properties": {"consent_token": {"type": "string", "minLength": 1}}},
+      "OptimiseRequest": {"type": "object", "properties": {"opportunity_id": {"type": "string", "enum": ["PA_TAPER", "HICBC"], "default": "PA_TAPER"}, "projected_income": {"type": "number", "default": 0}, "current_pension": {"type": "number", "default": 0}, "additional_pension": {"type": "number", "minimum": 0, "default": 0}, "annual_cb": {"type": "number", "default": 0}}},
+      "Position": {"type": "object", "required": ["ani", "pa", "it", "hicbc", "total"], "description": "Amounts are formatted decimal strings with two fractional digits and may contain thousands separators.", "properties": {"ani": {"type": "string"}, "pa": {"type": "string"}, "it": {"type": "string"}, "hicbc": {"type": "string"}, "total": {"type": "string"}}},
+      "OptimiseResponse": {"type": "object", "required": ["ok", "before", "after", "it_reduction", "hicbc_reduction", "total_benefit", "basic_rate_relief", "total_pension", "caveats"], "properties": {"ok": {"type": "boolean", "enum": [true]}, "before": {"$ref": "#/components/schemas/Position"}, "after": {"$ref": "#/components/schemas/Position"}, "it_reduction": {"type": "string"}, "hicbc_reduction": {"type": "string"}, "total_benefit": {"type": "string"}, "basic_rate_relief": {"type": "string"}, "total_pension": {"type": "string"}, "caveats": {"type": "array", "items": {"type": "string"}}}}
+    },
+    "responses": {
+      "JsonInputError": {"description": "Invalid input", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JsonError"}}}},
+      "JsonRateLimitError": {"description": "Rate limited", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JsonError"}}}},
+      "JsonServerError": {"description": "Operation failed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JsonError"}}}}
+    }
+  }
+}

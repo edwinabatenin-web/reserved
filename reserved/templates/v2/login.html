@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en-GB" data-theme="light">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="icon" href="/static/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">
+    <title>Sign in — Reserved™</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <style>
+    /* ── Login page — standalone, no sidebar ───────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+        margin: 0;
+        background: var(--surface-soft, #f6f8fb);
+        font-family: var(--font-body, system-ui, sans-serif);
+        color: var(--ink, #10264a);
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .login-shell {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px 48px;
+        padding-top: calc(38px + 24px); /* banner height + gap */
+    }
+
+    .login-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 36px;
+        text-decoration: none;
+        color: var(--ink);
+    }
+
+    .login-brand-mark {
+        width: 38px;
+        height: 38px;
+        background: var(--ink, #10264a);
+        color: #fff;
+        border-radius: 11px;
+        display: grid;
+        place-items: center;
+        font-weight: 850;
+        font-size: 18px;
+        flex-shrink: 0;
+    }
+
+    .login-brand strong { font-size: 17px; font-weight: 750; }
+    .login-brand small  { font-size: 11px; color: var(--ink-soft); display: block; }
+
+    .login-card {
+        width: 100%;
+        max-width: 420px;
+        background: var(--surface, #fff);
+        border: 1px solid var(--line, #e4e8ef);
+        border-radius: var(--radius, 22px);
+        padding: 36px 32px 28px;
+        box-shadow: 0 4px 32px rgba(16, 38, 74, .06);
+    }
+
+    .login-heading {
+        margin: 0 0 6px;
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: -.025em;
+        color: var(--ink);
+    }
+
+    .login-subhead {
+        margin: 0 0 28px;
+        font-size: 13px;
+        color: var(--ink-soft, #6b7a99);
+        line-height: 1.55;
+    }
+
+    /* Clerk component container */
+    #clerk-sign-in {
+        min-height: 80px;
+    }
+
+    /* ── Demo login section ──────────────────────────────────────────── */
+    .login-demo-section {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--line, #e4e8ef);
+    }
+
+    .login-demo-label {
+        display: block;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        color: var(--amber, #c47500);
+        margin-bottom: 10px;
+    }
+
+    .login-demo-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 11px 20px;
+        border-radius: 12px;
+        border: 1.5px dashed var(--amber, #c47500);
+        background: transparent;
+        color: var(--ink-soft);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background .15s, color .15s;
+    }
+
+    .login-demo-btn:hover {
+        background: color-mix(in srgb, var(--amber) 8%, transparent);
+        color: var(--ink);
+    }
+
+    .login-demo-note {
+        margin: 10px 0 0;
+        font-size: 11px;
+        color: var(--ink-muted, #8e99ae);
+        text-align: center;
+        line-height: 1.5;
+    }
+
+    /* ── No-Clerk fallback ───────────────────────────────────────────── */
+    .login-no-clerk {
+        padding: 20px;
+        background: var(--surface-soft);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        text-align: center;
+    }
+
+    .login-no-clerk p {
+        margin: 0 0 8px;
+        font-size: 13px;
+        color: var(--ink-soft);
+        line-height: 1.55;
+    }
+
+    .login-no-clerk small {
+        font-size: 11px;
+        color: var(--ink-muted);
+    }
+
+    /* ── Status messages ─────────────────────────────────────────────── */
+    .login-error {
+        margin-top: 16px;
+        padding: 12px 16px;
+        border-radius: 10px;
+        background: #feecec;
+        border: 1px solid #f9c0c0;
+        color: #b91c1c;
+        font-size: 13px;
+        display: none;
+    }
+
+    .login-spinner {
+        display: none;
+        margin-top: 16px;
+        text-align: center;
+        font-size: 13px;
+        color: var(--ink-soft);
+    }
+    </style>
+</head>
+<body>
+
+{# ── V2 internal dev banner ──────────────────────────────────────────────── #}
+<div class="v2-dev-banner" role="note" aria-label="Internal preview notice">
+    <span class="v2-dev-banner-badge">V2</span>
+    <span class="v2-dev-banner-text">
+        <strong>Workstream 5 · Identity &amp; Authentication</strong> · Internal only.
+        Not published.
+    </span>
+    <span class="v2-dev-banner-date">Targeting: October 2026 beta</span>
+</div>
+
+<div class="login-shell">
+
+    {# ── Brand mark ──────────────────────────────────────────────────────── #}
+    <div class="login-brand" aria-label="Reserved">
+        <div class="login-brand-mark">R</div>
+        <div>
+            <strong>Reserved™</strong>
+            <small>Explore limited tax estimates as you earn.</small>
+        </div>
+    </div>
+
+    {# ── Login card ──────────────────────────────────────────────────────── #}
+    <div class="login-card" role="main">
+        <h1 class="login-heading">Sign in</h1>
+        <p class="login-subhead">
+            Access your Reserved preview — tax reserve, connections, and
+            transaction intelligence in one place.
+        </p>
+
+        {% if clerk_publishable_key %}
+        {# ── Clerk embedded sign-in ───────────────────────────────────────── #}
+        <div id="clerk-sign-in" aria-label="Sign in form" aria-live="polite">
+            <p style="font-size:13px;color:var(--ink-soft);">Loading sign-in…</p>
+        </div>
+        <div class="login-error" id="login-error" role="alert"></div>
+        <div class="login-spinner" id="login-spinner" aria-live="polite">
+            Signing you in…
+        </div>
+        {% else %}
+        {# ── No Clerk key: show placeholder ──────────────────────────────── #}
+        <div class="login-no-clerk">
+            <p>
+                Sign-in with Google and Apple is available once
+                <code>CLERK_PUBLISHABLE_KEY</code> is configured.
+            </p>
+            <small>
+                See the handover notes for setup instructions.
+            </small>
+        </div>
+        {% endif %}
+
+        {% if demo_available %}
+        {# ── Demo login (non-production only) ─────────────────────────────── #}
+        <div class="login-demo-section">
+            <span class="login-demo-label">⚙ Internal preview only</span>
+            <a href="{{ url_for('v2.demo_login') }}" class="login-demo-btn">
+                <span aria-hidden="true">⟶</span>
+                Enter as Demo User
+            </a>
+            <p class="login-demo-note">
+                Skips authentication. Uses fixed demo data.
+                Not available in production.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+
+{% if clerk_publishable_key %}
+{# ── Clerk JS SDK — vanilla browser integration ──────────────────────────── #}
+{#
+   Load the audited, exact @clerk/clerk-js version and initialize it with the
+   publishable key.
+   After sign-in, Clerk fires an event; we capture the short-lived session
+   token, POST it to /v2/auth/verify (CSRF-exempt, protected by JWT), and
+   Flask creates the server session. Then we redirect to /v2/.
+#}
+<script>
+(function () {
+    'use strict';
+
+    var PK    = {{ clerk_publishable_key | tojson }};
+    var VERIFY = {{ url_for('v2.auth_verify') | tojson }};
+    var DEST   = {{ url_for('v2.index') | tojson }};
+
+    function showError(msg) {
+        var el = document.getElementById('login-error');
+        if (el) { el.textContent = msg; el.style.display = 'block'; }
+        var sp = document.getElementById('login-spinner');
+        if (sp) { sp.style.display = 'none'; }
+    }
+
+    function showSpinner() {
+        var sp = document.getElementById('login-spinner');
+        if (sp) { sp.style.display = 'block'; }
+    }
+
+    async function exchangeToken(clerk) {
+        if (!clerk.session) return;
+        showSpinner();
+        try {
+            var token = await clerk.session.getToken();
+            var resp = await fetch(VERIFY, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ token: token }),
+            });
+            var data = await resp.json();
+            if (data.ok) {
+                window.location.href = DEST;
+            } else {
+                showError(data.error || 'Sign-in failed. Please try again.');
+            }
+        } catch (err) {
+            showError('A network error occurred. Please try again.');
+        }
+    }
+
+    // Load Clerk JS from CDN
+    var script = document.createElement('script');
+    // Exact version audited on 13 August 2026. Upgrade deliberately with the
+    // authentication regression suite; never use a moving @latest target.
+    script.src = 'https://cdn.jsdelivr.net/npm/@clerk/clerk-js@' +
+        {{ clerk_js_version | tojson }} + '/dist/clerk.browser.js';
+    script.crossOrigin = 'anonymous';
+    script.async = true;
+    script.onload = async function () {
+        try {
+            var clerk = new window.Clerk(PK);
+            await clerk.load();
+
+            // If a session already exists (e.g. OAuth redirect return), exchange immediately
+            if (clerk.session) {
+                await exchangeToken(clerk);
+                return;
+            }
+
+            // Mount the Clerk pre-built sign-in component
+            var container = document.getElementById('clerk-sign-in');
+            if (container) {
+                container.innerHTML = '';
+                clerk.mountSignIn(container, {
+                    afterSignInUrl: window.location.href,
+                    appearance: {
+                        variables: {
+                            colorPrimary: '#10264a',
+                            colorForeground: '#10264a',
+                            colorMutedForeground: '#6b7a99',
+                            colorBackground: '#ffffff',
+                            colorInput: '#f6f8fb',
+                            colorNeutral: '#e4e8ef',
+                            fontFamily: 'inherit',
+                            borderRadius: '14px',
+                        },
+                        elements: {
+                            card: 'shadow-none border-0 p-0',
+                            footer: 'hidden',
+                        },
+                    },
+                });
+            }
+
+            // Listen for sign-in completion
+            clerk.addListener(function (resources) {
+                if (resources.session) {
+                    exchangeToken(clerk);
+                }
+            });
+        } catch (err) {
+            showError('Failed to load sign-in. Please refresh and try again.');
+        }
+    };
+    script.onerror = function () {
+        showError('Failed to load sign-in component. Check your network connection.');
+    };
+    document.head.appendChild(script);
+})();
+</script>
+{% endif %}
+
+</body>
+</html>

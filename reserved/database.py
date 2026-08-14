@@ -1,0 +1,1692 @@
+"""
+SQLite persistence layer for Reserved.
+
+Tables
+------
+schema_version              — single-row schema-version stamp; updated by init_db()
+                              after applying pending migrations
+
+users                       — stable user identity keyed by Clerk user_id (or demo
+                              sentinel); all V2 data references this table via user_id FK
+
+feedback_submissions        — one row per feedback form submission (public / route /)
+
+early_access_registrations  — one row per early-access sign-up, unique on email
+                              (public / route /)
+
+bank_connections            — one row per Yapily consent authorisation; a user may
+                              have multiple connections (different banks or
+                              re-authorisations)
+
+connected_accounts          — one row per Yapily account returned for a connection;
+                              a single consent may cover multiple accounts
+
+transactions                — classified transactions from ingestion; upserted on
+                              (account_id, yapily_tx_id) so re-ingestion is safe;
+                              overriding a category sets method='manual'
+
+transaction_overrides       — audit trail of manual category corrections; the
+                              current category lives in transactions.category;
+                              this table records the full history
+
+user_profiles               — sole-trader settings (income estimate, pension,
+                              student loan plan, etc.) keyed by session_key and
+                              optionally by user_id (WS5+)
+
+tax_calculations            — persisted engine outputs; populated by the tax engine
+                              after a calculation is requested
+
+invoices                    — invoice records for the matching engine; supports
+                              import from accounting software and manual entry
+
+invoice_matches             — one row per matching attempt; records the matched
+                              transaction(s), confidence score, status, and method
+
+Conventions
+-----------
+All timestamps are stored as ISO-8601 strings in UTC.
+IP addresses are stored as a short SHA-256 hash (first 16 hex chars) for
+anonymous deduplication; the raw IP is never persisted.
+Foreign keys are enforced at connection time via PRAGMA foreign_keys=ON.
+Write-ahead logging (PRAGMA journal_mode=WAL) is used for better concurrency.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import sqlite3
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+# ── Path ──────────────────────────────────────────────────────────────────────
+
+_INSTANCE = Path(__file__).resolve().parent.parent / "instance"
+_DB_FILE  = _INSTANCE / "reserved.db"
+
+
+def get_db_path() -> Path:
+    return _DB_FILE
+
+
+def ping_db() -> bool:
+    """Return True if the database is reachable, False otherwise."""
+    try:
+        with _connection() as conn:
+            conn.execute("SELECT 1")
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+# ── Connection helper ─────────────────────────────────────────────────────────
+
+@contextmanager
+def _connection():
+    _INSTANCE.mkdir(exist_ok=True)
+    conn = sqlite3.connect(_DB_FILE)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# ── Schema ────────────────────────────────────────────────────────────────────
+
+_DDL = """
+-- ── Schema version ─────────────────────────────────────────────────────────────
+-- Single-row table that records which migrations have been applied.
+-- init_db() stamps this after applying all pending migrations.
+CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER NOT NULL
+);
+
+-- ── Workstream 5: Users ────────────────────────────────────────────────────────
+-- Stable user identity keyed by Clerk user_id (or demo sentinel).
+-- All V2 data (bank_connections, user_profiles, tax_calculations) references
+-- this table via user_id FK.  session_key columns are kept for backward
+-- compatibility; user_id is the authoritative identifier from WS5 onward.
+CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    clerk_user_id TEXT    NOT NULL UNIQUE,
+    email         TEXT,
+    display_name  TEXT,
+    created_at    TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS feedback_submissions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    submitted_at TEXT    NOT NULL,
+    intuitive    INTEGER,
+    useful       INTEGER,
+    trustworthy  INTEGER,
+    area         TEXT,
+    comments     TEXT,
+    would_use    TEXT,
+    ip_hash      TEXT,
+    email        TEXT,
+    browser      TEXT,
+    device       TEXT,
+    page_url     TEXT
+);
+
+CREATE TABLE IF NOT EXISTS early_access_registrations (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    submitted_at     TEXT NOT NULL,
+    name             TEXT NOT NULL,
+    email            TEXT NOT NULL,
+    occupation       TEXT,
+    working_style    TEXT,
+    referral_source  TEXT,
+    comments         TEXT,
+    ip_hash          TEXT,
+    UNIQUE(email COLLATE NOCASE)
+);
+
+-- ── Workstream 4: Bank connections ────────────────────────────────────────────
+-- One row per Yapily consent authorisation. A user may have multiple connections
+-- (different banks or re-authorisations). Each connection is scoped to a user
+-- via the user_id FK (added in _MIGRATIONS[1]). session_key is retained only
+-- for backwards-compatible migration of pre-WS5 rows via migrate_session_to_user().
+CREATE TABLE IF NOT EXISTS bank_connections (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at       TEXT    NOT NULL,
+    institution_id   TEXT    NOT NULL,
+    institution_name TEXT    NOT NULL,
+    consent_token    TEXT    NOT NULL UNIQUE,
+    consent_id       TEXT,
+    status           TEXT    NOT NULL DEFAULT 'active',
+    -- status values: active | expiring | expired | revoked
+    expires_at       TEXT,
+    session_key      TEXT
+);
+
+-- ── Connected bank accounts ───────────────────────────────────────────────────
+-- One row per Yapily account returned for a connection. A single consent may
+-- cover multiple accounts (joint, savings, current).
+CREATE TABLE IF NOT EXISTS connected_accounts (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    connection_id     INTEGER NOT NULL REFERENCES bank_connections(id) ON DELETE CASCADE,
+    yapily_account_id TEXT    NOT NULL UNIQUE,
+    account_type      TEXT,
+    nickname          TEXT,
+    currency          TEXT    NOT NULL DEFAULT 'GBP',
+    sort_code         TEXT,
+    account_number    TEXT,
+    balance           REAL,
+    balance_at        TEXT    -- ISO-8601 timestamp of last balance snapshot
+);
+
+-- ── Transactions ──────────────────────────────────────────────────────────────
+-- Classified transactions from ingestion.py. Upserted on (account_id, yapily_tx_id)
+-- so re-ingestion is safe. Overriding a category sets method='manual'.
+CREATE TABLE IF NOT EXISTS transactions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id      INTEGER NOT NULL REFERENCES connected_accounts(id) ON DELETE CASCADE,
+    yapily_tx_id    TEXT    NOT NULL,
+    tx_date         TEXT    NOT NULL,
+    description     TEXT    NOT NULL,
+    amount          REAL    NOT NULL,
+    currency        TEXT    NOT NULL DEFAULT 'GBP',
+    category        TEXT    NOT NULL,
+    confidence      REAL    NOT NULL,
+    method          TEXT    NOT NULL DEFAULT 'rules',
+    -- method values: rules | ai | manual
+    subcategory     TEXT,
+    tax_relevant    INTEGER NOT NULL DEFAULT 0,  -- 0=false 1=true
+    raw_json        TEXT,
+    ingested_at     TEXT    NOT NULL,
+    UNIQUE(account_id, yapily_tx_id)
+);
+
+-- ── Transaction overrides ─────────────────────────────────────────────────────
+-- Audit trail of manual category corrections. The current category lives in
+-- transactions.category; this table records the full history.
+CREATE TABLE IF NOT EXISTS transaction_overrides (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    transaction_id    INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+    overridden_at     TEXT    NOT NULL,
+    original_category TEXT    NOT NULL,
+    new_category      TEXT    NOT NULL,
+    note              TEXT
+);
+
+-- ── User profiles ─────────────────────────────────────────────────────────────
+-- Sole-trader settings (income estimate, pension, student loan plan, etc.).
+-- Keyed by session_key for backwards-compatible migration of pre-auth rows.
+-- User accounts were introduced in WS5; new rows are also linked via user_id
+-- (added as a nullable FK column by the schema migration in _MIGRATIONS[1]).
+-- session_key is retained so that pre-WS5 rows can be migrated forward via
+-- migrate_session_to_user() and is not the authoritative identifier.
+CREATE TABLE IF NOT EXISTS user_profiles (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_key             TEXT    NOT NULL UNIQUE,
+    updated_at              TEXT    NOT NULL,
+    display_name            TEXT,
+    tax_year                TEXT,
+    income_estimate         REAL,
+    pension_contribution    REAL,
+    student_loan_plans      TEXT,  -- JSON array e.g. '["plan2"]'
+    notes                   TEXT,
+    child_benefit_children  INTEGER DEFAULT 0,
+    child_benefit_annual    REAL    -- explicit override; NULL = use standard rates
+);
+
+-- ── Tax optimisation saved scenarios ─────────────────────────────────────────
+-- Stores pension-scenario comparisons the user has chosen to save from the
+-- Optimise page.  Linked to users (not profiles) so they survive profile edits.
+CREATE TABLE IF NOT EXISTS optimise_scenarios (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    opportunity  TEXT    NOT NULL,   -- "PA_TAPER" | "HICBC"
+    label        TEXT,               -- user-provided name (optional)
+    inputs_json  TEXT    NOT NULL,   -- JSON: projected_income, pension, extra, annual_cb
+    outputs_json TEXT    NOT NULL,   -- JSON: before, after, it_reduction, hicbc_reduction, total
+    saved_at     TEXT    NOT NULL
+);
+
+-- ── Schema stub: tax calculations ─────────────────────────────────────────────
+-- Reserved for a future workstream that persists engine outputs.
+-- Populated by the tax engine; not written by WS4.
+CREATE TABLE IF NOT EXISTS tax_calculations (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    calculated_at   TEXT    NOT NULL,
+    session_key     TEXT,
+    tax_year        TEXT    NOT NULL,
+    income          REAL,
+    income_tax      REAL,
+    national_ins    REAL,
+    student_loan    REAL,
+    total_liability REAL,
+    inputs_json     TEXT    -- full profile snapshot as JSON
+);
+
+-- ── Schema stub: accounting software invoice sources ──────────────────────────
+-- Reserved for FreeAgent / Xero / QuickBooks invoice ingestion (post-WS4).
+-- provider values: freeagent | xero | quickbooks
+CREATE TABLE IF NOT EXISTS invoice_sources (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at   TEXT NOT NULL,
+    provider     TEXT NOT NULL,
+    external_id  TEXT NOT NULL,
+    invoice_date TEXT,
+    gross_amount REAL,
+    status       TEXT,
+    raw_json     TEXT,
+    UNIQUE(provider, external_id)
+);
+
+-- ── Workstream 6: Invoices ─────────────────────────────────────────────────────
+-- One row per invoice raised by the user.
+-- status values: unpaid | partially_paid | paid | overpaid | void
+CREATE TABLE IF NOT EXISTS invoices (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    reference    TEXT    NOT NULL,
+    client_name  TEXT    NOT NULL,
+    amount_due   REAL    NOT NULL,
+    currency     TEXT    NOT NULL DEFAULT 'GBP',
+    issue_date   TEXT    NOT NULL,  -- YYYY-MM-DD
+    due_date     TEXT    NOT NULL,  -- YYYY-MM-DD
+    status       TEXT    NOT NULL DEFAULT 'unpaid',
+    notes        TEXT,
+    created_at   TEXT    NOT NULL,
+    UNIQUE(user_id, reference)
+);
+
+-- ── Rate-limit log ───────────────────────────────────────────────────────────
+-- Persistent store for IP-keyed rate-limit attempts.  Replaces the previous
+-- process-local in-memory dict, making limits survive worker restarts and
+-- share state correctly across multiple Gunicorn workers.
+-- key_hash is SHA-256(action:ip) truncated to 24 hex chars — raw IPs never stored.
+CREATE TABLE IF NOT EXISTS rate_limit_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_hash     TEXT    NOT NULL,
+    action       TEXT    NOT NULL,
+    attempted_at TEXT    NOT NULL,
+    success      INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_rate_limit ON rate_limit_log(key_hash, action, attempted_at);
+
+-- ── Workstream 6: Invoice matches ──────────────────────────────────────────────
+-- One row per invoice-transaction link produced by the matching engine.
+-- Multiple rows per invoice are allowed (e.g. partial or multiple payments).
+-- transaction_id is nullable (NULL for UNMATCHED) and intentionally has no FK
+-- constraint: matching works on both DB-persisted transactions (with a real
+-- transactions.id) and in-memory demo transactions (no DB row).  The relationship
+-- is semantic rather than referentially enforced.
+-- review_state values: pending_review | confirmed | rejected
+CREATE TABLE IF NOT EXISTS invoice_matches (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_id     INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+    transaction_id INTEGER,   -- soft reference to transactions.id (no FK — see note above)
+    matched_at     TEXT    NOT NULL,
+    status         TEXT    NOT NULL,
+    confidence     INTEGER NOT NULL,
+    method         TEXT    NOT NULL,
+    explanation    TEXT    NOT NULL,
+    matched_amount REAL    NOT NULL,
+    review_state   TEXT    NOT NULL DEFAULT 'pending_review'
+);
+"""
+
+
+# ── Schema versioning ────────────────────────────────────────────────────────
+#
+# How to add a migration
+# ----------------------
+# 1. Increment _SCHEMA_VERSION by 1.
+# 2. Add a new entry to _MIGRATIONS keyed by that new version number.
+# 3. List the SQL statements in order.  Each is wrapped in try/except so that
+#    "column already exists" errors are treated as a no-op — this keeps
+#    init_db() idempotent on both fresh installs and existing databases.
+#
+# Rules
+# -----
+# - Use only additive changes (ADD COLUMN, CREATE TABLE IF NOT EXISTS).
+#   Destructive changes (DROP COLUMN, RENAME) require a manual migration
+#   script outside this mechanism.
+# - Never edit a migration that has already shipped.  Add a new version instead.
+# - The DDL block above always reflects the full target schema; migrations
+#   handle upgrade paths for databases created before the current DDL.
+#
+_SCHEMA_VERSION = 4   # increment when adding new migration entries below
+
+_MIGRATIONS: dict[int, list[str]] = {
+    # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
+    # (invoices and invoice_matches are new WS6 tables; no migration needed.)
+    1: [
+        "ALTER TABLE bank_connections ADD COLUMN user_id INTEGER REFERENCES users(id)",
+        "ALTER TABLE user_profiles    ADD COLUMN user_id INTEGER REFERENCES users(id)",
+        "ALTER TABLE tax_calculations  ADD COLUMN user_id INTEGER REFERENCES users(id)",
+    ],
+    # Version 2 — Workstream 8: add richer context columns to public submission
+    # tables so the founder dashboard can show browser, device, page, email
+    # (feedback) and referral source (early access).
+    2: [
+        "ALTER TABLE feedback_submissions        ADD COLUMN email    TEXT",
+        "ALTER TABLE feedback_submissions        ADD COLUMN browser  TEXT",
+        "ALTER TABLE feedback_submissions        ADD COLUMN device   TEXT",
+        "ALTER TABLE feedback_submissions        ADD COLUMN page_url TEXT",
+        "ALTER TABLE early_access_registrations  ADD COLUMN referral_source TEXT",
+    ],
+    # Version 3 — Persistent rate-limit log; replaces process-local in-memory
+    # dict in founder.py so limits survive restarts and span all workers.
+    3: [
+        """CREATE TABLE IF NOT EXISTS rate_limit_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            key_hash     TEXT    NOT NULL,
+            action       TEXT    NOT NULL,
+            attempted_at TEXT    NOT NULL,
+            success      INTEGER NOT NULL DEFAULT 0
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_rate_limit ON rate_limit_log(key_hash, action, attempted_at)",
+    ],
+    # Version 4 — Optimise feature: Child Benefit columns on user_profiles and
+    # new optimise_scenarios table for saving pension-contribution comparisons.
+    4: [
+        "ALTER TABLE user_profiles ADD COLUMN child_benefit_children INTEGER DEFAULT 0",
+        "ALTER TABLE user_profiles ADD COLUMN child_benefit_annual    REAL",
+        """CREATE TABLE IF NOT EXISTS optimise_scenarios (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            opportunity  TEXT    NOT NULL,
+            label        TEXT,
+            inputs_json  TEXT    NOT NULL,
+            outputs_json TEXT    NOT NULL,
+            saved_at     TEXT    NOT NULL
+        )""",
+    ],
+}
+
+
+def init_db() -> None:
+    """
+    Create tables if they do not already exist and apply pending schema migrations.
+
+    Safe to call multiple times (idempotent):
+    - CREATE TABLE IF NOT EXISTS skips existing tables.
+    - Each migration statement is wrapped in try/except; ALTER TABLE ADD COLUMN
+      raises OperationalError if the column already exists, which is treated as
+      a no-op so that re-running init_db() on an up-to-date database is safe.
+    - schema_version is stamped after all pending migrations complete.
+    """
+    with _connection() as conn:
+        conn.executescript(_DDL)
+
+    # Separate connection: executescript() does an implicit COMMIT so we open
+    # a fresh transaction for schema-version reads and migration writes.
+    with _connection() as conn:
+        row = conn.execute("SELECT version FROM schema_version").fetchone()
+        current_version = row["version"] if row else 0
+
+        for version in range(current_version + 1, _SCHEMA_VERSION + 1):
+            for sql in _MIGRATIONS.get(version, []):
+                try:
+                    conn.execute(sql)
+                except sqlite3.OperationalError:
+                    pass  # column already exists — idempotent no-op
+
+        # Stamp with the current schema version so next init_db() is a no-op.
+        if row is None:
+            conn.execute(
+                "INSERT INTO schema_version (version) VALUES (?)",
+                (_SCHEMA_VERSION,),
+            )
+        elif current_version < _SCHEMA_VERSION:
+            conn.execute(
+                "UPDATE schema_version SET version = ?",
+                (_SCHEMA_VERSION,),
+            )
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _hash_ip(ip: str | None) -> str | None:
+    if not ip:
+        return None
+    salt = os.environ.get("SESSION_SECRET", "")
+    return hashlib.sha256(f"{salt}:{ip}".encode()).hexdigest()[:16]
+
+
+def _hash_rate_key(action: str, ip: str | None) -> str:
+    """Return a 24-char hex key for rate-limit table lookups.
+
+    Uses a distinct prefix so rate-limit hashes are not correlated with
+    ip_hash values in feedback/early-access tables.
+    """
+    raw = f"rl:{action}:{ip or 'unknown'}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:24]
+
+
+# ── Rate limiting (persistent, DB-backed, multi-worker safe) ──────────────────
+
+def check_rate_limit(
+    action: str,
+    ip: str | None,
+    max_attempts: int,
+    window_seconds: int,
+) -> bool:
+    """Return True if the request is within limits, False if it should be blocked.
+
+    Counts *failed* attempts (success=0) for this action/IP within the rolling
+    window.  Successful attempts are recorded separately and do not count toward
+    the limit.
+    """
+    key = _hash_rate_key(action, ip)
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(seconds=window_seconds)
+    ).isoformat(timespec="seconds")
+    with _connection() as conn:
+        count = conn.execute(
+            """SELECT COUNT(*) FROM rate_limit_log
+               WHERE key_hash = ? AND action = ? AND attempted_at > ? AND success = 0""",
+            (key, action, cutoff),
+        ).fetchone()[0]
+    return count < max_attempts
+
+
+def record_rate_attempt(
+    action: str,
+    ip: str | None,
+    success: bool = False,
+) -> None:
+    """Record one attempt.  Also prunes entries older than 24 hours to keep
+    the table tidy without requiring a separate maintenance job."""
+    key = _hash_rate_key(action, ip)
+    cutoff_prune = (
+        datetime.now(timezone.utc) - timedelta(hours=24)
+    ).isoformat(timespec="seconds")
+    with _connection() as conn:
+        conn.execute(
+            "DELETE FROM rate_limit_log WHERE attempted_at < ?",
+            (cutoff_prune,),
+        )
+        conn.execute(
+            """INSERT INTO rate_limit_log (key_hash, action, attempted_at, success)
+               VALUES (?, ?, ?, ?)""",
+            (key, action, _now(), 1 if success else 0),
+        )
+
+
+def _int_score(raw) -> int | None:
+    try:
+        v = int(raw)
+        return v if 1 <= v <= 5 else None
+    except (TypeError, ValueError):
+        return None
+
+
+# ── Writes ────────────────────────────────────────────────────────────────────
+
+def save_feedback(data: dict, ip: str | None = None) -> int:
+    """Insert a feedback submission. Returns the new row id."""
+    with _connection() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO feedback_submissions
+                (submitted_at, intuitive, useful, trustworthy, area, comments,
+                 would_use, ip_hash, email, browser, device, page_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                _now(),
+                _int_score(data.get("intuitive")),
+                _int_score(data.get("useful")),
+                _int_score(data.get("trustworthy")),
+                (data.get("area") or "").strip() or None,
+                (data.get("comments") or "").strip() or None,
+                (data.get("would_use") or "").strip() or None,
+                _hash_ip(ip),
+                (data.get("email") or "").strip().lower() or None,
+                (data.get("browser") or "").strip() or None,
+                (data.get("device") or "").strip() or None,
+                (data.get("page_url") or "").strip() or None,
+            ),
+        )
+        return cur.lastrowid
+
+
+def save_early_access(data: dict, ip: str | None = None) -> dict:
+    """
+    Insert an early-access registration.
+    Returns {"ok": True} or {"ok": False, "duplicate": True}.
+    """
+    email = (data.get("email") or "").strip().lower()
+    with _connection() as conn:
+        existing = conn.execute(
+            "SELECT id FROM early_access_registrations WHERE email = ? COLLATE NOCASE",
+            (email,),
+        ).fetchone()
+        if existing:
+            return {"ok": True, "duplicate": True}
+        conn.execute(
+            """
+            INSERT INTO early_access_registrations
+                (submitted_at, name, email, occupation, working_style,
+                 referral_source, comments, ip_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                _now(),
+                (data.get("name") or "").strip(),
+                email,
+                (data.get("occupation") or "").strip() or None,
+                (data.get("working_style") or "").strip() or None,
+                (data.get("referral_source") or "").strip() or None,
+                (data.get("comments") or "").strip() or None,
+                _hash_ip(ip),
+            ),
+        )
+        return {"ok": True, "duplicate": False}
+
+
+# ── Reads (founder dashboard) ─────────────────────────────────────────────────
+
+def get_feedback_stats() -> dict:
+    with _connection() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*)                    AS total,
+                ROUND(AVG(intuitive), 1)    AS avg_intuitive,
+                ROUND(AVG(useful), 1)       AS avg_useful,
+                ROUND(AVG(trustworthy), 1)  AS avg_trustworthy
+            FROM feedback_submissions
+            """
+        ).fetchone()
+        would = conn.execute(
+            """
+            SELECT would_use, COUNT(*) AS n
+            FROM feedback_submissions
+            WHERE would_use IS NOT NULL AND would_use != ''
+            GROUP BY would_use
+            ORDER BY n DESC
+            """
+        ).fetchall()
+        return {
+            "total":           row["total"],
+            "avg_intuitive":   row["avg_intuitive"],
+            "avg_useful":      row["avg_useful"],
+            "avg_trustworthy": row["avg_trustworthy"],
+            "would_use":       [dict(r) for r in would],
+        }
+
+
+def get_recent_feedback(limit: int = 20) -> list[dict]:
+    with _connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, submitted_at, intuitive, useful, trustworthy,
+                   area, comments, would_use
+            FROM feedback_submissions
+            ORDER BY submitted_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_early_access_stats() -> dict:
+    with _connection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS total FROM early_access_registrations"
+        ).fetchone()
+        styles = conn.execute(
+            """
+            SELECT working_style, COUNT(*) AS n
+            FROM early_access_registrations
+            WHERE working_style IS NOT NULL AND working_style != ''
+            GROUP BY working_style
+            ORDER BY n DESC
+            """
+        ).fetchall()
+        return {
+            "total":          row["total"],
+            "working_styles": [dict(r) for r in styles],
+        }
+
+
+def get_recent_registrations(limit: int = 50) -> list[dict]:
+    with _connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, submitted_at, name, email, occupation, working_style, comments
+            FROM early_access_registrations
+            ORDER BY submitted_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_all_feedback() -> list[dict]:
+    with _connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, submitted_at, intuitive, useful, trustworthy,
+                   area, comments, would_use
+            FROM feedback_submissions
+            ORDER BY submitted_at DESC
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_all_registrations() -> list[dict]:
+    with _connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, submitted_at, name, email, occupation, working_style, comments
+            FROM early_access_registrations
+            ORDER BY submitted_at DESC
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# ── Bank connections ──────────────────────────────────────────────────────────
+
+def save_connection(
+    institution_id: str,
+    institution_name: str,
+    consent_token: str,
+    consent_id: str | None = None,
+    expires_at: str | None = None,
+    session_key: str | None = None,
+    user_id: int | None = None,
+) -> int:
+    """Insert a bank connection record. Returns the new row id."""
+    with _connection() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO bank_connections
+                (created_at, institution_id, institution_name, consent_token,
+                 consent_id, status, expires_at, session_key, user_id)
+            VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)
+            """,
+            (_now(), institution_id, institution_name, consent_token,
+             consent_id, expires_at, session_key, user_id),
+        )
+        return cur.lastrowid
+
+
+def get_connection_by_token(consent_token: str) -> dict | None:
+    """Return the bank_connections row for a consent token, or None."""
+    with _connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM bank_connections WHERE consent_token = ?",
+            (consent_token,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def list_active_connections(
+    session_key: str | None = None,
+    user_id: int | None = None,
+) -> list[dict]:
+    """
+    Return active connections, optionally filtered by session_key or user_id.
+
+    When user_id is provided it takes precedence over session_key.
+    """
+    with _connection() as conn:
+        if user_id is not None:
+            rows = conn.execute(
+                """
+                SELECT * FROM bank_connections
+                WHERE status IN ('active', 'expiring') AND user_id = ?
+                ORDER BY created_at DESC
+                """,
+                (user_id,),
+            ).fetchall()
+        elif session_key:
+            rows = conn.execute(
+                """
+                SELECT * FROM bank_connections
+                WHERE status IN ('active', 'expiring') AND session_key = ?
+                ORDER BY created_at DESC
+                """,
+                (session_key,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT * FROM bank_connections
+                WHERE status IN ('active', 'expiring')
+                ORDER BY created_at DESC
+                """
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def update_connection_status(consent_token: str, status: str) -> None:
+    """Update status for a connection. status: active|expiring|expired|revoked."""
+    with _connection() as conn:
+        conn.execute(
+            "UPDATE bank_connections SET status = ? WHERE consent_token = ?",
+            (status, consent_token),
+        )
+
+
+def delete_connection(consent_token: str) -> None:
+    """Delete a connection and cascade to its accounts and transactions."""
+    with _connection() as conn:
+        conn.execute(
+            "DELETE FROM bank_connections WHERE consent_token = ?",
+            (consent_token,),
+        )
+
+
+# ── Connected accounts ────────────────────────────────────────────────────────
+
+def save_account(
+    connection_id: int,
+    yapily_account_id: str,
+    account_type: str | None = None,
+    nickname: str | None = None,
+    currency: str = "GBP",
+    sort_code: str | None = None,
+    account_number: str | None = None,
+    balance: float | None = None,
+    balance_at: str | None = None,
+) -> int:
+    """Insert a connected account. Returns the new row id."""
+    with _connection() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO connected_accounts
+                (connection_id, yapily_account_id, account_type, nickname,
+                 currency, sort_code, account_number, balance, balance_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (connection_id, yapily_account_id, account_type, nickname,
+             currency, sort_code, account_number, balance, balance_at),
+        )
+        return cur.lastrowid
+
+
+def get_account(yapily_account_id: str) -> dict | None:
+    """Return the connected_accounts row for a Yapily account ID, or None."""
+    with _connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM connected_accounts WHERE yapily_account_id = ?",
+            (yapily_account_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def list_accounts(connection_id: int) -> list[dict]:
+    """Return all accounts for a connection."""
+    with _connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM connected_accounts WHERE connection_id = ? ORDER BY id",
+            (connection_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def update_account_balance(
+    yapily_account_id: str,
+    balance: float,
+    balance_at: str,
+) -> None:
+    """Refresh the cached balance for an account."""
+    with _connection() as conn:
+        conn.execute(
+            """
+            UPDATE connected_accounts
+            SET balance = ?, balance_at = ?
+            WHERE yapily_account_id = ?
+            """,
+            (balance, balance_at, yapily_account_id),
+        )
+
+
+# ── Transactions ──────────────────────────────────────────────────────────────
+
+def save_transactions(account_id: int, rows: list[dict]) -> int:
+    """
+    Upsert classified transactions for an account.
+
+    Each dict in ``rows`` must have:
+        yapily_tx_id, tx_date, description, amount, currency,
+        category, confidence, method, subcategory (or None),
+        tax_relevant (bool), raw_json (str or None).
+
+    Returns the number of rows written (inserts + updates).
+    """
+    written = 0
+    with _connection() as conn:
+        for row in rows:
+            conn.execute(
+                """
+                INSERT INTO transactions
+                    (account_id, yapily_tx_id, tx_date, description, amount, currency,
+                     category, confidence, method, subcategory, tax_relevant,
+                     raw_json, ingested_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(account_id, yapily_tx_id) DO UPDATE SET
+                    category     = excluded.category,
+                    confidence   = excluded.confidence,
+                    method       = excluded.method,
+                    subcategory  = excluded.subcategory,
+                    tax_relevant = excluded.tax_relevant,
+                    ingested_at  = excluded.ingested_at
+                """,
+                (
+                    account_id,
+                    row["yapily_tx_id"],
+                    row["tx_date"],
+                    row["description"],
+                    row["amount"],
+                    row.get("currency", "GBP"),
+                    row["category"],
+                    row["confidence"],
+                    row["method"],
+                    row.get("subcategory"),
+                    1 if row.get("tax_relevant") else 0,
+                    row.get("raw_json"),
+                    _now(),
+                ),
+            )
+            written += 1
+    return written
+
+
+def get_transactions(
+    account_id: int,
+    category: str | None = None,
+    limit: int = 500,
+) -> list[dict]:
+    """
+    Return persisted transactions for an account, newest first.
+    Optionally filter by category value.
+    """
+    with _connection() as conn:
+        if category:
+            rows = conn.execute(
+                """
+                SELECT * FROM transactions
+                WHERE account_id = ? AND category = ?
+                ORDER BY tx_date DESC, id DESC
+                LIMIT ?
+                """,
+                (account_id, category, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT * FROM transactions
+                WHERE account_id = ?
+                ORDER BY tx_date DESC, id DESC
+                LIMIT ?
+                """,
+                (account_id, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_transaction_summary(account_id: int) -> dict:
+    """
+    Return aggregate totals for an account's persisted transactions.
+
+    Keys: total_income, total_tax_payments, total_expenses,
+          unclassified_count, transaction_count.
+    """
+    with _connection() as conn:
+        income_cats = (
+            "freelance_income", "salary", "dividend",
+            "interest", "rental_income", "tax_refund",
+        )
+        expense_cats = ("business_expense", "subscription")
+        placeholders = lambda n: ",".join("?" * n)  # noqa: E731
+
+        total_income = conn.execute(
+            f"""
+            SELECT COALESCE(SUM(amount), 0) FROM transactions
+            WHERE account_id = ? AND category IN ({placeholders(len(income_cats))})
+            """,
+            (account_id, *income_cats),
+        ).fetchone()[0]
+
+        total_tax = conn.execute(
+            """
+            SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions
+            WHERE account_id = ? AND category = 'tax_payment'
+            """,
+            (account_id,),
+        ).fetchone()[0]
+
+        total_expenses = conn.execute(
+            f"""
+            SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions
+            WHERE account_id = ? AND category IN ({placeholders(len(expense_cats))})
+            """,
+            (account_id, *expense_cats),
+        ).fetchone()[0]
+
+        unclassified = conn.execute(
+            """
+            SELECT COUNT(*) FROM transactions
+            WHERE account_id = ? AND category = 'unknown'
+            """,
+            (account_id,),
+        ).fetchone()[0]
+
+        total_count = conn.execute(
+            "SELECT COUNT(*) FROM transactions WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()[0]
+
+    return {
+        "total_income": round(total_income, 2),
+        "total_tax_payments": round(total_tax, 2),
+        "total_expenses": round(total_expenses, 2),
+        "unclassified_count": unclassified,
+        "transaction_count": total_count,
+    }
+
+
+# ── Transaction overrides ─────────────────────────────────────────────────────
+
+def save_override(
+    transaction_id: int,
+    original_category: str,
+    new_category: str,
+    note: str | None = None,
+) -> int:
+    """
+    Record a manual category correction and update the transaction row.
+    Returns the new override row id.
+    """
+    with _connection() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO transaction_overrides
+                (transaction_id, overridden_at, original_category, new_category, note)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (transaction_id, _now(), original_category, new_category, note),
+        )
+        conn.execute(
+            """
+            UPDATE transactions
+            SET category = ?, method = 'manual', confidence = 1.0
+            WHERE id = ?
+            """,
+            (new_category, transaction_id),
+        )
+        return cur.lastrowid
+
+
+def get_overrides(transaction_id: int) -> list[dict]:
+    """Return all override records for a transaction, oldest first."""
+    with _connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM transaction_overrides
+            WHERE transaction_id = ?
+            ORDER BY overridden_at
+            """,
+            (transaction_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# ── User profiles ─────────────────────────────────────────────────────────────
+
+def save_profile(session_key: str, data: dict) -> None:
+    """
+    Insert or replace a user profile for a session.
+
+    data keys (all optional): display_name, tax_year, income_estimate,
+    pension_contribution, student_loan_plans (list → stored as JSON),
+    notes.
+    """
+    import json
+    student_plans = data.get("student_loan_plans")
+    plans_json = json.dumps(student_plans) if isinstance(student_plans, list) else student_plans
+    with _connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO user_profiles
+                (session_key, updated_at, display_name, tax_year,
+                 income_estimate, pension_contribution, student_loan_plans, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(session_key) DO UPDATE SET
+                updated_at           = excluded.updated_at,
+                display_name         = excluded.display_name,
+                tax_year             = excluded.tax_year,
+                income_estimate      = excluded.income_estimate,
+                pension_contribution = excluded.pension_contribution,
+                student_loan_plans   = excluded.student_loan_plans,
+                notes                = excluded.notes
+            """,
+            (
+                session_key,
+                _now(),
+                data.get("display_name"),
+                data.get("tax_year"),
+                data.get("income_estimate"),
+                data.get("pension_contribution"),
+                plans_json,
+                data.get("notes"),
+            ),
+        )
+
+
+def get_profile(session_key: str) -> dict | None:
+    """
+    Return a user profile dict, or None if not found.
+    student_loan_plans is decoded from JSON back to a list.
+    """
+    import json
+    with _connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM user_profiles WHERE session_key = ?",
+            (session_key,),
+        ).fetchone()
+    if not row:
+        return None
+    profile = dict(row)
+    raw_plans = profile.get("student_loan_plans")
+    if raw_plans:
+        try:
+            profile["student_loan_plans"] = json.loads(raw_plans)
+        except (ValueError, TypeError):
+            pass
+    return profile
+
+
+# ── Workstream 5: User identity ───────────────────────────────────────────────
+
+def get_or_create_user(
+    clerk_user_id: str,
+    email: str | None = None,
+    display_name: str | None = None,
+) -> int:
+    """
+    Return the internal DB user_id for a Clerk user ID, creating a new row
+    if one does not yet exist.  Safe to call repeatedly (idempotent).
+
+    Parameters
+    ----------
+    clerk_user_id : str
+        The stable Clerk user identifier (e.g. "user_2abc…") or the demo
+        sentinel DEMO_CLERK_ID for the internal preview user.
+    email : str or None
+        Primary email from the Clerk token claims.
+    display_name : str or None
+        Full name derived from first_name + last_name or email.
+
+    Returns
+    -------
+    int
+        The users.id primary key for this Clerk user.
+    """
+    with _connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE clerk_user_id = ?",
+            (clerk_user_id,),
+        ).fetchone()
+        if row:
+            return row["id"]
+        cur = conn.execute(
+            """
+            INSERT INTO users (clerk_user_id, email, display_name, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (clerk_user_id, email, display_name, _now()),
+        )
+        return cur.lastrowid
+
+
+def get_user(user_id: int) -> dict | None:
+    """Return the users row for an internal user_id, or None."""
+    with _connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def migrate_session_to_user(session_key: str, user_id: int) -> dict:
+    """
+    Link existing session_key-keyed rows to a real user_id.
+
+    Called automatically on the first Clerk sign-in when the browser
+    previously used the app anonymously.  Only updates rows where
+    user_id is currently NULL (so repeated calls are safe).
+
+    Returns
+    -------
+    dict
+        {"profiles": n, "connections": n} — count of rows updated per table.
+    """
+    with _connection() as conn:
+        profiles = conn.execute(
+            """
+            UPDATE user_profiles
+            SET user_id = ?
+            WHERE session_key = ? AND user_id IS NULL
+            """,
+            (user_id, session_key),
+        ).rowcount
+        connections = conn.execute(
+            """
+            UPDATE bank_connections
+            SET user_id = ?
+            WHERE session_key = ? AND user_id IS NULL
+            """,
+            (user_id, session_key),
+        ).rowcount
+    return {"profiles": profiles, "connections": connections}
+
+
+def save_profile_by_user(user_id: int, data: dict) -> None:
+    """
+    Insert or update a user profile keyed by user_id.
+
+    Uses the synthetic session_key "user:<user_id>" so that this function
+    is compatible with the session_key UNIQUE constraint on user_profiles.
+    The user_id FK is also set for direct lookups via get_profile_by_user().
+
+    data keys (all optional): display_name, tax_year, income_estimate,
+    pension_contribution, student_loan_plans (list → JSON), notes.
+    """
+    import json
+    session_key = f"user:{user_id}"
+    student_plans = data.get("student_loan_plans")
+    plans_json = json.dumps(student_plans) if isinstance(student_plans, list) else student_plans
+    with _connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO user_profiles
+                (session_key, updated_at, display_name, tax_year,
+                 income_estimate, pension_contribution, student_loan_plans, notes, user_id,
+                 child_benefit_children, child_benefit_annual)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(session_key) DO UPDATE SET
+                updated_at              = excluded.updated_at,
+                display_name            = excluded.display_name,
+                tax_year                = excluded.tax_year,
+                income_estimate         = excluded.income_estimate,
+                pension_contribution    = excluded.pension_contribution,
+                student_loan_plans      = excluded.student_loan_plans,
+                notes                   = excluded.notes,
+                user_id                 = excluded.user_id,
+                child_benefit_children  = excluded.child_benefit_children,
+                child_benefit_annual    = excluded.child_benefit_annual
+            """,
+            (
+                session_key,
+                _now(),
+                data.get("display_name"),
+                data.get("tax_year"),
+                data.get("income_estimate"),
+                data.get("pension_contribution"),
+                plans_json,
+                data.get("notes"),
+                user_id,
+                int(data.get("child_benefit_children") or 0),
+                data.get("child_benefit_annual"),
+            ),
+        )
+
+
+def get_profile_by_user(user_id: int) -> dict | None:
+    """
+    Return the user profile for a given internal user_id, or None.
+    student_loan_plans is decoded from JSON back to a list.
+    """
+    import json
+    with _connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM user_profiles WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    if not row:
+        return None
+    profile = dict(row)
+    raw_plans = profile.get("student_loan_plans")
+    if raw_plans:
+        try:
+            profile["student_loan_plans"] = json.loads(raw_plans)
+        except (ValueError, TypeError):
+            pass
+    return profile
+
+
+def save_optimise_scenario(
+    user_id: int,
+    opportunity: str,
+    inputs: dict,
+    outputs: dict,
+    label: str | None = None,
+) -> int:
+    """Save a pension-contribution scenario comparison for a user.
+
+    Parameters
+    ----------
+    user_id:     Internal user ID.
+    opportunity: Opportunity identifier ("PA_TAPER" | "HICBC").
+    inputs:      Dict of calculation inputs (projected_income, pension, extra, annual_cb).
+    outputs:     Dict of results (before, after, it_reduction, hicbc_reduction, total_benefit).
+    label:       Optional user-supplied name for this comparison.
+
+    Returns the new row ID.
+    """
+    import json
+    with _connection() as conn:
+        cur = conn.execute(
+            """INSERT INTO optimise_scenarios
+               (user_id, opportunity, label, inputs_json, outputs_json, saved_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, opportunity, label, json.dumps(inputs), json.dumps(outputs), _now()),
+        )
+        return cur.lastrowid
+
+
+def list_optimise_scenarios(user_id: int, limit: int = 10) -> list[dict]:
+    """Return the most recent saved scenarios for a user, newest first."""
+    import json
+    with _connection() as conn:
+        rows = conn.execute(
+            """SELECT * FROM optimise_scenarios
+               WHERE user_id = ?
+               ORDER BY saved_at DESC LIMIT ?""",
+            (user_id, limit),
+        ).fetchall()
+    result = []
+    for row in rows:
+        d = dict(row)
+        try:
+            d["inputs"]  = json.loads(d.get("inputs_json")  or "{}")
+        except (ValueError, TypeError):
+            d["inputs"] = {}
+        try:
+            d["outputs"] = json.loads(d.get("outputs_json") or "{}")
+        except (ValueError, TypeError):
+            d["outputs"] = {}
+        result.append(d)
+    return result
+
+
+def delete_optimise_scenario(scenario_id: int, user_id: int) -> bool:
+    """Delete a saved scenario, enforcing user ownership.  Returns True if deleted."""
+    with _connection() as conn:
+        rowcount = conn.execute(
+            "DELETE FROM optimise_scenarios WHERE id = ? AND user_id = ?",
+            (scenario_id, user_id),
+        ).rowcount
+    return rowcount > 0
+
+
+def list_connections_for_user(user_id: int) -> list[dict]:
+    """Return active and expiring bank connections for an authenticated user."""
+    with _connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM bank_connections
+            WHERE status IN ('active', 'expiring') AND user_id = ?
+            ORDER BY created_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# ── Workstream 6: Invoices ─────────────────────────────────────────────────────
+
+def save_invoice(
+    reference: str,
+    client_name: str,
+    amount_due: float,
+    issue_date: str,
+    due_date: str,
+    currency: str = "GBP",
+    status: str = "unpaid",
+    notes: str | None = None,
+    user_id: int | None = None,
+) -> int:
+    """
+    Insert a new invoice row. Returns the new invoice id.
+
+    Raises sqlite3.IntegrityError if (user_id, reference) already exists.
+    Call get_invoice_by_reference() first to check.
+    """
+    with _connection() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO invoices
+                (user_id, reference, client_name, amount_due, currency,
+                 issue_date, due_date, status, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                reference,
+                client_name,
+                amount_due,
+                currency,
+                issue_date,
+                due_date,
+                status,
+                notes,
+                _now(),
+            ),
+        )
+        return cur.lastrowid
+
+
+def get_invoice_by_reference(
+    reference: str,
+    user_id: int | None = None,
+) -> dict | None:
+    """
+    Return an invoice dict by reference, scoped to user_id when provided.
+    Returns None if not found.
+    """
+    with _connection() as conn:
+        if user_id is not None:
+            row = conn.execute(
+                "SELECT * FROM invoices WHERE reference = ? AND user_id = ?",
+                (reference, user_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM invoices WHERE reference = ? AND user_id IS NULL",
+                (reference,),
+            ).fetchone()
+    return dict(row) if row else None
+
+
+def get_invoice(invoice_id: int) -> dict | None:
+    """Return an invoice dict by primary key, or None."""
+    with _connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM invoices WHERE id = ?",
+            (invoice_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def list_invoices(user_id: int | None = None) -> list[dict]:
+    """
+    Return all invoices for a user, ordered by due_date descending.
+    When user_id is None, returns invoices with a NULL user_id (demo/test rows).
+    """
+    with _connection() as conn:
+        if user_id is not None:
+            rows = conn.execute(
+                "SELECT * FROM invoices WHERE user_id = ? ORDER BY due_date DESC",
+                (user_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM invoices WHERE user_id IS NULL ORDER BY due_date DESC",
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_invoice_status(invoice_id: int, status: str) -> None:
+    """Update the status of an invoice row."""
+    with _connection() as conn:
+        conn.execute(
+            "UPDATE invoices SET status = ? WHERE id = ?",
+            (status, invoice_id),
+        )
+
+
+# ── Workstream 6: Invoice matches ──────────────────────────────────────────────
+
+def save_match(
+    invoice_id: int,
+    status: str,
+    confidence: int,
+    method: str,
+    explanation: str,
+    matched_amount: float,
+    transaction_id: int | None = None,
+    review_state: str = "pending_review",
+) -> int:
+    """
+    Persist one invoice-match link. Returns the new invoice_matches.id.
+
+    For MULTIPLE_PAYMENTS, call once per contributing transaction.
+    For UNMATCHED, call with transaction_id=None.
+    """
+    with _connection() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO invoice_matches
+                (invoice_id, transaction_id, matched_at, status, confidence,
+                 method, explanation, matched_amount, review_state)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                invoice_id,
+                transaction_id,
+                _now(),
+                status,
+                confidence,
+                method,
+                explanation,
+                matched_amount,
+                review_state,
+            ),
+        )
+        return cur.lastrowid
+
+
+def get_matches_for_invoice(invoice_id: int) -> list[dict]:
+    """Return all match rows for an invoice, ordered by confidence descending."""
+    with _connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM invoice_matches
+            WHERE invoice_id = ?
+            ORDER BY confidence DESC, matched_at DESC
+            """,
+            (invoice_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def list_invoices_with_best_match(user_id: int) -> list[dict]:
+    """
+    Return invoices for a user joined with their best match (highest confidence).
+    Invoices with no match rows have match_* columns as None.
+    Ownership is enforced: only invoices belonging to user_id are returned.
+    """
+    with _connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                i.id,            i.reference,     i.client_name,
+                i.amount_due,    i.currency,
+                i.status   AS invoice_status,
+                i.due_date,      i.issue_date,    i.notes,
+                im.id        AS match_id,
+                im.status    AS match_status,
+                im.confidence,   im.method,       im.explanation,
+                im.matched_amount, im.review_state, im.transaction_id
+            FROM invoices i
+            LEFT JOIN invoice_matches im
+                   ON im.invoice_id = i.id
+                  AND im.confidence = (
+                          SELECT MAX(im2.confidence)
+                          FROM invoice_matches im2
+                          WHERE im2.invoice_id = i.id
+                      )
+            WHERE i.user_id = ?
+            ORDER BY i.due_date DESC
+            """,
+            (user_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_invoice_counts_for_user(user_id: int) -> dict:
+    """
+    Return invoice status counts for a user in a single query.
+
+    Keys: total, matched, outstanding, needs_review.
+    """
+    with _connection() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(DISTINCT i.id) AS total,
+                COUNT(DISTINCT CASE
+                    WHEN im.status = 'matched' THEN i.id END) AS matched,
+                COUNT(DISTINCT CASE
+                    WHEN im.status = 'unmatched' OR im.id IS NULL THEN i.id END) AS outstanding,
+                COUNT(DISTINCT CASE
+                    WHEN im.review_state = 'pending_review'
+                     AND im.status != 'matched' THEN i.id END) AS needs_review
+            FROM invoices i
+            LEFT JOIN invoice_matches im
+                   ON im.invoice_id = i.id
+                  AND im.confidence = (
+                          SELECT MAX(c.confidence)
+                          FROM invoice_matches c
+                          WHERE c.invoice_id = i.id
+                      )
+            WHERE i.user_id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+    return dict(row) if row else {"total": 0, "matched": 0, "outstanding": 0, "needs_review": 0}
+
+
+def get_user_review_items(user_id: int) -> dict:
+    """
+    Return items requiring user attention.
+
+    Ownership is enforced through JOINs to bank_connections.user_id and
+    invoices.user_id — no client-supplied IDs are trusted.
+
+    Returns:
+        unclassified_transactions — unknown or low-confidence (< 0.6) transactions
+        pending_invoice_matches   — unmatched, currency-missing, or pending-review matches
+    """
+    with _connection() as conn:
+        unclassified = conn.execute(
+            """
+            SELECT t.id, t.tx_date, t.description, t.amount, t.currency,
+                   t.category, t.confidence, t.subcategory
+            FROM transactions t
+            JOIN connected_accounts ca ON t.account_id = ca.id
+            JOIN bank_connections   bc ON ca.connection_id = bc.id
+            WHERE bc.user_id = ?
+              AND (t.category = 'unknown' OR t.confidence < 0.6)
+            ORDER BY t.tx_date DESC
+            LIMIT 50
+            """,
+            (user_id,),
+        ).fetchall()
+
+        pending = conn.execute(
+            """
+            SELECT im.id AS match_id,
+                   im.status AS match_status,
+                   im.confidence, im.method, im.explanation,
+                   im.matched_amount, im.review_state, im.transaction_id,
+                   i.id AS invoice_id,
+                   i.reference, i.client_name, i.amount_due, i.currency
+            FROM invoice_matches im
+            JOIN invoices i ON im.invoice_id = i.id
+            WHERE i.user_id = ?
+              AND (im.review_state = 'pending_review'
+                   OR im.status   = 'unmatched'
+                   OR im.method   = 'currency_missing')
+            ORDER BY im.confidence DESC, i.due_date DESC
+            """,
+            (user_id,),
+        ).fetchall()
+
+    return {
+        "unclassified_transactions": [dict(r) for r in unclassified],
+        "pending_invoice_matches":   [dict(r) for r in pending],
+    }
+
+
+def update_match_review_state(match_id: int, review_state: str) -> None:
+    """
+    Update the review_state of a match row.
+    Valid values: pending_review | confirmed | rejected.
+
+    Architecture stub for WS7+ review workflow.
+    """
+    with _connection() as conn:
+        conn.execute(
+            "UPDATE invoice_matches SET review_state = ? WHERE id = ?",
+            (review_state, match_id),
+        )
+
+
+def persist_match_result(result, invoice_id: int) -> list[int]:
+    """
+    Persist a MatchResult to the database.
+
+    For UNMATCHED, writes one row with transaction_id=NULL.
+    For MULTIPLE_PAYMENTS, writes one row per transaction_id in result.transaction_ids.
+    For all other statuses, writes a single row.
+
+    Returns list of new invoice_matches.id values written.
+
+    Parameters
+    ----------
+    result : reserved.matching.engine.MatchResult
+    invoice_id : int
+        The invoices.id FK (must already exist in DB).
+    """
+    match_ids: list[int] = []
+
+    if not result.transaction_ids:
+        # UNMATCHED (or aggregate with no DB-persisted transactions)
+        mid = save_match(
+            invoice_id=invoice_id,
+            status=result.status.value,
+            confidence=result.confidence,
+            method=result.method,
+            explanation=result.explanation,
+            matched_amount=float(result.matched_amount),
+            transaction_id=None,
+            review_state=result.review_state.value,
+        )
+        match_ids.append(mid)
+    else:
+        # One row per transaction_id (handles single, multiple, overpaid etc.)
+        per_tx_amount = float(result.matched_amount) / len(result.transaction_ids)
+        for tx_id in result.transaction_ids:
+            mid = save_match(
+                invoice_id=invoice_id,
+                status=result.status.value,
+                confidence=result.confidence,
+                method=result.method,
+                explanation=result.explanation,
+                matched_amount=per_tx_amount,
+                transaction_id=tx_id if isinstance(tx_id, int) else None,
+                review_state=result.review_state.value,
+            )
+            match_ids.append(mid)
+
+    return match_ids

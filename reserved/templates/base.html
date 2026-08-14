@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en-GB" data-theme="light">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#10264a">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>{% block title %}Reserved™{% endblock %}</title>
+
+    {# ── Open Graph / Twitter Card / Canonical ──────────────────────────────── #}
+    {# Default values suit the public-facing overview. Gated app pages also     #}
+    {# benefit from OG tags so the link unfurls correctly when shared in chat.  #}
+    <meta property="og:site_name" content="Reserved™">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Reserved™ — Explore limited tax estimates as you earn">
+    <meta property="og:description" content="Reserved previews scoped, illustrative tax estimates for UK self-employed people.">
+    <meta property="og:url" content="{{ canonical_base }}{{ request.path }}">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Reserved™ — Explore limited tax estimates as you earn">
+    <meta name="twitter:description" content="Reserved previews scoped, illustrative tax estimates for UK self-employed people.">
+    <link rel="canonical" href="{{ canonical_base }}{{ request.path }}">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/charts.css') }}">
+    <script defer src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='js/charts.js') }}"></script>
+    {% if turnstile_site_key %}
+    {# Cloudflare Turnstile — only loaded when a site key is configured.       #}
+    {# In dev/test the widget is not rendered and server-side verification is  #}
+    {# skipped, so previews continue to work without Cloudflare credentials.   #}
+    <script src="https://challenges.cloudflare.com/turnstile/v1/api.js" async defer></script>
+    {% endif %}
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<div class="app-shell">
+    <div class="mobile-backdrop" data-menu-backdrop hidden></div>
+
+    <aside class="sidebar" id="sidebar">
+        <a class="brand" href="{{ url_for('v2.index') }}">
+            <span class="brand-mark">R</span>
+            <span>
+                <strong>Reserved™</strong>
+                <small>Explore limited tax estimates as you earn.</small>
+            </span>
+        </a>
+
+        <nav class="nav" aria-label="Primary">
+            <a class="{{ 'active' if request.endpoint == 'v2.index' }}" href="{{ url_for('v2.index') }}"{% if request.endpoint == 'v2.index' %} aria-current="page"{% endif %}>
+                <span>Overview</span>
+            </a>
+            <a class="{{ 'active' if request.endpoint in ('v2.dashboard_view', 'web.dashboard') }}" href="{{ url_for('v2.dashboard_view') }}"{% if request.endpoint in ('v2.dashboard_view', 'web.dashboard') %} aria-current="page"{% endif %}>
+                <span>Dashboard</span>
+            </a>
+            <a class="{{ 'active' if request.endpoint in ('v2.optimise_view', 'v2.optimise_calculate', 'v2.optimise_save_scenario') }}" href="{{ url_for('v2.optimise_view') }}"{% if request.endpoint in ('v2.optimise_view', 'v2.optimise_calculate', 'v2.optimise_save_scenario') %} aria-current="page"{% endif %}>
+                <span>Optimise</span>
+            </a>
+            <a class="{{ 'active' if request.endpoint in ('web.connections', 'v2.connections') }}" href="{{ url_for('web.connections') }}"{% if request.endpoint in ('web.connections', 'v2.connections') %} aria-current="page"{% endif %}>
+                <span>Connections</span>
+            </a>
+            <a class="{{ 'active' if request.endpoint in ('v2.invoices', 'v2.review_queue') }}" href="{{ url_for('v2.invoices') }}"{% if request.endpoint in ('v2.invoices', 'v2.review_queue') %} aria-current="page"{% endif %}>
+                <span>Invoices</span>
+            </a>
+            <a class="{{ 'active' if request.endpoint == 'web.future' }}" href="{{ url_for('web.future') }}"{% if request.endpoint == 'web.future' %} aria-current="page"{% endif %}>
+                <span>What's next</span>
+            </a>
+            <a class="{{ 'active' if request.endpoint in ('web.settings', 'v2.settings_page') }}" href="{{ url_for('v2.settings_page') }}"{% if request.endpoint in ('web.settings', 'v2.settings_page') %} aria-current="page"{% endif %}>
+                <span>Settings</span>
+            </a>
+            <a class="{{ 'active' if request.endpoint == 'web.about' }}" href="{{ url_for('web.about') }}"{% if request.endpoint == 'web.about' %} aria-current="page"{% endif %}>
+                <span>About</span>
+            </a>
+            {% if '_v2_user_id' in session %}
+            <form method="post" action="{{ url_for('v2.logout') }}" class="nav-signout-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="nav-signout-button"><span>Sign out</span></button>
+            </form>
+            {% endif %}
+        </nav>
+
+        <a class="sidebar-feature" href="{{ url_for('v2.index') }}">
+            <div class="sidebar-feature-icon">✦</div>
+            <div>
+                <strong>Preview Release</strong>
+                <small>Explore the Reserved example.</small>
+            </div>
+        </a>
+
+        <div class="sidebar-foot">
+            <div class="status-dot"></div>
+            <div>
+                <strong>Preview mode</strong>
+                <small>No money is moved</small>
+            </div>
+        </div>
+        <a href="{{ url_for('web.privacy') }}" class="sidebar-privacy-link">Privacy notice</a>
+    </aside>
+
+    <main class="main" id="main-content" tabindex="-1">
+        <header class="topbar">
+            <button class="icon-button menu-button" type="button" data-menu-button aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">☰</button>
+            <div class="topbar-title">
+                <span class="live-dot"></span>
+                <span>Private demo environment</span>
+            </div>
+            <div class="top-actions">
+                <button class="icon-button" type="button" data-theme-toggle aria-label="Toggle dark mode">◐</button>
+                <button class="icon-button notification-button" type="button" data-notification-toggle aria-label="Open notifications" aria-controls="notification-panel" aria-expanded="false">
+                    ♢
+                    <span class="notification-count" id="notif-count" hidden></span>
+                </button>
+                <div class="avatar">RC</div>
+            </div>
+
+            <div class="notification-popover" id="notification-panel" data-notification-panel hidden>
+                <div class="notification-head">
+                    <strong>Notifications</strong>
+                    <span class="pill" id="notif-badge" hidden></span>
+                </div>
+
+                <div class="notification-item notification-item--dismissible notif-dynamic" id="notif-estimate" hidden role="link" tabindex="0" data-notification-link="{{ url_for('v2.dashboard_view') }}#tax-breakdown">
+                    <span class="notification-icon blue">↗</span>
+                    <div>
+                        <strong>Estimate recalculated</strong>
+                        <p>Your tax estimate has been recalculated. Open the dashboard to view the updated breakdown.</p>
+                    </div>
+                    <button class="notif-dismiss" id="notif-estimate-dismiss" type="button" aria-label="Dismiss notification">✕</button>
+                </div>
+
+                <div class="notification-item">
+                    <span class="notification-icon green">✓</span>
+                    <div>
+                        <strong>Your reserve is on track</strong>
+                        <p>You are 58% funded against the illustrative annual target.</p>
+                    </div>
+                </div>
+
+            </div>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="flash flash-{{ category }}" role="{{ 'alert' if category == 'error' else 'status' }}" aria-live="{{ 'assertive' if category == 'error' else 'polite' }}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+</div>
+
+<div id="rsvd-tour" hidden aria-live="polite" aria-atomic="true">
+    <div id="rsvd-tour-backdrop" aria-hidden="true"></div>
+    <div id="rsvd-tour-tooltip" role="dialog" aria-modal="true" aria-labelledby="rsvd-tour-title">
+        <div class="tour-header">
+            <span class="tour-counter" id="rsvd-tour-counter">1 of 4</span>
+            <button class="tour-skip" id="rsvd-tour-skip" type="button">Skip tour</button>
+        </div>
+        <h3 id="rsvd-tour-title"></h3>
+        <p id="rsvd-tour-body"></p>
+        <div class="tour-nav">
+            <button class="button button-secondary" id="rsvd-tour-prev" type="button" hidden>← Back</button>
+            <button class="button button-primary" id="rsvd-tour-next" type="button">Next →</button>
+        </div>
+    </div>
+</div>
+
+<div class="action-pill-group">
+    <button id="early-access-btn" type="button" aria-label="Join early access">
+        <span class="action-pill-icon" aria-hidden="true">✦</span>
+        <span>Join Early Access</span>
+    </button>
+    <button id="feedback-btn" type="button" aria-label="Share feedback">
+        <span class="action-pill-icon" aria-hidden="true">◈</span>
+        <span>Share Feedback</span>
+    </button>
+</div>
+
+<div id="early-access-modal" hidden role="dialog" aria-modal="true" aria-labelledby="ea-modal-title" aria-describedby="ea-modal-description" tabindex="-1">
+    <div class="feedback-modal-head">
+        <h3 id="ea-modal-title">Join Early Access</h3>
+        <button id="early-access-close" type="button" aria-label="Close">✕</button>
+    </div>
+    <p class="modal-lede" id="ea-modal-description">Reserved is in preview. Leave your details and we'll be in touch when it's ready – no commitment, and access isn't guaranteed.</p>
+
+    <form id="early-access-form" novalidate>
+        <div class="feedback-q">
+            <label for="ea-name">Your name <span class="req-mark">*</span></label>
+            <input id="ea-name" class="field-input" type="text" name="name" placeholder="First and last name" autocomplete="name" required>
+        </div>
+        <div class="feedback-q">
+            <label for="ea-email">Email address <span class="req-mark">*</span></label>
+            <input id="ea-email" class="field-input" type="email" name="email" placeholder="you@example.com" autocomplete="email" required>
+        </div>
+        <div class="feedback-q">
+            <label for="ea-occupation">What do you do? <span class="optional-label">(optional)</span></label>
+            <input id="ea-occupation" class="field-input" type="text" name="occupation" placeholder="e.g. Graphic designer, developer…">
+        </div>
+        <div class="feedback-q">
+            <fieldset>
+                <legend>How do you work?</legend>
+                <div class="ea-style-grid">
+                    {% for val, lbl in [('sole_trader','Sole trader'),('freelancer','Freelancer'),('contractor','Contractor'),('director','Company director'),('other','Other')] %}
+                    <label><input type="radio" name="working_style" value="{{ val }}"><span>{{ lbl }}</span></label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+        </div>
+        <div class="feedback-q">
+            <label for="ea-comments">Anything else? <span class="optional-label">(optional)</span></label>
+            <textarea id="ea-comments" class="field-input" name="comments" placeholder="Questions, thoughts, context…" rows="2"></textarea>
+        </div>
+        <p class="ea-disclaimer">We'll use your details to follow up about Reserved and operate the preview, including through the service providers described in our <a href="{{ url_for('web.privacy') }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">privacy notice →</a></p>
+        {% if turnstile_site_key %}
+        <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="auto" style="margin:8px 0;"></div>
+        {% endif %}
+        <button class="button button-primary button-full" type="submit">Request access</button>
+    </form>
+
+    <div id="early-access-thanks" hidden class="modal-thanks" role="status" aria-live="polite">
+        <p class="thanks-icon" aria-hidden="true">✦</p>
+        <h3>You're on the list.</h3>
+        <p>We'll be in touch when Reserved is ready for you.</p>
+    </div>
+
+    <div id="early-access-duplicate" hidden class="modal-thanks" role="status" aria-live="polite">
+        <p class="thanks-icon" aria-hidden="true">◈</p>
+        <h3>You're already registered.</h3>
+        <p>We already have your details – we'll be in touch.</p>
+    </div>
+
+    <p id="early-access-error" class="form-error-msg" role="alert" aria-live="assertive" hidden></p>
+</div>
+
+<div id="feedback-modal" hidden role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title" tabindex="-1">
+    <div class="feedback-modal-head">
+        <h3 id="feedback-modal-title">Share your thoughts</h3>
+        <button id="feedback-close" type="button" aria-label="Close feedback">✕</button>
+    </div>
+
+    <form id="feedback-form" novalidate>
+        <div class="feedback-q">
+            <fieldset>
+                <legend>Do you find Reserved intuitive?</legend>
+                <div class="feedback-scale">
+                    {% for n, lbl in [('1','Not at all'),('2','A little'),('3','Somewhat'),('4','Mostly'),('5','Very')] %}
+                    <label title="{{ lbl }}"><input type="radio" name="intuitive" value="{{ n }}"><span>{{ n }}{% if n in ('1','5') %}<small>{{ lbl }}</small>{% endif %}</span></label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="feedback-q">
+            <fieldset>
+                <legend>How useful do you think Reserved would be?</legend>
+                <div class="feedback-scale">
+                    {% for n, lbl in [('1','Not at all'),('2','A little'),('3','Somewhat'),('4','Mostly'),('5','Very')] %}
+                    <label title="{{ lbl }}"><input type="radio" name="useful" value="{{ n }}"><span>{{ n }}{% if n in ('1','5') %}<small>{{ lbl }}</small>{% endif %}</span></label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="feedback-q">
+            <fieldset>
+                <legend>How useful would Reserved be for tracking your tax position?</legend>
+                <div class="feedback-scale">
+                    {% for n, lbl in [('1','Not at all'),('2','A little'),('3','Somewhat'),('4','Mostly'),('5','Very')] %}
+                    <label title="{{ lbl }}"><input type="radio" name="trustworthy" value="{{ n }}"><span>{{ n }}{% if n in ('1','5') %}<small>{{ lbl }}</small>{% endif %}</span></label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="feedback-q">
+            <fieldset>
+                <legend>Which area interested you most?</legend>
+                <div class="feedback-area-grid">
+                    <label><input type="radio" name="area" value="tax_reserve_estimate"><span>Tax reserve estimate</span></label>
+                    <label><input type="radio" name="area" value="tax_calc"><span>Tax calculation</span></label>
+                    <label><input type="radio" name="area" value="chart"><span>Income chart</span></label>
+                    <label><input type="radio" name="area" value="connections"><span>Connections</span></label>
+                    <label><input type="radio" name="area" value="future"><span>What's coming</span></label>
+                    <label><input type="radio" name="area" value="other"><span>Something else</span></label>
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="feedback-q">
+            <label for="feedback-comments">Is there anything else you'd like to share? <span class="optional-label">(optional)</span></label>
+            <textarea id="feedback-comments" name="confusing" class="feedback-textarea" placeholder="Any thoughts, observations, suggestions or ideas for improving Reserved…" rows="2"></textarea>
+        </div>
+
+        <div class="feedback-q">
+            <fieldset>
+                <legend>Would you use something like Reserved?</legend>
+                <div class="feedback-would">
+                    <label><input type="radio" name="would_use" value="yes"><span>Definitely</span></label>
+                    <label><input type="radio" name="would_use" value="maybe"><span>Possibly</span></label>
+                    <label><input type="radio" name="would_use" value="no"><span>Probably not</span></label>
+                </div>
+            </fieldset>
+        </div>
+
+        <p id="feedback-error" class="form-error-msg" role="alert" aria-live="assertive" hidden></p>
+        <p class="ea-disclaimer" style="margin-bottom:8px;">Feedback is used to improve Reserved. We do not ask for your name, but store limited request context as described in our <a href="{{ url_for('web.privacy') }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">privacy notice →</a></p>
+        {% if turnstile_site_key %}
+        <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="auto" style="margin:8px 0;"></div>
+        {% endif %}
+        <button class="button button-primary button-full" type="submit">Send feedback</button>
+    </form>
+
+    <div id="feedback-thanks" hidden role="status" aria-live="polite">
+        <p class="thanks-icon" aria-hidden="true">✦</p>
+        <h3>Thank you – that's really helpful.</h3>
+        <p>Your response has been noted. Reserved is in preview and feedback like this shapes what gets built next.</p>
+    </div>
+</div>
+
+{% block extra_body %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,37 @@
+# Reserved™ — robots.txt
+# Public pages are indexable; the gated application and admin routes are not.
+
+User-agent: *
+
+# Admin / founder dashboard — never index
+Disallow: /founder/
+
+# Gated application routes — noindex meta is also set on these templates,
+# but disallowing here prevents crawlers from following links into the app.
+Disallow: /v2/dashboard
+Disallow: /v2/connections
+Disallow: /v2/invoices
+Disallow: /v2/transactions
+Disallow: /v2/settings
+Disallow: /v2/review
+Disallow: /v2/capital-gains
+
+# Internal / API routes
+Disallow: /api/
+Disallow: /tax-assurance
+Disallow: /calculate
+Disallow: /settings
+Disallow: /connections
+
+# Form endpoints — POST only, no value in indexing
+Disallow: /early-access
+Disallow: /feedback
+
+# Public pages — explicitly allowed (belt-and-braces)
+Allow: /
+Allow: /v2/
+Allow: /v2/login
+Allow: /about
+Allow: /privacy
+Allow: /future
+Allow: /capital-gains

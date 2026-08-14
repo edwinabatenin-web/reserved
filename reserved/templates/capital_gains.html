@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Capital Gains — Reserved™{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Capital Gains</p>
+        <h1>Understand how a disposal could affect your tax reserve.</h1>
+        <p>Record a straightforward disposal and see the estimated impact on your reserve target.</p>
+    </div>
+    <span class="pill pill-live">Preview feature</span>
+</section>
+
+<div class="content-grid">
+    <form method="post" class="panel panel-large">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="panel-heading">
+            <div>
+                <h2>Add a disposal</h2>
+                <p>This preview supports straightforward disposals. Complex shares, cryptoassets or reliefs may require professional review.</p>
+            </div>
+        </div>
+        <div class="form-grid">
+            <label><span>Asset type</span><select name="asset_type"><option value="shares">Shares and funds</option><option value="crypto">Cryptoassets</option><option value="property">Residential property</option><option value="other">Other</option></select></label>
+            <label><span>Description</span><input name="description" placeholder="e.g. ABC plc shares"></label>
+            <label><span>Disposal date</span><input type="date" name="disposal_date"></label>
+            <label><span>Amount received</span><div class="input-prefix"><b>£</b><input type="number" step="0.01" name="proceeds" required></div></label>
+            <label><span>Original purchase cost</span><div class="input-prefix"><b>£</b><input type="number" step="0.01" name="allowable_cost" required></div></label>
+            <label><span>Buying costs</span><div class="input-prefix"><b>£</b><input type="number" step="0.01" name="acquisition_costs" value="0"></div></label>
+            <label><span>Selling costs</span><div class="input-prefix"><b>£</b><input type="number" step="0.01" name="disposal_costs" value="0"></div></label>
+            <label><span>Taxable income before this gain</span><div class="input-prefix"><b>£</b><input type="number" step="0.01" name="taxable_income" value="42000"></div></label>
+            <label><span>Unused capital losses from earlier years</span><div class="input-prefix"><b>£</b><input type="number" step="0.01" name="brought_forward_losses" value="0"></div></label>
+            <label><span>Capital Gains Tax already paid</span><div class="input-prefix"><b>£</b><input type="number" step="0.01" name="tax_already_paid" value="0"></div></label>
+        </div>
+        <button class="button button-primary" type="submit">Estimate reserve</button>
+    </form>
+
+    <aside class="panel result-card">
+        {% if result %}
+            <p class="eyebrow">Suggested additional reserve</p>
+            <h2>£{{ "{:,.2f}".format(result.outstanding_reserve) }}</h2>
+            <p>Estimated amount to add to your tax reserve for this disposal.</p>
+            <div class="breakdown">
+                <div><span>Gain before allowances</span><strong>£{{ "{:,.2f}".format(result.total_gains) }}</strong></div>
+                <div><span>Taxable gain</span><strong>£{{ "{:,.2f}".format(result.taxable_gains) }}</strong></div>
+                <div><span>Estimated Capital Gains Tax</span><strong>£{{ "{:,.2f}".format(result.estimated_cgt) }}</strong></div>
+            </div>
+            <div class="notice">This preview supports straightforward disposals only. It does not yet apply share pooling, same-day rules, 30-day matching or complex reliefs.</div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon">↗</div>
+                <h2>Your estimate will appear here.</h2>
+                <p>Capital gains remain separate from invoice tax so each liability stays attached to the event that created it.</p>
+            </div>
+        {% endif %}
+    </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,306 @@
+{
+  "pack_id": "RW3-PAYE-EVIDENCE-DRAFT-1",
+  "status": "independent_validation",
+  "purpose": "Candidate tests for Reserved evidence-selection and reconciliation policy, not statutory tax accuracy or API transport. The founder-approved principle prohibits unconditional HMRC precedence, preserves provenance and material uncertainty, and treats confidence as evidence quality rather than tax certainty. Operational thresholds and wording remain review-pending.",
+  "tax_year": "2026/27",
+  "territory": "England, Wales and Northern Ireland",
+  "derived_by": "Codex builder stream",
+  "derived_on": "2026-08-13",
+  "review": {
+    "reviewer": "Codex independent second-person re-review stream",
+    "reviewed_on": "2026-08-13",
+    "decision": "approved",
+    "notes": "All six remediated fixtures independently re-reviewed and approved within their bounded evidence-policy scope. Pending operational parameters remain explicit limitations. See docs/RW3_PAYE_EVIDENCE_FORMAL_REVIEW.md."
+  },
+  "rounding": "Evidence amounts and remaining annual liability are compared to pounds and pence. No payroll-period rounding is inferred.",
+  "sources": [
+    {
+      "title": "Individual Employment API 1.2",
+      "url": "https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-employment/1.2",
+      "supports": "Employment history is held and returned per tax year and includes employer identifiers"
+    },
+    {
+      "title": "Individual Income API 1.2",
+      "url": "https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-income/1.2",
+      "supports": "Employment income reported through PAYE is available for Self Assessment pre-population"
+    },
+    {
+      "title": "Individual Tax API 1.1",
+      "url": "https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-tax/1.1",
+      "supports": "Tax deducted and refunds are available for a given employment and tax year"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "RW3-PAYE-001",
+      "family": "paye_multiple_employments",
+      "status": "independent_validation",
+      "inputs": {
+        "estimated_total_liability": "10000",
+        "tax_year": "2026-27",
+        "as_of": "2026-08-12",
+        "evidence": [
+          {
+            "kind": "hmrc",
+            "employment_id": "synthetic-job-a",
+            "tax_paid_to_date": "1800",
+            "observed_on": "2026-08-10",
+            "evidence_id": "E-HMRC-JOB-A",
+            "representation": "employment_cumulative",
+            "effective_through": "2026-08-10",
+            "complete_for_representation": true
+          },
+          {
+            "kind": "hmrc",
+            "employment_id": "synthetic-job-b",
+            "tax_paid_to_date": "700",
+            "observed_on": "2026-08-10",
+            "evidence_id": "E-HMRC-JOB-B",
+            "representation": "employment_cumulative",
+            "effective_through": "2026-08-10",
+            "complete_for_representation": true
+          }
+        ]
+      },
+      "expected": {
+        "tax_paid_to_date": "2500.00",
+        "estimated_remaining_liability": "7500.00",
+        "calculation_status": "calculated",
+        "selected_evidence_ids": [
+          "E-HMRC-JOB-A",
+          "E-HMRC-JOB-B"
+        ],
+        "evidence_scope_completeness": "complete_for_declared_two_employments",
+        "conflict_count": "0"
+      },
+      "derivation": [
+        "Distinct employment identifiers represent distinct PAYE sources",
+        "1800 plus 700 is 2500 evidenced tax",
+        "10000 less 2500 is 7500 remaining",
+        "Evidence completeness is bounded to the two explicitly declared employments; it is not a claim that no other employment exists"
+      ]
+    },
+    {
+      "id": "RW3-PAYE-002",
+      "family": "paye_double_count_prevention",
+      "status": "independent_validation",
+      "inputs": {
+        "estimated_total_liability": "6000",
+        "tax_year": "2026-27",
+        "as_of": "2026-08-12",
+        "evidence": [
+          {
+            "kind": "document",
+            "employment_id": null,
+            "tax_paid_to_date": "2000",
+            "observed_on": "2026-08-10",
+            "evidence_id": "E-DOC-AGG",
+            "representation": "employments_aggregate_cumulative",
+            "covered_employment_ids": [
+              "synthetic-job-a",
+              "synthetic-job-b"
+            ],
+            "effective_through": "2026-08-10",
+            "complete_for_representation": true
+          },
+          {
+            "kind": "hmrc",
+            "employment_id": "synthetic-job-a",
+            "tax_paid_to_date": "1200",
+            "observed_on": "2026-08-10",
+            "evidence_id": "E-HMRC-JOB-A",
+            "representation": "employment_cumulative",
+            "effective_through": "2026-08-10",
+            "complete_for_representation": true
+          },
+          {
+            "kind": "hmrc",
+            "employment_id": "synthetic-job-b",
+            "tax_paid_to_date": "800",
+            "observed_on": "2026-08-10",
+            "evidence_id": "E-HMRC-JOB-B",
+            "representation": "employment_cumulative",
+            "effective_through": "2026-08-10",
+            "complete_for_representation": true
+          }
+        ]
+      },
+      "expected": {
+        "tax_paid_to_date": "2000.00",
+        "estimated_remaining_liability": "4000.00",
+        "calculation_status": "calculated",
+        "selected_evidence_id": "E-DOC-AGG",
+        "excluded_evidence_ids": [
+          "E-HMRC-JOB-A",
+          "E-HMRC-JOB-B"
+        ],
+        "selection_reason": "explicit_aggregate_covers_same_employments_and_period",
+        "warning_code": "aggregate_not_added_to_employments"
+      },
+      "derivation": [
+        "The aggregate explicitly identifies both employment entities and the same effective-through date",
+        "The entity-level values sum to the aggregate but are excluded because the declared representation link, not numeric equality alone, establishes overlap",
+        "Use 2000 once; 6000 less 2000 is 4000"
+      ]
+    },
+    {
+      "id": "RW3-PAYE-003",
+      "family": "paye_conflicting_evidence",
+      "status": "independent_validation",
+      "inputs": {
+        "estimated_total_liability": "6000",
+        "tax_year": "2026-27",
+        "as_of": "2026-08-12",
+        "evidence": [
+          {
+            "evidence_id": "E-HMRC-OLD",
+            "kind": "hmrc",
+            "representation": "employment_cumulative",
+            "employment_id": "synthetic-job-a",
+            "tax_paid_to_date": "2100",
+            "observed_on": "2026-07-13",
+            "complete_for_representation": true,
+            "effective_through": "2026-07-13"
+          },
+          {
+            "evidence_id": "E-PAYSLIP-CURRENT",
+            "kind": "document",
+            "document_type": "payslip",
+            "representation": "employment_cumulative",
+            "employment_id": "synthetic-job-a",
+            "tax_paid_to_date": "2000",
+            "observed_on": "2026-08-11",
+            "complete_for_representation": true,
+            "effective_through": "2026-08-11"
+          }
+        ]
+      },
+      "expected": {
+        "tax_paid_to_date": null,
+        "estimated_remaining_liability": null,
+        "calculation_status": "conflict_requires_review",
+        "selected_evidence_id": null,
+        "retained_conflicting_evidence_ids": [
+          "E-HMRC-OLD",
+          "E-PAYSLIP-CURRENT"
+        ],
+        "conflict_difference": "100.00",
+        "estimated_remaining_liability_low": "3900.00",
+        "estimated_remaining_liability_high": "4000.00",
+        "range_completeness": "complete_for_identified_conflict_only"
+      },
+      "derivation": [
+        "Both observations represent cumulative tax for the same employment and conflict by 100",
+        "Recency alone is not an approved tie-break, so neither item is selected",
+        "Both candidates remain in provenance",
+        "The known alternatives produce a remaining-liability range from 3900 to 4000",
+        "The range covers this identified conflict only and is not a claim of whole-position completeness"
+      ]
+    },
+    {
+      "id": "RW3-PAYE-004",
+      "family": "paye_missing_evidence",
+      "status": "independent_validation",
+      "inputs": {
+        "estimated_total_liability": "6000",
+        "tax_year": "2026-27",
+        "as_of": "2026-08-12",
+        "evidence": []
+      },
+      "expected": {
+        "tax_paid_to_date": null,
+        "estimated_remaining_liability": null,
+        "calculation_status": "insufficient_facts",
+        "conservative_assumed_tax_paid": "0.00",
+        "estimated_remaining_under_conservative_assumption": "6000.00",
+        "range_completeness": "partial",
+        "effect_beyond_assumption": "not_reasonably_determinable",
+        "warning_code": "no_direct_paye_evidence"
+      },
+      "derivation": [
+        "Missing evidence is unknown and is not affirmative evidence that tax paid is zero",
+        "A zero-paid conservative assumption may produce a 6000 set-aside scenario but is kept separate from observed tax paid",
+        "The liability remains unreconciled and the effect of actual deductions is not reasonably determinable"
+      ]
+    },
+    {
+      "id": "RW3-PAYE-005",
+      "family": "paye_overpayment",
+      "status": "independent_validation",
+      "inputs": {
+        "estimated_total_liability": "1000",
+        "tax_year": "2026-27",
+        "as_of": "2026-08-12",
+        "evidence": [
+          {
+            "kind": "hmrc",
+            "employment_id": "synthetic-job-a",
+            "tax_paid_to_date": "1200",
+            "observed_on": "2026-08-10",
+            "evidence_id": "E-HMRC-JOB-A",
+            "representation": "employment_cumulative",
+            "effective_through": "2026-08-10",
+            "complete_for_representation": true
+          }
+        ]
+      },
+      "expected": {
+        "tax_paid_to_date": "1200.00",
+        "estimated_remaining_liability": "0.00",
+        "calculation_status": "calculated_with_material_uncertainty",
+        "selected_evidence_id": "E-HMRC-JOB-A",
+        "apparent_overpayment": "200.00",
+        "apparent_overpayment_status": "not_a_confirmed_or_available_refund",
+        "warning_code": "apparent_overpayment_requires_separate_review"
+      },
+      "derivation": [
+        "Evidence is not reduced to match the estimate",
+        "Remaining liability is floored at zero",
+        "The 200 arithmetic excess is exposed separately as an apparent overpayment",
+        "It is not represented as a confirmed or available refund"
+      ]
+    },
+    {
+      "id": "RW3-PAYE-006",
+      "family": "paye_stale_evidence_policy_candidate",
+      "status": "independent_validation",
+      "inputs": {
+        "estimated_total_liability": "6000",
+        "tax_year": "2026-27",
+        "as_of": "2026-08-12",
+        "evidence": [
+          {
+            "evidence_id": "E-HMRC-STALE",
+            "kind": "hmrc",
+            "representation": "employment_cumulative",
+            "employment_id": "synthetic-job-stale",
+            "tax_paid_to_date": "2000",
+            "observed_on": "2026-06-01",
+            "complete_for_representation": true,
+            "effective_through": "2026-06-01"
+          }
+        ]
+      },
+      "expected": {
+        "tax_paid_to_date": "2000.00",
+        "estimated_remaining_liability": "4000.00",
+        "calculation_status": "calculated_with_material_uncertainty",
+        "evidence_age_days": 72,
+        "selected_evidence_id": "E-HMRC-STALE",
+        "selection_reason": "only_usable_direct_evidence_for_conservative_bounded_reconciliation",
+        "warning_code": "paye_evidence_may_be_stale",
+        "known_reconciliation_effect": "2000.00",
+        "range_completeness": "partial",
+        "later_period_deductions_effect": "not_reasonably_determinable",
+        "recency_threshold_status": "configuration_approval_required"
+      },
+      "derivation": [
+        "The observation and its represented period end are 72 days old on the as-of date",
+        "With no competing usable observation it remains selected only for a conservative bounded reconciliation and is not treated as current-to-date truth",
+        "Using versus excluding the known observation changes the remaining position by 2000",
+        "Deductions after 1 June are unknown, so the range/effect is partial and their further effect is not reasonably determinable",
+        "The precise recency threshold and customer severity remain policy-pending"
+      ]
+    }
+  ]
+}

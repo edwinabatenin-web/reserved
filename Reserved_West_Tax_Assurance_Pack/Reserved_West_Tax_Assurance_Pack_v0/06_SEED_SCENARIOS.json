@@ -1,0 +1,14 @@
+[
+  {
+    "scenario_id": "RW-000001",
+    "title": "Personal Allowance boundary"
+  },
+  {
+    "scenario_id": "RW-000002",
+    "title": "Salary + bonus"
+  },
+  {
+    "scenario_id": "RW-000003",
+    "title": "Salary + bonus + freelance + pension"
+  }
+]

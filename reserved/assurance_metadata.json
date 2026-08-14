@@ -1,0 +1,36 @@
+{
+  "tax_year": "2026/27",
+  "rules_version": "uk-2026-27-v1",
+  "verified_date": "2026-08-04",
+  "test_counts": {
+    "passed": 163,
+    "failed": 0,
+    "errors": 0
+  },
+  "all_tests_passed": true,
+  "scope": {
+    "in_scope": [
+      "Income tax \u2014 England/Wales/NI sole traders",
+      "Class 4 National Insurance",
+      "Student loan Plans 1, 2, 4, 5 and Postgraduate",
+      "Pension Relief at Source (basic-rate band extension)",
+      "Capital Gains Tax \u2014 basic/higher rate split",
+      "Annual Exempt Amount offset",
+      "Brought-forward loss relief"
+    ],
+    "out_of_scope": [
+      "Scottish income tax",
+      "Dividend and savings income",
+      "PAYE coding interactions",
+      "VAT-registered traders",
+      "Residential property CGT rates",
+      "BADR / Investors' Relief",
+      "Share pooling and same-day/30-day matching"
+    ]
+  },
+  "assumptions": [
+    "Illustrative sole-trader estimate only; not a tax return or professional advice.",
+    "Scottish income tax, dividend tax, and savings income are outside scope.",
+    "Pension contributions are treated as Relief at Source (gross figure expected)."
+  ]
+}

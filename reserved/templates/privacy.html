@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Privacy Notice — Reserved™{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Legal</p>
+        <h1>Privacy Notice</h1>
+        <p>What we collect, why, and how long we keep it.</p>
+    </div>
+</section>
+
+<div class="about-grid" style="max-width:720px;">
+
+    <article class="about-section panel">
+        <div class="about-section-icon" aria-hidden="true">§</div>
+        <div>
+            <h2>Who we are</h2>
+            <p>Reserved™ is a preview application built to demonstrate tax-position tracking for UK self-employed people. It is operated by Whip Smart Technologies Ltd. For privacy questions or rights requests, contact us using the feedback button on any page.</p>
+            <p>This notice applies to the preview at <strong>reserved.fyi</strong> and any associated preview URLs. It covers personal data collected through the early-access sign-up form, the feedback form, and the demo session.</p>
+        </div>
+    </article>
+
+    <article class="about-section panel">
+        <div class="about-section-icon" aria-hidden="true">◈</div>
+        <div>
+            <h2>What we collect and why</h2>
+
+            <h3 style="margin:16px 0 8px;font-size:15px;">Early-access registration</h3>
+            <p>When you register for early access we collect your <strong>name</strong> and <strong>email address</strong> (required), and optionally your occupation, working style, and any comments you add. We use these to follow up when Reserved is ready and to understand who we are building for.</p>
+            <p>Legal basis: <em>legitimate interests</em> — communicating progress on a product you have asked to hear about.</p>
+
+            <h3 style="margin:16px 0 8px;font-size:15px;">Feedback submissions</h3>
+            <p>The feedback form collects your ratings (1–5 on intuitiveness, usefulness, and trustworthiness), optional written comments, an optional email address if you choose to leave one, and the browser/device type and page URL derived automatically from your request. We use this to understand how the product is perceived and where to improve it.</p>
+            <p>Legal basis: <em>legitimate interests</em> — product research on a preview application.</p>
+
+            <h3 style="margin:16px 0 8px;font-size:15px;">Settings and demo profile</h3>
+            <p>If you use the Settings page, the income and profile figures you enter are stored in your session and, if you are signed in, associated with your account in Reserved's database. These figures are used to calculate and display your illustrative tax position and related product features.</p>
+
+            <h3 style="margin:16px 0 8px;font-size:15px;">IP addresses</h3>
+            <p>Your IP address is processed to detect duplicate early-access registrations and to protect against abuse. It is stored only as an <strong>irreversible one-way hash</strong> — the raw address is never retained. We cannot recover your IP from what is stored.</p>
+        </div>
+    </article>
+
+    <article class="about-section panel">
+        <div class="about-section-icon" aria-hidden="true">🍪</div>
+        <div>
+            <h2>Cookies</h2>
+            <p>Reserved uses <strong>one strictly necessary cookie</strong>: a session cookie named <code>rsvd_session</code>. It maintains your session, authentication state and preview settings across page loads. It expires after up to 8 hours.</p>
+            <p>The cookie is signed to detect alteration, marked HttpOnly and Secure, and is not used to track you across other websites. Depending on the page used, the session may contain profile information you entered; do not use real financial information in the public preview.</p>
+            <p>We do not use advertising cookies, analytics cookies, or any third-party tracking cookies.</p>
+        </div>
+    </article>
+
+    <article class="about-section panel">
+        <div class="about-section-icon" aria-hidden="true">⌛</div>
+        <div>
+            <h2>How long we keep your data</h2>
+            <p>Early-access registrations and feedback submissions are retained for the duration of the preview programme and deleted when the programme concludes or on request. The session cookie expires after up to 8 hours. Profile and connection records associated with a signed-in account may remain in Reserved's database until the account or preview data is deleted.</p>
+        </div>
+    </article>
+
+    <article class="about-section panel">
+        <div class="about-section-icon" aria-hidden="true">↗</div>
+        <div>
+            <h2>Who we share data with</h2>
+            <p>We do not sell or rent personal data. Authorised members of the Reserved project team can access preview submissions. Service providers process data only to operate the preview, including hosting and any configured email service used for submission notifications.</p>
+            <p>Reserved is hosted on <a href="https://replit.com" rel="noopener noreferrer" target="_blank">Replit</a>, which provides server infrastructure and storage. You can read Replit's privacy policy at <a href="https://replit.com/site/privacy" rel="noopener noreferrer" target="_blank">replit.com/site/privacy</a>. The list of processors and international-transfer safeguards must be confirmed before external launch.</p>
+        </div>
+    </article>
+
+    <article class="about-section panel">
+        <div class="about-section-icon" aria-hidden="true">✓</div>
+        <div>
+            <h2>Your rights</h2>
+            <p>Under UK GDPR you have the right to:</p>
+            <ul class="about-list">
+                <li><strong>Access</strong> — request a copy of the personal data we hold about you.</li>
+                <li><strong>Rectification</strong> — ask us to correct inaccurate data.</li>
+                <li><strong>Erasure</strong> — ask us to delete your data (early-access registrations and feedback).</li>
+                <li><strong>Restriction</strong> — ask us to stop processing your data in certain circumstances.</li>
+                <li><strong>Objection</strong> — object to processing based on legitimate interests.</li>
+            </ul>
+            <p>To exercise any of these rights, use the feedback button on any page and describe your request. We will respond within one calendar month.</p>
+            <p>If you have a concern about how we handle your data, you have the right to complain to the <a href="https://ico.org.uk" rel="noopener noreferrer" target="_blank">Information Commissioner's Office (ICO)</a>.</p>
+        </div>
+    </article>
+
+    <article class="about-section panel">
+        <div class="about-section-icon" aria-hidden="true">↻</div>
+        <div>
+            <h2>Changes to this notice</h2>
+            <p>We may update this privacy notice as the product develops. Material changes will be indicated by an updated date below. Continued use of the preview after changes are posted constitutes acceptance of the revised notice.</p>
+            <p style="color:var(--ink-soft);font-size:13px;margin-top:12px;">Last updated: August 2026</p>
+        </div>
+    </article>
+
+</div>
+{% endblock %}

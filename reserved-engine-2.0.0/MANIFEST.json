@@ -1,0 +1,313 @@
+{
+  "_description": "Reserved Engine v2.0.1 — source file hashes and golden expected outputs for byte-level and numerical parity verification.",
+  "_generated": "2026-08-06",
+  "_engine_version": "2.0.1",
+
+  "source_files": [
+    {
+      "reserved_path": "reserved/engines/__init__.py",
+      "bundle_path": "reserved_engine/__init__.py",
+      "note": "Docstring updated for standalone context; all relative imports identical to source.",
+      "sha256_of_reserved_original": "568e89e871d77bb2907041b8910bef83406d356e407ab549ecd933bb3180829f",
+      "sha256": "ba893ea755051f3c71e8131f638a6f6aa09a81dadb9b4ca7274c41a69fe26449"
+    },
+    {
+      "reserved_path": "reserved/engines/utils.py",
+      "bundle_path": "reserved_engine/utils.py",
+      "note": "Byte-for-byte identical copy.",
+      "sha256_of_reserved_original": "658c9fbf789fa0851c5453b2c26ba47a514186ddd95b7894038b9016c887a702",
+      "sha256": "658c9fbf789fa0851c5453b2c26ba47a514186ddd95b7894038b9016c887a702"
+    },
+    {
+      "reserved_path": "reserved/engines/tax_config.py",
+      "bundle_path": "reserved_engine/tax_config.py",
+      "note": "Byte-for-byte identical copy.",
+      "sha256_of_reserved_original": "dd091d469c0a8906a2a2f5665e727dcbc5c6ed08097ca5ecad45030324d93c3e",
+      "sha256": "dd091d469c0a8906a2a2f5665e727dcbc5c6ed08097ca5ecad45030324d93c3e"
+    },
+    {
+      "reserved_path": "reserved/engines/income_tax.py",
+      "bundle_path": "reserved_engine/income_tax.py",
+      "note": "Byte-for-byte identical copy. v2.0.1: eBRL capped at ART in _total_income_tax; EL-003 resolved.",
+      "sha256_of_reserved_original": "92112b91d8670da0810c1573b5fa74db016a2cf46df6792f5885cc179beec90e",
+      "sha256": "92112b91d8670da0810c1573b5fa74db016a2cf46df6792f5885cc179beec90e"
+    },
+    {
+      "reserved_path": "reserved/engines/capital_gains_config.py",
+      "bundle_path": "reserved_engine/capital_gains_config.py",
+      "note": "Byte-for-byte identical copy.",
+      "sha256_of_reserved_original": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
+      "sha256": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31"
+    },
+    {
+      "reserved_path": "reserved/engines/capital_gains.py",
+      "bundle_path": "reserved_engine/capital_gains.py",
+      "note": "Byte-for-byte identical copy.",
+      "sha256_of_reserved_original": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
+      "sha256": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da"
+    },
+    {
+      "reserved_path": "reserved/engines/allocation.py",
+      "bundle_path": "reserved_engine/allocation.py",
+      "note": "Byte-for-byte identical copy.",
+      "sha256_of_reserved_original": "6380c88597c6eb14ef7b697a53426077daa2f5f9bf89f3f9aca0db26681e14f2",
+      "sha256": "6380c88597c6eb14ef7b697a53426077daa2f5f9bf89f3f9aca0db26681e14f2"
+    },
+    {
+      "reserved_path": "reserved/engines/CHANGELOG.md",
+      "bundle_path": "reserved_engine/CHANGELOG.md",
+      "note": "Byte-for-byte identical copy.",
+      "sha256_of_reserved_original": "2e8e7784de4f354a4990c7ddc98fc2ba9d3ece250c4b7c092b0aff4487a657f0",
+      "sha256": "2e8e7784de4f354a4990c7ddc98fc2ba9d3ece250c4b7c092b0aff4487a657f0"
+    },
+    {
+      "reserved_path": "docs/ENGINE_ARCHITECTURE.md",
+      "bundle_path": "docs/ENGINE_ARCHITECTURE.md",
+      "note": "Byte-for-byte identical copy.",
+      "sha256_of_reserved_original": "ebd294a93389ea65e684e342b1abeebb1cd31d5500eeb71704fb5e0ecd3682f7",
+      "sha256": "ebd294a93389ea65e684e342b1abeebb1cd31d5500eeb71704fb5e0ecd3682f7"
+    },
+    {
+      "reserved_path": "docs/ASSUMPTIONS_AND_LIMITATIONS_REGISTER.md",
+      "bundle_path": "docs/ASSUMPTIONS_AND_LIMITATIONS_REGISTER.md",
+      "note": "Byte-for-byte identical copy.",
+      "sha256_of_reserved_original": "3be46dc84e86c941761948c324b2c4a40814a36535abd0154a0d32abd467da1e",
+      "sha256": "3be46dc84e86c941761948c324b2c4a40814a36535abd0154a0d32abd467da1e"
+    },
+    {
+      "reserved_path": "tests/test_income_tax.py",
+      "bundle_path": "tests/test_income_tax.py",
+      "note": "Imports updated: reserved.engines.income_tax → reserved_engine.income_tax. All test logic and golden values unchanged.",
+      "sha256_of_reserved_original": "29f04e326a8aeaea2ab0fad2d463fc470c9270ddfb834e2403c6886155d236ae"
+    },
+    {
+      "reserved_path": "tests/test_income_tax_boundaries.py",
+      "bundle_path": "tests/test_income_tax_boundaries.py",
+      "note": "Imports updated: reserved.engines.income_tax → reserved_engine.income_tax. All test logic and golden values unchanged.",
+      "sha256_of_reserved_original": "456b7b3db958f0898113c91abf881c932c9634830b6dcfd3b5dbafd43c857f60"
+    },
+    {
+      "reserved_path": "tests/test_capital_gains.py",
+      "bundle_path": "tests/test_capital_gains.py",
+      "note": "Imports updated: reserved.engines.capital_gains → reserved_engine.capital_gains; reserved.engines → reserved_engine. All test logic and golden values unchanged.",
+      "sha256_of_reserved_original": "428d5c74182c105506bafad7101b97d70964d894e4a82114fa39585a7a955e1c"
+    },
+    {
+      "reserved_path": "tests/test_allocation.py",
+      "bundle_path": "tests/test_allocation.py",
+      "note": "Imports updated: reserved.engines.allocation → reserved_engine.allocation. All test logic and golden values unchanged.",
+      "sha256_of_reserved_original": "966dc6892fd720fa3dc7db303ac0af56461fe7376de9f6f1976922b681626f72"
+    },
+    {
+      "reserved_path": "tests/test_multi_year.py",
+      "bundle_path": "tests/test_multi_year.py",
+      "note": "Imports updated: reserved.engines.income_tax → reserved_engine.income_tax; reserved.engines → reserved_engine. All test logic and golden values unchanged.",
+      "sha256_of_reserved_original": "d76d576aeb71bff0227fa836c2bfc6e7195d7bbaf63e867b0b13a49557c8235a"
+    },
+    {
+      "reserved_path": "tests/test_el001_regression.py",
+      "bundle_path": "tests/test_el001_regression.py",
+      "note": "Imports updated: reserved.engines.income_tax → reserved_engine.income_tax; reserved.engines → reserved_engine. Permanent EL-001 regression family (16 cases). Classification tests not included (those import reserved_west.runner).",
+      "sha256_of_reserved_original": null
+    }
+  ],
+
+  "golden_expected_outputs": {
+    "_description": "Representative expected outputs computed live from the engine before bundling. The receiving project must reproduce all values exactly.",
+
+    "gabriel_persona_2026_27": {
+      "_description": "Primary reference case. invoice=10000, employment=40000, ytd_profit=15000, pension=5000 (RaS), Plan 2. Default tax year.",
+      "inputs": {
+        "invoice_amount": "10000",
+        "profile": {
+          "day_job_salary": "40000",
+          "ytd_freelance_profit": "15000",
+          "personal_pension_contributions": "5000",
+          "student_loan_plans": [2]
+        },
+        "tax_year": "2026/27"
+      },
+      "expected_outputs": {
+        "income_tax": "3946.00",
+        "national_insurance": "600.00",
+        "student_loan": "900.00",
+        "total": "5446.00",
+        "tax_year": "2026/27",
+        "rules_version": "uk-2026-27-v1"
+      },
+      "workings": "start=55000 end=65000 ANI=60000 PA=12570 extBRL=55270. IT: 20%×270 + 40%×9730 = 54+3892 = 3946. NI on freelance 15000→25000: 6%×10000=600. SL Plan2: 9%×10000=900."
+    },
+
+    "gabriel_persona_2025_26": {
+      "_description": "Gabriel in 2025/26. Identical result because start income (£55,000) already exceeds both years' Plan 2 thresholds.",
+      "inputs": {
+        "invoice_amount": "10000",
+        "profile": {
+          "day_job_salary": "40000",
+          "ytd_freelance_profit": "15000",
+          "personal_pension_contributions": "5000",
+          "student_loan_plans": [2]
+        },
+        "tax_year": "2025/26"
+      },
+      "expected_outputs": {
+        "income_tax": "3946.00",
+        "national_insurance": "600.00",
+        "student_loan": "900.00",
+        "total": "5446.00",
+        "tax_year": "2025/26",
+        "rules_version": "uk-2025-26-v1"
+      }
+    },
+
+    "allocation_gabriel": {
+      "_description": "Allocation of gabriel invoice (gross=10000, liability=5446.00, fee=0). safe_to_spend must reconcile exactly.",
+      "inputs": {
+        "gross_amount": "10000",
+        "estimated_liability": "5446.00",
+        "fee_rate": "0.00"
+      },
+      "expected_outputs": {
+        "gross_amount": "10000.00",
+        "tax_reserve": "5446.00",
+        "platform_fee": "0.00",
+        "safe_to_spend": "4554.00",
+        "reconciles": true
+      }
+    },
+
+    "cgt_split_rate_2026_27": {
+      "_description": "CGT case spanning basic and higher rate. One disposal: proceeds=18000, cost=3000, gain=15000. taxable_income=46000. AEA=3000 → taxable_gains=12000. basic_remaining=50270-46000=4270.",
+      "inputs": {
+        "disposals": [
+          {
+            "asset_type": "shares",
+            "description": "Test disposal",
+            "disposal_date": "2026-09-01",
+            "proceeds": "18000",
+            "allowable_cost": "3000",
+            "acquisition_costs": "0",
+            "disposal_costs": "0"
+          }
+        ],
+        "taxable_income_before_gains": "46000",
+        "brought_forward_losses": "0",
+        "tax_already_paid": "0",
+        "tax_year": "2026/27"
+      },
+      "expected_outputs": {
+        "taxable_gains": "12000.00",
+        "estimated_cgt": "2623.80",
+        "outstanding_reserve": "2623.80",
+        "tax_year": "2026/27",
+        "rules_version": "uk-cgt-2026-27-preview-v1"
+      },
+      "workings": "basic_slice=min(12000,4270)=4270 → 18%×4270=768.60. higher_slice=12000-4270=7730 → 24%×7730=1855.20. total=2623.80."
+    },
+
+    "plan2_sl_threshold_difference": {
+      "_description": "Demonstrates the only numeric difference between 2025/26 and 2026/27: SL Plan 2 threshold (£28,470 vs £29,385). Invoice=30000 from zero.",
+      "inputs": {
+        "invoice_amount": "30000",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "0",
+          "personal_pension_contributions": "0",
+          "student_loan_plans": [2]
+        }
+      },
+      "expected_outputs_2025_26": {
+        "income_tax": "3486.00",
+        "national_insurance": "1045.80",
+        "student_loan": "137.70",
+        "total": "4669.50"
+      },
+      "expected_outputs_2026_27": {
+        "income_tax": "3486.00",
+        "national_insurance": "1045.80",
+        "student_loan": "55.35",
+        "total": "4587.15"
+      },
+      "workings": "IT and NI identical (frozen bands). SL 2025/26: 9%×(30000-28470)=9%×1530=137.70. SL 2026/27: 9%×(30000-29385)=9%×615=55.35."
+    },
+
+    "el003_resolved_verification": {
+      "_description": "EL-003 regression verification. salary=120000, ytd=5000, pension=80000, invoice=5000. Engine v2.0.1 gives £2215 (correct). v2.0.0 gave £1000 (defective — 45% rate suppressed). The correct value is now the expected golden output.",
+      "inputs": {
+        "invoice_amount": "5000",
+        "profile": {
+          "day_job_salary": "120000",
+          "ytd_freelance_profit": "5000",
+          "personal_pension_contributions": "80000",
+          "student_loan_plans": []
+        },
+        "tax_year": "2026/27"
+      },
+      "expected_outputs": {
+        "income_tax": "2215.00",
+        "national_insurance": "0.00",
+        "student_loan": "0.00",
+        "total": "2215.00",
+        "tax_year": "2026/27",
+        "rules_version": "uk-2026-27-v1"
+      },
+      "note": "EL-003 resolved in v2.0.1. With pension=£80k, eBRL without cap = £130,270 > ART=£125,140. Uncapped eBRL caused the 45% band to be unreachable inside _income_tax_between, suppressing additional-rate tax. Fix caps eBRL at ART. Correct marginal IT: £(125140-12570)×20% × (end-start proportion) + £4860×45% differential = £2215. v2.0.0 returned £1000 (defective). See tests/test_el003_regression.py."
+    },
+
+    "el001_resolved_verification": {
+      "_description": "EL-001 regression verification. YTD=99000, invoice=4000. Engine v2.0.0 gives £1900 (correct). v1.0.0 gave £1600 (defective). The correct value is now the expected golden output.",
+      "inputs": {
+        "invoice_amount": "4000",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "99000",
+          "personal_pension_contributions": "0"
+        },
+        "tax_year": "2026/27"
+      },
+      "expected_outputs": {
+        "income_tax": "1900.00",
+        "national_insurance": "80.00",
+        "total": "1980.00"
+      },
+      "note": "EL-001 resolved in v2.0.0. The correct marginal IT is £1900 (PA reduces from £12,570 at ANI=99,000 to £9,430 at ANI=103,000 — taper applies throughout). v1.0.0 returned £1600 (defective). See tests/test_el001_regression.py for the full regression family."
+    },
+
+    "rounding_half_up_verification": {
+      "_description": "Verifies ROUND_HALF_UP (not ROUND_HALF_EVEN). 45%×0.50=0.225 → should be £0.23 not £0.22.",
+      "inputs": {
+        "invoice_amount": "0.50",
+        "profile": {
+          "day_job_salary": "0",
+          "ytd_freelance_profit": "125140",
+          "personal_pension_contributions": "0"
+        },
+        "tax_year": "2026/27"
+      },
+      "expected_outputs": {
+        "income_tax": "0.23"
+      },
+      "note": "ROUND_HALF_EVEN would give £0.22. The engine must give £0.23."
+    }
+  },
+
+  "test_suite_summary": {
+    "total_engine_tests": 165,
+    "test_files": [
+      "tests/test_income_tax.py",
+      "tests/test_income_tax_boundaries.py",
+      "tests/test_capital_gains.py",
+      "tests/test_allocation.py",
+      "tests/test_multi_year.py",
+      "tests/test_el001_regression.py",
+      "tests/test_el003_regression.py"
+    ],
+    "run_command": "PYTHONPATH=reserved-engine-2.0.0 pytest reserved-engine-2.0.0/tests/",
+    "expected_result": "165 passed",
+    "verified_in_reserved_on": "2026-08-07",
+    "reserved_workspace_tests": "547 passed  (pytest tests/)",
+    "reserved_bundle_tests": "165 passed  (PYTHONPATH=reserved-engine-2.0.0 pytest reserved-engine-2.0.0/tests/)",
+    "reserved_combined_tests": "712 passed  (both suites combined)",
+    "reserved_full_suite_note": "699 was an intermediate combined count (workspace 547 + bundle 152 pre-EL-003-bundle) captured mid-turn during the EL-003 fix; the correct final figure is 712. See reserved_west/output/24_test_count_audit.md (RW-AUDIT-001)."
+  }
+}

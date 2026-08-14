@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reserved.example/schemas/wp7-independent-fixture-pack.json",
+  "title": "Reserved West independent validation fixture pack",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pack_id", "status", "tax_year", "territory", "derived_by", "derived_on", "review", "rounding", "sources", "fixtures"],
+  "properties": {
+    "pack_id": {"type": "string"},
+    "purpose": {"type": "string"},
+    "status": {"enum": ["independent_fixture_review_pending", "independent_validation"]},
+    "tax_year": {"enum": ["2026/27"]},
+    "territory": {"enum": ["England, Wales and Northern Ireland"]},
+    "derived_by": {"type": "string", "minLength": 1},
+    "derived_on": {"type": "string", "format": "date"},
+    "review": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reviewer", "reviewed_on", "decision", "notes"],
+      "properties": {
+        "reviewer": {"type": ["string", "null"]},
+        "reviewed_on": {"type": ["string", "null"], "format": "date"},
+        "decision": {"enum": ["pending", "approved", "rejected"]},
+        "notes": {"type": "string"}
+      }
+    },
+    "rounding": {"type": "string", "minLength": 1},
+    "sources": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["title", "url", "supports"],
+        "properties": {
+          "title": {"type": "string"},
+          "url": {"type": "string", "pattern": "^https://"},
+          "supports": {"type": "string"}
+        }
+      }
+    },
+    "fixtures": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "family", "status", "inputs", "expected", "derivation"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^RW3-[A-Z]+-[0-9]{3}$"},
+          "family": {"type": "string"},
+          "status": {"enum": ["independent_fixture_review_pending", "independent_validation"]},
+          "inputs": {"type": "object"},
+          "expected": {"type": "object", "minProperties": 1},
+          "derivation": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "limitations": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}
+
