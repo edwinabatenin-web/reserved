@@ -67,14 +67,30 @@ from typing import Any
 # Reference calculator (independent)
 from reserved_west.reference_calculator import ref_estimate, ref_cgt, in_el001_zone
 
-# Engine under test (reserved_engine bundle)
-import sys, os
-_BUNDLE = os.path.join(os.path.dirname(__file__), "..", "reserved-engine-2.0.0")
-if _BUNDLE not in sys.path:
-    sys.path.insert(0, _BUNDLE)
+# Engine under test: the deterministic release artefact built from
+# reserved/engines (see scripts/build_engine_artefact.py).  Reserved West must
+# not import the mutable working tree directly, nor the historical
+# reserved-engine-2.0.0 bundle.  Loading is lazy so that importing this module
+# (e.g. to use _classify) does not force an artefact build.
+from reserved_west.artefact import load_engine
 
-from reserved_engine.income_tax import estimate_incremental_liability
-from reserved_engine.capital_gains import estimate_cgt, CapitalDisposal
+_ENGINE = None
+_PROVENANCE = None
+
+
+def _engine_symbols():
+    """Load the release artefact once and return the imported module."""
+    global _ENGINE, _PROVENANCE
+    if _ENGINE is None:
+        _ENGINE, _PROVENANCE = load_engine()
+    return _ENGINE
+
+
+def engine_provenance() -> dict:
+    """Return the provenance of the artefact currently under test."""
+    _engine_symbols()
+    return dict(_PROVENANCE or {})
+
 
 PENNY = Decimal("0.01")
 ZERO  = Decimal("0")
@@ -120,7 +136,7 @@ def _run_income_tax(scenario: dict) -> dict:
 
     try:
         ref    = ref_estimate(invoice, profile, tax_year)
-        engine = estimate_incremental_liability(invoice, profile, tax_year)
+        engine = _engine_symbols().estimate_incremental_liability(invoice, profile, tax_year)
     except Exception as exc:
         return {
             **_base(scenario),
@@ -174,6 +190,9 @@ def _run_cgt(scenario: dict) -> dict:
 
     # Build engine CapitalDisposal objects
     try:
+        engine_mod    = _engine_symbols()
+        CapitalDisposal = engine_mod.CapitalDisposal
+        estimate_cgt    = engine_mod.estimate_cgt
         engine_disposals = [
             CapitalDisposal(
                 asset_type       = d.get("asset_type", "shares"),
