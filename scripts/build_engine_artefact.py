@@ -138,6 +138,39 @@ def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _produced_content_hash(directory: Path) -> str:
+    """Content identity over the *produced* artefact bytes.
+
+    Hash every file in ``directory`` except ``PROVENANCE.json`` (which is
+    written last and records this value), keyed by filename and serialized in a
+    stable order.  This covers what is actually shipped, not the source-hash
+    metadata recorded in the manifest.
+    """
+    hashes: dict[str, str] = {}
+    for path in sorted(directory.iterdir()):
+        if not path.is_file() or path.name == "PROVENANCE.json":
+            continue
+        hashes[path.name] = _sha256_bytes(path.read_bytes())
+    return _sha256_bytes(
+        json.dumps(hashes, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+
+
+def _dirty_source_paths(source: Path, evidence: Path) -> list[str]:
+    """Return uncommitted/changed paths under ``source`` and ``evidence``."""
+    proc = subprocess.run(
+        ["git", "status", "--porcelain", "--", str(source), str(evidence)],
+        cwd=_repo_root(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        # Not a git repository or git unavailable: report as unknown, not dirty.
+        return []
+    return [line[3:].strip() for line in proc.stdout.splitlines() if line.strip()]
+
+
 def _abs_import_lines(text: str) -> list[str]:
     """Return lines containing absolute ``reserved.*`` imports."""
     out: list[str] = []
@@ -163,15 +196,48 @@ def _copy_and_rewrite(src: Path, dst: Path) -> None:
     dst.write_text(text, encoding="utf-8")
 
 
-def build(source: Path, out: Path) -> dict:
+def _require_engine_package(source: Path) -> None:
+    """Reject an unsupported/unknown source rather than silently accepting it."""
+    required = ("__init__.py", "income_tax.py", "tax_config.py")
+    missing = [name for name in required if not (source / name).exists()]
+    if missing:
+        raise SystemExit(
+            f"source is not a recognised engine package (missing {', '.join(missing)}): {source}"
+        )
+
+
+def _make_readonly(path: Path) -> None:
+    for root, dirs, files in os.walk(path, topdown=False):
+        for name in files:
+            os.chmod(os.path.join(root, name), 0o444)
+        for name in dirs:
+            os.chmod(os.path.join(root, name), 0o555)
+
+
+def _make_writable(path: Path) -> None:
+    for root, dirs, files in os.walk(path, topdown=False):
+        for name in files:
+            os.chmod(os.path.join(root, name), 0o644)
+        for name in dirs:
+            os.chmod(os.path.join(root, name), 0o755)
+
+
+def build(source: Path, out: Path, *, allow_dirty: bool = False) -> dict:
     """Build the artefact and return its provenance mapping."""
     source = source.resolve()
-    if not (source / "__init__.py").exists():
-        raise SystemExit(f"source package missing __init__.py: {source}")
+    _require_engine_package(source)
 
     evidence = (_repo_root() / EVIDENCE_UNCERTAINTY_SOURCE).resolve()
     if not evidence.exists():
         raise SystemExit(f"missing evidence_uncertainty dependency: {evidence}")
+
+    if not allow_dirty:
+        dirty = _dirty_source_paths(source, evidence)
+        if dirty:
+            raise SystemExit(
+                "refusing to build from a dirty source; commit or revert "
+                f"these paths (or pass --allow-dirty): {', '.join(sorted(set(dirty)))}"
+            )
 
     engine_version = _module_constant(source / "__init__.py", "ENGINE_VERSION")
     rules_version = _module_constant(source / "tax_config.py", "RULES_VERSION")
@@ -184,14 +250,6 @@ def build(source: Path, out: Path) -> dict:
         source_files["CHANGELOG.md"] = _sha256_bytes((source / "CHANGELOG.md").read_bytes())
     evidence_hash = _sha256_bytes(evidence.read_bytes())
 
-    content_hash = _sha256_bytes(
-        json.dumps(
-            {"source_files": source_files, "evidence_uncertainty": evidence_hash},
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    )
-
     # Build into a temp directory, then atomically publish.
     tmp = Path(tempfile.mkdtemp(prefix="reserved-engine-artefact-"))
     try:
@@ -203,9 +261,14 @@ def build(source: Path, out: Path) -> dict:
             shutil.copy2(source / "CHANGELOG.md", pkg / "CHANGELOG.md")
         shutil.copy2(evidence, pkg / EVIDENCE_UNCERTAINTY_TARGET)
 
+        # Content identity is computed over the produced bytes (the shipped
+        # files), not over the source-hash metadata.
+        content_hash = _produced_content_hash(pkg)
+
         provenance = {
             "schema": PROVENANCE_SCHEMA,
             "source_commit": commit,
+            "source_path": str(_repo_relative(source)),
             "engine_version": engine_version,
             "rules_version": rules_version,
             "generated_on": _generated_on(),
@@ -218,15 +281,26 @@ def build(source: Path, out: Path) -> dict:
             json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
 
+        # The published artefact is immutable and read-only.
+        _make_readonly(pkg)
+
         out = out.resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
         if out.exists():
+            _make_writable(out)
             shutil.rmtree(out)
         shutil.move(str(pkg), str(out))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
     return provenance
+
+
+def _repo_relative(path: Path) -> Path:
+    try:
+        return path.relative_to(_repo_root())
+    except ValueError:
+        return path
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -241,9 +315,14 @@ def main(argv: list[str] | None = None) -> int:
         default=str(_repo_root() / "dist" / "reserved_engine"),
         help="Output artefact directory (default: dist/reserved_engine)",
     )
+    parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Allow building from an uncommitted/dirty source (default: refuse)",
+    )
     args = parser.parse_args(argv)
 
-    provenance = build(Path(args.source), Path(args.out))
+    provenance = build(Path(args.source), Path(args.out), allow_dirty=args.allow_dirty)
     json.dump(provenance, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0

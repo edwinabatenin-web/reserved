@@ -3,14 +3,14 @@
   "rules_version": "uk-2026-27-v4",
   "engine_version": "4.0.0",
   "engine_artefact": {
-    "content_hash": "5ff0fd6d61e88fbca19e65d2a7e1a0881b6e404ef5c1479fc42e00b6bfd95aab",
+    "content_hash": "82ff3d1792682d703285a770eee0fa8b6af12205587cce3b3f031f592fd3d1ea",
     "engine_version": "4.0.0",
     "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
     "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-    "generated_on": "2026-08-14T20:01:52Z",
+    "generated_on": "2026-08-14T21:45:18Z",
     "rules_version": "uk-2026-27-v4",
     "schema": "reserved-engine-artefact-provenance-1",
-    "source_commit": "eac01971e3906f4182ab3fed72f9061f01637294",
+    "source_commit": "8468f5e4a6d4c1de4ca4c1c12f95ef2ea80f1e9a",
     "source_files": {
       "CHANGELOG.md": "0b1633ecbb8fa08d053187e61e62178be67df64db11c3fdaa64f80df1bbd734b",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -29,11 +29,12 @@
       "paye_reconciliation.py": "f57e45280353b760dc037a6480a31a123e582033019655e44b1010f37c25786f",
       "tax_config.py": "c5f5490cb9f0c806054c8ceb1db93bbab64c0ac9fe4f6e01eed9f34c04227515",
       "utils.py": "658c9fbf789fa0851c5453b2c26ba47a514186ddd95b7894038b9016c887a702"
-    }
+    },
+    "source_path": "reserved/engines"
   },
-  "verified_date": "2026-08-14T20:01:52Z",
+  "verified_date": "2026-08-14T21:45:18Z",
   "test_counts": {
-    "passed": 1182,
+    "passed": 1214,
     "failed": 0,
     "errors": 0
   },
