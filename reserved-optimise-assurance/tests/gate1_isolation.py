@@ -14,7 +14,7 @@ HMRC sources
   Finance (No.2) Act 2015   — PA taper
   Finance Act 2012 s.681B   — HICBC formula (revised April 2024)
   Finance Act 2004 s.192    — Pension Relief at Source
-  HMRC PTM044100            — RaS band extension
+  HMRC PTM056120            — RaS basic/higher-rate limit extension
 
 Gate 1 PASS criteria
 ────────────────────
@@ -52,7 +52,7 @@ from reference.hicbc_reference import (
 )
 from reference.pension_reference import (
     net_to_gross, gross_to_net, basic_rate_relief,
-    extended_brl, it_saving_from_pension,
+    extended_brl, extended_hrl, it_saving_from_pension,
     ANNUAL_ALLOWANCE,
 )
 
@@ -214,14 +214,20 @@ class TestPensionRaSReference:
         assert basic_rate_relief(Decimal("10000")) == Decimal("2000.00")
 
     def test_extended_brl(self):
-        """Basic-rate band (£37,700) extended by gross pension, uncapped here."""
+        """Basic-rate band (£37,700) extended by gross pension, uncapped."""
         assert extended_brl(Decimal("0"))     == Decimal("37700.00")
         assert extended_brl(Decimal("10000")) == Decimal("47700.00")
 
-    def test_extended_brl_cap_at_art(self):
-        """Extended band cannot exceed ART (£125,140)."""
-        assert extended_brl(Decimal("100000")) == Decimal("125140.00")
-        assert extended_brl(Decimal("200000")) == Decimal("125140.00")
+    def test_extended_brl_no_cap(self):
+        """PTM056120: the basic-rate limit is extended with no ART cap."""
+        assert extended_brl(Decimal("100000")) == Decimal("137700.00")
+        assert extended_brl(Decimal("200000")) == Decimal("237700.00")
+
+    def test_extended_hrl_mirrors_extension(self):
+        """The higher-rate limit extends by the same gross amount (PTM056120)."""
+        assert extended_hrl(Decimal("0"))     == Decimal("125140.00")
+        assert extended_hrl(Decimal("1"))     == Decimal("125141.00")
+        assert extended_hrl(Decimal("80000")) == Decimal("205140.00")
 
     def test_it_saving_basic_rate_below_taper(self):
         """At £60,000 income with no pension, adding £5,000 pension saves £1,000 IT.

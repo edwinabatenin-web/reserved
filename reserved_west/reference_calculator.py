@@ -35,8 +35,8 @@ Class 4 NI:
   Social Security Contributions and Benefits Act 1992 s.15
 
 Pension Relief at Source:
-  Finance Act 2004 s.192; HMRC Pensions Tax Manual PTM044100
-  BRL extension: HMRC IT manual at EIM45820
+  Finance Act 2004 s.192; HMRC Pensions Tax Manual PTM056120
+  BRL/higher-rate-limit extension: HMRC IT manual at EIM45820
 
 Student loan repayments:
   Education (Student Loans) (Repayment) Regulations 2009 (SI 2009/470)
@@ -149,18 +149,21 @@ def _total_income_tax(income: Decimal, pension: Decimal, cfg: dict) -> Decimal:
 
     Implements England/Wales/NI rates.  Scottish rates are out of scope.
 
-    Pension RaS (Finance Act 2004 s.192 / PTM044100):
+    Pension RaS (Finance Act 2004 s.192 / HMRC Pensions Tax Manual PTM056120):
       - Gross contributions reduce ANI for PA taper.
-      - Gross contributions extend the basic-rate band by the same amount.
+      - Gross contributions extend BOTH the basic-rate limit and the higher-rate
+        limit (the point at which the additional rate begins) by the same gross
+        amount, preserving the higher-rate band width (£87,440).  No cap applies.
     """
     if income <= ZERO:
         return ZERO
 
     ani  = max(ZERO, income - pension)
     pa   = _personal_allowance(ani, cfg)
-    # Extended BRL cannot exceed ART (avoids negative higher-rate band widths)
-    basic_band = min((cfg["BRL"] - cfg["PA"]) + pension, cfg["ART"])
-    art  = cfg["ART"]
+    # PTM056120: a gross RAS contribution shifts both the basic-rate limit and
+    # the higher-rate limit up by the same amount.
+    basic_band = (cfg["BRL"] - cfg["PA"]) + pension
+    art  = cfg["ART"] + pension
     taxable_income = max(ZERO, income - pa)
 
     tax = ZERO

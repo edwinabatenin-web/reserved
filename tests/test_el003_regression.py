@@ -1,59 +1,43 @@
 """
-EL-003 regression suite — eBRL cap at ART when pension > (ART − BRL).
+EL-003 regression suite — Relief-at-Source pension band extension.
 
-EL-003: When a pension contribution is large enough that
-    BRL + pension > ART  (i.e. pension > £125,140 − £50,270 = £74,870)
-the uncapped extended basic-rate limit exceeded the Additional Rate Threshold.
-Inside ``_income_tax_between`` the band list is processed cursor-by-cursor;
-an uncapped eBRL caused the 45 % additional-rate band to become unreachable,
-silently suppressing additional-rate tax on any income above ART.
+EL-003 concerns the income-tax treatment of gross Relief-at-Source pension
+contributions.  The correct rule (HMRC Pensions Tax Manual PTM056120, "Basic
+and higher rate limits") is that a gross RAS contribution extends **both** the
+basic-rate limit and the higher-rate limit (the point at which the additional
+45 % rate begins) by the gross amount:
 
-Root cause (engine v2.0.0)
----------------------------
-``_total_income_tax`` set::
+    extended basic-rate limit  = £37,700 + pension
+    extended higher-rate limit = £125,140 + pension
 
-    extended_basic_rate_limit = cfg["BASIC_RATE_LIMIT"] + pension
+This preserves the £87,440 higher-rate band width and shifts the additional-rate
+threshold up by the contribution amount.  There is **no cap** at £125,140.
 
-without capping at ``cfg["ADDITIONAL_RATE_THRESHOLD"]``.
+Earlier engine versions modelled only the basic-rate limit extension (and, in
+v2.0.1, incorrectly capped it at the Additional Rate Threshold), which left a
+fixed £125,140 higher-rate limit and overcharged the additional-rate slice.
+This suite pins the corrected treatment so the defect cannot be reintroduced.
 
-Fix (engine v2.0.1-patch)
---------------------------
-``_total_income_tax`` now sets::
-
-    extended_basic_rate_limit = min(
-        cfg["BASIC_RATE_LIMIT"] + pension,
-        cfg["ADDITIONAL_RATE_THRESHOLD"],
-    )
-
-This matches the reference calculator (``reference_calculator.py`` line ~162)
-and is consistent with HMRC Pensions Tax Manual PTM044100, which does not
-allow pension band extension beyond the Additional Rate Threshold.
-
-Trigger condition
------------------
-    pension > ART − BRL = £125,140 − £50,270 = £74,870
-
-For pension ≤ £74,870 the cap is never reached and results are unchanged.
-
-Permanent regression tests
----------------------------
-All tests here must remain green at all future engine versions.
-Any failure is classified as an EL-003 regression.
+Decisive fixture: RW3-PEN-005 (£125,141 income, £1 pension → £42,516.20).
 """
 from decimal import Decimal as D
 
 import pytest
 
-from reserved.engines.income_tax import estimate_incremental_liability
+from reserved.engines.income_tax import (
+    _total_income_tax,
+    estimate_incremental_liability,
+)
+from reserved.engines.tax_config import get_config
 from reserved_west.reference_calculator import ref_estimate
 
 TAX_YEAR = "2026/27"
-ART  = D("125140")
-BRL  = D("50270")
-THRESHOLD_PENSION = ART - BRL  # £74,870 — minimum pension that triggers the bug without fix
+CFG = get_config(TAX_YEAR)
 
 
-# ── Helper ────────────────────────────────────────────────────────────────────
+def _total(income, pension=0):
+    return _total_income_tax(D(str(income)), D(str(pension)), CFG)
+
 
 def _run(invoice, salary=0, ytd=0, pension=0, plans=None, year=TAX_YEAR):
     profile = {
@@ -67,156 +51,105 @@ def _run(invoice, salary=0, ytd=0, pension=0, plans=None, year=TAX_YEAR):
     return ref, eng
 
 
-def _variance(ref, eng):
-    return float(eng["total"]) - float(ref["total"])
+# ── Decisive boundaries (full-liability, independently derived) ──────────────
+
+class TestRASDecisiveBoundaries:
+    def test_125140_no_pension(self):
+        # PA fully withdrawn at ANI = 125,140 → taxable 125,140.
+        # 37,700 @ 20 % + 87,440 @ 40 % = 7,540 + 34,976 = 42,516.00
+        assert _total(125140) == D("42516.00")
+
+    def test_125141_no_pension(self):
+        # £1 above ART without pension → £1 @ 45 % on top.
+        assert _total(125141) == D("42516.45")
+
+    def test_rw3_pen_005_decisive(self):
+        # £125,141 income + £1 pension → ANI 125,140 → PA £0 → taxable 125,141.
+        # extended basic-rate limit  = 37,700 + 1 = 37,701
+        # extended higher-rate limit = 125,140 + 1 = 125,141
+        # 37,701 @ 20 % = 7,540.20 ; 87,440 @ 40 % = 34,976.00 ; £0 @ 45 %
+        # total = 42,516.20
+        assert _total(125141, 1) == D("42516.20")
+
+    def test_extended_additional_boundary_below(self):
+        # pension £1 → extended higher-rate limit 125,141.
+        # income 125,140 → ANI 125,139 → PA 0.50 → taxable 125,139.50 (< boundary).
+        assert _total(125140, 1) == D("42515.60")
+
+    def test_extended_additional_boundary_at(self):
+        # taxable 125,141 is exactly the extended higher-rate limit → no 45 %.
+        assert _total(125141, 1) == D("42516.20")
+
+    def test_extended_additional_boundary_above(self):
+        # income 125,142 → taxable 125,142 → £1 above the extended limit @ 45 %.
+        assert _total(125142, 1) == D("42516.65")
+
+    def test_large_pension_extends_both_limits(self):
+        # £200,000 income, £80,000 pension → ANI 120,000 → PA 2,570 → taxable 197,430.
+        # extended basic-rate limit  = 117,700 ; extended higher-rate limit = 205,140.
+        # 117,700 @ 20 % = 23,540 ; 79,730 @ 40 % = 31,892 ; £0 @ 45 % = 55,432.
+        # (Assumes the full £80,000 is qualifying gross RAS for IT purposes.)
+        assert _total(200000, 80000) == D("55432.00")
+
+    def test_pension_extends_higher_boundary_without_removing_additional(self):
+        # £200,000 income, £30,000 pension → extended basic 67,700, higher 155,140.
+        # 67,700 @ 20 % = 13,540 ; 87,440 @ 40 % = 34,976 ; 44,860 @ 45 % = 20,187
+        # total = 68,703.00 (additional-rate slice survives).
+        assert _total(200000, 30000) == D("68703.00")
+
+    def test_pa_taper_interaction(self):
+        # £110,000 income, £10,000 pension → ANI 100,000 → full PA 12,570.
+        # taxable 97,430 ; extended basic 47,700 → 9,540 + 19,892 = 29,432.
+        assert _total(110000, 10000) == D("29432.00")
+
+    def test_zero_pension_matches_no_pension_baseline(self):
+        assert _total(125141, 0) == _total(125141)
+
+    def test_rule_applies_across_supported_tax_years(self):
+        # The band extension rule (PTM056120) applies identically to every
+        # supported non-Scottish year (2025/26 and 2026/27 share the frozen
+        # £37,700 / £125,140 bands).
+        for year in ("2025/26", "2026/27"):
+            cfg = get_config(year)
+            got = _total_income_tax(D("125141"), D("1"), cfg)
+            assert got == D("42516.20"), f"{year}: {got}"
 
 
-# ── Core regression: the exact scenario that exposed the defect ───────────────
+# ── Production ↔ reference parity across pension sizes ───────────────────────
 
-class TestEL003CoreCase:
-    """RW-S3-011 reproduction: pension=£80k caps eBRL at ART; invoice crosses ART."""
-
-    def test_rws3_011_exact_scenario(self):
-        """Engine must agree with reference for the exact Stage 3 failing scenario."""
-        ref, eng = _run(invoice=5000, salary=120000, ytd=5000, pension=80000)
-        assert eng["total"] == ref["total"], (
-            f"EL-003 regression: engine {eng['total']} ≠ reference {ref['total']}"
+class TestRASParity:
+    @pytest.mark.parametrize("pension", [0, 1, 1000, 10000, 30000, 74870, 80000, 100000])
+    def test_production_matches_reference(self, pension):
+        ref, eng = _run(invoice=5000, salary=120000, ytd=5000, pension=pension)
+        assert eng["income_tax"] == ref["income_tax"], (
+            f"income_tax mismatch for pension={pension}: "
+            f"{eng['income_tax']} vs {ref['income_tax']}"
         )
 
-    def test_income_tax_component_correct(self):
-        """Income tax specifically (NI and SL are zero in this scenario)."""
+    def test_rws3_011_scenario(self):
+        # Large-pension Stage 3 scenario must agree between engine and reference.
         ref, eng = _run(invoice=5000, salary=120000, ytd=5000, pension=80000)
-        assert eng["income_tax"] == ref["income_tax"]
-
-    def test_reference_it_is_1000(self):
-        """With restored PA and the extended band, the invoice is taxed at 20%."""
-        ref, _ = _run(invoice=5000, salary=120000, ytd=5000, pension=80000)
-        assert ref["income_tax"] == D("1000.00")
-
-    def test_engine_it_is_1000_after_taper_correction(self):
-        """Engine preserves the fixed taxable-band coordinate after PA restoration."""
-        _, eng = _run(invoice=5000, salary=120000, ytd=5000, pension=80000)
-        assert eng["income_tax"] == D("1000.00")
-
-
-# ── Boundary: trigger condition pension > £74,870 ────────────────────────────
-
-class TestEL003TriggerBoundary:
-    """Test the trigger boundary at pension = ART − BRL = £74,870."""
-
-    def test_pension_exactly_at_threshold_no_bug(self):
-        """pension = £74,870: eBRL = BRL + 74,870 = ART exactly; no suppression."""
-        pension = int(THRESHOLD_PENSION)  # £74,870
-        ref, eng = _run(invoice=5000, salary=0, ytd=125000, pension=pension)
-        assert _variance(ref, eng) == 0.0
-
-    def test_pension_one_below_threshold(self):
-        """pension = £74,869: eBRL = £125,139 < ART; cap not reached; correct."""
-        ref, eng = _run(invoice=5000, salary=0, ytd=125000, pension=74869)
-        assert _variance(ref, eng) == 0.0
-
-    def test_pension_one_above_threshold_triggers_cap(self):
-        """pension = £74,871: eBRL would be £125,141 > ART; cap must apply."""
-        ref, eng = _run(invoice=5000, salary=0, ytd=125000, pension=74871)
-        assert _variance(ref, eng) == 0.0
-
-    def test_pension_far_above_threshold(self):
-        """pension = £100,000: eBRL capped at ART; invoice above ART taxed at 45%."""
-        ref, eng = _run(invoice=50000, salary=0, ytd=0, pension=100000)
-        assert _variance(ref, eng) == 0.0
-
-    def test_pension_exactly_75000(self):
-        """pension = £75,000 (above threshold): cap must apply correctly."""
-        ref, eng = _run(invoice=10000, salary=0, ytd=130000, pension=75000)
-        assert _variance(ref, eng) == 0.0
-
-    def test_pension_exactly_80000(self):
-        """pension = £80,000: primary Stage 3 failure case."""
-        ref, eng = _run(invoice=5000, salary=120000, ytd=5000, pension=80000)
-        assert _variance(ref, eng) == 0.0
-
-
-# ── Below-threshold pensions unaffected ──────────────────────────────────────
-
-class TestEL003BelowThresholdUnchanged:
-    """Pensions ≤ £74,870 must be numerically unchanged by the fix."""
-
-    @pytest.mark.parametrize("pension", [0, 1000, 5000, 10000, 50000, 74870])
-    def test_pensions_below_threshold_zero_variance(self, pension):
-        """Any pension ≤ £74,870 should produce zero variance."""
-        ref, eng = _run(invoice=10000, salary=60000, ytd=0, pension=pension)
-        assert _variance(ref, eng) == 0.0, (
-            f"Regression introduced for pension={pension}: variance={_variance(ref, eng)}"
-        )
-
-    def test_typical_moderate_pension(self):
-        """Typical professional pension (£20k) unaffected."""
-        ref, eng = _run(invoice=10000, salary=50000, ytd=0, pension=20000)
-        assert eng["total"] == ref["total"]
-
-    def test_zero_pension_unaffected(self):
-        """No pension: eBRL = BRL; cap irrelevant."""
-        ref, eng = _run(invoice=10000, salary=60000, ytd=0, pension=0)
         assert eng["total"] == ref["total"]
 
 
-# ── Additional-rate suppression is specifically gone ─────────────────────────
+# ── Input validation / limitation behaviour is unchanged ─────────────────────
 
-class TestEL003AdditionalRateRestored:
-    """Verify the 45% rate is correctly applied above ART after the fix."""
+class TestRASValidation:
+    def test_negative_pension_rejected(self):
+        with pytest.raises(ValueError):
+            estimate_incremental_liability(
+                "5000",
+                {"day_job_salary": 0, "ytd_freelance_profit": 0,
+                 "personal_pension_contributions": -1, "student_loan_plans": []},
+                TAX_YEAR,
+            )
 
-    def test_large_pension_restores_pa_before_additional_threshold(self):
-        """Gross income alone does not locate a slice in taxable-income bands."""
-        # The £80k gross RaS pension restores the PA. The invoice moves taxable
-        # income from 117,430 to 122,430, crossing the extended basic band at
-        # 117,700: £270 at 20% plus £4,730 at 40% = £1,946.
-        ref, eng = _run(invoice=5000, salary=130000, ytd=0, pension=80000)
-        assert eng["income_tax"] == ref["income_tax"]
-        assert eng["income_tax"] == D("1946.00")
-
-    def test_invoice_straddles_art_with_large_pension(self):
-        """Invoice starts below ART, ends above it: split at 40%/45% after eBRL."""
-        # With eBRL capped at ART: all basic-rate capacity used, invoice at 40% then 45%
-        # salary=100k, ytd=20k, pension=80k, invoice=10k
-        # ANI_start=40k, ANI_end=50k — no taper. eBRL=ART=125140.
-        # Income: 120k→130k. 120k<ART: some at 40% (no: eBRL=125140=ART, income>eBRL at 40% rate)
-        # Actually: start=120k < eBRL(=ART=125140). end=130k > ART.
-        # basic slice: PA to eBRL=ART; already exceeded at start.
-        # higher: eBRL to ART: 125140-125140=0
-        # additional: above ART: (130k-125140)×45%=4860×0.45=2187
-        ref, eng = _run(invoice=10000, salary=100000, ytd=20000, pension=80000)
-        assert eng["income_tax"] == ref["income_tax"]
-
-    def test_pension_cap_preserves_additional_rate_band(self):
-        """Even with pension=ART worth, income above ART must attract 45%."""
-        # income_start below ART, income_end above ART; pension large enough to cap eBRL
-        ref, eng = _run(invoice=10000, salary=0, ytd=120000, pension=75000)
-        assert _variance(ref, eng) == 0.0
-
-
-# ── Combined with EL-001 zone: no regression ─────────────────────────────────
-
-class TestEL003WithEL001Zone:
-    """Large pension + PA taper zone: both EL-001 and EL-003 protections active."""
-
-    def test_large_pension_and_taper_zone_no_variance(self):
-        """pension=£80k, income crosses taper: EL-001 zone AND eBRL cap both needed."""
-        # ANI_start = 90k − 80k = 10k (below taper, PA full)
-        # ANI_end = 100k − 80k = 20k (below taper, PA full)
-        # No EL-001 zone here (ANI stays below taper). Just checking combo.
-        ref, eng = _run(invoice=10000, salary=90000, ytd=0, pension=80000)
-        assert _variance(ref, eng) == 0.0
-
-    def test_large_pension_reduces_ani_but_does_not_enter_taper(self):
-        """Large pension keeps ANI below taper; no EL-001; but eBRL cap still applies."""
-        ref, eng = _run(invoice=5000, salary=200000, ytd=0, pension=80000)
-        assert _variance(ref, eng) == 0.0
-
-    def test_two_stage_3_el003_scenarios(self):
-        """RW-S3-024 and RW-S3-035: both large-pension scenarios must pass."""
-        # RW-S3-024: pension=75k, salary=130k
-        ref24, eng24 = _run(invoice=10000, salary=130000, ytd=0, pension=75000)
-        assert _variance(ref24, eng24) == 0.0, f"RW-S3-024: {_variance(ref24, eng24)}"
-        # RW-S3-035: pension=100k, invoice=50k
-        ref35, eng35 = _run(invoice=50000, salary=0, ytd=0, pension=100000)
-        assert _variance(ref35, eng35) == 0.0, f"RW-S3-035: {_variance(ref35, eng35)}"
+    def test_non_numeric_pension_rejected(self):
+        with pytest.raises(ValueError):
+            estimate_incremental_liability(
+                "5000",
+                {"day_job_salary": 0, "ytd_freelance_profit": 0,
+                 "personal_pension_contributions": "not-a-number",
+                 "student_loan_plans": []},
+                TAX_YEAR,
+            )

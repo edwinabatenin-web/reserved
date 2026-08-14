@@ -34,7 +34,7 @@ HMRC references
   HMRC CH2300C    — High Income Child Benefit Charge
   Finance Act 2012 s.681B — HICBC charge formula
   Finance (No.2) Act 2015 — PA taper threshold
-  HMRC PTM044100  — Pension Relief at Source
+  HMRC PTM056120  — Pension Relief at Source (basic and higher rate limits)
 
 Change history
 ──────────────

@@ -97,15 +97,15 @@ def test_unsupported_student_loan_state_fails_closed(adapters):
 
 def test_engine_provenance_recorded():
     _, provenance = build_adapters()
-    assert provenance["engine_version"] == "3.0.0"
-    assert provenance["rules_version"] == "uk-2026-27-v3"
+    assert provenance["engine_version"] == "4.0.0"
+    assert provenance["rules_version"] == "uk-2026-27-v4"
     assert len(provenance["content_hash"]) == 64
     assert provenance["source_commit"]
 
 
 def test_run_engine_evidence_records_provenance():
     evidence = run_engine_evidence("docs/fixtures/WP7_ASSURANCE_CORPUS.json")
-    assert evidence["engine_provenance"]["engine_version"] == "3.0.0"
+    assert evidence["engine_provenance"]["engine_version"] == "4.0.0"
     assert evidence["corpus_id"].startswith("RW3-")
     assert evidence["pack_results"]
 
@@ -124,3 +124,11 @@ def test_core_pack_wires_and_pending_pack_fails_closed(adapters):
     pending_results = run_pack(pending, adapters[0])["results"]
     assert all(r["outcome"] == "ERROR" for r in pending_results)
     assert all("UnsupportedStudentLoanPlanCombination" in r["error"] for r in pending_results)
+
+
+def test_rw3_pen_005_is_executable_and_passing(adapters):
+    """The decisive RAS fixture must be executable and produce PASS (PTM056120)."""
+    corpus, packs = load_corpus("docs/fixtures/WP7_ASSURANCE_CORPUS.json")
+    core = next(p for p in packs if p["pack_id"].startswith("RW3-CORE-"))
+    results = {r["id"]: r for r in run_pack(core, adapters[0])["results"]}
+    assert results["RW3-PEN-005"]["outcome"] == "PASS", results["RW3-PEN-005"]

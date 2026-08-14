@@ -19,7 +19,7 @@ Version contract
 See ``reserved/engines/CHANGELOG.md`` for the full history.
 """
 
-ENGINE_VERSION: str = "3.0.0"
+ENGINE_VERSION: str = "4.0.0"
 
 # ── Public calculation functions ──────────────────────────────────────────────
 

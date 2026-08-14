@@ -374,7 +374,7 @@ def test_invariant_total_tax_differential():
 def test_engine_version_records_taper_band_correction():
     """Engine version must be 2.x.x after EL-001 resolution."""
     from reserved.engines import ENGINE_VERSION
-    assert ENGINE_VERSION == "3.0.0", ENGINE_VERSION
+    assert ENGINE_VERSION == "4.0.0", ENGINE_VERSION
 
 
 # ╔══════════════════════════════════════════════════════════════════════════════╗

@@ -57,7 +57,9 @@ def income_tax_total_ref(income: Decimal, pension: Decimal) -> Decimal:
 
     ANI = income − pension (clamped to 0).
     PA reduced by £1 per £2 ANI above £100,000.
-    BRL extended by pension, capped at ART.
+    A gross RAS contribution extends BOTH the basic-rate limit and the
+    higher-rate limit (additional-rate threshold) by the gross amount
+    (HMRC Pensions Tax Manual PTM056120).  No cap applies.
 
     Rates: 0 % / 20 % / 40 % / 45 %.
     Source: ITEPA 2003 Part 2; Income Tax Act 2007 s.35.
@@ -67,12 +69,13 @@ def income_tax_total_ref(income: Decimal, pension: Decimal) -> Decimal:
 
     ani = max(Decimal("0"), income - pension)
     pa  = personal_allowance_ref(ani)
-    basic_band = min((BRL - PA) + pension, ART)
+    basic_band = (BRL - PA) + pension
+    art = ART + pension
     taxable_income = max(Decimal("0"), income - pa)
 
     bands = [
         (basic_band,      Decimal("0.20")),
-        (ART,             Decimal("0.40")),
+        (art,             Decimal("0.40")),
         (Decimal("Inf"), Decimal("0.45")),
     ]
 

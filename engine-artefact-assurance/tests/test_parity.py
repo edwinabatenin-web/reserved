@@ -64,7 +64,7 @@ def _profile(**overrides):
 # ── Version / configuration identity ─────────────────────────────────────────
 
 def test_engine_version_identity():
-    assert prod.ENGINE_VERSION == "3.0.0"
+    assert prod.ENGINE_VERSION == "4.0.0"
     assert prod.ENGINE_VERSION == __import__("reserved_engine").ENGINE_VERSION
 
 

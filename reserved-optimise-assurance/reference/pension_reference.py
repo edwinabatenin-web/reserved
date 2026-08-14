@@ -4,7 +4,7 @@ Initiative 002 — Independent pension RaS + band-extension reference.
 Models Relief-at-Source pension contributions for the 2026/27 tax year.
 No code shared with reserved.engines.
 
-Source: Finance Act 2004 s.192; HMRC PTM044100.
+Source: Finance Act 2004 s.192; HMRC PTM056120.
 """
 from decimal import Decimal
 from .common import p, income_tax_total_ref, PA, BRL, ART
@@ -47,11 +47,22 @@ def extended_brl(pension: Decimal) -> Decimal:
 
     The statutory basic-rate band is £37,700 of taxable income (= BRL − PA).
     A gross Relief-at-Source contribution extends that band by the gross
-    amount, capped at the Additional Rate Threshold (£125,140).
+    amount with no cap (PTM056120).  The higher-rate limit extends by the
+    same amount; see ``income_tax_total_ref`` in ``common.py``.
 
-    Source: HMRC PTM044100; Finance Act 2004 s.192.
+    Source: HMRC PTM056120; Finance Act 2004 s.192.
     """
-    return min((BRL - PA) + pension, ART)
+    return (BRL - PA) + pension
+
+
+def extended_hrl(pension: Decimal) -> Decimal:
+    """Extended higher-rate *limit* (additional-rate threshold) after RAS.
+
+    The statutory higher-rate limit is £125,140.  A gross Relief-at-Source
+    contribution extends it by the gross amount, mirroring the basic-rate
+    limit extension (PTM056120).
+    """
+    return ART + pension
 
 
 def it_saving_from_pension(

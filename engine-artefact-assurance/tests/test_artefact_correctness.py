@@ -45,8 +45,8 @@ def _profile(**overrides):
 def test_artefact_records_provenance(engine):
     module, provenance = engine
     assert provenance["engine_version"] == module.ENGINE_VERSION
-    assert provenance["engine_version"] == "3.0.0"
-    assert provenance["rules_version"] == "uk-2026-27-v3"
+    assert provenance["engine_version"] == "4.0.0"
+    assert provenance["rules_version"] == "uk-2026-27-v4"
     assert provenance["source_commit"]
     assert len(provenance["content_hash"]) == 64
 
@@ -126,17 +126,20 @@ def test_pension_saving_in_taper_zone():
     assert before - after == D("4000.00")
 
 
-def test_el003_large_pension_preserves_45pct_band():
+def test_large_pension_extends_both_limits():
     # £200,000 income, £80,000 pension → ANI 120,000 → PA 2,570 → taxable 197,430.
-    # Basic band = min(37,700 + 80,000, 125,140) = 117,700.
+    # PTM056120: a gross RAS contribution extends both the basic-rate limit and
+    # the higher-rate limit by the gross amount (no cap).
+    #   Extended basic-rate limit  = 37,700 + 80,000 = 117,700
+    #   Extended higher-rate limit = 125,140 + 80,000 = 205,140
     #   117,700 @ 20 % = 23,540.00
-    #     7,440 @ 40 % =  2,976.00
-    #    72,290 @ 45 % = 32,530.50
-    #   Total          = 59,046.50
+    #    79,730 @ 40 % = 31,892.00
+    #         0 @ 45 % =      0.00
+    #   Total          = 55,432.00
     from reserved_engine.income_tax import _total_income_tax
     from reserved_engine.tax_config import get_config
     cfg = get_config("2026/27")
-    assert _total_income_tax(D("200000"), D("80000"), cfg) == D("59046.50")
+    assert _total_income_tax(D("200000"), D("80000"), cfg) == D("55432.00")
 
 
 # ── Student Loan annual semantics ─────────────────────────────────────────────

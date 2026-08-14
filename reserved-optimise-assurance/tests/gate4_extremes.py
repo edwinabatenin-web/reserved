@@ -346,17 +346,18 @@ class TestRWI001Regression:
         diff = p(it_at_130k - it_at_125k)
         assert diff == p(Decimal("4860") * Decimal("0.45"))
 
-    def test_el003_ebrl_cap_defect_not_reintroduced(self):
-        """EL-003 regression: a large pension extends the basic band, not the 45 % band.
+    def test_large_pension_extends_both_limits(self):
+        """PTM056120: a large pension extends the basic-rate AND higher-rate limits.
 
         £200k income, £80k pension → ANI = 120,000 → PA = 12,570 − 10,000 = 2,570.
-        Taxable = 197,430.  Extended basic band = min(37,700 + 80,000, 125,140)
-        = 117,700 (uncapped here).  The 45 % band above £125,140 is preserved.
+        Taxable = 197,430.
+        Extended basic-rate limit  = 37,700 + 80,000 = 117,700.
+        Extended higher-rate limit = 125,140 + 80,000 = 205,140.
 
           Basic:      117,700 @ 20 % = 23,540.00
-          Higher:       7,440 @ 40 % =  2,976.00   (117,700 → 125,140)
-          Additional: 72,290 @ 45 % = 32,530.50   (125,140 → 197,430)
-          Total = 59,046.50
+          Higher:      79,730 @ 40 % = 31,892.00   (117,700 → 197,430; < 205,140)
+          Additional:       0 @ 45 % =      0.00
+          Total = 55,432.00
         """
         it = income_tax_total_ref(Decimal("200000"), Decimal("80000"))
-        assert it == Decimal("59046.50")
+        assert it == Decimal("55432.00")

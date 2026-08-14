@@ -47,8 +47,8 @@ def test_verified_date_honours_source_date_epoch(monkeypatch):
 
 def test_engine_metadata_records_provenance():
     meta = GEN.engine_metadata()
-    assert meta["engine_version"] == "3.0.0"
-    assert meta["rules_version"] == "uk-2026-27-v3"
+    assert meta["engine_version"] == "4.0.0"
+    assert meta["rules_version"] == "uk-2026-27-v4"
     assert meta["tax_year"] == "2026/27"
     assert len(meta["engine_artefact"]["content_hash"]) == 64
     assert meta["engine_artefact"]["source_commit"]
