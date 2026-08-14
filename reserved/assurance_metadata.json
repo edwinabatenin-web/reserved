@@ -1,9 +1,39 @@
 {
   "tax_year": "2026/27",
-  "rules_version": "uk-2026-27-v1",
-  "verified_date": "2026-08-04",
+  "rules_version": "uk-2026-27-v3",
+  "engine_version": "3.0.0",
+  "engine_artefact": {
+    "content_hash": "f672593f641d48758376fd4a0f1458dfed094543b19ed627ca4054b78aeaaad0",
+    "engine_version": "3.0.0",
+    "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
+    "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
+    "generated_on": "2026-08-14T19:23:08Z",
+    "rules_version": "uk-2026-27-v3",
+    "schema": "reserved-engine-artefact-provenance-1",
+    "source_commit": "74f0b230c9ee4c999100ea73f37f74030687c70f",
+    "source_files": {
+      "CHANGELOG.md": "7e9e8c1c6e9bb6e21d9d22c7798a3dfd478047e7397bd4f6ca1d0e7efa26f683",
+      "__init__.py": "7036172925591b86f7c3c48dcd3d32b8d6119c9d049b5ae4a658f9b3a6bd0530",
+      "allocation.py": "a8859ae01f017b9b18e689d81c9906deac7aac4193c6c748dd60f39b3779fad6",
+      "annual_loan_reconciliation.py": "c43bd43f6616fac5b8b0dc197e04851973df9d7b32f266ff5c67aa0270277cef",
+      "annual_loan_wp7u.py": "b549b93dddf7a5f1b914c16c0cf991303211f0b58539cfa7b77d66a840fdf169",
+      "annual_position_composition.py": "8f6c0864cce23e40cb80072a48bb7cbefeab27ad7beded756a2d5201e2b8ab19",
+      "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
+      "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
+      "income_tax.py": "7a90a192957330d785d8a4d50ce3667deb30665db46f6e1cec65452f54244d0d",
+      "integrated_annual_position.py": "04edad81f2c76596de310a2dc5aafd8b57ac33ffc6af288f3b142a3eea2a2216",
+      "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
+      "internal_snapshot.py": "d220fd882cd0df27fa72e9a22d3d2dbd76743568043042e3c5a2ce1e4b378dd0",
+      "mtd_readiness.py": "1051277209aca4f086c4a207f2683fe5e41c85285befcc5cf1dd6e316e501ae2",
+      "optimise.py": "bf928965292aa4137efd36f0c6c98534c8cd29a67144eedc48780dceddc4893d",
+      "paye_reconciliation.py": "f57e45280353b760dc037a6480a31a123e582033019655e44b1010f37c25786f",
+      "tax_config.py": "682d748a5219da11a47f6ccd5381e20aaa0f6b75fed977c6abf24c6a0b656213",
+      "utils.py": "658c9fbf789fa0851c5453b2c26ba47a514186ddd95b7894038b9016c887a702"
+    }
+  },
+  "verified_date": "2026-08-14T19:49:15Z",
   "test_counts": {
-    "passed": 163,
+    "passed": 1179,
     "failed": 0,
     "errors": 0
   },

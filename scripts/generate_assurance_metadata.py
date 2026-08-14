@@ -2,99 +2,154 @@
 """
 Generate tax-assurance metadata for the Reserved dev-tools page.
 
-Runs the test suite, counts results, and writes
-``reserved/assurance_metadata.json`` so the /tax-assurance route can
-display live verification stats without hard-coding anything.
+Runs the full current release gate and writes
+``reserved/assurance_metadata.json`` so the /tax-assurance route can display
+live verification statistics, engine version and engine-artefact provenance.
+
+The gate
+--------
+1. root production suite            ``tests/``
+2. current engine artefact suite    ``engine-artefact-assurance/tests/``
+   (correctness + production↔artefact parity)
+3. current Optimise assurance       ``reserved-optimise-assurance/tests/``
+
+(The independent RW3 fixture-adapter assurance runs inside ``tests/``.)
 
 Usage
 -----
     python scripts/generate_assurance_metadata.py
 
-Exit code is non-zero if any tests fail, so this can be used as a CI gate.
+Exit code is non-zero if any gate suite fails, so this can be used as a CI gate.
+
+The ``verified_date`` is deterministic: it honours ``SOURCE_DATE_EPOCH`` and
+falls back to the current git commit timestamp.
 """
+from __future__ import annotations
+
 import json
+import os
+import re
 import subprocess
 import sys
-from datetime import date, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Ensure the project root is on sys.path so `reserved` is importable.
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+GATE_SUITES = [
+    "tests/",
+    "engine-artefact-assurance/tests/",
+    "reserved-optimise-assurance/tests/",
+]
 
 
-def run_tests() -> dict:
-    """Run pytest and return a summary dict."""
-    result = subprocess.run(
-        [
-            sys.executable, "-m", "pytest",
-            "tests/",
-            "--tb=short",
-            "--no-header",
-        ],
-        capture_output=True,
-        text=True,
-        cwd=ROOT,
-    )
-    output = result.stdout + result.stderr
-
-    # Parse the summary line, e.g. "67 passed in 1.10s"
-    # or "1 failed, 66 passed in 5.66s" or "2 errors in 0.5s"
-    import re
-    passed = 0
-    failed = 0
-    errors = 0
-    # Match the final short-summary line produced by pytest (no -q flag).
-    summary_re = re.compile(
-        r"(?:(\d+) failed)?[,\s]*(?:(\d+) error(?:s)?)?[,\s]*(?:(\d+) passed)?",
-    )
+def parse_counts(output: str) -> tuple[int, int, int]:
+    """Return ``(passed, failed, errors)`` from a pytest ``-q`` summary."""
+    passed = failed = errors = 0
     for line in reversed(output.splitlines()):
         line = line.strip()
         if not line:
             continue
-        # The summary line ends with e.g. "in 0.38s"
-        if "passed" in line or "failed" in line or "error" in line:
-            m = summary_re.search(line)
-            if m:
-                failed  = int(m.group(1) or 0)
-                errors  = int(m.group(2) or 0)
-                passed  = int(m.group(3) or 0)
-            # Also try simple word-before pattern as fallback
-            if passed == 0 and failed == 0 and errors == 0:
-                parts = line.split()
-                for i, p in enumerate(parts):
-                    if p in ("passed", "passed,") and i > 0:
-                        try: passed = int(parts[i - 1])
-                        except ValueError: pass
-                    if p in ("failed", "failed,") and i > 0:
-                        try: failed = int(parts[i - 1])
-                        except ValueError: pass
-                    if p in ("error", "errors", "error,", "errors,") and i > 0:
-                        try: errors = int(parts[i - 1])
-                        except ValueError: pass
-            break
+        matches = re.findall(r"(\d+)\s+(passed|failed|error|errors)\b", line)
+        if matches:
+            for count_text, kind in matches:
+                count = int(count_text)
+                if kind == "failed":
+                    failed = count
+                elif kind in ("error", "errors"):
+                    errors = count
+                elif kind == "passed":
+                    passed = count
+            return passed, failed, errors
+    return passed, failed, errors
 
+
+def _git(args: list[str], default: str | None = None) -> str | None:
+    try:
+        proc = subprocess.run(
+            ["git", *args], cwd=ROOT, capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return default
+    return proc.stdout.strip() if proc.returncode == 0 else default
+
+
+def verified_date() -> str:
+    epoch = os.environ.get("SOURCE_DATE_EPOCH")
+    if epoch:
+        try:
+            return datetime.fromtimestamp(int(epoch), tz=timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+        except (ValueError, OSError):
+            pass
+    commit_epoch = _git(["log", "-1", "--format=%ct"])
+    if commit_epoch:
+        try:
+            return datetime.fromtimestamp(int(commit_epoch), tz=timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+        except (ValueError, OSError):
+            pass
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def engine_metadata() -> dict:
+    """Engine version and release-artefact provenance (from the artefact)."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from reserved_west.artefact import load_engine
+
+    engine, provenance = load_engine()
     return {
-        "passed": passed,
-        "failed": failed,
-        "errors": errors,
-        "all_passed": result.returncode == 0,
-        "pytest_output": output.strip(),
+        "engine_version": engine.ENGINE_VERSION,
+        "rules_version": engine.tax_config.RULES_VERSION,
+        "tax_year": engine.tax_config.TAX_YEAR,
+        "engine_artefact": provenance,
     }
 
 
-def main() -> int:
-    from reserved.engines import tax_config  # noqa: import here to stay in project venv
+def run_gate() -> dict:
+    """Run each gate suite separately and aggregate the results.
 
-    print("Running test suite…")
-    test_summary = run_tests()
+    Suites are run separately (rather than in a single pytest invocation)
+    because ``reserved-optimise-assurance`` uses its own ``pytest.ini`` with
+    ``python_files = gate*.py``; a single invocation would apply only the root
+    config and silently skip those gate-named files.
+    """
+    total = {"passed": 0, "failed": 0, "errors": 0}
+    all_passed = True
+    outputs: list[str] = []
+    for suite in GATE_SUITES:
+        # `-o addopts=` clears the repo's default `-q` so the gate flags are
+        # fully explicit and never double up into a summary-less quiet mode.
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", suite, "-o", "addopts=", "-q", "--tb=short", "--no-header"],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+        )
+        passed, failed, errors = parse_counts(result.stdout + result.stderr)
+        total["passed"] += passed
+        total["failed"] += failed
+        total["errors"] += errors
+        all_passed = all_passed and (result.returncode == 0)
+        outputs.append(result.stdout + result.stderr)
 
+    total["all_passed"] = all_passed
+    total["pytest_output"] = "\n".join(outputs).strip()
+    return total
+
+
+def build_metadata() -> dict:
+    test_summary = run_gate()
+    eng = engine_metadata()
     metadata = {
-        "tax_year": tax_config.TAX_YEAR,
-        "rules_version": tax_config.RULES_VERSION,
-        "verified_date": date.today().isoformat(),
+        "tax_year": eng["tax_year"],
+        "rules_version": eng["rules_version"],
+        "engine_version": eng["engine_version"],
+        "engine_artefact": eng["engine_artefact"],
+        "verified_date": verified_date(),
         "test_counts": {
             "passed": test_summary["passed"],
             "failed": test_summary["failed"],
@@ -127,9 +182,15 @@ def main() -> int:
             "Pension contributions are treated as Relief at Source (gross figure expected).",
         ],
     }
+    return metadata, test_summary
+
+
+def main() -> int:
+    print("Running release gate…")
+    metadata, test_summary = build_metadata()
 
     out_path = ROOT / "reserved" / "assurance_metadata.json"
-    out_path.write_text(json.dumps(metadata, indent=2))
+    out_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     print(f"Written → {out_path.relative_to(ROOT)}")
 
     if test_summary["all_passed"]:
