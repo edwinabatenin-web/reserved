@@ -23,6 +23,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from reserved_west.release_gate import (  # noqa: E402
+    CANONICAL_COMPONENTS,
+    NARROW_GATE_FAILED,
+    NARROW_GATE_PASSED,
+    OCTOBER_CALCULATION_FAMILIES,
+    OCTOBER_LAUNCH_COMPONENTS,
+    canonical_result_digest,
+    compute_assurance_identity,
+    validate_inventory_matches_canonical,
+)
+
 RESULT_PATH = ROOT / "dist" / "release_gate_result.json"
 METADATA_PATH = ROOT / "reserved" / "assurance_metadata.json"
 RESULT_SCHEMA = "reserved-canonical-gate-result-1"
@@ -74,8 +88,137 @@ def current_production_source_files() -> dict[str, str]:
     return files
 
 
+def _validate_canonical_result(result: dict) -> list[str]:
+    """Independently verify the complete canonical result (fail-closed).
+
+    Metadata consumption must not rely on the gate runner having validated the
+    result earlier.  This recomputes the authoritative identities and the exact
+    inventory, verifies every mandatory component has exactly one coherent
+    result, and checks that the overall decision follows from the complete
+    component results.
+    """
+    errors: list[str] = []
+
+    if result.get("schema") != RESULT_SCHEMA:
+        errors.append(f"unrecognised canonical gate result schema: {result.get('schema')!r}")
+
+    required = ("overall_decision", "status", "production_source", "verified_artefact",
+                "component_inventory", "components", "assurance_implementation_identity",
+                "october_launch_candidate")
+    for key in required:
+        if key not in result:
+            errors.append(f"canonical gate result is missing field: {key}")
+
+    # Status vocabulary must be exactly the purpose-specific narrow-gate values.
+    if result.get("status") not in (NARROW_GATE_PASSED, NARROW_GATE_FAILED):
+        errors.append(f"unknown canonical status: {result.get('status')!r}")
+
+    # A4: reject a result produced by an older or differently defined gate.
+    expected_assurance = compute_assurance_identity()
+    if result.get("assurance_implementation_identity") != expected_assurance:
+        errors.append("assurance implementation identity mismatch (older/different gate)")
+
+    # Production-source identity: complete and equal to the current source.
+    ps = result.get("production_source") or {}
+    if not ps.get("source_path") or not ps.get("source_commit"):
+        errors.append("incomplete production-source identity")
+    recorded_files = ps.get("source_files")
+    if not isinstance(recorded_files, dict) or not recorded_files:
+        errors.append("canonical gate result has no production source_files identity")
+    elif recorded_files != current_production_source_files():
+        errors.append("canonical gate result is stale: production source has changed")
+
+    # Verified-artefact identity: complete.
+    artefact = result.get("verified_artefact") or {}
+    if not artefact.get("content_hash") or not artefact.get("source_commit"):
+        errors.append("canonical gate result has no verified-artefact identity")
+    if not artefact.get("engine_version") or not artefact.get("rules_version"):
+        errors.append("canonical gate result has no engine/rules version identity")
+    if not isinstance(artefact.get("provenance"), dict):
+        errors.append("canonical gate result has no artefact provenance")
+
+    # A1/A3: the recorded inventory must exactly match the authoritative
+    # canonical component definitions (complete, ordered, unaltered).
+    inventory = result.get("component_inventory")
+    if not isinstance(inventory, list):
+        errors.append("component_inventory is not a list")
+    else:
+        errors.extend(validate_inventory_matches_canonical(inventory))
+
+    # A3: exactly one coherent result per mandatory component; no unknown or
+    # duplicate results; counts internally coherent; zero-test can never pass.
+    comps = result.get("components")
+    canonical_ids = [c["id"] for c in CANONICAL_COMPONENTS]
+    if not isinstance(comps, list):
+        errors.append("components is not a list")
+    else:
+        comp_ids = [c.get("id") for c in comps]
+        if len(comp_ids) != len(set(comp_ids)):
+            errors.append("duplicate component result")
+        for cid in [i for i in canonical_ids if i not in comp_ids]:
+            errors.append(f"missing component result: {cid}")
+        for cid in [i for i in comp_ids if i not in canonical_ids]:
+            errors.append(f"unknown component result: {cid}")
+        if len(comps) != len(CANONICAL_COMPONENTS):
+            errors.append(f"component result count {len(comps)} != canonical {len(CANONICAL_COMPONENTS)}")
+
+        by_id = {c.get("id"): c for c in comps}
+        for canonical in CANONICAL_COMPONENTS:
+            comp = by_id.get(canonical["id"])
+            if comp is None:
+                continue
+            if comp.get("kind") != canonical["kind"]:
+                errors.append(f"component {canonical['id']!r} result kind mismatch")
+            if comp.get("status") not in ("pass", "fail"):
+                errors.append(f"component {canonical['id']!r} has no valid status")
+            if canonical["kind"] == "pytest":
+                counts = (comp.get("passed"), comp.get("failed"),
+                          comp.get("errors"), comp.get("skipped"))
+                if not all(isinstance(x, int) and x >= 0 for x in counts):
+                    errors.append(f"component {canonical['id']!r} has invalid counts")
+                elif comp.get("collected") != sum(counts):
+                    errors.append(f"component {canonical['id']!r} counts are incoherent")
+                if comp.get("status") == "pass" and (comp.get("passed", 0) <= 0):
+                    errors.append(f"component {canonical['id']!r} passes with zero tests")
+            else:  # rw3
+                if "gate_passed" not in comp:
+                    errors.append(f"component {canonical['id']!r} has no gate_passed")
+
+    # A3: the overall decision must follow from the complete component results.
+    overall = result.get("overall_decision")
+    if overall not in ("pass", "fail"):
+        errors.append(f"unknown overall_decision: {overall!r}")
+    elif isinstance(comps, list):
+        all_pass = all(c.get("status") == "pass" for c in comps)
+        if overall == "pass" and not all_pass:
+            errors.append("overall pass with a failing/missing component")
+        if overall == "pass" and not result.get("artefact_unchanged"):
+            errors.append("overall pass with artefact_unchanged falsy")
+        if overall == "fail" and result.get("status") != NARROW_GATE_FAILED:
+            errors.append("fail decision with non-failing status")
+        if overall == "pass" and result.get("status") != NARROW_GATE_PASSED:
+            errors.append("pass decision with non-passing status")
+
+    # A5: complete, fail-closed October blocker inventory.
+    octo = result.get("october_launch_candidate")
+    if not isinstance(octo, dict):
+        errors.append("october_launch_candidate is missing")
+    else:
+        if octo.get("status") != "not_ready":
+            errors.append("october status is not not_ready")
+        blockers = octo.get("blocking_components")
+        if blockers != [dict(c) for c in OCTOBER_LAUNCH_COMPONENTS]:
+            errors.append("october blocker inventory does not match authoritative definitions")
+        if octo.get("blocker_count") != len(OCTOBER_LAUNCH_COMPONENTS):
+            errors.append("october blocker_count mismatch")
+        if octo.get("supported_calculation_families") != list(OCTOBER_CALCULATION_FAMILIES):
+            errors.append("october calculation families mismatch")
+
+    return errors
+
+
 def load_canonical_result(path: Path | str = RESULT_PATH) -> dict:
-    """Load and validate the canonical gate result (fail closed)."""
+    """Load and independently validate the canonical gate result (fail closed)."""
     path = Path(path)
     if not path.exists():
         raise RuntimeError(f"canonical gate result is missing: {path}")
@@ -84,27 +227,9 @@ def load_canonical_result(path: Path | str = RESULT_PATH) -> dict:
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"canonical gate result is malformed: {exc}") from exc
 
-    if result.get("schema") != RESULT_SCHEMA:
-        raise RuntimeError(f"unrecognised canonical gate result schema: {result.get('schema')!r}")
-
-    required = ("overall_decision", "status", "production_source", "verified_artefact",
-                "component_inventory", "components")
-    missing = [k for k in required if k not in result]
-    if missing:
-        raise RuntimeError(f"canonical gate result is missing field(s): {', '.join(missing)}")
-
-    # Reject a stale result: the production source the gate tested must equal the
-    # current maintained production source.
-    recorded_files = result["production_source"].get("source_files")
-    if not isinstance(recorded_files, dict) or not recorded_files:
-        raise RuntimeError("canonical gate result has no production source_files identity")
-    if recorded_files != current_production_source_files():
-        raise RuntimeError("canonical gate result is stale: production source has changed")
-
-    artefact = result["verified_artefact"]
-    if not artefact.get("content_hash") or not artefact.get("source_commit"):
-        raise RuntimeError("canonical gate result has no verified-artefact identity")
-
+    errors = _validate_canonical_result(result)
+    if errors:
+        raise RuntimeError("canonical gate result is invalid: " + "; ".join(errors))
     return result
 
 
@@ -142,6 +267,8 @@ def build_metadata(result: dict) -> dict:
         "engine_artefact": artefact.get("provenance"),
         "production_source": result["production_source"],
         "component_inventory": result["component_inventory"],
+        "assurance_implementation_identity": result.get("assurance_implementation_identity"),
+        "canonical_result_digest": canonical_result_digest(result),
         "rw3_fixture_gate": rw3,
         "generated_on": generated_on(),
         "test_counts": {

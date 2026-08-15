@@ -15,10 +15,25 @@ never be mistaken for October launch readiness:
 * ``october_launch_candidate`` — the founder-scoped October product, which is
   ``not_ready`` until every supported calculation family and required customer
   journey is mandatory, executable, independently approved and passing.
+
+Exact-contract enforcement
+--------------------------
+The production gate executes **exactly** the authoritative
+``CANONICAL_COMPONENTS`` inventory.  A caller-supplied inventory (for example
+an RW3-only or root-only list) can never receive a canonical pass: the
+production entry point does not accept an inventory argument at all, and the
+canonical result records an ``assurance_implementation_identity`` so the
+metadata consumer can reject a result produced by a different/older gate.
+
+An explicitly non-canonical helper (``evaluate_components_adhoc``) exists for
+tests that need to exercise an arbitrary component collection.  It never emits
+canonical status, never writes a canonical result file and is rejected by
+metadata generation by construction (different schema, no canonical status).
 """
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import re
@@ -67,8 +82,12 @@ VALID_KINDS = {"pytest", "rw3"}
 
 # ── October launch-candidate inventory (founder-scoped, truthful non-passing) ─
 # These are the supported-but-unfinished October areas.  They are recorded with
-# a precise non-passing state and never reported as passing.
+# a precise non-passing state and never reported as passing.  The list is the
+# complete founder-required blocker inventory; omission is enforced (see
+# ``validate_october_inventory``), never silently made to look closer to ready.
 OCTOBER_LAUNCH_COMPONENTS = [
+    {"id": "paye_evidence_and_forecasting", "state": "not_executable",
+     "note": "PAYE evidence selection and future-pay forecasting are not yet end-to-end verified."},
     {"id": "paye_payslip_manual_evidence_journey", "state": "not_executable",
      "note": "Payslip extraction and manual PAYE fallback are not yet end-to-end verified."},
     {"id": "hmrc_integration", "state": "externally_blocked",
@@ -144,6 +163,155 @@ def validate_inventory(components: list) -> list[str]:
     return errors
 
 
+# ── Exact canonical contract ─────────────────────────────────────────────────
+
+# Fields that form the recorded execution/display contract of a component.
+# Altering any of them changes what the gate executes or records.
+_COMPONENT_CONTRACT_FIELDS = ("id", "kind", "path", "description")
+
+
+def _canonical_component_projection(components: list) -> list[dict]:
+    """Project a component list onto its recorded contract fields, preserving order."""
+    return [
+        {field: comp.get(field) for field in _COMPONENT_CONTRACT_FIELDS}
+        for comp in components
+    ]
+
+
+def validate_inventory_matches_canonical(components: list) -> list[str]:
+    """Return errors unless ``components`` is *exactly* the canonical inventory.
+
+    This enforces, in production (not merely in a test), that the mandatory
+    component inventory is complete, ordered as recorded, free of duplicates,
+    and that every id/kind/path/description matches the authoritative
+    definitions.  Shape-only validation (``validate_inventory``) is not
+    sufficient: an RW3-only or root-only list is rejected here.
+    """
+    errors = validate_inventory(components)
+    if errors:
+        return errors
+
+    canonical_ids = [c["id"] for c in CANONICAL_COMPONENTS]
+    actual_ids = [c.get("id") for c in components]
+
+    missing = [cid for cid in canonical_ids if cid not in actual_ids]
+    extra = [cid for cid in actual_ids if cid not in canonical_ids]
+    for cid in missing:
+        errors.append(f"missing mandatory component: {cid}")
+    for cid in extra:
+        errors.append(f"additional/unknown component: {cid}")
+
+    if len(components) != len(CANONICAL_COMPONENTS):
+        errors.append(
+            f"component count {len(components)} != canonical {len(CANONICAL_COMPONENTS)}"
+        )
+
+    if _canonical_component_projection(components) != _canonical_component_projection(CANONICAL_COMPONENTS):
+        errors.append("component inventory does not match the authoritative definitions (order/fields)")
+
+    return errors
+
+
+# ── October blocker-inventory integrity ──────────────────────────────────────
+
+_VALID_OCTOBER_STATES = {"not_executable", "externally_blocked", "not_implemented", "evidence_missing"}
+
+
+def validate_october_inventory() -> list[str]:
+    """Return errors if the authoritative October inventory is malformed.
+
+    The complete founder-required blocker inventory must be present and must
+    contain only precise non-passing states.  A missing, duplicate or unknown
+    blocker (or a blocker that silently looked passing) is a defect.
+    """
+    errors: list[str] = []
+    if not OCTOBER_LAUNCH_COMPONENTS:
+        errors.append("october launch component inventory is empty")
+    if not OCTOBER_CALCULATION_FAMILIES:
+        errors.append("october calculation families inventory is empty")
+
+    ids = [c.get("id") for c in OCTOBER_LAUNCH_COMPONENTS]
+    if len(set(ids)) != len(ids) or any(not isinstance(i, str) or not i for i in ids):
+        errors.append("october launch components have duplicate or missing ids")
+    for c in OCTOBER_LAUNCH_COMPONENTS:
+        if c.get("state") not in _VALID_OCTOBER_STATES:
+            errors.append(
+                f"october blocker {c.get('id')!r} has invalid/non-fail-closed state {c.get('state')!r}"
+            )
+
+    fam = OCTOBER_CALCULATION_FAMILIES
+    if len(set(fam)) != len(fam) or any(not isinstance(f, str) or not f for f in fam):
+        errors.append("october calculation families have duplicate or missing ids")
+    return errors
+
+
+# ── Deterministic identities ─────────────────────────────────────────────────
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _stable_json(value) -> str:
+    """Canonical JSON serialization used by every identity/digest in this module.
+
+    ``sort_keys`` orders object keys deterministically while list order is
+    preserved (so inventory order remains part of the contract); the compact
+    separators and ``ensure_ascii=False`` keep the serialization byte-stable.
+    """
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def canonical_result_json(result: dict) -> str:
+    """Serialize a canonical result exactly as it is digested."""
+    return _stable_json(result)
+
+
+def canonical_result_digest(result: dict) -> str:
+    """Deterministic digest of the complete canonical-result document."""
+    return _sha256_bytes(canonical_result_json(result).encode("utf-8"))
+
+
+# Assurance-implementation identity inputs: any change to these files, the
+# authoritative inventories, the adapters or the fixture manifests could alter
+# collection, execution, classification or the final decision.
+ASSURANCE_IDENTITY_INPUTS = [
+    "reserved_west/release_gate.py",
+    "reserved_west/rw3_gate.py",
+    "reserved_west/artefact.py",
+    "reserved_west/engine_adapters.py",
+    "reserved_west/literal_fixture_runner.py",
+    "scripts/build_engine_artefact.py",
+    "scripts/run_release_gate.py",
+    "docs/fixtures/RW3_ASSURANCE_CLASSIFICATION.json",
+    "docs/fixtures/WP7_FIXTURE_INTEGRITY.json",
+    "docs/fixtures/WP7_ASSURANCE_CORPUS.json",
+]
+
+
+def compute_assurance_identity() -> str:
+    """Deterministic identity over the maintained assurance implementation.
+
+    This is distinct from the repository HEAD, from the maintained production
+    engine-source identity, and from the built artefact content identity.  It
+    identifies *which* gate implementation produced a result so a result from
+    an older or differently defined gate is rejected.
+    """
+    parts: list[str] = []
+    for rel in ASSURANCE_IDENTITY_INPUTS:
+        path = ROOT / rel
+        if not path.exists():
+            raise RuntimeError(f"assurance identity input missing: {rel}")
+        parts.append(f"FILE:{rel}")
+        parts.append(_sha256_bytes(path.read_bytes()))
+    parts.append("CANONICAL_COMPONENTS")
+    parts.append(_sha256_bytes(_stable_json(CANONICAL_COMPONENTS).encode("utf-8")))
+    parts.append("OCTOBER_LAUNCH_COMPONENTS")
+    parts.append(_sha256_bytes(_stable_json(OCTOBER_LAUNCH_COMPONENTS).encode("utf-8")))
+    parts.append("OCTOBER_CALCULATION_FAMILIES")
+    parts.append(_sha256_bytes(_stable_json(OCTOBER_CALCULATION_FAMILIES).encode("utf-8")))
+    return _sha256_bytes("\n".join(parts).encode("utf-8"))
+
+
 def parse_counts(output: str) -> dict:
     """Return collected/passed/failed/errors/skipped from a pytest summary."""
     counts = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0}
@@ -215,26 +383,16 @@ def _run_rw3_component() -> dict:
     }
 
 
-def run_canonical_gate(components=None, *, build_artefact: bool = True) -> dict:
-    """Build/verify the artefact once, run every component, return one result."""
+def _execute_components(components: list, *, build_artefact: bool) -> dict:
+    """Build/verify the artefact once and execute the supplied components.
+
+    Returns the raw execution (component results, identities, artefact
+    unchanged flag) without emitting any canonical status or schema.  This is
+    the shared execution core; the canonical gate and the ad-hoc test helper
+    both build on it.
+    """
     from .artefact import load_engine, verify_artefact
 
-    if components is None:
-        components = list(CANONICAL_COMPONENTS)
-
-    inventory_errors = validate_inventory(components)
-    if inventory_errors:
-        return {
-            "overall_decision": "fail",
-            "status": NARROW_GATE_FAILED,
-            "inventory_errors": inventory_errors,
-            "components": [],
-            "october_launch_candidate": {"status": "not_ready"},
-            "failure_reasons": ["invalid mandatory-component inventory"] + inventory_errors,
-        }
-
-    # Build and verify the artefact exactly once; record its identity and the
-    # maintained production-source identity it was built from.
     module, prov = load_engine(rebuild=build_artefact)
     artefact_path = os.environ.get("RESERVED_ENGINE_ARTEFACT") or str(ROOT / "dist" / "reserved_engine")
 
@@ -269,24 +427,91 @@ def run_canonical_gate(components=None, *, build_artefact: bool = True) -> dict:
     except Exception:  # noqa: BLE001 — any change to the artefact blocks release
         artefact_unchanged = False
 
-    failures = [
-        c["id"] for c in component_results if c["status"] != "pass"
-    ]
-    overall_decision = "pass" if (not failures and artefact_unchanged) else "fail"
+    return {
+        "production_source": production_source,
+        "verified_artefact": artefact,
+        "component_results": component_results,
+        "artefact_unchanged": artefact_unchanged,
+    }
 
-    result = {
+
+def run_canonical_gate(*, build_artefact: bool = True) -> dict:
+    """Run the authoritative canonical gate and return the one canonical result.
+
+    The production entry point takes **no** caller-supplied inventory: it always
+    executes exactly ``CANONICAL_COMPONENTS`` and enforces the exact contract
+    before running anything.  An empty, partial, reordered, duplicate or altered
+    inventory therefore can never produce a canonical pass through any
+    production entry point.
+    """
+    components = [dict(c) for c in CANONICAL_COMPONENTS]
+    inventory_errors = validate_inventory_matches_canonical(components)
+    if inventory_errors:
+        return {
+            "schema": "reserved-canonical-gate-result-1",
+            "overall_decision": "fail",
+            "status": NARROW_GATE_FAILED,
+            "inventory_errors": inventory_errors,
+            "component_inventory": [],
+            "components": [],
+            "october_launch_candidate": october_launch_candidate(),
+            "failure_reasons": ["invalid mandatory-component inventory"] + inventory_errors,
+        }
+
+    base = _execute_components(components, build_artefact=build_artefact)
+    failures = [c["id"] for c in base["component_results"] if c["status"] != "pass"]
+    overall_decision = "pass" if (not failures and base["artefact_unchanged"]) else "fail"
+
+    return {
         "schema": "reserved-canonical-gate-result-1",
         "overall_decision": overall_decision,
         "status": NARROW_GATE_PASSED if overall_decision == "pass" else NARROW_GATE_FAILED,
-        "component_inventory": [{"id": c["id"], "kind": c["kind"], "description": c.get("description")} for c in components],
-        "production_source": production_source,
-        "verified_artefact": artefact,
-        "components": component_results,
-        "artefact_unchanged": artefact_unchanged,
+        "assurance_implementation_identity": compute_assurance_identity(),
+        "component_inventory": _canonical_component_projection(components),
+        "production_source": base["production_source"],
+        "verified_artefact": base["verified_artefact"],
+        "components": base["component_results"],
+        "artefact_unchanged": base["artefact_unchanged"],
         "failure_reasons": failures,
         "october_launch_candidate": october_launch_candidate(),
     }
-    return result
+
+
+def evaluate_components_adhoc(components: list, *, build_artefact: bool = False) -> dict:
+    """Non-canonical, explicitly test-only evaluation of an arbitrary inventory.
+
+    This exists so tests can exercise arbitrary component collections without
+    being able to obtain a canonical pass.  It:
+
+      * uses a different schema (``reserved-gate-adhoc-evaluation-1``);
+      * never emits ``status`` / ``deterministic_engine_remediation_gate_passed``;
+      * never records an assurance-implementation identity;
+      * never writes a canonical result file or metadata.
+
+    Metadata generation rejects this document by construction.
+    """
+    components = [dict(c) for c in components]
+    inventory_errors = validate_inventory(components)
+    if inventory_errors:
+        return {
+            "schema": "reserved-gate-adhoc-evaluation-1",
+            "canonical": False,
+            "inventory_errors": inventory_errors,
+            "components": [],
+        }
+
+    base = _execute_components(components, build_artefact=build_artefact)
+    failures = [c["id"] for c in base["component_results"] if c["status"] != "pass"]
+    overall_decision = "pass" if (not failures and base["artefact_unchanged"]) else "fail"
+
+    return {
+        "schema": "reserved-gate-adhoc-evaluation-1",
+        "canonical": False,
+        "overall_decision": overall_decision,
+        "components": base["component_results"],
+        "artefact_unchanged": base["artefact_unchanged"],
+        "failure_reasons": failures,
+    }
 
 
 def october_launch_candidate() -> dict:
@@ -294,12 +519,23 @@ def october_launch_candidate() -> dict:
 
     The narrow deterministic-engine gate does not establish October readiness.
     Every supported-but-unfinished October area is recorded with a precise
-    non-passing state and never reported as passing.
+    non-passing state and never reported as passing.  A malformed authoritative
+    inventory fails closed rather than looking closer to readiness.
     """
-    blocked = [c for c in OCTOBER_LAUNCH_COMPONENTS if c["state"] != "not_applicable"]
+    inventory_errors = validate_october_inventory()
+    if inventory_errors:
+        return {
+            "status": "not_ready",
+            "inventory_errors": inventory_errors,
+            "blocker_count": 0,
+            "supported_calculation_families": [],
+            "blocking_components": [],
+        }
+    blocked = [dict(c) for c in OCTOBER_LAUNCH_COMPONENTS]
     return {
         "status": "not_ready",
-        "supported_calculation_families": OCTOBER_CALCULATION_FAMILIES,
+        "blocker_count": len(blocked),
+        "supported_calculation_families": list(OCTOBER_CALCULATION_FAMILIES),
         "blocking_components": blocked,
     }
 
@@ -332,9 +568,11 @@ def render_result(result: dict) -> str:
     lines.append("\n[IDENTITIES]")
     lines.append(f"  production source  {result['production_source']['source_path']} @ {result['production_source']['source_commit'][:12]}")
     lines.append(f"  verified artefact  {va['content_hash'][:16]} (engine {va['engine_version']}, rules {va['rules_version']})")
+    if result.get("assurance_implementation_identity"):
+        lines.append(f"  assurance impl     {result['assurance_implementation_identity'][:16]}")
 
     octo = result["october_launch_candidate"]
-    lines.append(f"\n[OCTOBER LAUNCH CANDIDATE]  status = {octo['status']}")
+    lines.append(f"\n[OCTOBER LAUNCH CANDIDATE]  status = {octo['status']}  blockers = {octo.get('blocker_count', len(octo.get('blocking_components', [])))}")
     for b in octo["blocking_components"]:
         lines.append(f"  {b['state']:<18} {b['id']}")
 
