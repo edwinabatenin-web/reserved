@@ -9,6 +9,7 @@ Covers the H3 guarantees:
   * a single verified artefact is shared, never silently reused or rebuilt;
   * parity is meaningful (the artefact is distinct from production).
 """
+import importlib
 import importlib.util
 import json
 import stat
@@ -169,3 +170,63 @@ def test_artefact_is_distinct_from_production():
 
     assert prod.__file__ != released.__file__
     assert Path(released.__file__).resolve().is_relative_to(artefact_dir().resolve())
+
+
+# ── Loader identity: a preloaded foreign module must never be returned ───────
+
+def test_load_engine_rejects_preloaded_foreign_module(tmp_path, monkeypatch):
+    # A foreign/historical ``reserved_engine`` already in ``sys.modules`` must
+    # not be returned by the first ordinary ``load_engine()`` call, and must
+    # not be able to bypass artefact verification.
+    foreign = tmp_path / "foreign"
+    pkg = foreign / "reserved_engine"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("MARKER = 'FOREIGN'\n")
+    monkeypatch.syspath_prepend(str(foreign))
+    foreign_module = importlib.import_module("reserved_engine")
+
+    monkeypatch.setattr(art, "_LOADED", None)
+    module, prov = load_engine()
+
+    assert module is not foreign_module
+    assert not hasattr(module, "MARKER")
+    assert Path(module.__file__).resolve().is_relative_to(artefact_dir().resolve())
+    assert prov["engine_version"] == module.ENGINE_VERSION
+
+
+def test_load_engine_switches_artefact_in_one_process(tmp_path, monkeypatch):
+    # Two different valid artefacts loaded in sequence must each resolve to the
+    # correct module, never the cached module from the previous location.
+    # The artefact package directory must be named ``reserved_engine`` (the
+    # loader inserts its parent on sys.path and imports by that package name).
+    out_a = tmp_path / "a" / "reserved_engine"
+    prov_a = BUILD.build(ROOT / "reserved" / "engines", out_a, allow_dirty=True)
+
+    src_b = tmp_path / "src_b"
+    src_b.mkdir()
+    for py in (ROOT / "reserved" / "engines").glob("*.py"):
+        (src_b / py.name).write_text(py.read_text())
+    (src_b / "CHANGELOG.md").write_text((ROOT / "reserved" / "engines" / "CHANGELOG.md").read_text())
+    init = src_b / "__init__.py"
+    init.write_text(init.read_text() + "\nARTEFACT_B_MARKER = 'B'\n")
+    out_b = tmp_path / "b" / "reserved_engine"
+    BUILD.build(src_b, out_b, allow_dirty=True)
+
+    try:
+        monkeypatch.setattr(art, "_LOADED", None)
+        monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_a))
+        mod_a, _ = load_engine()
+        assert Path(mod_a.__file__).resolve().is_relative_to(out_a.resolve())
+        assert not hasattr(mod_a, "ARTEFACT_B_MARKER")
+
+        monkeypatch.setattr(art, "_LOADED", None)
+        monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_b))
+        mod_b, prov_b = load_engine()
+        assert Path(mod_b.__file__).resolve().is_relative_to(out_b.resolve())
+        assert hasattr(mod_b, "ARTEFACT_B_MARKER")
+        assert mod_b is not mod_a
+        assert prov_b["content_hash"] != prov_a["content_hash"]
+    finally:
+        # Restore a clean loader state so later tests observe a fresh default load.
+        art._purge_reserved_engine()
+        art._LOADED = None

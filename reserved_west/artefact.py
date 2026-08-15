@@ -124,7 +124,14 @@ def _import_reserved_engine(target: Path) -> object:
     # location cannot silently resolve to a previous build.
     sys.path[:] = [p for p in sys.path if p != parent]
     sys.path.insert(0, parent)
-    return importlib.import_module("reserved_engine")
+    module = importlib.import_module("reserved_engine")
+    module_file = Path(getattr(module, "__file__", "") or "").resolve()
+    if not module_file.is_relative_to(target.resolve()):
+        raise RuntimeError(
+            "reserved_engine module did not resolve beneath the verified artefact: "
+            f"{module_file} (expected {target})"
+        )
+    return module
 
 
 def load_engine(*, rebuild: bool = False) -> tuple[object, dict]:
@@ -133,9 +140,10 @@ def load_engine(*, rebuild: bool = False) -> tuple[object, dict]:
     The artefact is built at most once per process, verified against its
     recorded manifest, and shared by every caller.  It is imported under the
     package name ``reserved_engine`` and must therefore not collide with any
-    other ``reserved_engine`` already on ``sys.path``.  The stale historical
-    bundle lives in ``reserved-engine-2.0.0/`` and is *not* added to ``sys.path``
-    here.
+    other ``reserved_engine`` already on ``sys.path``.  Any previously imported
+    ``reserved_engine`` (for example the historical
+    ``reserved-engine-2.0.0`` bundle) is purged before import so a cached or
+    foreign module can never be returned alongside current-artefact provenance.
     """
     global _LOADED
     if _LOADED is not None and not rebuild:
@@ -149,8 +157,10 @@ def load_engine(*, rebuild: bool = False) -> tuple[object, dict]:
 
     prov = verify_artefact(target)
 
-    if rebuild:
-        _purge_reserved_engine()
+    # Always purge before import — not only on rebuild — so a foreign or
+    # historical ``reserved_engine`` already in ``sys.modules`` cannot be
+    # returned with provenance that describes the current verified artefact.
+    _purge_reserved_engine()
     module = _import_reserved_engine(target)
 
     _LOADED = (module, prov)
