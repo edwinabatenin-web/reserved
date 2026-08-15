@@ -116,6 +116,19 @@ def test_verify_artefact_rejects_unknown_schema(built):
         verify_artefact(out)
 
 
+def test_verify_artefact_rejects_subdirectory(built):
+    # The artefact format is flat.  A tampered subdirectory must be rejected,
+    # not silently omitted from the content identity (which would let a hidden
+    # subpackage evade detection).
+    out, _ = built
+    out.chmod(0o755)  # make the package dir writable to plant a subdirectory
+    subdir = out / "evil"
+    subdir.mkdir()
+    (subdir / "__init__.py").write_text("# tampered\n")
+    with pytest.raises(RuntimeError, match="unsupported subdirectory"):
+        verify_artefact(out)
+
+
 # ── Source selection ─────────────────────────────────────────────────────────
 
 def test_build_exposes_selected_source(built):

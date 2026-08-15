@@ -144,12 +144,16 @@ def _produced_content_hash(directory: Path) -> str:
     Hash every file in ``directory`` except ``PROVENANCE.json`` (which is
     written last and records this value), keyed by filename and serialized in a
     stable order.  This covers what is actually shipped, not the source-hash
-    metadata recorded in the manifest.
+    metadata recorded in the manifest.  The artefact format is flat (top-level
+    files only); any subdirectory is rejected rather than silently omitted from
+    the identity.
     """
     hashes: dict[str, str] = {}
     for path in sorted(directory.iterdir()):
-        if not path.is_file() or path.name == "PROVENANCE.json":
+        if path.name == "PROVENANCE.json" or path.name == "__pycache__":
             continue
+        if path.is_dir():
+            raise SystemExit(f"artefact contains an unsupported subdirectory: {path.name}")
         hashes[path.name] = _sha256_bytes(path.read_bytes())
     return _sha256_bytes(
         json.dumps(hashes, sort_keys=True, separators=(",", ":")).encode("utf-8")

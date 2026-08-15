@@ -47,11 +47,17 @@ def _sha256_bytes(data: bytes) -> str:
 
 
 def _produced_content_hash(directory: Path) -> str:
-    """Content identity over the produced artefact bytes (see build script)."""
+    """Content identity over the produced artefact bytes (see build script).
+
+    The artefact format is flat (top-level files only); any subdirectory is
+    rejected rather than silently omitted from the identity.
+    """
     hashes: dict[str, str] = {}
     for path in sorted(directory.iterdir()):
-        if not path.is_file() or path.name == "PROVENANCE.json":
+        if path.name == "PROVENANCE.json" or path.name == "__pycache__":
             continue
+        if path.is_dir():
+            raise RuntimeError(f"artefact contains an unsupported subdirectory: {path.name}")
         hashes[path.name] = _sha256_bytes(path.read_bytes())
     return _sha256_bytes(
         json.dumps(hashes, sort_keys=True, separators=(",", ":")).encode("utf-8")
