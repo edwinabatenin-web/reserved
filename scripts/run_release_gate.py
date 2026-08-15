@@ -76,7 +76,11 @@ def run_suite(suite: str) -> tuple[int, int, int, bool]:
         cwd=ROOT,
     )
     passed, failed, errors = parse_counts(result.stdout + result.stderr)
-    return passed, failed, errors, result.returncode == 0
+    # A mandatory suite must collect and pass at least one test.  Exit code 0
+    # alone is insufficient: a zero-collected suite (pytest exit 5) and an
+    # all-skipped suite (exit 0) both report zero passed and must block release.
+    ok = result.returncode == 0 and passed > 0
+    return passed, failed, errors, ok
 
 
 def run_mandatory_rw3() -> dict:

@@ -159,8 +159,6 @@ def evaluate_gate(packs_by_filename: dict, classification: dict, adapters: dict,
         and fail_closed_results["inventory_mismatch"] == 0
     )
 
-    gate_passed = mandatory_ok and fail_closed_ok and provenance_ok and len(unclassified) == 0
-
     counts = {
         value: sum(entry.get("fixture_count", 0) for entry in excluded[value])
         for value in CLASSIFICATION_VALUES
@@ -173,6 +171,11 @@ def evaluate_gate(packs_by_filename: dict, classification: dict, adapters: dict,
         and counts["applicable_not_executable"] == 0
         and counts["pending_founder_decision"] == 0
     )
+
+    # An incomplete classification (unclassified packs, applicable-but-not-
+    # executable packs, or packs awaiting a founder decision) must never yield
+    # a fully passing mandatory gate, even if the classified subset passes.
+    gate_passed = mandatory_ok and fail_closed_ok and provenance_ok and classification_complete
 
     return {
         "gate_passed": bool(gate_passed),

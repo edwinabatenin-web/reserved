@@ -308,3 +308,41 @@ def test_unclassified_pack_fails_gate():
     assert result["gate_passed"] is False
     assert result["classification_complete"] is False
     assert result["unclassified_packs"] == [{"filename": "UNKNOWN.json", "fixture_count": 1}]
+
+
+# ── Classification completeness blocks the gate ─────────────────────────────
+
+def _gate_with_pass_and_excluded(classification_value):
+    """A gate whose mandatory subset passes, plus one pack with ``classification_value``."""
+    mandatory = _fixture("RW3-TST-100", "annual_income_tax", {"income": "1"}, {"income_tax": "0.00"})
+    other = _fixture("RW3-TST-101", "annual_income_tax", {"income": "1"}, {"income_tax": "0.00"})
+    adapters = {"annual_income_tax": _ok({"income_tax": "0.00"})}
+    packs = {"CORE.json": _pack([mandatory]), "OTHER.json": _pack([other])}
+    classification = _classification({
+        "CORE.json": {"classification": "mandatory_executable", "expected_fixture_count": 1},
+        "OTHER.json": {"classification": classification_value, "expected_fixture_count": 1},
+    })
+    return evaluate_gate(packs, classification, adapters, _provenance())
+
+
+def test_pending_founder_decision_classification_blocks_gate():
+    result = _gate_with_pass_and_excluded("pending_founder_decision")
+    assert result["classification_complete"] is False
+    assert result["classification_counts"]["pending_founder_decision"] == 1
+    assert result["gate_passed"] is False
+
+
+def test_applicable_not_executable_classification_blocks_gate():
+    result = _gate_with_pass_and_excluded("applicable_not_executable")
+    assert result["classification_complete"] is False
+    assert result["classification_counts"]["applicable_not_executable"] == 1
+    assert result["gate_passed"] is False
+
+
+def test_outside_engine_surface_classification_does_not_block_gate():
+    # A legitimately excluded pack (outside_engine_surface) does not make the
+    # classification incomplete and must not block an otherwise-passing gate.
+    result = _gate_with_pass_and_excluded("outside_engine_surface")
+    assert result["classification_complete"] is True
+    assert result["classification_counts"]["outside_engine_surface"] == 1
+    assert result["gate_passed"] is True

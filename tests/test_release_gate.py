@@ -50,3 +50,43 @@ def test_mandatory_rw3_gate_executes_corpus():
     assert result["mandatory_executable"]["count"] == 43
     assert result["mandatory_executable"]["passed"] == 43
     assert result["classification_counts"]["outside_engine_surface"] == 61
+
+
+# ── Mandatory suites must collect and pass at least one test ─────────────────
+
+def _fake_pytest(monkeypatch, returncode, stdout):
+    import subprocess
+
+    fake = subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr="")
+    monkeypatch.setattr(GATE.subprocess, "run", lambda *a, **k: fake)
+
+
+def test_run_suite_rejects_zero_collection(monkeypatch):
+    # pytest exit code 5 = "no tests collected" -> must block release.
+    _fake_pytest(monkeypatch, 5, "no tests ran in 0.01s\n")
+    passed, failed, errors, ok = GATE.run_suite("tests/")
+    assert ok is False
+    assert passed == 0
+
+
+def test_run_suite_rejects_all_skipped(monkeypatch):
+    # pytest exit code 0 with zero passes (all skipped) -> must block release.
+    _fake_pytest(monkeypatch, 0, "100 skipped in 0.01s\n")
+    passed, failed, errors, ok = GATE.run_suite("tests/")
+    assert ok is False
+    assert passed == 0
+
+
+def test_run_suite_accepts_ordinary_passing_suite(monkeypatch):
+    _fake_pytest(monkeypatch, 0, "10 passed in 0.01s\n")
+    passed, failed, errors, ok = GATE.run_suite("tests/")
+    assert ok is True
+    assert passed == 10
+
+
+def test_run_suite_rejects_failing_suite(monkeypatch):
+    _fake_pytest(monkeypatch, 1, "9 passed, 1 failed in 0.01s\n")
+    passed, failed, errors, ok = GATE.run_suite("tests/")
+    assert ok is False
+    assert passed == 9
+    assert failed == 1
