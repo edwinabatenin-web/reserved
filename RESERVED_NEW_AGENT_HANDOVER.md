@@ -44,9 +44,15 @@ Confirmed v1 tax scope:
 
 Post-v1 or disabled: High Income Child Benefit Charge (HICBC), Scottish Income
 Tax, Capital Gains Tax and full MTD filing.
-Money movement is not implemented. The current safe default is calculation and
-tracking only; payment initiation requires a separate founder/legal/provider
-decision. Consumer pricing assumption is £29/month including VAT.
+Money movement is not yet implemented. Founder decision (15 August 2026): v1
+includes customer-authorised payment initiation (PIS) from the customer's
+current account to a designated account owned by that customer; no money moves
+without the customer's explicit approval and bank authentication, and Reserved
+does not hold customer funds. Sweeping VRP and other automatic transfers are
+post-v1. Implementation remains conditional on acceptable Yapily commercials,
+exact consent and status handling, same-owner destination controls, security
+review and launch assurance. Consumer pricing assumption is £29/month
+including VAT.
 
 ## 3. Current handover position
 
@@ -229,7 +235,9 @@ Resolved founder policy includes:
 
 Founder decisions still open include:
 
-- track-only set-aside versus a separately approved payment-initiation scope;
+- execution of customer-authorised PIS remains conditional on acceptable
+  Yapily commercials, exact consent/status handling, same-owner destination
+  controls, security review and launch assurance;
 - quantitative PAYE materiality, recency and completeness policies;
 - final evidence-quality/conflict/possible-overpayment wording; and
 - conditions for any future combined annual-liability/deduction presentation.

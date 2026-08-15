@@ -43,7 +43,7 @@ A green regression suite is not Reserved West accuracy validation. Of the 107 ad
 4. Implement reviewed provider-specific adapters, then complete sandbox OAuth and synthetic end-to-end tests for HMRC, Yapily AIS, FreeAgent, Xero and QuickBooks. Credentials must remain in secret storage. Configuration alone now explicitly reports `configured_not_implemented` and cannot enable networking.
 5. Complete Google and Apple authentication assurance if those sign-in methods remain launch scope.
 6. Repeat the now-green full suite in the target Replit environment and complete manual security, accessibility and failure-path testing.
-7. The customer-facing name for “Optimise” is “Explore your options” (resolved 15 August 2026). The v1 money set-aside mode remains track-only; payment initiation remains disabled and provider-neutral.
+7. The customer-facing name for “Optimise” is “Explore your options” (resolved 15 August 2026). Founder decision (15 August 2026): v1 includes customer-authorised payment initiation (PIS) from the customer's current account to a designated account owned by that customer — no money moves without the customer's explicit approval and bank authentication, Reserved does not hold customer funds, and sweeping VRP/automatic transfers are post-v1. PIS remains conditional on acceptable Yapily commercials, consent/status handling, same-owner controls, security review and launch assurance.
 
 ## Reserved West Independence Standard
 
@@ -83,7 +83,7 @@ That semantic copy is now consistent across duplicate legacy/v2 dashboards, over
 
 ## Founder decisions/actions
 
-- Decide whether v1 remains track-only for set-aside amounts (recommended current default) or introduces separately approved payment initiation.
+- Finalise the commercials, consent/status handling, same-owner destination controls, security review and launch assurance on which customer-authorised PIS remains conditional.
 - The customer-facing label for “Optimise” is “Explore your options” (resolved 15 August 2026).
 - No credentials need to be shared in chat. The five sandbox credentials already stored in Replit should be exercised only with synthetic accounts/data.
 - The founder has approved the overarching evidence policy: HMRC has no unconditional precedence; selection uses recency, completeness, identity and representation; provenance and material uncertainty are preserved; evidence quality is not tax certainty. Operational materiality/recency/completeness thresholds and customer wording still require approval.
