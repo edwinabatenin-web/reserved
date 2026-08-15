@@ -11,6 +11,7 @@ Covers the H3 guarantees:
 """
 import importlib
 import importlib.util
+import inspect
 import json
 import stat
 import sys
@@ -20,7 +21,10 @@ import pytest
 
 from reserved_west import artefact as art
 from reserved_west.artefact import (
+    _VerifiedLoader,
+    _import_from_verified_buffers,
     _produced_content_hash,
+    _read_verified_artefact,
     artefact_dir,
     load_engine,
     verify_artefact,
@@ -41,6 +45,15 @@ def _load_build_module():
 BUILD = _load_build_module()
 
 
+@pytest.fixture(autouse=True)
+def _clean_loader_state():
+    art._purge_reserved_engine()
+    art._LOADED = None
+    yield
+    art._purge_reserved_engine()
+    art._LOADED = None
+
+
 @pytest.fixture()
 def built(tmp_path):
     """Build a fresh artefact into a temp directory and return its provenance."""
@@ -51,6 +64,13 @@ def built(tmp_path):
 
 def _expected_names(prov):
     return set(prov["source_files"]) | {"evidence_uncertainty.py"}
+
+
+def _writable(out):
+    out.chmod(0o755)
+    for child in out.iterdir():
+        if child.is_file():
+            child.chmod(0o644)
 
 
 # ── Content identity over produced bytes ─────────────────────────────────────
@@ -183,12 +203,13 @@ def test_load_engine_shares_one_verified_artefact(monkeypatch):
 def test_artefact_is_distinct_from_production():
     # Parity is meaningful only if the artefact is a distinct module from the
     # mutable production tree — not the same object passed through.
-    load_engine()  # ensure dist/ is on sys.path and reserved_engine is importable
+    load_engine()
     import reserved.engines as prod
     import reserved_engine as released
 
+    assert released is not prod
     assert prod.__file__ != released.__file__
-    assert Path(released.__file__).resolve().is_relative_to(artefact_dir().resolve())
+    assert isinstance(released.__loader__, _VerifiedLoader)
 
 
 # ── Loader identity: a preloaded foreign module must never be returned ───────
@@ -209,7 +230,7 @@ def test_load_engine_rejects_preloaded_foreign_module(tmp_path, monkeypatch):
 
     assert module is not foreign_module
     assert not hasattr(module, "MARKER")
-    assert Path(module.__file__).resolve().is_relative_to(artefact_dir().resolve())
+    assert isinstance(module.__loader__, _VerifiedLoader)
     assert prov["engine_version"] == module.ENGINE_VERSION
 
 
@@ -235,13 +256,12 @@ def test_load_engine_switches_artefact_in_one_process(tmp_path, monkeypatch):
         monkeypatch.setattr(art, "_LOADED", None)
         monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_a))
         mod_a, _ = load_engine()
-        assert Path(mod_a.__file__).resolve().is_relative_to(out_a.resolve())
         assert not hasattr(mod_a, "ARTEFACT_B_MARKER")
+        assert isinstance(mod_a.__loader__, _VerifiedLoader)
 
         monkeypatch.setattr(art, "_LOADED", None)
         monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_b))
         mod_b, prov_b = load_engine()
-        assert Path(mod_b.__file__).resolve().is_relative_to(out_b.resolve())
         assert hasattr(mod_b, "ARTEFACT_B_MARKER")
         assert mod_b is not mod_a
         assert prov_b["content_hash"] != prov_a["content_hash"]
@@ -252,13 +272,6 @@ def test_load_engine_switches_artefact_in_one_process(tmp_path, monkeypatch):
 
 
 # ── A1: reject unverified executable content ─────────────────────────────────
-
-def _writable(out):
-    out.chmod(0o755)
-    for child in out.iterdir():
-        if child.is_file():
-            child.chmod(0o644)
-
 
 def test_verify_artefact_rejects_pycache(built):
     out, _ = built
@@ -331,11 +344,11 @@ def test_load_engine_verifies_submodules_resolve_beneath_artefact(built, monkeyp
     monkeypatch.setattr(art, "_LOADED", None)
     monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
     module, _ = load_engine()
-    # A lazy import after initial verification must resolve inside the artefact.
-    import importlib
+    # A lazy import after initial verification must resolve to the verified snapshot.
     sub = importlib.import_module("reserved_engine.income_tax")
-    assert Path(sub.__file__).resolve().is_relative_to(out.resolve())
-    assert module.__file__.endswith("__init__.py")
+    assert isinstance(sub.__loader__, _VerifiedLoader)
+    assert sub.__loader__.fullname == "reserved_engine.income_tax"
+    assert isinstance(module.__loader__, _VerifiedLoader)
 
 
 def test_load_engine_rejects_foreign_submodule(tmp_path, monkeypatch):
@@ -354,7 +367,8 @@ def test_load_engine_rejects_foreign_submodule(tmp_path, monkeypatch):
     assert not hasattr(module, "MARKER")
     import reserved_engine.income_tax as sub
     assert not hasattr(sub, "SUBMARKER")
-    assert Path(sub.__file__).resolve().is_relative_to(artefact_dir().resolve())
+    assert isinstance(sub.__loader__, _VerifiedLoader)
+    assert sub.__loader__.fullname == "reserved_engine.income_tax"
 
 
 # ── A4: loader cache bound to path + content identity ────────────────────────
@@ -452,13 +466,147 @@ def test_load_engine_does_not_leave_stale_artefact_parent_in_sys_path(tmp_path, 
     out_a = _build_marked(tmp_path, "a")
     out_b = _build_marked(tmp_path, "b")
 
+    before = list(sys.path)
     monkeypatch.setattr(art, "_LOADED", None)
     monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_a))
     load_engine()
-    assert str(out_a.parent) in sys.path
+    # The verified-byte importer must never insert an artefact parent on sys.path.
+    assert str(out_a.parent) not in sys.path
+    assert sys.path == before
 
     monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_b))
     load_engine()
-    # The previous artefact's parent must not remain on sys.path.
     assert str(out_a.parent) not in sys.path
-    assert str(out_b.parent) in sys.path
+    assert str(out_b.parent) not in sys.path
+    assert sys.path == before
+
+
+# ── B3: execution happens from verified byte buffers ─────────────────────────
+
+def test_import_executes_captured_verified_bytes_not_mutated_disk(built):
+    out, prov = built
+    prov, buffers = _read_verified_artefact(out)
+
+    # Mutate the on-disk file AFTER the verified buffers were captured.
+    _writable(out)
+    cfg = out / "tax_config.py"
+    cfg.write_text(cfg.read_text() + "\nRACE_MARKER = 'MUTATED-AFTER-CAPTURE'\n")
+
+    module = _import_from_verified_buffers(out, prov, buffers)
+    assert not hasattr(module.tax_config, "RACE_MARKER")
+
+
+def test_loader_get_source_returns_verified_bytes(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    module, _ = load_engine()
+    assert "ENGINE_VERSION" in module.__loader__.get_source("reserved_engine")
+
+
+def test_verified_finder_never_services_unmanifested_module(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+    with pytest.raises(ImportError):
+        importlib.import_module("reserved_engine.does_not_exist")
+
+
+# ── B4: every loaded module resolves to the verified snapshot ────────────────
+
+def test_every_loaded_module_has_verified_loader(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+    importlib.import_module("reserved_engine.income_tax")
+    importlib.import_module("reserved_engine.optimise")
+    for name, mod in list(sys.modules.items()):
+        if name == "reserved_engine" or name.startswith("reserved_engine."):
+            assert isinstance(mod.__loader__, _VerifiedLoader), name
+            assert mod.__loader__.fullname == name
+
+
+def test_lazy_import_after_disk_mutation_executes_verified_bytes(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+
+    # Mutate a submodule that has not yet been imported.
+    _writable(out)
+    opt = out / "optimise.py"
+    opt.write_text(opt.read_text() + "\nOPT_MARKER = 'MUTATED'\n")
+
+    sub = importlib.import_module("reserved_engine.optimise")
+    assert not hasattr(sub, "OPT_MARKER")
+
+
+def test_source_inspection_does_not_read_mutated_disk(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    module, _ = load_engine()
+
+    _writable(out)
+    cfg = out / "tax_config.py"
+    cfg.write_text(cfg.read_text() + "\nINSPECT_MARKER = 'MUTATED'\n")
+
+    assert "INSPECT_MARKER" not in inspect.getsource(module.tax_config)
+
+
+def test_added_file_cannot_become_importable(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+
+    _writable(out)
+    (out / "added.py").write_text("ADDED = True\n")
+
+    with pytest.raises(ImportError):
+        importlib.import_module("reserved_engine.added")
+
+
+# ── B5: failure cleanup and global-state restoration ─────────────────────────
+
+def test_load_failure_restores_meta_path_and_purges(built, monkeypatch):
+    out, prov = built
+    meta_before = list(sys.meta_path)
+    dont_before = sys.dont_write_bytecode
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+    assert "reserved_engine" in sys.modules
+
+    # Tamper the in-memory buffer so the next import fails during execution
+    # (after verification but before the module graph is complete).
+    _, buffers = _read_verified_artefact(out)
+    tampered = dict(buffers)
+    tampered["__init__.py"] = b"raise RuntimeError('boom')\n"
+
+    with pytest.raises(RuntimeError, match="boom"):
+        _import_from_verified_buffers(out, prov, tampered)
+
+    assert art._FINDER is None
+    assert "reserved_engine" not in sys.modules
+    assert sys.meta_path == meta_before
+    assert sys.dont_write_bytecode == dont_before
+
+
+# ── B7: artefact switching never combines modules ────────────────────────────
+
+def test_load_engine_switch_leaves_only_active_finder(tmp_path, monkeypatch):
+    out_a = _build_marked(tmp_path, "a")
+    out_b = _build_marked(tmp_path, "b")
+
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_a))
+    load_engine()
+    finder_a = art._FINDER
+
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_b))
+    load_engine()
+    assert art._FINDER is not finder_a
+    assert finder_a not in sys.meta_path
+    assert art._FINDER in sys.meta_path
