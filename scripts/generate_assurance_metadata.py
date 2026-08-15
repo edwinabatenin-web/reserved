@@ -150,7 +150,10 @@ def run_gate() -> dict:
         total["passed"] += passed
         total["failed"] += failed
         total["errors"] += errors
-        all_passed = all_passed and (result.returncode == 0)
+        # A mandatory suite must collect and pass at least one test: exit code 0
+        # alone is insufficient (zero-collected and all-skipped suites report
+        # zero passed and must be recorded as failures).
+        all_passed = all_passed and (result.returncode == 0 and passed > 0)
         outputs.append(result.stdout + result.stderr)
 
     total["all_passed"] = all_passed

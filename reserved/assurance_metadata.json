@@ -5,14 +5,14 @@
   "rules_version": "uk-2026-27-v4",
   "engine_version": "4.0.0",
   "engine_artefact": {
-    "content_hash": "25b9637b3fc3a034ea0400752d32d69653b15216475c10a9c0b63b572b30bd61",
+    "content_hash": "6d1021cfb71eee89e59ba392f6c05e767213c04f17a5d3aa1e3f4e9bc2b0993b",
     "engine_version": "4.0.0",
     "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
     "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-    "generated_on": "2026-08-14T22:05:16Z",
+    "generated_on": "2026-08-15T05:08:59Z",
     "rules_version": "uk-2026-27-v4",
     "schema": "reserved-engine-artefact-provenance-1",
-    "source_commit": "dd83ce9c07f96d69efd3cfafbeeddbe1d5d7f0ff",
+    "source_commit": "04cc42e3fc81e0c864707a6b1995737429be3dcc",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -23,7 +23,7 @@
       "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
       "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
       "income_tax.py": "ca824c442f3d58bdc235e3e9e0be543d25d3eda9dc414545b5efde27eabff879",
-      "integrated_annual_position.py": "04edad81f2c76596de310a2dc5aafd8b57ac33ffc6af288f3b142a3eea2a2216",
+      "integrated_annual_position.py": "3fb7544f56eb4d528eb27db410a96e4e537d5e9265c718a326cb75418256faa7",
       "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
       "internal_snapshot.py": "f96120e6707189be03bfe4a7b111cfd8c4eefb927d9272b74a56c3004ab2e478",
       "mtd_readiness.py": "1051277209aca4f086c4a207f2683fe5e41c85285befcc5cf1dd6e316e501ae2",
@@ -38,24 +38,24 @@
     "gate_passed": true,
     "classification_complete": true,
     "classification_counts": {
+      "mandatory_executable": 43,
       "pending_unsupported_fail_closed": 3,
       "applicable_not_executable": 0,
       "pending_founder_decision": 0,
-      "mandatory_executable": 43,
-      "historical": 0,
-      "outside_engine_surface": 61
+      "outside_engine_surface": 61,
+      "historical": 0
     },
     "corpus_id": "RW3-WP7-DRAFT-CORPUS-1",
     "artefact": {
       "engine_version": "4.0.0",
       "rules_version": "uk-2026-27-v4",
-      "source_commit": "dd83ce9c07f96d69efd3cfafbeeddbe1d5d7f0ff",
-      "content_hash": "25b9637b3fc3a034ea0400752d32d69653b15216475c10a9c0b63b572b30bd61"
+      "source_commit": "04cc42e3fc81e0c864707a6b1995737429be3dcc",
+      "content_hash": "6d1021cfb71eee89e59ba392f6c05e767213c04f17a5d3aa1e3f4e9bc2b0993b"
     }
   },
-  "generated_on": "2026-08-14T22:05:16Z",
+  "generated_on": "2026-08-15T05:08:59Z",
   "test_counts": {
-    "passed": 1221,
+    "passed": 1235,
     "failed": 0,
     "errors": 0
   },
