@@ -1,68 +1,35 @@
 #!/usr/bin/env python3
 """
-Generate tax-assurance metadata for the Reserved dev-tools page.
+Generate tax-assurance metadata from the persisted canonical gate result.
 
-Runs the full current release gate and writes
-``reserved/assurance_metadata.json`` so the /tax-assurance route can display
-live gate results, engine version and engine-artefact provenance.
+This generator consumes the single canonical result written by
+``scripts/run_release_gate.py`` (``dist/release_gate_result.json``).  It does
+not maintain a second suite inventory, does not re-implement decision logic,
+does not re-run tests, does not re-parse a separate pytest regime and does not
+rebuild the artefact.  It formats and persists the supplied result and rejects
+a missing, malformed, stale or differently identified result.
 
-The gate
---------
-1. root production suite            ``tests/``
-2. current engine artefact suite    ``engine-artefact-assurance/tests/``
-   (correctness + production↔artefact parity)
-3. current Optimise assurance       ``reserved-optimise-assurance/tests/``
-4. mandatory RW3 fixture gate       ``reserved_west.rw3_gate``
-   (distinct executable gate; the RW3 adapter unit tests live inside ``tests/``)
-
-Usage
------
-    python scripts/generate_assurance_metadata.py
-
-Exit code is non-zero if any gate fails, so this can be used as a CI gate.
-
-The ``generated_on`` timestamp is deterministic: it honours ``SOURCE_DATE_EPOCH``
-and falls back to the current git commit timestamp.  It records when the
-metadata was *generated*, not an assertion that the release is "verified".
+Exit code matches the canonical result's overall decision, so the CLI, the
+metadata status and the process exit status can never disagree.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-import re
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-
-GATE_SUITES = [
-    "tests/",
-    "engine-artefact-assurance/tests/",
-    "reserved-optimise-assurance/tests/",
-]
+RESULT_PATH = ROOT / "dist" / "release_gate_result.json"
+METADATA_PATH = ROOT / "reserved" / "assurance_metadata.json"
+RESULT_SCHEMA = "reserved-canonical-gate-result-1"
 
 
-def parse_counts(output: str) -> tuple[int, int, int]:
-    """Return ``(passed, failed, errors)`` from a pytest ``-q`` summary."""
-    passed = failed = errors = 0
-    for line in reversed(output.splitlines()):
-        line = line.strip()
-        if not line:
-            continue
-        matches = re.findall(r"(\d+)\s+(passed|failed|error|errors)\b", line)
-        if matches:
-            for count_text, kind in matches:
-                count = int(count_text)
-                if kind == "failed":
-                    failed = count
-                elif kind in ("error", "errors"):
-                    errors = count
-                elif kind == "passed":
-                    passed = count
-            return passed, failed, errors
-    return passed, failed, errors
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def _git(args: list[str], default: str | None = None) -> str | None:
@@ -95,142 +62,130 @@ def generated_on() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def engine_metadata() -> dict:
-    """Engine version and release-artefact provenance (from the artefact)."""
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
-    from reserved_west.artefact import load_engine
+def current_production_source_files() -> dict[str, str]:
+    """Recompute the current maintained engine source identity."""
+    source = ROOT / "reserved" / "engines"
+    files: dict[str, str] = {}
+    for path in sorted(source.glob("*.py")):
+        files[path.name] = _sha256_bytes(path.read_bytes())
+    changelog = source / "CHANGELOG.md"
+    if changelog.exists():
+        files["CHANGELOG.md"] = _sha256_bytes(changelog.read_bytes())
+    return files
 
-    engine, provenance = load_engine()
+
+def load_canonical_result(path: Path | str = RESULT_PATH) -> dict:
+    """Load and validate the canonical gate result (fail closed)."""
+    path = Path(path)
+    if not path.exists():
+        raise RuntimeError(f"canonical gate result is missing: {path}")
+    try:
+        result = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"canonical gate result is malformed: {exc}") from exc
+
+    if result.get("schema") != RESULT_SCHEMA:
+        raise RuntimeError(f"unrecognised canonical gate result schema: {result.get('schema')!r}")
+
+    required = ("overall_decision", "status", "production_source", "verified_artefact",
+                "component_inventory", "components")
+    missing = [k for k in required if k not in result]
+    if missing:
+        raise RuntimeError(f"canonical gate result is missing field(s): {', '.join(missing)}")
+
+    # Reject a stale result: the production source the gate tested must equal the
+    # current maintained production source.
+    recorded_files = result["production_source"].get("source_files")
+    if not isinstance(recorded_files, dict) or not recorded_files:
+        raise RuntimeError("canonical gate result has no production source_files identity")
+    if recorded_files != current_production_source_files():
+        raise RuntimeError("canonical gate result is stale: production source has changed")
+
+    artefact = result["verified_artefact"]
+    if not artefact.get("content_hash") or not artefact.get("source_commit"):
+        raise RuntimeError("canonical gate result has no verified-artefact identity")
+
+    return result
+
+
+def rw3_from_result(result: dict) -> dict:
+    for comp in result["components"]:
+        if comp.get("id") == "mandatory_rw3_gate":
+            return {
+                "gate_passed": comp.get("gate_passed"),
+                "classification_complete": comp.get("classification_complete"),
+                "classification_counts": comp.get("classification_counts"),
+                "corpus_id": comp.get("corpus_id"),
+                "artefact": result["verified_artefact"]["provenance"],
+            }
+    raise RuntimeError("canonical gate result has no mandatory RW3 component")
+
+
+def build_metadata(result: dict) -> dict:
+    """Format the canonical result into the persisted assurance metadata."""
+    artefact = result["verified_artefact"]
+    rw3 = rw3_from_result(result)
+
+    passed = sum(c.get("passed", 0) for c in result["components"])
+    failed = sum(c.get("failed", 0) for c in result["components"])
+    errors = sum(c.get("errors", 0) for c in result["components"])
+    skipped = sum(c.get("skipped", 0) for c in result["components"])
+
+    gate_passed = result["overall_decision"] == "pass"
     return {
-        "engine_version": engine.ENGINE_VERSION,
-        "rules_version": engine.tax_config.RULES_VERSION,
-        "period_of_assessment": engine.tax_config.TAX_YEAR,
-        "engine_artefact": provenance,
-    }
-
-
-def rw3_gate_metadata() -> dict:
-    """Mandatory RW3 fixture-gate result and classification counts."""
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
-    from reserved_west.rw3_gate import run_mandatory_rw3_gate
-
-    result = run_mandatory_rw3_gate()
-    return {
-        "gate_passed": bool(result["gate_passed"]),
-        "classification_complete": bool(result["classification_complete"]),
-        "classification_counts": result["classification_counts"],
-        "corpus_id": result["corpus_id"],
-        "artefact": result["artefact"],
-    }
-
-
-def run_gate() -> dict:
-    """Run each gate suite separately and aggregate the results.
-
-    Suites are run separately (rather than in a single pytest invocation)
-    because ``reserved-optimise-assurance`` uses its own ``pytest.ini`` with
-    ``python_files = gate*.py``; a single invocation would apply only the root
-    config and silently skip those gate-named files.
-    """
-    total = {"passed": 0, "failed": 0, "errors": 0}
-    all_passed = True
-    outputs: list[str] = []
-    for suite in GATE_SUITES:
-        # `-o addopts=` clears the repo's default `-q` so the gate flags are
-        # fully explicit and never double up into a summary-less quiet mode.
-        result = subprocess.run(
-            [sys.executable, "-m", "pytest", suite, "-o", "addopts=", "-q", "--tb=short", "--no-header"],
-            capture_output=True,
-            text=True,
-            cwd=ROOT,
-        )
-        passed, failed, errors = parse_counts(result.stdout + result.stderr)
-        total["passed"] += passed
-        total["failed"] += failed
-        total["errors"] += errors
-        # A mandatory suite must collect and pass at least one test: exit code 0
-        # alone is insufficient (zero-collected and all-skipped suites report
-        # zero passed and must be recorded as failures).
-        all_passed = all_passed and (result.returncode == 0 and passed > 0)
-        outputs.append(result.stdout + result.stderr)
-
-    total["all_passed"] = all_passed
-    total["pytest_output"] = "\n".join(outputs).strip()
-    return total
-
-
-def build_metadata() -> dict:
-    test_summary = run_gate()
-    eng = engine_metadata()
-    rw3 = rw3_gate_metadata()
-
-    gate_passed = bool(test_summary["all_passed"]) and rw3["gate_passed"]
-    metadata = {
         "schema": "reserved-assurance-metadata-1",
-        # A status, not an absolute claim: "verified" is deliberately avoided.
-        "status": "release_gate_passed" if gate_passed else "release_gate_failed",
-        "period_of_assessment": eng["period_of_assessment"],
-        "rules_version": eng["rules_version"],
-        "engine_version": eng["engine_version"],
-        "engine_artefact": eng["engine_artefact"],
+        "status": result["status"],
+        "october_launch_candidate": result["october_launch_candidate"],
+        "period_of_assessment": artefact.get("tax_year"),
+        "rules_version": artefact.get("rules_version"),
+        "engine_version": artefact.get("engine_version"),
+        "engine_artefact": artefact.get("provenance"),
+        "production_source": result["production_source"],
+        "component_inventory": result["component_inventory"],
         "rw3_fixture_gate": rw3,
         "generated_on": generated_on(),
         "test_counts": {
-            "passed": test_summary["passed"],
-            "failed": test_summary["failed"],
-            "errors": test_summary["errors"],
+            "passed": passed,
+            "failed": failed,
+            "errors": errors,
+            "skipped": skipped,
         },
-        "all_tests_passed": test_summary["all_passed"],
+        "all_tests_passed": gate_passed,
         "scope": {
             "in_scope": [
-                "Income tax — England/Wales/NI sole traders",
-                "Class 4 National Insurance",
-                "Student loan Plans 1, 2, 4, 5 and Postgraduate",
-                "Pension Relief at Source (basic-rate band extension)",
-                "Capital Gains Tax — basic/higher rate split",
-                "Annual Exempt Amount offset",
-                "Brought-forward loss relief",
+                "Income tax — England, Wales and Northern Ireland",
+                "PAYE and multiple employments",
+                "Sole-trade income",
+                "Dividends and savings interest",
+                "UK and foreign property income",
+                "Student and postgraduate loan liability",
+                "Relief-at-Source pension treatment",
+                "Bounded Making Tax Digital indication",
             ],
             "out_of_scope": [
-                "Scottish income tax",
-                "Dividend and savings income",
-                "PAYE coding interactions",
-                "VAT-registered traders",
-                "Residential property CGT rates",
-                "BADR / Investors' Relief",
-                "Share pooling and same-day/30-day matching",
+                "High Income Child Benefit Charge (HICBC) — post-v1",
+                "Scottish Income Tax — post-v1",
+                "Capital Gains Tax — post-v1",
+                "Full MTD filing — post-v1",
             ],
         },
         "assumptions": [
-            "Illustrative sole-trader estimate only; not a tax return or professional advice.",
-            "Scottish income tax, dividend tax, and savings income are outside scope.",
-            "Pension contributions are treated as Relief at Source (gross figure expected).",
+            "An estimate, not a tax return, filing or professional advice.",
+            "The £80,000 pension example assumes the gross relief-at-source contribution qualifies for relief; it does not establish annual allowance, carry-forward or personal advice.",
+            "Unknown partner and Child Benefit facts are never treated as zero.",
         ],
     }
-    return metadata, test_summary
 
 
 def main() -> int:
-    print("Running release gate…")
-    metadata, test_summary = build_metadata()
+    result = load_canonical_result()
+    metadata = build_metadata(result)
 
-    out_path = ROOT / "reserved" / "assurance_metadata.json"
-    out_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    print(f"Written → {out_path.relative_to(ROOT)}")
-
-    if test_summary["all_passed"]:
-        print(f"✓ {test_summary['passed']} tests passed.")
-    else:
-        print(
-            f"✗ {test_summary['failed']} failed, "
-            f"{test_summary['errors']} errors, "
-            f"{test_summary['passed']} passed."
-        )
-        print(test_summary["pytest_output"])
-
-    return 0 if test_summary["all_passed"] else 1
+    METADATA_PATH.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    print(f"Written → {METADATA_PATH.relative_to(ROOT)}")
+    print(f"status = {metadata['status']}")
+    print(f"october_launch_candidate = {metadata['october_launch_candidate']['status']}")
+    return 0 if result["overall_decision"] == "pass" else 1
 
 
 if __name__ == "__main__":

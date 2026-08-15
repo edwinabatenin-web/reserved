@@ -1,6 +1,82 @@
 {
   "schema": "reserved-assurance-metadata-1",
-  "status": "release_gate_passed",
+  "status": "deterministic_engine_remediation_gate_passed",
+  "october_launch_candidate": {
+    "blocking_components": [
+      {
+        "id": "paye_payslip_manual_evidence_journey",
+        "note": "Payslip extraction and manual PAYE fallback are not yet end-to-end verified.",
+        "state": "not_executable"
+      },
+      {
+        "id": "hmrc_integration",
+        "note": "No production-capable HMRC connection has been end-to-end verified.",
+        "state": "externally_blocked"
+      },
+      {
+        "id": "freeagent_integration",
+        "note": "Read-only FreeAgent integration is not implemented/verified.",
+        "state": "not_implemented"
+      },
+      {
+        "id": "xero_integration",
+        "note": "Read-only Xero integration is not implemented/verified.",
+        "state": "not_implemented"
+      },
+      {
+        "id": "quickbooks_integration",
+        "note": "Read-only QuickBooks integration is not implemented/verified.",
+        "state": "not_implemented"
+      },
+      {
+        "id": "yapily_ais",
+        "note": "Yapily account-information access is not end-to-end verified.",
+        "state": "externally_blocked"
+      },
+      {
+        "id": "yapily_pis",
+        "note": "Customer-authorised payment initiation is not end-to-end verified.",
+        "state": "externally_blocked"
+      },
+      {
+        "id": "mtd_indication",
+        "note": "Customer MTD indication is not independently assured for October.",
+        "state": "not_executable"
+      },
+      {
+        "id": "evidence_persistence_and_deletion",
+        "note": "Evidence persistence/deletion controls are not implemented.",
+        "state": "not_implemented"
+      },
+      {
+        "id": "privacy_security_review",
+        "note": "Privacy/security review evidence is not yet produced.",
+        "state": "evidence_missing"
+      },
+      {
+        "id": "target_environment_testing",
+        "note": "Suite has not been repeated in the target runtime.",
+        "state": "evidence_missing"
+      },
+      {
+        "id": "operational_readiness",
+        "note": "Monitoring, backups, incident response and rollback are not evidenced.",
+        "state": "not_implemented"
+      }
+    ],
+    "status": "not_ready",
+    "supported_calculation_families": [
+      "paye_multiple_employment",
+      "sole_trade",
+      "uk_property",
+      "foreign_property",
+      "dividends",
+      "savings",
+      "pension_treatment",
+      "student_loan_pgl",
+      "evidence_reconciliation"
+    ]
+  },
   "period_of_assessment": "2026/27",
   "rules_version": "uk-2026-27-v4",
   "engine_version": "4.0.0",
@@ -9,10 +85,10 @@
     "engine_version": "4.0.0",
     "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
     "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-    "generated_on": "2026-08-15T05:08:59Z",
+    "generated_on": "2026-08-15T10:51:45Z",
     "rules_version": "uk-2026-27-v4",
     "schema": "reserved-engine-artefact-provenance-1",
-    "source_commit": "04cc42e3fc81e0c864707a6b1995737429be3dcc",
+    "source_commit": "ab708dbe27f84ca81f6aafa1b0091dff4d9118d1",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -34,55 +110,128 @@
     },
     "source_path": "reserved/engines"
   },
+  "production_source": {
+    "source_commit": "ab708dbe27f84ca81f6aafa1b0091dff4d9118d1",
+    "source_files": {
+      "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
+      "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
+      "allocation.py": "a8859ae01f017b9b18e689d81c9906deac7aac4193c6c748dd60f39b3779fad6",
+      "annual_loan_reconciliation.py": "c43bd43f6616fac5b8b0dc197e04851973df9d7b32f266ff5c67aa0270277cef",
+      "annual_loan_wp7u.py": "b549b93dddf7a5f1b914c16c0cf991303211f0b58539cfa7b77d66a840fdf169",
+      "annual_position_composition.py": "8f6c0864cce23e40cb80072a48bb7cbefeab27ad7beded756a2d5201e2b8ab19",
+      "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
+      "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
+      "income_tax.py": "ca824c442f3d58bdc235e3e9e0be543d25d3eda9dc414545b5efde27eabff879",
+      "integrated_annual_position.py": "3fb7544f56eb4d528eb27db410a96e4e537d5e9265c718a326cb75418256faa7",
+      "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
+      "internal_snapshot.py": "f96120e6707189be03bfe4a7b111cfd8c4eefb927d9272b74a56c3004ab2e478",
+      "mtd_readiness.py": "1051277209aca4f086c4a207f2683fe5e41c85285befcc5cf1dd6e316e501ae2",
+      "optimise.py": "84e143821cad6f4820bb49a4149f26b7b9acf4c3e582ee246a35f98c050097de",
+      "paye_reconciliation.py": "f57e45280353b760dc037a6480a31a123e582033019655e44b1010f37c25786f",
+      "tax_config.py": "c5f5490cb9f0c806054c8ceb1db93bbab64c0ac9fe4f6e01eed9f34c04227515",
+      "utils.py": "658c9fbf789fa0851c5453b2c26ba47a514186ddd95b7894038b9016c887a702"
+    },
+    "source_path": "reserved/engines"
+  },
+  "component_inventory": [
+    {
+      "description": "Maintained production source (reserved/) test suite.",
+      "id": "root_production_suite",
+      "kind": "pytest"
+    },
+    {
+      "description": "Verified-artefact correctness against independently derived values.",
+      "id": "artefact_correctness",
+      "kind": "pytest"
+    },
+    {
+      "description": "Production-to-artefact parity for the identified source and artefact.",
+      "id": "production_artefact_parity",
+      "kind": "pytest"
+    },
+    {
+      "description": "Mandatory RW3 fixture execution and classification.",
+      "id": "mandatory_rw3_gate",
+      "kind": "rw3"
+    },
+    {
+      "description": "Scenario/Explore-your-options assurance applicable to the bounded gate.",
+      "id": "explore_your_options_assurance",
+      "kind": "pytest"
+    }
+  ],
   "rw3_fixture_gate": {
     "gate_passed": true,
     "classification_complete": true,
     "classification_counts": {
-      "mandatory_executable": 43,
-      "pending_unsupported_fail_closed": 3,
       "applicable_not_executable": 0,
-      "pending_founder_decision": 0,
+      "historical": 0,
+      "mandatory_executable": 43,
       "outside_engine_surface": 61,
-      "historical": 0
+      "pending_founder_decision": 0,
+      "pending_unsupported_fail_closed": 3
     },
     "corpus_id": "RW3-WP7-DRAFT-CORPUS-1",
     "artefact": {
+      "content_hash": "6d1021cfb71eee89e59ba392f6c05e767213c04f17a5d3aa1e3f4e9bc2b0993b",
       "engine_version": "4.0.0",
+      "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
+      "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
+      "generated_on": "2026-08-15T10:51:45Z",
       "rules_version": "uk-2026-27-v4",
-      "source_commit": "04cc42e3fc81e0c864707a6b1995737429be3dcc",
-      "content_hash": "6d1021cfb71eee89e59ba392f6c05e767213c04f17a5d3aa1e3f4e9bc2b0993b"
+      "schema": "reserved-engine-artefact-provenance-1",
+      "source_commit": "ab708dbe27f84ca81f6aafa1b0091dff4d9118d1",
+      "source_files": {
+        "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
+        "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
+        "allocation.py": "a8859ae01f017b9b18e689d81c9906deac7aac4193c6c748dd60f39b3779fad6",
+        "annual_loan_reconciliation.py": "c43bd43f6616fac5b8b0dc197e04851973df9d7b32f266ff5c67aa0270277cef",
+        "annual_loan_wp7u.py": "b549b93dddf7a5f1b914c16c0cf991303211f0b58539cfa7b77d66a840fdf169",
+        "annual_position_composition.py": "8f6c0864cce23e40cb80072a48bb7cbefeab27ad7beded756a2d5201e2b8ab19",
+        "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
+        "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
+        "income_tax.py": "ca824c442f3d58bdc235e3e9e0be543d25d3eda9dc414545b5efde27eabff879",
+        "integrated_annual_position.py": "3fb7544f56eb4d528eb27db410a96e4e537d5e9265c718a326cb75418256faa7",
+        "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
+        "internal_snapshot.py": "f96120e6707189be03bfe4a7b111cfd8c4eefb927d9272b74a56c3004ab2e478",
+        "mtd_readiness.py": "1051277209aca4f086c4a207f2683fe5e41c85285befcc5cf1dd6e316e501ae2",
+        "optimise.py": "84e143821cad6f4820bb49a4149f26b7b9acf4c3e582ee246a35f98c050097de",
+        "paye_reconciliation.py": "f57e45280353b760dc037a6480a31a123e582033019655e44b1010f37c25786f",
+        "tax_config.py": "c5f5490cb9f0c806054c8ceb1db93bbab64c0ac9fe4f6e01eed9f34c04227515",
+        "utils.py": "658c9fbf789fa0851c5453b2c26ba47a514186ddd95b7894038b9016c887a702"
+      },
+      "source_path": "reserved/engines"
     }
   },
-  "generated_on": "2026-08-15T05:08:59Z",
+  "generated_on": "2026-08-15T10:51:45Z",
   "test_counts": {
-    "passed": 1235,
+    "passed": 1255,
     "failed": 0,
-    "errors": 0
+    "errors": 0,
+    "skipped": 0
   },
   "all_tests_passed": true,
   "scope": {
     "in_scope": [
-      "Income tax \u2014 England/Wales/NI sole traders",
-      "Class 4 National Insurance",
-      "Student loan Plans 1, 2, 4, 5 and Postgraduate",
-      "Pension Relief at Source (basic-rate band extension)",
-      "Capital Gains Tax \u2014 basic/higher rate split",
-      "Annual Exempt Amount offset",
-      "Brought-forward loss relief"
+      "Income tax \u2014 England, Wales and Northern Ireland",
+      "PAYE and multiple employments",
+      "Sole-trade income",
+      "Dividends and savings interest",
+      "UK and foreign property income",
+      "Student and postgraduate loan liability",
+      "Relief-at-Source pension treatment",
+      "Bounded Making Tax Digital indication"
     ],
     "out_of_scope": [
-      "Scottish income tax",
-      "Dividend and savings income",
-      "PAYE coding interactions",
-      "VAT-registered traders",
-      "Residential property CGT rates",
-      "BADR / Investors' Relief",
-      "Share pooling and same-day/30-day matching"
+      "High Income Child Benefit Charge (HICBC) \u2014 post-v1",
+      "Scottish Income Tax \u2014 post-v1",
+      "Capital Gains Tax \u2014 post-v1",
+      "Full MTD filing \u2014 post-v1"
     ]
   },
   "assumptions": [
-    "Illustrative sole-trader estimate only; not a tax return or professional advice.",
-    "Scottish income tax, dividend tax, and savings income are outside scope.",
-    "Pension contributions are treated as Relief at Source (gross figure expected)."
+    "An estimate, not a tax return, filing or professional advice.",
+    "The \u00a380,000 pension example assumes the gross relief-at-source contribution qualifies for relief; it does not establish annual allowance, carry-forward or personal advice.",
+    "Unknown partner and Child Benefit facts are never treated as zero."
   ]
 }

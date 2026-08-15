@@ -1,92 +1,108 @@
-"""Structural regression tests for the release-gate entry point."""
-import importlib.util
-from pathlib import Path
+"""Structural regression tests for the canonical release gate."""
+import subprocess
 
-ROOT = Path(__file__).resolve().parents[1]
-
-
-def _load_gate():
-    spec = importlib.util.spec_from_file_location(
-        "run_release_gate", ROOT / "scripts" / "run_release_gate.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from reserved_west import release_gate as rg
 
 
-GATE = _load_gate()
+def test_canonical_inventory_has_five_distinct_components():
+    ids = [c["id"] for c in rg.CANONICAL_COMPONENTS]
+    assert ids == [
+        "root_production_suite",
+        "artefact_correctness",
+        "production_artefact_parity",
+        "mandatory_rw3_gate",
+        "explore_your_options_assurance",
+    ]
+    assert len(set(ids)) == len(ids)
 
 
-def test_mandatory_suites_cover_all_five_gates():
-    suites = GATE.MANDATORY_SUITES
-    # root production suite (also hosts the independent RW3 adapter assurance)
-    assert "tests/" in suites
-    # engine-artefact correctness + production↔artefact parity
-    assert "engine-artefact-assurance/tests/" in suites
-    # Optimise assurance
-    assert "reserved-optimise-assurance/tests/" in suites
-    assert len(suites) == 3
+def test_inventory_rejects_empty():
+    assert rg.validate_inventory([])
 
 
-def test_historical_bundle_is_not_a_mandatory_suite():
-    assert "reserved-engine-2.0.0" not in GATE.MANDATORY_SUITES
-    assert not any("run_assurance" in s or "run_stage" in s for s in GATE.MANDATORY_SUITES)
+def test_inventory_rejects_duplicate_id():
+    comps = [{"id": "a", "kind": "rw3"}, {"id": "a", "kind": "rw3"}]
+    assert any("duplicate" in e for e in rg.validate_inventory(comps))
 
 
-def test_parse_counts_basic():
-    assert GATE.parse_counts("1179 passed in 20.00s\n") == (1179, 0, 0)
+def test_inventory_rejects_unknown_kind():
+    comps = [{"id": "a", "kind": "nope"}]
+    assert any("unknown component kind" in e for e in rg.validate_inventory(comps))
 
 
-def test_rw3_gate_is_a_distinct_mandatory_step():
-    # The mandatory RW3 fixture gate is a distinct executable step, not a pytest
-    # suite and not equivalent to the adapter unit tests inside tests/.
-    assert hasattr(GATE, "run_mandatory_rw3")
-    assert not any("rw3" in suite.lower() for suite in GATE.MANDATORY_SUITES)
+def test_inventory_rejects_pytest_without_path():
+    comps = [{"id": "a", "kind": "pytest"}]
+    assert any("no path" in e for e in rg.validate_inventory(comps))
 
 
-def test_mandatory_rw3_gate_executes_corpus():
-    result = GATE.run_mandatory_rw3()
-    assert result["gate_passed"] is True
-    assert result["mandatory_executable"]["count"] == 43
-    assert result["mandatory_executable"]["passed"] == 43
-    assert result["classification_counts"]["outside_engine_surface"] == 61
+def test_inventory_accepts_valid_components():
+    comps = [
+        {"id": "rw3", "kind": "rw3"},
+        {"id": "suite", "kind": "pytest", "path": "tests/"},
+    ]
+    assert rg.validate_inventory(comps) == []
 
 
-# ── Mandatory suites must collect and pass at least one test ─────────────────
+def test_parse_counts():
+    assert rg.parse_counts("1179 passed in 20.00s\n")["passed"] == 1179
+    assert rg.parse_counts("10 passed, 2 skipped in 1.00s\n")["skipped"] == 2
+
 
 def _fake_pytest(monkeypatch, returncode, stdout):
-    import subprocess
-
     fake = subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr="")
-    monkeypatch.setattr(GATE.subprocess, "run", lambda *a, **k: fake)
+    monkeypatch.setattr(rg.subprocess, "run", lambda *a, **k: fake)
 
 
-def test_run_suite_rejects_zero_collection(monkeypatch):
-    # pytest exit code 5 = "no tests collected" -> must block release.
+def test_pytest_component_rejects_zero_collection(monkeypatch):
     _fake_pytest(monkeypatch, 5, "no tests ran in 0.01s\n")
-    passed, failed, errors, ok = GATE.run_suite("tests/")
-    assert ok is False
-    assert passed == 0
+    r = rg._run_pytest_component({"id": "x", "kind": "pytest", "path": "tests/"}, "/tmp/x")
+    assert r["status"] == "fail"
+    assert r["zero_test"] is True
+    assert r["passed"] == 0
 
 
-def test_run_suite_rejects_all_skipped(monkeypatch):
-    # pytest exit code 0 with zero passes (all skipped) -> must block release.
+def test_pytest_component_rejects_all_skipped(monkeypatch):
     _fake_pytest(monkeypatch, 0, "100 skipped in 0.01s\n")
-    passed, failed, errors, ok = GATE.run_suite("tests/")
-    assert ok is False
-    assert passed == 0
+    r = rg._run_pytest_component({"id": "x", "kind": "pytest", "path": "tests/"}, "/tmp/x")
+    assert r["status"] == "fail"
+    assert r["passed"] == 0
+    assert r["skipped"] == 100
 
 
-def test_run_suite_accepts_ordinary_passing_suite(monkeypatch):
+def test_pytest_component_accepts_passing_suite(monkeypatch):
     _fake_pytest(monkeypatch, 0, "10 passed in 0.01s\n")
-    passed, failed, errors, ok = GATE.run_suite("tests/")
-    assert ok is True
-    assert passed == 10
+    r = rg._run_pytest_component({"id": "x", "kind": "pytest", "path": "tests/"}, "/tmp/x")
+    assert r["status"] == "pass"
+    assert r["passed"] == 10
 
 
-def test_run_suite_rejects_failing_suite(monkeypatch):
-    _fake_pytest(monkeypatch, 1, "9 passed, 1 failed in 0.01s\n")
-    passed, failed, errors, ok = GATE.run_suite("tests/")
-    assert ok is False
-    assert passed == 9
-    assert failed == 1
+def test_run_canonical_gate_fails_on_empty_inventory():
+    result = rg.run_canonical_gate(components=[])
+    assert result["overall_decision"] == "fail"
+    assert result["status"] == rg.NARROW_GATE_FAILED
+    assert result["inventory_errors"]
+
+
+def test_run_canonical_gate_minimal_rw3_inventory_passes():
+    result = rg.run_canonical_gate(
+        components=[{"id": "mandatory_rw3_gate", "kind": "rw3"}],
+        build_artefact=False,
+    )
+    assert result["overall_decision"] == "pass"
+    assert result["status"] == rg.NARROW_GATE_PASSED
+    assert result["verified_artefact"]["content_hash"]
+    assert result["production_source"]["source_files"]
+    assert result["october_launch_candidate"]["status"] == "not_ready"
+
+
+def test_october_launch_candidate_is_not_ready_and_lists_blockers():
+    octo = rg.october_launch_candidate()
+    assert octo["status"] == "not_ready"
+    states = {b["state"] for b in octo["blocking_components"]}
+    assert states <= {"not_executable", "externally_blocked", "not_implemented", "evidence_missing"}
+
+
+def test_render_result_renders_invalid_inventory():
+    out = rg.render_result({"inventory_errors": ["component inventory is empty"], "components": []})
+    assert "INVENTORY INVALID" in out
+    assert "RESULT: FAILED" in out

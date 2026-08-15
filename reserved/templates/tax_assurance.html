@@ -12,21 +12,24 @@
 </div>
 
 {# ── Status banner ─────────────────────────────────────────────────────── #}
-{% if meta.status == 'release_gate_passed' %}
+{% if meta.status == 'deterministic_engine_remediation_gate_passed' %}
 <div class="assurance-banner assurance-banner--pass">
     <span class="assurance-banner__icon">✓</span>
     <div>
-        <strong>Release gate passed.</strong>
-        {{ meta.test_counts.passed }} tests passed across all suites and the
-        mandatory RW3 fixture gate, generated on {{ meta.generated_on }}.
+        <strong>Deterministic engine remediation gate passed.</strong>
+        {{ meta.test_counts.passed }} tests passed across the canonical mandatory
+        components and the mandatory RW3 fixture gate, generated on {{ meta.generated_on }}.
         This records gate execution, not an absolute "verified" claim.
+        {% if meta.october_launch_candidate %}
+        October launch candidate: <strong>{{ meta.october_launch_candidate.status }}</strong>.
+        {% endif %}
     </div>
 </div>
-{% elif meta.status == 'release_gate_failed' %}
+{% elif meta.status == 'deterministic_engine_remediation_gate_failed' %}
 <div class="assurance-banner assurance-banner--fail">
     <span class="assurance-banner__icon">✗</span>
     <div>
-        <strong>Release gate did not pass.</strong>
+        <strong>Deterministic engine remediation gate did not pass.</strong>
         {{ meta.test_counts.failed }} failed, {{ meta.test_counts.errors }} errors,
         {{ meta.test_counts.passed }} passed.
         Run <code>python scripts/run_release_gate.py</code> to diagnose.
