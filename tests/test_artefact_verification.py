@@ -49,11 +49,15 @@ def built(tmp_path):
     return out, prov
 
 
+def _expected_names(prov):
+    return set(prov["source_files"]) | {"evidence_uncertainty.py"}
+
+
 # ── Content identity over produced bytes ─────────────────────────────────────
 
 def test_build_and_loader_content_hash_agree(built):
     out, prov = built
-    assert _produced_content_hash(out) == prov["content_hash"]
+    assert _produced_content_hash(out, _expected_names(prov)) == prov["content_hash"]
 
 
 def test_content_hash_covers_produced_bytes_not_source_hashes(built):
@@ -171,7 +175,9 @@ def test_load_engine_shares_one_verified_artefact(monkeypatch):
     module_b, prov_b = load_engine()
     assert module_a is module_b
     assert prov_a == prov_b
-    assert prov_a["content_hash"] == _produced_content_hash(artefact_dir())
+    assert prov_a["content_hash"] == _produced_content_hash(
+        artefact_dir(), _expected_names(prov_a)
+    )
 
 
 def test_artefact_is_distinct_from_production():
@@ -243,3 +249,216 @@ def test_load_engine_switches_artefact_in_one_process(tmp_path, monkeypatch):
         # Restore a clean loader state so later tests observe a fresh default load.
         art._purge_reserved_engine()
         art._LOADED = None
+
+
+# ── A1: reject unverified executable content ─────────────────────────────────
+
+def _writable(out):
+    out.chmod(0o755)
+    for child in out.iterdir():
+        if child.is_file():
+            child.chmod(0o644)
+
+
+def test_verify_artefact_rejects_pycache(built):
+    out, _ = built
+    _writable(out)
+    cache = out / "__pycache__"
+    cache.mkdir()
+    (cache / "evil.cpython-313.pyc").write_bytes(b"\x00")
+    with pytest.raises(RuntimeError, match="subdirectory"):
+        verify_artefact(out)
+
+
+def test_verify_artefact_rejects_pyc_file(built):
+    out, _ = built
+    _writable(out)
+    (out / "extra.pyc").write_bytes(b"\x00")
+    with pytest.raises(RuntimeError, match="unmanifested bytecode"):
+        verify_artefact(out)
+
+
+def test_verify_artefact_rejects_unexpected_file(built):
+    out, _ = built
+    _writable(out)
+    (out / "extra_module.py").write_text("# surprise\n")
+    with pytest.raises(RuntimeError, match="unexpected file"):
+        verify_artefact(out)
+
+
+def test_verify_artefact_rejects_symlink(built):
+    out, _ = built
+    _writable(out)
+    victim = out / "income_tax.py"
+    link = out / "link.py"
+    link.symlink_to(victim.name)
+    with pytest.raises(RuntimeError, match="symbolic link"):
+        verify_artefact(out)
+
+
+def test_verify_artefact_rejects_missing_manifested_file(built):
+    out, _ = built
+    _writable(out)
+    (out / "income_tax.py").unlink()
+    with pytest.raises(RuntimeError, match="missing manifested file"):
+        verify_artefact(out)
+
+
+# ── A2: bytecode is never created in the artefact ────────────────────────────
+
+def test_load_engine_does_not_create_bytecode(built, monkeypatch):
+    out, _ = built
+    before = sys.dont_write_bytecode
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+    names = {p.name for p in out.iterdir()}
+    assert "__pycache__" not in names
+    assert not any(n.endswith(".pyc") or n.endswith(".pyo") for n in names)
+    assert sys.dont_write_bytecode == before  # global interpreter state restored
+
+
+def test_built_artefact_package_directory_is_not_writable(built):
+    out, _ = built
+    mode = stat.S_IMODE(out.stat().st_mode)
+    assert mode & 0o222 == 0, f"package directory is writable ({oct(mode)})"
+
+
+# ── A3: every imported module resolves beneath the artefact ──────────────────
+
+def test_load_engine_verifies_submodules_resolve_beneath_artefact(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    module, _ = load_engine()
+    # A lazy import after initial verification must resolve inside the artefact.
+    import importlib
+    sub = importlib.import_module("reserved_engine.income_tax")
+    assert Path(sub.__file__).resolve().is_relative_to(out.resolve())
+    assert module.__file__.endswith("__init__.py")
+
+
+def test_load_engine_rejects_foreign_submodule(tmp_path, monkeypatch):
+    # A foreign submodule already present under the package name must not
+    # survive a fresh load, and must not be satisfied lazily afterwards.
+    foreign = tmp_path / "foreign"
+    pkg = foreign / "reserved_engine"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("MARKER = 'FOREIGN'\n")
+    (pkg / "income_tax.py").write_text("SUBMARKER = 'FOREIGN_SUB'\n")
+    monkeypatch.syspath_prepend(str(foreign))
+    import reserved_engine.income_tax  # noqa: F401 — preload foreign submodule
+
+    monkeypatch.setattr(art, "_LOADED", None)
+    module, _ = load_engine()
+    assert not hasattr(module, "MARKER")
+    import reserved_engine.income_tax as sub
+    assert not hasattr(sub, "SUBMARKER")
+    assert Path(sub.__file__).resolve().is_relative_to(artefact_dir().resolve())
+
+
+# ── A4: loader cache bound to path + content identity ────────────────────────
+
+def _build_marked(tmp_path, marker):
+    src = tmp_path / f"src_{marker}"
+    src.mkdir()
+    for py in (ROOT / "reserved" / "engines").glob("*.py"):
+        (src / py.name).write_text(py.read_text())
+    (src / "CHANGELOG.md").write_text((ROOT / "reserved" / "engines" / "CHANGELOG.md").read_text())
+    (src / "__init__.py").write_text((src / "__init__.py").read_text() + f"\nMARK = '{marker}'\n")
+    out = tmp_path / marker / "reserved_engine"
+    BUILD.build(src, out, allow_dirty=True)
+    return out
+
+
+def test_load_engine_switches_a_to_b_and_back_without_manual_cache_clear(tmp_path, monkeypatch):
+    out_a = _build_marked(tmp_path, "a")
+    out_b = _build_marked(tmp_path, "b")
+
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_a))
+    mod_a, _ = load_engine()
+    assert mod_a.MARK == "a"
+
+    # Switching the configured path must load B, not silently return A.
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_b))
+    mod_b, _ = load_engine()
+    assert mod_b.MARK == "b"
+    assert mod_b is not mod_a
+
+    # And back to A.
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_a))
+    mod_a2, _ = load_engine()
+    assert mod_a2.MARK == "a"
+
+
+def test_load_engine_rejects_same_path_with_modified_content(built, monkeypatch):
+    out, prov = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+
+    _writable(out)
+    victim = out / "income_tax.py"
+    victim.write_text(victim.read_text() + "\n# tampered\n")
+
+    with pytest.raises(RuntimeError, match="content identity mismatch"):
+        load_engine()
+
+
+def test_load_engine_rejects_same_path_with_added_file(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+
+    _writable(out)
+    (out / "new_module.py").write_text("# added\n")
+
+    with pytest.raises(RuntimeError, match="unexpected file"):
+        load_engine()
+
+
+def test_load_engine_rejects_same_path_with_missing_file(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+
+    _writable(out)
+    (out / "income_tax.py").unlink()
+
+    with pytest.raises(RuntimeError, match="missing manifested file"):
+        load_engine()
+
+
+def test_load_engine_rejects_changed_manifest(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+
+    _writable(out)
+    prov_file = out / "PROVENANCE.json"
+    prov = json.loads(prov_file.read_text())
+    prov["content_hash"] = "0" * 64
+    prov_file.write_text(json.dumps(prov, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(RuntimeError, match="content identity mismatch"):
+        load_engine()
+
+
+def test_load_engine_does_not_leave_stale_artefact_parent_in_sys_path(tmp_path, monkeypatch):
+    out_a = _build_marked(tmp_path, "a")
+    out_b = _build_marked(tmp_path, "b")
+
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_a))
+    load_engine()
+    assert str(out_a.parent) in sys.path
+
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_b))
+    load_engine()
+    # The previous artefact's parent must not remain on sys.path.
+    assert str(out_a.parent) not in sys.path
+    assert str(out_b.parent) in sys.path

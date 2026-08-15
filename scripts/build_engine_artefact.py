@@ -138,23 +138,35 @@ def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _produced_content_hash(directory: Path) -> str:
-    """Content identity over the *produced* artefact bytes.
+def _produced_content_hash(directory: Path, expected_names: set[str]) -> str:
+    """Content identity over exactly the manifested produced files.
 
-    Hash every file in ``directory`` except ``PROVENANCE.json`` (which is
-    written last and records this value), keyed by filename and serialized in a
-    stable order.  This covers what is actually shipped, not the source-hash
-    metadata recorded in the manifest.  The artefact format is flat (top-level
-    files only); any subdirectory is rejected rather than silently omitted from
-    the identity.
+    ``expected_names`` is the set of top-level filenames the artefact must ship
+    (excluding ``PROVENANCE.json``, which records this value).  Every entry in
+    ``directory`` must be one of those names and a regular file: symbolic links,
+    subdirectories (including ``__pycache__``), bytecode (``.pyc``/``.pyo``),
+    unexpected files and other filesystem object types are rejected rather than
+    silently omitted from the identity.  Missing manifested files are also
+    rejected.
     """
     hashes: dict[str, str] = {}
     for path in sorted(directory.iterdir()):
-        if path.name == "PROVENANCE.json" or path.name == "__pycache__":
+        if path.name == "PROVENANCE.json":
             continue
+        if path.is_symlink():
+            raise SystemExit(f"artefact contains a symbolic link: {path.name}")
         if path.is_dir():
             raise SystemExit(f"artefact contains an unsupported subdirectory: {path.name}")
+        if not path.is_file():
+            raise SystemExit(f"artefact contains an unsupported filesystem object: {path.name}")
+        if path.name.endswith(".pyc") or path.name.endswith(".pyo"):
+            raise SystemExit(f"artefact contains unmanifested bytecode: {path.name}")
+        if path.name not in expected_names:
+            raise SystemExit(f"artefact contains an unexpected file: {path.name}")
         hashes[path.name] = _sha256_bytes(path.read_bytes())
+    missing = expected_names - set(hashes)
+    if missing:
+        raise SystemExit(f"artefact is missing manifested file(s): {', '.join(sorted(missing))}")
     return _sha256_bytes(
         json.dumps(hashes, sort_keys=True, separators=(",", ":")).encode("utf-8")
     )
@@ -216,6 +228,9 @@ def _make_readonly(path: Path) -> None:
             os.chmod(os.path.join(root, name), 0o444)
         for name in dirs:
             os.chmod(os.path.join(root, name), 0o555)
+    # The top-level package directory itself must also be non-writable so Python
+    # cannot create ``__pycache__``; individual read-only files are insufficient.
+    os.chmod(path, 0o555)
 
 
 def _make_writable(path: Path) -> None:
@@ -224,6 +239,7 @@ def _make_writable(path: Path) -> None:
             os.chmod(os.path.join(root, name), 0o644)
         for name in dirs:
             os.chmod(os.path.join(root, name), 0o755)
+    os.chmod(path, 0o755)
 
 
 def build(source: Path, out: Path, *, allow_dirty: bool = False) -> dict:
@@ -266,8 +282,10 @@ def build(source: Path, out: Path, *, allow_dirty: bool = False) -> dict:
         shutil.copy2(evidence, pkg / EVIDENCE_UNCERTAINTY_TARGET)
 
         # Content identity is computed over the produced bytes (the shipped
-        # files), not over the source-hash metadata.
-        content_hash = _produced_content_hash(pkg)
+        # files), not over the source-hash metadata.  The expected file set is
+        # the source files plus the copied evidence dependency.
+        expected_names = set(source_files) | {EVIDENCE_UNCERTAINTY_TARGET}
+        content_hash = _produced_content_hash(pkg, expected_names)
 
         provenance = {
             "schema": PROVENANCE_SCHEMA,
@@ -285,15 +303,17 @@ def build(source: Path, out: Path, *, allow_dirty: bool = False) -> dict:
             json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
 
-        # The published artefact is immutable and read-only.
-        _make_readonly(pkg)
-
         out = out.resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
         if out.exists():
             _make_writable(out)
             shutil.rmtree(out)
         shutil.move(str(pkg), str(out))
+
+        # The published artefact is immutable and read-only (including the
+        # top-level package directory, which must be non-writable so Python
+        # cannot create ``__pycache__``).
+        _make_readonly(out)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
