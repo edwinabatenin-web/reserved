@@ -47,7 +47,7 @@
         <div class="section-number">02</div>
         <div>
             <h2>Income and tax</h2>
-            <p>Use annual and year-to-date figures before the next incoming payment. All figures are for the current tax year (2026/27).</p>
+            <p>Use annual and year-to-date figures before the next incoming payment. All figures are for the current tax year ({{ tax_year }}).</p>
             <div class="form-grid">
                 <label><span>Annual PAYE salary</span><div class="input-prefix"><b>£</b><input type="number" name="day_job_salary" min="0" step="1" value="{{ profile.day_job_salary }}" placeholder="0"></div><small>Your gross employment income from all jobs this tax year.</small></label>
                 <label><span>Freelance profit to date</span><div class="input-prefix"><b>£</b><input type="number" name="ytd_freelance_profit" min="0" step="0.01" value="{{ profile.ytd_freelance_profit }}" placeholder="0"></div><small>Your sole-trader profit so far this tax year, based on the accounting method you use.</small></label>

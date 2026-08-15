@@ -90,7 +90,7 @@ details[open].opt-caveats summary::before{content:"▾"}
 
 <!-- ── Current projected position ─────────────────────────────────────────── -->
 <div class="panel">
-    <p class="eyebrow">Your projected position — 2026/27</p>
+    <p class="eyebrow">Your projected position — {{ tax_year }}</p>
     <div class="opt-position-grid">
         <div class="opt-metric">
             <p class="opt-metric-label">Projected income</p>
@@ -176,7 +176,7 @@ details[open].opt-caveats summary::before{content:"▾"}
         <div class="opt-explorer" id="explorer-{{ opp.id }}" hidden>
             <p class="opt-explorer-title">Model a pension contribution</p>
 
-            <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:700">Additional gross pension contribution for 2026/27</label>
+            <label style="display:block;margin-bottom:6px;font-size:13px;font-weight:700">Additional gross pension contribution for {{ tax_year }}</label>
             <div class="opt-slider-row">
                 <input type="range" id="slider-{{ opp.id }}"
                        min="0" max="60000" step="500" value="0"
@@ -337,7 +337,7 @@ details[open].opt-caveats summary::before{content:"▾"}
     <strong>Important:</strong>
     If your circumstances changed in this way, Reserved estimates the figures shown.
     These projections are illustrative only and are not financial advice.
-    They are based on England / Wales / Northern Ireland income-tax rules for 2026/27
+    They are based on England / Wales / Northern Ireland income-tax rules for {{ tax_year }}
     and do not account for Scottish income tax, Gift Aid, or individual pension scheme rules.
     Always verify your remaining Annual Allowance and any carry-forward entitlement
     with your pension provider before making a contribution.

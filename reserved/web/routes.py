@@ -18,6 +18,7 @@ from reserved.engines.capital_gains import CapitalDisposal, estimate_cgt
 from reserved.engines import tax_config
 from reserved.services.dashboard import build_dashboard, DEFAULT_PROFILE
 from reserved.services.roadmap import FEATURES
+from reserved.tax_year_context import configured_tax_year
 
 log = logging.getLogger(__name__)
 web = Blueprint("web", __name__)
@@ -378,6 +379,7 @@ def settings():
                 "settings.html", profile=form_profile,
                 settings_errors=list(settings_error_fields.values()),
                 settings_error_fields=settings_error_fields,
+                tax_year=configured_tax_year(),
             ), 400
         profile = _normalise_settings(request.form)
         uid = current_user_id()
@@ -397,7 +399,7 @@ def settings():
         return redirect(url_for("web.dashboard"))
     profile, _ = _get_profile()
     form_profile = _profile_to_form_values(profile)
-    return render_template("settings.html", profile=form_profile)
+    return render_template("settings.html", profile=form_profile, tax_year=configured_tax_year())
 
 
 @web.route("/capital-gains", methods=["GET", "POST"])

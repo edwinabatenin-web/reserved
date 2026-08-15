@@ -49,10 +49,8 @@ from decimal import Decimal, ROUND_FLOOR
 from typing import Literal
 
 from .income_tax import _personal_allowance, _total_income_tax
-from .tax_config import get_config
+from .tax_config import TAX_YEAR, get_config
 from .utils import money
-
-TAX_YEAR = "2026/27"
 
 _CURRENT_CFG = get_config(TAX_YEAR)
 _CB_WEEKLY_ELDEST = _CURRENT_CFG["CHILD_BENEFIT"]["eldest_weekly"]
@@ -85,6 +83,7 @@ class Position:
     estimated_income_tax:  Decimal
     hicbc:                 Decimal = Decimal("0")
     annual_cb:             Decimal = Decimal("0")
+    tax_year:              str = TAX_YEAR
 
     def total_charges(self) -> Decimal:
         """Income tax + HICBC (total direct liability, excludes pension contributions)."""
@@ -289,6 +288,7 @@ def calculate_position(
         estimated_income_tax = it,
         hicbc                = hb,
         annual_cb            = annual_cb,
+        tax_year             = tax_year,
     )
 
 
@@ -332,7 +332,7 @@ def model_pension_scenario(
     basic_rate_relief = money(additional_pension * Decimal("0.20"))
 
     caveats = [
-        f"Pension Annual Allowance: the standard limit for 2026/27 is "
+        f"Pension Annual Allowance: the standard limit for {tax_year} is "
         f"£{_PENSION_ANNUAL_ALLOWANCE:,.0f} gross across all contributions "
         f"(employer + personal). Verify your remaining allowance before contributing.",
         "Tapered Annual Allowance applies where your adjusted income exceeds £260,000, "
@@ -424,13 +424,13 @@ def assess_opportunities(
             pension_to_clear_fully  = pension_to_clear,
             pension_to_clear_capped = pension_capped,
             constraints = [
-                f"Standard Pension Annual Allowance: £{_PENSION_ANNUAL_ALLOWANCE:,.0f} gross (2026/27).",
+                f"Standard Pension Annual Allowance: £{_PENSION_ANNUAL_ALLOWANCE:,.0f} gross ({tax_year}).",
                 "Tapered Annual Allowance may apply if adjusted income exceeds £260,000.",
                 "MPAA (£10,000) applies if you have flexibly accessed a pension.",
                 "Carry-forward of unused prior-year allowances is not modelled.",
             ],
             what_to_confirm = [
-                "Your remaining Annual Allowance for 2026/27 (from your pension provider).",
+                f"Your remaining Annual Allowance for {tax_year} (from your pension provider).",
                 "Whether carry-forward allowance is available from prior tax years.",
                 "Whether salary sacrifice is available from your employer.",
                 "The contribution basis: Relief at Source or net-pay arrangement.",
@@ -461,7 +461,7 @@ def assess_opportunities(
             constraints = [
                 "HICBC applies to the person in the household with the higher ANI, "
                 "regardless of which partner claims the Child Benefit.",
-                f"Standard Pension Annual Allowance: £{_PENSION_ANNUAL_ALLOWANCE:,.0f} gross (2026/27).",
+                f"Standard Pension Annual Allowance: £{_PENSION_ANNUAL_ALLOWANCE:,.0f} gross ({tax_year}).",
                 "The charge applies proportionally — partial years above the threshold "
                 "result in a proportional charge.",
             ],

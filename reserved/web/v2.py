@@ -76,6 +76,7 @@ from reserved.providers.banking.ingestion import (
 )
 from reserved.providers.banking.yapily import YapilyClient
 from reserved.services.dashboard import build_dashboard, DEFAULT_PROFILE
+from reserved.tax_year_context import configured_tax_year, resolve_tax_year
 
 log = logging.getLogger(__name__)
 
@@ -853,6 +854,7 @@ def settings_page():
                 "v2/settings.html", profile=form_profile,
                 settings_errors=list(settings_error_fields.values()),
                 settings_error_fields=settings_error_fields,
+                tax_year=configured_tax_year(),
             ), 400
         profile = _normalise_settings(request.form)
         save_profile_by_user(g.user_id, _profile_to_db_data(profile))
@@ -862,7 +864,7 @@ def settings_page():
 
     profile, _ = _get_profile()
     form_profile = _profile_to_form_values(profile)
-    return render_template("v2/settings.html", profile=form_profile)
+    return render_template("v2/settings.html", profile=form_profile, tax_year=configured_tax_year())
 
 
 @v2.get("/review")
@@ -925,6 +927,10 @@ def optimise_view():
         saved_scenarios=saved,
         is_demo=is_demo,
         profile=profile,
+        tax_year=resolve_tax_year(
+            result_tax_year=pos.tax_year,
+            context_tax_year=configured_tax_year(),
+        ),
     )
 
 
@@ -1006,6 +1012,7 @@ def optimise_calculate():
         "total_benefit":     fmt(r.it_reduction),
         "basic_rate_relief": fmt(r.basic_rate_relief_to_pension),
         "total_pension":     fmt(r.total_pension),
+        "tax_year":          r.before.tax_year,
         "caveats":           r.caveats,
     })
 
