@@ -181,14 +181,12 @@ the zone the result is correct.
 | Exclusion | Impact |
 |---|---|
 | Scottish income tax | Scottish taxpayers face different rates; engine uses England/Wales/NI rates |
-| Dividend and savings income | Different priority order in the tax computation |
+| High Income Child Benefit Charge (HICBC) | Post-v1; not included in any customer total, reserve, scenario or warning |
+| Capital Gains Tax | Post-v1; engine does not compute CGT |
+| Full MTD filing | Post-v1; only a bounded readiness indication is in scope |
 | PAYE coding interactions | Estimates may differ from actual Self Assessment liability |
 | Salary sacrifice pension | Engine only handles personal (RaS) contributions |
 | VAT-registered traders | VAT liability is not deducted from safe-to-spend |
-| Share pooling / same-day matching | CGT results may be incorrect for frequent traders |
-| Residential property CGT | Property-specific rates (18 %/28 %) not applied |
-| BADR / Investors' Relief | Business asset disposals not discounted |
-| Carried interest | Not modelled |
 | PA-taper within a single invoice | See EL-001 above |
 
 ---
@@ -327,7 +325,8 @@ sufficient gross is available.
 | 2026-08-06 | engine v2.0.1 | EL-003 resolved: eBRL capped at ART in _total_income_tax (min(BRL+pension, ART)); 24 regression tests added |
 | 2026-08-13 | engine v3.0.0 | PA taper taxable-band coordinate defect resolved; rules re-derived against HMRC |
 | 2026-08-14 | engine v4.0.0 / `uk-2026-27-v4` | Relief-at-Source pension extends both basic-rate and higher-rate limits (PTM056120); supersedes the v2.0.1 eBRL-cap treatment |
-| 2026-08-14 | terminology | Assurance metadata/UI: "period of assessment" replaces the ambiguous "tax year" label; "generated_on" replaces "verified_date" (no absolute "verified" claim); "Extended basic-rate limit = £50,270" corrected to "Extended higher-rate threshold"; retired `reserved-engine-2.0.0` bundle referenced only as historical evidence |
+| 2026-08-14 | terminology | Assurance metadata/UI: "generated_on" replaces "verified_date" (no absolute "verified" claim); "Extended basic-rate limit = £50,270" corrected to "Extended higher-rate threshold"; retired `reserved-engine-2.0.0` bundle referenced only as historical evidence |
+| 2026-08-15 | founder scope | Founder-confirmed v1 scope: dividends, savings and UK/foreign property are in scope; HICBC, Scottish Income Tax, Capital Gains Tax and full MTD filing are post-v1. Customer-facing annual-period language uses "tax year" (not "period of assessment"). Customer-facing name for "Optimise" is "Explore your options". Release-gate status renamed to `deterministic_engine_remediation_gate_passed/failed`, with a separate `october_launch_candidate` gate distinct from the narrow remediation gate |
 
 ---
 
@@ -350,14 +349,15 @@ sufficient gross is available.
 - [x] ROUND_HALF_UP verified (not ROUND_HALF_EVEN) with sub-penny test cases
 - [x] EL-001 (PA-taper methodology limitation) resolved in v2.0.0 and pinned by regression test
 - [x] EL-003 (eBRL not capped at ART when pension > £74,870) resolved in v2.0.1 and pinned by regression test (24 workspace + 13 bundle tests)
-- [x] Automated release gate passes with zero failures (root + artefact + Optimise suites; mandatory RW3 fixture gate 43/43)
-- [x] Assurance metadata and UI avoid absolute "verified" claims ("generated_on" + "release gate passed")
-- [x] "period of assessment" used for the annual period; stale "Extended basic-rate limit = £50,270" corrected
+- [x] Automated release gate passes with zero failures (root + artefact + parity + Explore-your-options suites; mandatory RW3 fixture gate 43/43)
+- [x] Assurance metadata and UI avoid absolute "verified" claims ("generated_on" + a purpose-specific gate status)
+- [x] "tax year" used for the annual period; stale "Extended basic-rate limit = £50,270" corrected
+- [x] HICBC isolated from customer-facing surfaces (post-v1); unknown partner/Child Benefit facts never silently treated as zero
 
 **Open items (future versions):**
 - [ ] Scottish income tax bands
-- [ ] Dividend and savings income priority ordering
+- [ ] HICBC customer integration (post-v1)
+- [ ] Capital Gains Tax computation (post-v1)
+- [ ] Full MTD filing (post-v1)
 - [ ] VAT-registered trader safe-to-spend reduction
-- [ ] BADR / Investors' Relief CGT discount
-- [ ] Residential property CGT rates (18 % / 28 %)
-- [ ] Share pooling and same-day / 30-day matching
+- [ ] Dividends and savings priority ordering in the customer-connected engine

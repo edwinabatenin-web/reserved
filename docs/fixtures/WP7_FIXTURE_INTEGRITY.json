@@ -1,6 +1,6 @@
 {
   "algorithm": "sha256",
-  "classification_manifest": "7b640374e16e93ceb9e6c0bf9b041fbdc751460940f59fc481227b004a4c6037",
+  "classification_manifest": "336a5d8dd42101179ac060bb291d4e4d594f455953c4bbe85006d91585aefc39",
   "files": {
     "RW3_CORE_FIXTURES.json": "12e9131e49aee869b304a066f52c27eea51e0a69790016767cbf73793a4a8493",
     "RW3_CORE_MULTI_UNDERGRADUATE_PENDING_FIXTURES.json": "cec581a53e962c4436c4faa7b72f504f0f38ed455dc11020c335b81903e25586",

@@ -39,11 +39,11 @@ Confirmed v1 tax scope:
 - PAYE and multiple employments;
 - sole-trade income, savings and dividends;
 - UK and foreign property within the implemented limitations;
-- student and postgraduate loans, including bounded reconciliation;
-- High Income Child Benefit Charge (HICBC); and
+- student and postgraduate loans, including bounded reconciliation; and
 - MTD readiness, not full MTD filing.
 
-Post-v1 or disabled: Scottish Income Tax, Capital Gains Tax and full MTD filing.
+Post-v1 or disabled: High Income Child Benefit Charge (HICBC), Scottish Income
+Tax, Capital Gains Tax and full MTD filing.
 Money movement is not implemented. The current safe default is calculation and
 tracking only; payment initiation requires a separate founder/legal/provider
 decision. Consumer pricing assumption is £29/month including VAT.
@@ -230,10 +230,14 @@ Resolved founder policy includes:
 Founder decisions still open include:
 
 - track-only set-aside versus a separately approved payment-initiation scope;
-- final customer name replacing “Optimise”;
 - quantitative PAYE materiality, recency and completeness policies;
 - final evidence-quality/conflict/possible-overpayment wording; and
 - conditions for any future combined annual-liability/deduction presentation.
+
+Resolved (15 August 2026): the customer-facing name for “Optimise” is
+“Explore your options”; HICBC is outside the v1 customer scope (post-v1); and
+customer-facing annual-period language uses “tax year”, not “period of
+assessment”.
 
 An independent finding does not automatically resolve these choices. Conversely, a
 founder scope decision does not establish arithmetic correctness or control

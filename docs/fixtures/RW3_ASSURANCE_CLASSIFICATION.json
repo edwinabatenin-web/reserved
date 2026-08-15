@@ -33,13 +33,13 @@
       "classification": "outside_engine_surface",
       "expected_fixture_count": 2,
       "expected_outcome": "excluded from the current-engine accuracy gate",
-      "rationale": "Mixed-income ordering requires savings, dividend and property income, which are outside the reserved/engines income-tax work package (declared out of scope)."
+      "rationale": "Mixed-income ordering requires savings, dividend and property income. Those families are in the founder-confirmed v1 scope but are not computed by the reserved/engines income-tax work package (no adapter yet), so they cannot contribute a current-engine accuracy PASS."
     },
     "RW3_V1_PREIMPLEMENTATION_FIXTURES.json": {
       "classification": "outside_engine_surface",
       "expected_fixture_count": 53,
       "expected_outcome": "excluded from the current-engine accuracy gate",
-      "rationale": "Savings, dividend, UK/foreign property, HICBC and MTD families are not part of the reserved/engines income-tax work package; HICBC has its own separate Optimise assurance suite."
+      "rationale": "Savings, dividend, UK/foreign property, HICBC and MTD families are not computed by the reserved/engines income-tax work package. HICBC is post-v1 founder scope; savings/dividends/property are in v1 scope but not yet connected to the customer engine; MTD is a bounded readiness indication only."
     }
   }
 }
