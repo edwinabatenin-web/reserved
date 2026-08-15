@@ -136,7 +136,7 @@ def build_metadata(result: dict) -> dict:
         "schema": "reserved-assurance-metadata-1",
         "status": result["status"],
         "october_launch_candidate": result["october_launch_candidate"],
-        "period_of_assessment": artefact.get("tax_year"),
+        "tax_year": artefact.get("tax_year"),
         "rules_version": artefact.get("rules_version"),
         "engine_version": artefact.get("engine_version"),
         "engine_artefact": artefact.get("provenance"),

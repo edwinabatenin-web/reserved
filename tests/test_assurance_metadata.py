@@ -91,7 +91,8 @@ def test_build_metadata_records_identity_and_october_status():
     assert meta["october_launch_candidate"]["status"] == "not_ready"
     assert meta["engine_version"] == "4.0.0"
     assert meta["rules_version"] == "uk-2026-27-v4"
-    assert meta["period_of_assessment"] == "2026/27"
+    assert meta.get("period_of_assessment") is None  # removed in favour of tax_year
+    assert meta["tax_year"] == "2026/27"
     assert len(meta["engine_artefact"]["content_hash"]) == 64
     assert meta["engine_artefact"]["source_commit"]
     assert meta["production_source"]["source_files"]

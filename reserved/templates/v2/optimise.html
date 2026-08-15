@@ -77,7 +77,7 @@ details[open].opt-caveats summary::before{content:"▾"}
 <section class="page-heading">
     <div>
         <p class="eyebrow">Planning tool</p>
-        <h1>Tax opportunities</h1>
+        <h1>Explore your options</h1>
         <p>Reserved uses your profile and current-year projections to flag threshold interactions worth exploring. These are factual planning prompts based on your information — not financial advice.</p>
     </div>
 </section>
@@ -112,24 +112,16 @@ details[open].opt-caveats summary::before{content:"▾"}
             <p class="opt-metric-value">£{{ "{:,.0f}".format(pos.estimated_income_tax | float) }}</p>
             <p class="opt-metric-note">Based on profile figures</p>
         </div>
-        {% if pos.hicbc | float > 0 %}
-        <div class="opt-metric warn">
-            <p class="opt-metric-label">HICBC estimate</p>
-            <p class="opt-metric-value">£{{ "{:,.2f}".format(pos.hicbc | float) }}</p>
-            <p class="opt-metric-note">High Income Child Benefit Charge</p>
-        </div>
-        {% else %}
         <div class="opt-metric">
             <p class="opt-metric-label">Pension contributions</p>
             <p class="opt-metric-value">£{{ "{:,.0f}".format(pos.pension | float) }}</p>
             <p class="opt-metric-note">Gross RaS for this tax year</p>
         </div>
-        {% endif %}
     </div>
     <p style="font-size:12px;color:var(--ink-soft);margin:0">
-        This scenario model uses employment, sole-trade profit, gross RaS pension and Child Benefit facts supplied in your profile.
+        This scenario model uses employment, sole-trade profit and gross RaS pension facts supplied in your profile.
         <a href="{{ url_for('v2.settings_page') }}">Update your settings</a> to change those inputs.
-        It excludes savings, dividends, property, tax already paid, student loans and pension allowance eligibility; figures are illustrative comparisons, not a complete annual position or recommendation.
+        It excludes savings, dividends, property, tax already paid, student loans, Child Benefit and pension allowance eligibility; figures are illustrative comparisons, not a complete annual position or recommendation.
     </p>
 </div>
 
@@ -139,8 +131,7 @@ details[open].opt-caveats summary::before{content:"▾"}
     <div class="panel opt-opp"
          data-opp-id="{{ opp.id }}"
          data-projected="{{ pos.projected_income | float }}"
-         data-current-pension="{{ pos.pension | float }}"
-         data-annual-cb="{{ pos.annual_cb | float }}">
+         data-current-pension="{{ pos.pension | float }}">
 
         <div class="opt-opp-status {{ opp.status }}">
             {% if opp.status == 'available' %}⚡ Available{% elif opp.status == 'incomplete' %}ⓘ Needs more information{% else %}✕ Not applicable{% endif %}
@@ -241,18 +232,12 @@ details[open].opt-caveats summary::before{content:"▾"}
                                 <td id="r-after-it-{{ opp.id }}">—</td>
                                 <td id="r-diff-it-{{ opp.id }}" class="diff">—</td>
                             </tr>
-                            <tr>
-                                <td class="opt-row-label">HICBC</td>
-                                <td id="r-before-hicbc-{{ opp.id }}">—</td>
-                                <td id="r-after-hicbc-{{ opp.id }}">—</td>
-                                <td id="r-diff-hicbc-{{ opp.id }}" class="diff">—</td>
-                            </tr>
                         </tbody>
                     </table>
                 </div>
 
                 <div class="opt-benefit-box">
-                    <span class="opt-benefit-label">Estimated total benefit<br><span style="font-weight:400;font-size:11px">Income tax + HICBC savings combined</span></span>
+                    <span class="opt-benefit-label">Estimated income tax saving</span>
                     <span class="opt-benefit-value" id="r-total-benefit-{{ opp.id }}">£0.00</span>
                 </div>
 
@@ -304,9 +289,9 @@ details[open].opt-caveats summary::before{content:"▾"}
     <h2 style="margin:0 0 10px">No opportunities detected at this projected income</h2>
     <p style="color:var(--ink-soft);max-width:480px;margin:0 auto">
         Based on your current profile, your projected Adjusted Net Income is
-        below the tax-planning thresholds (£60,000 for HICBC; £100,000 for the
-        Personal Allowance taper). If your income increases during the year,
-        Reserved will flag the relevant opportunity automatically.
+        below the £100,000 Personal Allowance taper threshold. If your income
+        increases during the year, Reserved will flag the relevant opportunity
+        automatically.
     </p>
     <a href="{{ url_for('v2.settings_page') }}" class="button button-secondary" style="margin-top:20px;display:inline-flex">Update profile</a>
 </div>

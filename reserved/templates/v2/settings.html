@@ -52,18 +52,6 @@
                 <label><span>Annual PAYE salary</span><div class="input-prefix"><b>£</b><input type="number" name="day_job_salary" min="0" step="1" value="{{ profile.day_job_salary }}" placeholder="0"></div><small>Your gross employment income from all jobs this tax year.</small></label>
                 <label><span>Freelance profit to date</span><div class="input-prefix"><b>£</b><input type="number" name="ytd_freelance_profit" min="0" step="0.01" value="{{ profile.ytd_freelance_profit }}" placeholder="0"></div><small>Your sole-trader profit so far this tax year, based on the accounting method you use.</small></label>
                 <label><span>Personal pension contributions</span><div class="input-prefix"><b>£</b><input type="number" name="pension" min="0" step="0.01" value="{{ profile.pension }}" placeholder="0"></div><small>Enter the gross amount for this tax year. For Relief at Source, gross is the amount paid divided by 0.80.</small></label>
-                <label><span>Number of children in Child Benefit claim</span>
-                    <select name="child_benefit_children">
-                        <option value="0" {{ 'selected' if not profile.child_benefit_children else '' }}>None / not applicable</option>
-                        <option value="1" {{ 'selected' if profile.child_benefit_children == 1 else '' }}>1 child</option>
-                        <option value="2" {{ 'selected' if profile.child_benefit_children == 2 else '' }}>2 children</option>
-                        <option value="3" {{ 'selected' if profile.child_benefit_children == 3 else '' }}>3 children</option>
-                        <option value="4" {{ 'selected' if profile.child_benefit_children == 4 else '' }}>4 children</option>
-                        <option value="5" {{ 'selected' if profile.child_benefit_children and profile.child_benefit_children >= 5 else '' }}>5 or more children</option>
-                    </select>
-                    <small>If you or your partner receives Child Benefit, select the number of children in the claim. Used by the Optimise tool to assess the High Income Child Benefit Charge.</small>
-                </label>
-                <label><span>Child Benefit annual total (optional override)</span><div class="input-prefix"><b>£</b><input type="number" name="child_benefit_annual" min="0" step="0.01" value="{{ profile.child_benefit_annual or '' }}" placeholder="Leave blank to use 2026/27 standard rates"></div><small>If your actual annual award differs from the standard rates, enter it here. Check your HMRC award letter.</small></label>
                 <label><span>Student loan</span>
                     <select name="student_loan">
                         <option value="none" {{ 'selected' if profile.student_loan == 'none' else '' }}>None</option>

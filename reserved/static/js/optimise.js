@@ -23,7 +23,7 @@
     const b = parseFloat(String(before).replace(/,/g, ''));
     const a = parseFloat(String(after).replace(/,/g, ''));
     if (isNaN(b) || isNaN(a)) return 'neutral';
-    if (a < b) return 'positive';   // lower tax/HICBC is good
+    if (a < b) return 'positive';   // lower tax is good
     if (a > b) return 'negative';
     return 'neutral';
   }
@@ -124,7 +124,6 @@
 
       const projectedIncome  = parseFloat(card.dataset.projected)   || 0;
       const currentPension   = parseFloat(card.dataset.currentPension) || 0;
-      const annualCb         = parseFloat(card.dataset.annualCb)    || 0;
       const inputEl          = document.getElementById('amount-' + oppId);
       const additionalPension= parseFloat(inputEl ? inputEl.value : 0) || 0;
 
@@ -140,7 +139,6 @@
           projected_income:   projectedIncome,
           current_pension:    currentPension,
           additional_pension: additionalPension,
-          annual_cb:          annualCb,
         }),
       })
         .then(function (r) { return r.json(); })
@@ -185,12 +183,6 @@
     setText('r-diff-it-'   + oppId, diffLabel(b.it, a.it));
     setClass('r-diff-it-'  + oppId, diffClass(b.it, a.it));
 
-    // HICBC (lower is better)
-    setText('r-before-hicbc-' + oppId, fmtGBP(b.hicbc));
-    setText('r-after-hicbc-'  + oppId, fmtGBP(a.hicbc));
-    setText('r-diff-hicbc-'   + oppId, diffLabel(b.hicbc, a.hicbc));
-    setClass('r-diff-hicbc-'  + oppId, diffClass(b.hicbc, a.hicbc));
-
     // Summary figures
     setText('r-total-benefit-' + oppId, '£' + data.total_benefit);
     setText('r-brl-'           + oppId, '£' + data.basic_rate_relief);
@@ -211,11 +203,9 @@
           projected_income:   parseFloat(card.dataset.projected)     || 0,
           current_pension:    parseFloat(card.dataset.currentPension) || 0,
           additional_pension: additionalPension,
-          annual_cb:          parseFloat(card.dataset.annualCb)       || 0,
         },
         outputs: {
           it_reduction:    data.it_reduction,
-          hicbc_reduction: data.hicbc_reduction,
           total_benefit:   data.total_benefit,
           basic_rate_relief: data.basic_rate_relief,
           total_pension:   data.total_pension,
