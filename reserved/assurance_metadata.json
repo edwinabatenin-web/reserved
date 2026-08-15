@@ -85,10 +85,10 @@
     "engine_version": "4.0.0",
     "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
     "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-    "generated_on": "2026-08-15T11:03:19Z",
+    "generated_on": "2026-08-15T11:17:14Z",
     "rules_version": "uk-2026-27-v4",
     "schema": "reserved-engine-artefact-provenance-1",
-    "source_commit": "191a22f63a4d60e33d31a7522a2fbaf98ae28546",
+    "source_commit": "2c65093129e3a4e95345669d64925a38aae1e3e0",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -111,7 +111,7 @@
     "source_path": "reserved/engines"
   },
   "production_source": {
-    "source_commit": "191a22f63a4d60e33d31a7522a2fbaf98ae28546",
+    "source_commit": "2c65093129e3a4e95345669d64925a38aae1e3e0",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -177,10 +177,10 @@
       "engine_version": "4.0.0",
       "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
       "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-      "generated_on": "2026-08-15T11:03:19Z",
+      "generated_on": "2026-08-15T11:17:14Z",
       "rules_version": "uk-2026-27-v4",
       "schema": "reserved-engine-artefact-provenance-1",
-      "source_commit": "191a22f63a4d60e33d31a7522a2fbaf98ae28546",
+      "source_commit": "2c65093129e3a4e95345669d64925a38aae1e3e0",
       "source_files": {
         "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
         "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -203,7 +203,7 @@
       "source_path": "reserved/engines"
     }
   },
-  "generated_on": "2026-08-15T11:03:19Z",
+  "generated_on": "2026-08-15T11:17:14Z",
   "test_counts": {
     "passed": 1260,
     "failed": 0,
