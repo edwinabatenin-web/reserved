@@ -1,3 +1,12 @@
+> **⚠ SUPERSEDED — historical verification snapshot.**
+> Produced 2026-08-14 at commit `dd08b48` on `main`, before the
+> `remediation/assurance-drift` remediation.  `reserved_west/reference_calculator.py`
+> (described below as "independent") is now classified as historical /
+> shared-lineage regression evidence and is excluded from the current independent
+> RW3 accuracy corpus — do not treat it, or this harness description, as current
+> independent accuracy evidence.  The body below is preserved unchanged as a
+> historical output report.
+
 # Reserved — Overnight Repository-Wide Verification Report
 
 Date: 2026-08-14 (UTC)

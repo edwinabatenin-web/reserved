@@ -97,9 +97,16 @@ Gross pension contributions affect the calculation in two ways:
 
 1. **Adjusted Net Income** — pension reduces ANI for the Personal Allowance
    taper test (`ANI = total_income − gross_pension`).
-2. **Basic-rate band extension** — the basic-rate ceiling is raised by the
-   gross pension contribution (`extended_BRL = £50,270 + gross_pension`),
-   meaning more income falls in the 20 % band rather than 40 %.
+2. **Band extension** — a qualifying gross Relief-at-Source contribution
+   extends **both** the basic-rate limit and the higher-rate limit (the point
+   at which the additional 45 % rate begins) by the gross contribution:
+
+   - extended basic-rate limit  = £37,700 + gross_pension
+   - extended higher-rate limit = £125,140 + gross_pension
+
+   The higher-rate band width (£87,440) is unchanged and the additional-rate
+   boundary shifts up by the contribution amount; there is no cap at £125,140
+   (HMRC Pensions Tax Manual PTM056120; Finance Act 2004 s.192).
 
 The engine expects the **gross** pension figure.  For Relief at Source schemes
 the gross = net paid ÷ 0.80 (the provider reclaims the 20 % basic-rate relief).
@@ -126,22 +133,25 @@ losses are offset against gains before AEA.
 
 ## 3. Defect register
 
-### EL-001 — PA-taper methodology limitation (known, documented, not a bug)
+### EL-001 — PA-taper methodology limitation (RESOLVED — historical)
+
+> **Status: resolved in engine v2.0.0.**  This entry is retained as defect
+> history only and does **not** describe the current implementation.  The engine
+> now uses the true before/after total-tax differential, deriving the Personal
+> Allowance independently at both the starting and ending income positions.
 
 | Field | Value |
 |---|---|
 | **ID** | EL-001 |
-| **Severity** | Low (affects < 3 % of UK taxpayers; preview product) |
-| **Status** | Documented; deferred to v2 |
-| **Pinned by test** | `test_pa_taper_methodology_limitation_el001` in `tests/test_income_tax_boundaries.py` |
+| **Severity** | Low (affected < 3 % of UK taxpayers; preview product) |
+| **Status** | Resolved in engine v2.0.0 |
+| **Pinned by tests** | `tests/test_el001_regression.py`, `tests/test_income_tax_boundaries.py` |
 
-**Description**
+**Historical description (v1.0.0 behaviour, superseded)**
 
-The engine computes the Personal Allowance from the *end-state* income
-(`end_income = ytd + invoice`) and applies it as a fixed band ceiling across
-the full [start, end) income range.
-
-This is equivalent to:
+Before v2.0.0 the engine computed the Personal Allowance from the *end-state*
+income (`end_income = ytd + invoice`) and applied it as a fixed band ceiling
+across the full `[start, end)` income range.  This is equivalent to:
 
 ```
 engine_marginal = tax_at_end_PA(start → end)
@@ -153,26 +163,25 @@ rather than the strictly correct:
 true_marginal = total_tax(end, PA_end) − total_tax(start, PA_start)
 ```
 
-The two expressions diverge when the invoice itself pushes income *through*
-the PA taper zone (ANI crosses £100,000 mid-invoice).  In that case the
-engine underestimates the marginal liability by:
+The two expressions diverged when the invoice itself pushed income *through*
+the PA taper zone (ANI crosses £100,000 mid-invoice).  In that case the v1
+engine underestimated the marginal liability by:
 
 ```
 error ≈ (PA_start − PA_end) × applicable_rate
 ```
 
-**Example (documented in test):**
+**Historical example (v1.0.0):**
 
 - YTD = £99,000 · Invoice = £4,000 → income 99k → 103k
 - ANI at end: 103,000 → PA = 11,070 (reduced from 12,570)
-- Engine: 40 % × 4,000 = **£1,600**
-- True marginal: 28,932 − 27,032 = **£1,900** (difference = £300)
+- v1 engine: 40 % × 4,000 = **£1,600**
+- Correct differential: £29,232 − £27,032 = **£2,200** (v1 underestimate = £600)
 
-**Impact:** Only users whose total income straddles the £100k–£125.14k taper
-zone within a single invoice.  For users whose income is firmly above or below
-the zone the result is correct.
-
-**Mitigation in engine v2:** Replace with a true `total_tax(end) − total_tax(start)` differential, computing each call with its own PA.
+**Resolution (implemented in v2.0.0):** the income-tax component now computes
+`_total_income_tax(end) − _total_income_tax(start)`, deriving each position's
+Personal Allowance independently.  Results outside the taper zone are
+numerically unchanged.
 
 ---
 
@@ -186,8 +195,7 @@ the zone the result is correct.
 | Full MTD filing | Post-v1; only a bounded readiness indication is in scope |
 | PAYE coding interactions | Estimates may differ from actual Self Assessment liability |
 | Salary sacrifice pension | Engine only handles personal (RaS) contributions |
-| VAT-registered traders | VAT liability is not deducted from safe-to-spend |
-| PA-taper within a single invoice | See EL-001 above |
+| VAT-registered traders | VAT liability is not deducted from the retained arithmetic remainder |
 
 ---
 
@@ -223,7 +231,7 @@ The automated test suite covers the following scenarios.  All tests are in
 | IT band boundaries | Within PA; exactly fills PA; 1p above PA (IT + NI); entirely in basic band; fills basic band; 1st penny in higher band; entirely in higher band; crosses BRL; crosses ART; 1st penny in additional band |
 | NI band boundaries | Exactly at LPL (zero); 1st £100 above LPL; fills main band; 1st penny in upper band; all in upper band; crosses LPL and UPL together |
 | PA taper boundaries | ANI exactly at taper start (full PA); 1p above taper start (fractional PA); ANI = ART (PA = 0); midpoint partial reduction |
-| EL-001 regression | Pins engine behaviour for invoice crossing taper zone |
+| EL-001 regression | Pins the resolved true before/after differential for invoices crossing the taper zone |
 | SL exact boundaries | All five plans: income exactly at threshold (£0); income £1 above threshold |
 | Rounding | ROUND_HALF_UP for IT (40%×4.6125 → £1.85); ROUND_HALF_UP for NI (6%×16.75 → £1.01); total == sum of components; fractional invoice |
 | Composite regression | Plan 5 crossing BRL + NI crossing UPL; high earner at additional rate; pension saving at BRL boundary; zero-start first invoice |
@@ -244,7 +252,7 @@ The automated test suite covers the following scenarios.  All tests are in
 | Test group | Scenarios covered |
 |---|---|
 | Basic split | No fee; with fee |
-| Zero liability | All gross to safe_to_spend |
+| Zero liability | All gross to the retained arithmetic remainder |
 | Reconciliation invariant | Normal inputs; fractional fee; gross == liability; liability > gross |
 | Edge cases | Fee on zero liability; gross = liability + fee; small invoice (£0.03); liability > gross |
 | Penny / large amounts | Smallest input; £100,000 |
@@ -348,7 +356,7 @@ sufficient gross is available.
 - [x] All monetary outputs are `Decimal` quantized to 2 d.p.
 - [x] ROUND_HALF_UP verified (not ROUND_HALF_EVEN) with sub-penny test cases
 - [x] EL-001 (PA-taper methodology limitation) resolved in v2.0.0 and pinned by regression test
-- [x] EL-003 (eBRL not capped at ART when pension > £74,870) resolved in v2.0.1 and pinned by regression test (24 workspace + 13 bundle tests)
+- [x] EL-003 (pension band extension) resolved in v4.0.0: qualifying gross RaS contributions extend both the basic-rate and higher-rate limits (PTM056120), superseding the earlier v2.0.1 cap treatment; pinned by regression test
 - [x] Automated release gate passes with zero failures (root + artefact + parity + Explore-your-options suites; mandatory RW3 fixture gate 43/43)
 - [x] Assurance metadata and UI avoid absolute "verified" claims ("generated_on" + a purpose-specific gate status)
 - [x] "tax year" used for the annual period; stale "Extended basic-rate limit = £50,270" corrected
@@ -359,5 +367,5 @@ sufficient gross is available.
 - [ ] HICBC customer integration (post-v1)
 - [ ] Capital Gains Tax computation (post-v1)
 - [ ] Full MTD filing (post-v1)
-- [ ] VAT-registered trader safe-to-spend reduction
+- [ ] VAT-registered trader reduction of the retained arithmetic remainder
 - [ ] Dividends and savings priority ordering in the customer-connected engine

@@ -50,7 +50,7 @@ The core tax engines live in `reserved/engines/`. Key facts:
 
 - **`utils.py`** — shared `money()` helper (ROUND_HALF_UP to 2 d.p.); all engines import from here.
 - **`tax_config.py`** — 2026/27 thresholds (income tax, Class 4 NI, student loans for all 5 plans).
-- **`income_tax.py`** — before/after differential estimator. Supports pension Relief at Source (basic-rate band extension), PA taper and single undergraduate-plan or undergraduate-plus-postgraduate cases. Simultaneous multiple undergraduate plans fail closed pending verification; no partial amount should be shown.
+- **`income_tax.py`** — before/after differential estimator. Supports pension Relief at Source (extends both the basic-rate and higher-rate/additional-rate boundaries), PA taper and single undergraduate-plan or undergraduate-plus-postgraduate cases. Simultaneous multiple undergraduate plans fail closed pending verification; no partial amount should be shown.
 - **`allocation.py`** — legacy gross → tax reserve / platform fee splitter with a deprecated internal remainder and reconciliation assert; customer/dashboard contracts must not expose the remainder as “safe to spend”.
 - **`capital_gains.py`** — dormant post-v1 CGT code retained internally; it is not an enabled or assured v1 customer capability.
 

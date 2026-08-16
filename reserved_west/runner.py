@@ -1,8 +1,8 @@
 """
 Reserved West — Scenario Runner
 
-Executes each scenario through both the independent reference calculator
-and the Reserved engine, records variances, and classifies outcomes.
+Executes each scenario through both the historical/shared-lineage reference
+calculator and the Reserved engine, records variances, and classifies outcomes.
 
 Outcome codes
 -------------
@@ -61,10 +61,24 @@ EL-001 regression:           any future failure of the permanent EL-001 tests or
 Historic note: engine v1.0.0 classified taper-zone variance as KNOWN_LIMITATION.
 This is no longer valid.  KNOWN_LIMITATION has been removed from the outcome set.
 """
+
+
+###############################################################################
+# ⚠  SUPERSEDED — LEGACY ENGINE-VS-REFERENCE HARNESS
+###############################################################################
+# This scenario runner compares the Reserved engine against
+# reserved_west/reference_calculator.py, which is historical/shared-lineage
+# regression evidence, not an independent oracle.  It is NOT the current
+# independent RW3 accuracy gate (that is reserved_west/release_gate.py →
+# engine_adapters.py → literal_fixture_runner.py against docs/fixtures/RW3_*).
+# Its results must not be presented as current independent accuracy evidence.
+###############################################################################
 from decimal import Decimal
 from typing import Any
 
-# Reference calculator (independent)
+# Reference calculator (historical/shared-lineage regression evidence — NOT an
+# independent accuracy oracle; see the supersession notice at the top of this
+# module and of reserved_west/reference_calculator.py)
 from reserved_west.reference_calculator import ref_estimate, ref_cgt, in_el001_zone
 
 # Engine under test: the deterministic release artefact built from

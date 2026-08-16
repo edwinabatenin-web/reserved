@@ -47,6 +47,31 @@ Capital Gains Tax:
   Finance (No.2) Act 2023 s.8 (AEA £3,000 from 2024/25)
   Autumn Budget 2024: rates revised to 18 % basic / 24 % higher
 """
+
+
+###############################################################################
+# ⚠  SUPERSEDED — HISTORICAL / SHARED-LINEAGE REGRESSION EVIDENCE ONLY
+###############################################################################
+# This module must NOT be used as a current validation oracle and is excluded
+# from the current independent RW3 accuracy corpus.
+#
+#   * It is retained historical/shared-lineage regression evidence: its
+#     thresholds and formulas were derived alongside the Reserved engine, so
+#     agreement between the two is circular, not independent accuracy evidence.
+#   * It is excluded from the mandatory RW3 independent accuracy pass (see
+#     docs/fixtures/WP7_ASSURANCE_CORPUS.json → excluded_from_accuracy_pass_counts).
+#   * Its EL-001 narrative is superseded: the engine has used a true before/after
+#     total-tax differential (Personal Allowance derived independently at both
+#     endpoints) since v2.0.0, so the "engine uses end-state PA / divergence
+#     expected" description below is historical only.
+#   * Its Student Loan rounding (ROUND_HALF_UP to the penny) does NOT establish
+#     current annual Self Assessment correctness; production floors each annual
+#     component to whole pounds.
+#
+# The arithmetic below is preserved unchanged as historical regression evidence.
+# Do not correct or modernise it unless that change is separately authorised and
+# independently re-derived.
+###############################################################################
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
