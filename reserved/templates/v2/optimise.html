@@ -312,6 +312,7 @@ details[open].opt-caveats summary::before{content:"▾"}
                 <strong>{{ s.label or (s.opportunity ~ " scenario") }}</strong>
                 <p class="opt-saved-meta">
                     {{ s.opportunity }} ·
+                    Tax year: {{ s.tax_year if s.tax_year else "unavailable" }} ·
                     Extra pension: £{{ "{:,.0f}".format(s.inputs.get("additional_pension", 0) | float) }} ·
                     Saved {{ s.saved_at[:10] }}
                 </p>

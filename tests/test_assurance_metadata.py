@@ -262,3 +262,111 @@ def test_build_metadata_records_identity_and_october_status(canonical_result):
     assert meta["component_inventory"]
     assert meta["assurance_implementation_identity"]
     assert meta["canonical_result_digest"]
+
+
+# ── F2: semantic validation of canonical evidence ─────────────────────────────
+
+def _mutate_component(result, comp_id, **changes):
+    r = copy.deepcopy(result)
+    for c in r["components"]:
+        if c["id"] == comp_id:
+            c.update(changes)
+            return r
+    raise AssertionError(f"component {comp_id!r} not found")
+
+
+def test_rejects_pytest_nonzero_exit_code_pass(canonical_result, tmp_path):
+    result = _mutate_component(canonical_result, "root_production_suite", exit_code=1)
+    with pytest.raises(RuntimeError, match="exit_code"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_pytest_zero_test_flag_pass(canonical_result, tmp_path):
+    result = _mutate_component(canonical_result, "root_production_suite", zero_test=True)
+    with pytest.raises(RuntimeError, match="zero_test"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_no_collected_tests_pass(canonical_result, tmp_path):
+    result = _mutate_component(
+        canonical_result, "root_production_suite",
+        collected=0, passed=0, failed=0, errors=0, skipped=0,
+    )
+    with pytest.raises(RuntimeError, match="no collected tests"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_all_skipped_pass(canonical_result, tmp_path):
+    result = _mutate_component(
+        canonical_result, "root_production_suite",
+        collected=10, passed=0, failed=0, errors=0, skipped=10,
+    )
+    with pytest.raises(RuntimeError, match="zero tests"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_failed_test_count_pass(canonical_result, tmp_path):
+    result = _mutate_component(
+        canonical_result, "root_production_suite",
+        collected=11, passed=10, failed=1, errors=0, skipped=0,
+    )
+    with pytest.raises(RuntimeError, match="failed tests"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_errored_test_count_pass(canonical_result, tmp_path):
+    result = _mutate_component(
+        canonical_result, "root_production_suite",
+        collected=11, passed=10, failed=0, errors=1, skipped=0,
+    )
+    with pytest.raises(RuntimeError, match="errored tests"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_rw3_gate_passed_false_pass(canonical_result, tmp_path):
+    result = _mutate_component(canonical_result, "mandatory_rw3_gate", gate_passed=False)
+    with pytest.raises(RuntimeError, match="gate_passed=False"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_rw3_incomplete_classification_pass(canonical_result, tmp_path):
+    result = _mutate_component(canonical_result, "mandatory_rw3_gate", classification_complete=False)
+    with pytest.raises(RuntimeError, match="incomplete classification"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_rw3_unresolved_pending_pass(canonical_result, tmp_path):
+    result = copy.deepcopy(canonical_result)
+    for c in result["components"]:
+        if c["id"] == "mandatory_rw3_gate":
+            c["classification_counts"]["applicable_not_executable"] = 5
+    with pytest.raises(RuntimeError, match="unresolved pending"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_rw3_inconsistent_counts(canonical_result, tmp_path):
+    result = copy.deepcopy(canonical_result)
+    for c in result["components"]:
+        if c["id"] == "mandatory_rw3_gate":
+            c["classification_counts"]["mandatory_executable"] = 0
+    with pytest.raises(RuntimeError, match="no mandatory executable"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_overall_pass_with_failure_reasons(canonical_result, tmp_path):
+    result = _mutated(canonical_result, failure_reasons=["root_production_suite"])
+    with pytest.raises(RuntimeError, match="non-empty failure_reasons"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_component_kind_mismatch(canonical_result, tmp_path):
+    result = _mutate_component(canonical_result, "root_production_suite", kind="rw3")
+    with pytest.raises(RuntimeError, match="kind mismatch"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_missing_artefact_identity(canonical_result, tmp_path):
+    result = copy.deepcopy(canonical_result)
+    result["verified_artefact"]["content_hash"] = ""
+    with pytest.raises(RuntimeError, match="verified-artefact identity"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))

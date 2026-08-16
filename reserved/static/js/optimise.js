@@ -199,6 +199,7 @@
     const card = document.querySelector('[data-opp-id="' + oppId + '"]');
     if (card) {
       card.dataset.lastResult = JSON.stringify({
+        tax_year: data.tax_year,
         inputs: {
           projected_income:   parseFloat(card.dataset.projected)     || 0,
           current_pension:    parseFloat(card.dataset.currentPension) || 0,
@@ -245,6 +246,7 @@
         body: JSON.stringify({
           opportunity_id: oppId,
           label:          label.trim(),
+          tax_year:       parsed.tax_year,
           inputs:         parsed.inputs,
           outputs:        parsed.outputs,
         }),

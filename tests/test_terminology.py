@@ -76,3 +76,21 @@ def test_retired_bundle_is_not_imported_by_the_artefact_loader():
     code_only = re.sub(r'"""(?:.|\n)*?"""', "", source)
     code_only = re.sub(r"#[^\n]*", "", code_only)
     assert "reserved-engine-2.0.0" not in code_only
+
+
+# ── Student Loan limitations statement ─────────────────────────────────────────
+
+REGISTER = ROOT / "docs" / "ASSUMPTIONS_AND_LIMITATIONS_REGISTER.md"
+
+
+def test_register_does_not_claim_multiple_plans_run_concurrently():
+    text = REGISTER.read_text(encoding="utf-8")
+    assert "Multiple plans run concurrently" not in text
+    assert "amounts are summed" not in text
+
+
+def test_register_states_one_undergraduate_plan_limit_and_fail_closed():
+    text = REGISTER.read_text(encoding="utf-8")
+    assert "At most one undergraduate plan" in text
+    assert "fails closed" in text
+    assert "student-loan amount, total, allocation or set-aside figure" in text

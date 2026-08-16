@@ -118,10 +118,15 @@ same before/after approach as income tax.
 
 ### 2.4 Student / Postgraduate Loans
 
-Multiple plans run concurrently.  Each plan is computed independently and the
-amounts are summed.  The `student_loan_plans` profile key accepts a list;
-the legacy singular `student_loan_plan` key is also accepted for backward
-compatibility.
+At most one undergraduate plan may be calculated.  One supported undergraduate
+plan may be combined with a Postgraduate Loan, and the two are computed and
+reconciled separately.  Simultaneous multiple undergraduate plans are not
+currently calculated: when more than one distinct undergraduate plan, an unknown
+plan value, or an unsupported plan value is supplied, the annual Self Assessment
+treatment fails closed (`UnsupportedStudentLoanPlanCombination`) and no
+student-loan amount, total, allocation or set-aside figure is shown.  The
+`student_loan_plans` profile key accepts a list; the legacy singular
+`student_loan_plan` key is also accepted for backward compatibility.
 
 ### 2.5 Capital Gains Tax
 

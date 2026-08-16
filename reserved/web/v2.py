@@ -76,7 +76,7 @@ from reserved.providers.banking.ingestion import (
 )
 from reserved.providers.banking.yapily import YapilyClient
 from reserved.services.dashboard import build_dashboard, DEFAULT_PROFILE
-from reserved.tax_year_context import configured_tax_year, resolve_tax_year
+from reserved.tax_year_context import UnsupportedTaxYear, configured_tax_year, resolve_tax_year
 
 log = logging.getLogger(__name__)
 
@@ -1021,7 +1021,12 @@ def optimise_calculate():
 @require_auth
 @csrf.exempt
 def optimise_save_scenario():
-    """Save a pension-comparison scenario for the current user."""
+    """Save a pension-comparison scenario for the current user.
+
+    The applicable tax year is required and validated fail-closed: a missing,
+    malformed, unsupported or contradictory year is rejected rather than silently
+    replaced with the currently configured year.
+    """
     from reserved.database import save_optimise_scenario
 
     data     = request.get_json(silent=True) or {}
@@ -1030,7 +1035,20 @@ def optimise_save_scenario():
     outputs  = data.get("outputs") or {}
     opp_id   = str(data.get("opportunity_id") or "unknown")
 
-    row_id = save_optimise_scenario(g.user_id, opp_id, inputs, outputs, label=label)
+    tax_year = data.get("tax_year")
+    if tax_year is None:
+        return jsonify({"ok": False, "error": "A tax year is required to save a scenario."}), 400
+    try:
+        resolved_year = resolve_tax_year(
+            result_tax_year=tax_year,
+            context_tax_year=configured_tax_year(),
+        )
+    except UnsupportedTaxYear as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    row_id = save_optimise_scenario(
+        g.user_id, opp_id, inputs, outputs, label=label, tax_year=resolved_year
+    )
     return jsonify({"ok": True, "id": row_id})
 
 

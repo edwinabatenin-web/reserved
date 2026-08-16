@@ -88,6 +88,77 @@ def current_production_source_files() -> dict[str, str]:
     return files
 
 
+def _validate_pytest_component(comp: dict, cid: str, errors: list[str]) -> None:
+    """Semantically validate a mandatory pytest component result.
+
+    Syntactic completeness (counts are non-negative ints and sum to
+    ``collected``) is necessary but not sufficient: a component must not be
+    reported ``pass`` unless its own exit code and counts corroborate it.
+    """
+    counts = (comp.get("passed"), comp.get("failed"), comp.get("errors"), comp.get("skipped"))
+    if not all(isinstance(x, int) and x >= 0 for x in counts):
+        errors.append(f"component {cid!r} has invalid counts")
+        return
+    if comp.get("collected") != sum(counts):
+        errors.append(f"component {cid!r} counts are incoherent")
+        return
+
+    if comp.get("status") != "pass":
+        return
+
+    if comp.get("exit_code") != 0:
+        errors.append(f"component {cid!r} passes with exit_code={comp.get('exit_code')!r}")
+    if comp.get("zero_test") is not False:
+        errors.append(f"component {cid!r} passes with zero_test={comp.get('zero_test')!r}")
+    if comp.get("collected") <= 0:
+        errors.append(f"component {cid!r} passes with no collected tests")
+    if comp.get("passed", 0) <= 0:
+        errors.append(f"component {cid!r} passes with zero tests")
+    if comp.get("failed", 0) != 0:
+        errors.append(f"component {cid!r} passes with {comp.get('failed')} failed tests")
+    if comp.get("errors", 0) != 0:
+        errors.append(f"component {cid!r} passes with {comp.get('errors')} errored tests")
+
+
+def _validate_rw3_component(comp: dict, cid: str, errors: list[str]) -> None:
+    """Semantically validate the mandatory RW3 component result.
+
+    A ``pass`` is valid only when the underlying gate actually passed with a
+    complete classification and a non-empty, internally coherent mandatory
+    inventory.  A pass that hides ``gate_passed=False``, an incomplete
+    classification, unresolved non-executable/pending evidence or an empty
+    mandatory set is contradictory and must be rejected.
+    """
+    gate_passed = comp.get("gate_passed")
+    classification_complete = comp.get("classification_complete")
+    if not isinstance(gate_passed, bool):
+        errors.append(f"component {cid!r} has non-boolean gate_passed")
+    if not isinstance(classification_complete, bool):
+        errors.append(f"component {cid!r} has non-boolean classification_complete")
+
+    counts = comp.get("classification_counts")
+    if not isinstance(counts, dict):
+        errors.append(f"component {cid!r} has no classification_counts")
+    else:
+        mandatory = counts.get("mandatory_executable")
+        if not isinstance(mandatory, int) or mandatory <= 0:
+            errors.append(f"component {cid!r} has no mandatory executable fixtures")
+        for key in ("pending_unsupported_fail_closed", "applicable_not_executable",
+                    "pending_founder_decision"):
+            val = counts.get(key, 0)
+            if not isinstance(val, int) or val < 0:
+                errors.append(f"component {cid!r} has invalid {key} count")
+
+    if comp.get("status") == "pass":
+        if gate_passed is not True:
+            errors.append(f"component {cid!r} passes with gate_passed={gate_passed!r}")
+        if classification_complete is not True:
+            errors.append(f"component {cid!r} passes with incomplete classification")
+        if isinstance(counts, dict):
+            if counts.get("applicable_not_executable", 0) != 0 or counts.get("pending_founder_decision", 0) != 0:
+                errors.append(f"component {cid!r} passes with unresolved pending/non-executable classification")
+
+
 def _validate_canonical_result(result: dict) -> list[str]:
     """Independently verify the complete canonical result (fail-closed).
 
@@ -167,22 +238,15 @@ def _validate_canonical_result(result: dict) -> list[str]:
             comp = by_id.get(canonical["id"])
             if comp is None:
                 continue
+            cid = canonical["id"]
             if comp.get("kind") != canonical["kind"]:
-                errors.append(f"component {canonical['id']!r} result kind mismatch")
+                errors.append(f"component {cid!r} result kind mismatch")
             if comp.get("status") not in ("pass", "fail"):
-                errors.append(f"component {canonical['id']!r} has no valid status")
+                errors.append(f"component {cid!r} has no valid status")
             if canonical["kind"] == "pytest":
-                counts = (comp.get("passed"), comp.get("failed"),
-                          comp.get("errors"), comp.get("skipped"))
-                if not all(isinstance(x, int) and x >= 0 for x in counts):
-                    errors.append(f"component {canonical['id']!r} has invalid counts")
-                elif comp.get("collected") != sum(counts):
-                    errors.append(f"component {canonical['id']!r} counts are incoherent")
-                if comp.get("status") == "pass" and (comp.get("passed", 0) <= 0):
-                    errors.append(f"component {canonical['id']!r} passes with zero tests")
+                _validate_pytest_component(comp, cid, errors)
             else:  # rw3
-                if "gate_passed" not in comp:
-                    errors.append(f"component {canonical['id']!r} has no gate_passed")
+                _validate_rw3_component(comp, cid, errors)
 
     # A3: the overall decision must follow from the complete component results.
     overall = result.get("overall_decision")
@@ -198,6 +262,13 @@ def _validate_canonical_result(result: dict) -> list[str]:
             errors.append("fail decision with non-failing status")
         if overall == "pass" and result.get("status") != NARROW_GATE_PASSED:
             errors.append("pass decision with non-passing status")
+
+    # A6: a passing result must carry no failure evidence.  ``failure_reasons``
+    # is the canonical failure inventory; any non-empty value alongside a pass is
+    # contradictory evidence and must be rejected rather than trusted.
+    failure_reasons = result.get("failure_reasons")
+    if overall == "pass" and isinstance(failure_reasons, list) and failure_reasons:
+        errors.append("overall pass with non-empty failure_reasons")
 
     # A5: complete, fail-closed October blocker inventory.
     octo = result.get("october_launch_candidate")

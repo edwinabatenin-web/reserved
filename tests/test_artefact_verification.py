@@ -610,3 +610,108 @@ def test_load_engine_switch_leaves_only_active_finder(tmp_path, monkeypatch):
     assert art._FINDER is not finder_a
     assert finder_a not in sys.meta_path
     assert art._FINDER in sys.meta_path
+
+
+# ── F1: cached return must be bound to the complete verified module graph ─────
+
+def test_cached_load_rejects_replaced_submodule(built, monkeypatch):
+    import types
+
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+    importlib.import_module("reserved_engine.tax_config")
+
+    # Replace a verified submodule with a foreign fake after a successful load.
+    fake = types.ModuleType("reserved_engine.tax_config")
+    fake.FAKE = True
+    sys.modules["reserved_engine.tax_config"] = fake
+
+    # The cached path must detect the substituted submodule and re-import it
+    # from the verified snapshot rather than returning alongside the fake.
+    load_engine()
+    assert not hasattr(sys.modules["reserved_engine.tax_config"], "FAKE")
+    assert isinstance(sys.modules["reserved_engine.tax_config"].__loader__, _VerifiedLoader)
+
+
+def test_cached_load_rejects_detached_top_level_module(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    module, _ = load_engine()
+    assert module is sys.modules["reserved_engine"]
+
+    # Detach the top-level package from the import system without touching the
+    # loader cache: the cached object is now unusable and must not be returned.
+    del sys.modules["reserved_engine"]
+
+    module2, _ = load_engine()
+    assert module2 is sys.modules["reserved_engine"]
+    assert isinstance(module2.__loader__, _VerifiedLoader)
+
+
+def test_cached_load_rejects_detached_finder(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+
+    # Remove the verified finder from sys.meta_path (simulate detachment).
+    if art._FINDER in sys.meta_path:
+        sys.meta_path.remove(art._FINDER)
+
+    module, _ = load_engine()
+    assert isinstance(module.__loader__, _VerifiedLoader)
+    assert art._FINDER is not None and art._FINDER in sys.meta_path
+
+
+def test_cached_load_rejects_mismatched_loader(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+    importlib.import_module("reserved_engine.tax_config")
+
+    # Replace the loader on a verified submodule with a foreign object.
+    sys.modules["reserved_engine.tax_config"].__loader__ = object()
+
+    load_engine()
+    sub = sys.modules["reserved_engine.tax_config"]
+    assert isinstance(sub.__loader__, _VerifiedLoader)
+
+
+def _build_failing(tmp_path, marker):
+    src = tmp_path / f"src_{marker}"
+    src.mkdir()
+    for py in (ROOT / "reserved" / "engines").glob("*.py"):
+        (src / py.name).write_text(py.read_text())
+    (src / "CHANGELOG.md").write_text((ROOT / "reserved" / "engines" / "CHANGELOG.md").read_text())
+    (src / "__init__.py").write_text(
+        (src / "__init__.py").read_text() + f"\nMARK = '{marker}'\nraise RuntimeError('boom')\n"
+    )
+    out = tmp_path / marker / "reserved_engine"
+    BUILD.build(src, out, allow_dirty=True)
+    return out
+
+
+def test_failed_switch_to_b_then_reload_a(tmp_path, monkeypatch):
+    out_a = _build_marked(tmp_path, "a")
+    out_b = _build_failing(tmp_path, "b")
+
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_a))
+    mod_a, _ = load_engine()
+    assert mod_a.MARK == "a"
+
+    # Switching to B purges A's graph and then fails during import execution.
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_b))
+    with pytest.raises(RuntimeError, match="boom"):
+        load_engine()
+
+    # Requesting A again must re-import A, not return the now-detached cached A.
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_a))
+    mod_a2, _ = load_engine()
+    assert mod_a2.MARK == "a"
+    assert isinstance(mod_a2.__loader__, _VerifiedLoader)
+    assert art._FINDER is not None and art._FINDER in sys.meta_path

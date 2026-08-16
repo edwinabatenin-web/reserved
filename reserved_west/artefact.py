@@ -268,18 +268,24 @@ _FINDER: _VerifiedFinder | None = None
 
 
 def _purge_reserved_engine() -> None:
-    """Remove every ``reserved_engine`` module and the active verified finder."""
-    global _FINDER
+    """Remove every ``reserved_engine`` module and the active verified finder.
+
+    Also invalidates the shared cache: after a purge (whether for a switch, a
+    failed import, or post-import verification), the previously cached module
+    graph is no longer usable and must never be returned as trusted.
+    """
+    global _FINDER, _LOADED
     for name in [name for name in sys.modules if name == "reserved_engine" or name.startswith("reserved_engine.")]:
         del sys.modules[name]
     if _FINDER is not None:
         if _FINDER in sys.meta_path:
             sys.meta_path.remove(_FINDER)
         _FINDER = None
+    _LOADED = None
 
 
-def _verify_loaded_modules(module_map: dict[str, tuple]) -> None:
-    """Ensure every loaded ``reserved_engine`` module came from the verified snapshot.
+def _loaded_offenders(module_map: dict[str, tuple]) -> list[str]:
+    """Return descriptions of loaded ``reserved_engine`` modules not from the verified snapshot.
 
     This checks the module's loader identity (and that the module name is
     manifested), which is stronger than a filename check: a foreign, previously
@@ -295,6 +301,12 @@ def _verify_loaded_modules(module_map: dict[str, tuple]) -> None:
             offenders.append(f"{name} -> {type(loader).__name__}")
         elif name not in module_map:
             offenders.append(f"{name} -> unmanifested")
+    return offenders
+
+
+def _verify_loaded_modules(module_map: dict[str, tuple]) -> None:
+    """Raise unless every loaded ``reserved_engine`` module came from the verified snapshot."""
+    offenders = _loaded_offenders(module_map)
     if offenders:
         raise RuntimeError(
             "reserved_engine module(s) not loaded from the verified snapshot: "
@@ -351,11 +363,13 @@ def load_engine(*, rebuild: bool = False) -> tuple[object, dict]:
     # Reading + verifying the artefact re-verifies content on every call, so a
     # changed, added or removed filesystem file fails here even on a repeat load.
     prov, buffers = _read_verified_artefact(target)
+    module_map = _build_module_map(buffers, target)
 
     if (
         _LOADED is not None
         and _LOADED["path"] == target
         and _LOADED["content_hash"] == prov["content_hash"]
+        and _cached_module_graph_is_sound(module_map, _LOADED["module"])
     ):
         return _LOADED["module"], _LOADED["prov"]
 
@@ -367,8 +381,29 @@ def load_engine(*, rebuild: bool = False) -> tuple[object, dict]:
         "content_hash": prov["content_hash"],
         "module": module,
         "prov": prov,
+        "module_map": module_map,
     }
     return module, prov
+
+
+def _cached_module_graph_is_sound(module_map: dict[str, tuple], cached_module: object) -> bool:
+    """Return ``True`` only if the complete active import state is bound to the verified snapshot.
+
+    A cached return is permitted only when the top-level package is still the
+    one the cache recorded, the verified-artefact finder is still installed and
+    still serves the same manifested module map, and every loaded
+    ``reserved_engine`` submodule still carries a verified loader.  Otherwise the
+    graph may have been substituted, detached or purged by a prior failed switch,
+    and the cache must not return it as trusted.
+    """
+    global _FINDER
+    if _FINDER is None or _FINDER not in sys.meta_path:
+        return False
+    if _FINDER._modules != module_map:
+        return False
+    if sys.modules.get("reserved_engine") is not cached_module:
+        return False
+    return _loaded_offenders(module_map) == []
 
 
 def _reject_new_bytecode(target: Path) -> None:

@@ -35,19 +35,41 @@ def is_supported_tax_year(year: Any) -> bool:
     return isinstance(year, str) and year in tax_config.SUPPORTED_TAX_YEARS
 
 
+class UnsupportedTaxYear(ValueError):
+    """A supplied tax year is malformed, unsupported or contradictory."""
+
+
 def resolve_tax_year(
     *,
     result_tax_year: Any = None,
     context_tax_year: Any = None,
 ) -> str | None:
-    """Resolve the applicable tax year, preferring the result contract.
+    """Resolve the applicable tax year, failing closed on invalid explicit input.
 
-    Returns ``None`` when no supported year can be determined.  The caller is
-    responsible for surfacing that as an unavailable state rather than
+    * ``result_tax_year is None`` — genuinely absent: the approved context year
+      may be used (returned when supported, otherwise ``None``).
+    * present and supported — used, subject to consistency with a supported
+      context year.  A valid but *different* context year is contradictory and
+      fails closed.
+    * present but malformed or unsupported — fails closed (``UnsupportedTaxYear``).
+      An explicit invalid year is never treated as merely absent.
+
+    ``None`` is reserved exclusively for the genuinely-unavailable state; any
+    other outcome the caller must surface as unavailable rather than silently
     substituting a literal year.
     """
-    if is_supported_tax_year(result_tax_year):
-        return result_tax_year
-    if is_supported_tax_year(context_tax_year):
-        return context_tax_year
-    return None
+    if result_tax_year is None:
+        return context_tax_year if is_supported_tax_year(context_tax_year) else None
+
+    if not is_supported_tax_year(result_tax_year):
+        raise UnsupportedTaxYear(
+            f"unsupported or malformed result tax year: {result_tax_year!r}"
+        )
+
+    if is_supported_tax_year(context_tax_year) and context_tax_year != result_tax_year:
+        raise UnsupportedTaxYear(
+            f"result tax year {result_tax_year!r} conflicts with "
+            f"context tax year {context_tax_year!r}"
+        )
+
+    return result_tax_year
