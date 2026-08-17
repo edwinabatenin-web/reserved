@@ -1,22 +1,34 @@
-# HICBC partner support — post-v1 capability
+# HICBC partner support and linked accounts — October v1 integration package
 
-Status: authorised post-v1 work (founder decision 17 August 2026).  This is
-**not** part of the October v1 supported tax total, reserve/set-aside guidance,
-payment initiation, filing or launch claims.
+Status: authorised October v1 launch target (founder decision 17 August 2026),
+feature-gated and not yet launch-ready.  HICBC may contribute to a customer
+total, reserve or payment figure only where its evidence is adequate for that
+purpose and the applicable privacy, retention, legal, security and
+calculation-assurance gates have passed.  Neither the manual nor the linked
+route may be activated or counted as launch-ready yet.
 
 ## Purpose
 
-Improve the accuracy of the High Income Child Benefit Charge (HICBC)
-responsibility determination where partner information is available, while:
+Determine High Income Child Benefit Charge (HICBC) responsibility using partner
+information, while:
 
 - calculating HICBC from each individual's adjusted net income (ANI), never a
   combined household income;
 - providing a bounded manual partner-estimate journey;
-- defining a narrow privacy-preserving interface for a future linked-partner
-  source;
+- providing a privacy-preserving, mutually consented linked-account route;
 - preserving material uncertainty rather than inventing certainty;
 - never disclosing or implying a linked partner's precise ANI, income band,
   bonus, relative salary or calculated personal tax.
+
+## Feature gate
+
+Both the manual and linked routes live behind a single explicit feature gate.
+`reserved/config.py` reads `HICBC_ENABLED`; only an explicit true value
+(`1`/`true`/`yes`/`on`/`enabled`, case-insensitive) enables registration of the
+`hicbc` blueprint in `create_app()`.  Absent, empty, malformed or false values
+leave the feature disabled and the routes return the normal unavailable/404
+behaviour.  The gate is never inferred from database rows, credentials, the
+environment name or any other feature flag.
 
 ## Supported tax years and authority
 
@@ -75,6 +87,12 @@ The minimum information necessary is collected.  The partner's name, email,
 National Insurance number, employer, bank information and underlying income
 breakdown are never asked for or persisted.
 
+A responsibility transition is surfaced as a neutral, server-derived, one-shot
+message ("Your household tax position has changed.") stored in the signed
+session and popped on read.  It is never driven by a customer-supplied query
+parameter, so a stale or replayed parameter cannot fabricate a change
+notification.
+
 ## Uncertainty and freshness
 
 Manual partner estimates retain provenance: a stable evidence ID, source kind,
@@ -86,31 +104,83 @@ source, completeness and confirmation state are preserved so a versioned
 freshness policy can be introduced later.  Zero, unknown, omitted and
 not-applicable remain distinct.
 
-## Privacy and data retention
+## Linked-account consent
 
-`reserved/database.py` persists one `hicbc_estimates` row per
-`(user_id, tax_year)`.  Money/ANI values are stored as canonical Decimal strings
-(TEXT), never binary floating point.  Reads and writes are scoped to the
-authenticated user; there is no cross-user access.  State-changing requests are
-CSRF-protected.  Raw partner values are never returned in the customer JSON view
-or rendered in the result section, and are not logged.  The privacy notice and
-retention schedule require review before production activation.
+`reserved/database.py` adds two HICBC-only tables, `hicbc_links` and
+`hicbc_link_invitations` (schema version 7).  The flow is:
 
-## Future linked-partner hook
+1. A signed-in user creates a single-use invitation.  Only the SHA-256 hash of a
+   high-entropy token is stored; the raw token is returned to the creator once
+   for out-of-band sharing.
+2. The other user accepts the invitation while signed in to their own account.
+   Acceptance establishes (or re-activates after revocation) one normalised,
+   active `hicbc_links` row for the pair and tax year.
+3. Either participant may revoke/unlink at any time; the row is retained as
+   minimal audit evidence (`status='revoked'`) and never used again for
+   cross-account access.
 
-`reserved/engines/hicbc_partner.py` defines `PartnerEvidence` (source-neutral)
-and a `LinkedPartnerEvidenceProvider` protocol so a future authorised linked
-source can supply privacy-minimised, provenance-bearing comparison evidence
-without exposing the other user's raw financial data.  A synthetic provider
-proves the interface and privacy boundary.  No account linking, invitations,
-discovery, consent screens or cross-account database access are implemented.
+Consent is mutual, purpose-limited to `hicbc_responsibility`, short-lived and
+single-use.  Self-links, duplicate active links, expired tokens and invalid
+tokens all fail closed.  No partner financial value is stored in a link row; the
+linked partner's ANI is derived from their own profile at read time and held
+only inside the internal comparison.
 
-## Explicitly not built / remaining approvals
+### Manual vs linked evidence
 
-- account linking, partner discovery, invitations, consent screens;
-- relationship history, split-year and multiple-partner cases;
-- automatic staleness cut-offs;
-- production activation of the manual path (privacy notice, retention and
-  legal review outstanding);
-- any inclusion of HICBC in v1 totals, reserve guidance, payments or launch
-  claims.
+Neither manual nor linked evidence has automatic precedence.  Where both exist
+the engine merges them into a range spanning both sources (or a point when they
+agree exactly) and retains both provenance records; a material disagreement
+degrades responsibility to a bounded/ambiguous state rather than silently
+selecting one source.  Where only linked evidence exists, an active link affirms
+the partner and the partner's own ANI supplies the comparison.
+
+## Privacy, retention and deletion
+
+- `hicbc_estimates` persists one manual row per `(user_id, tax_year)`; money/ANI
+  values are stored as canonical Decimal strings (TEXT), never binary floating
+  point.
+- `hicbc_links` and `hicbc_link_invitations` store identity, consent state,
+  purpose, relationship-period facts and timestamps only — no partner financial
+  value.
+- Reads and writes are scoped to the authenticated user; cross-account access is
+  available only through an active, mutually consented link and only for the
+  internal comparison.
+- State-changing requests are CSRF-protected; sensitive responses are no-store.
+- Raw partner values are never returned in the customer JSON view, rendered in
+  the result section, or logged.
+- `delete_all_hicbc_estimates_for_user(user_id)` and
+  `delete_all_hicbc_links_for_user(user_id)` are the repository deletion hooks
+  that a later account-deletion workflow must invoke.
+
+The manual route's privacy notice, lawful basis and retention schedule, and the
+linked route's consent and cross-account authorisation/security evidence, still
+require independent privacy/retention/legal review before production
+activation.
+
+## Purpose-aware integration boundary
+
+`reserved/engines/hicbc_integration.py` gates an already computed
+`HicbcResponsibilityResult` by customer purpose:
+
+- `informational_rule`: a qualified point or bounded range may be shown, never
+  as an actionable amount;
+- `personalised_estimate`: HICBC enters the estimated total only when
+  responsibility and Child Benefit evidence are adequate (determinate, no
+  material uncertainty);
+- `reserve_guidance`: the same determinate requirement, never when the effect is
+  indeterminable or responsibility is ambiguous;
+- `payment`: never actionable in this package — payment integration has no
+  independent approval yet.
+
+An ambiguous, uncertain or insufficient result can therefore never be promoted
+into an actionable total, reserve or payment figure.
+
+## Remaining approvals / explicitly not built
+
+- production activation of the manual path (privacy notice, retention and legal
+  review outstanding);
+- production activation of the linked path (consent, cross-account
+  authorisation, privacy and security review outstanding);
+- independent assurance of HICBC annual-total/reserve/payment integration;
+- HICBC payment initiation (PIS/VRP) integration — not connected here;
+- relationship history, split-year and multiple-partner cases.

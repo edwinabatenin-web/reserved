@@ -1,8 +1,20 @@
 # Founder decisions
 
+This document is the governing product and scope authority for Reserved. Where
+it conflicts with an older roadmap, handover, implementation note or dormant
+code, this document prevails. Planning and implementation agents must read it
+before starting work, must flag genuine conflicts, and must not infer a change
+to a founder decision from stale documentation. Changes to these decisions must
+be recorded here as explicit founder decisions.
+
 ## Resolved: v1 tax scope (12 August 2026)
 
-V1 covers England, Wales and Northern Ireland and includes PAYE/multiple employment, sole trade, dividends, savings, UK and foreign property, student loans and bounded internal MTD readiness. HICBC, Scottish Income Tax, Capital Gains Tax and full MTD filing are post-v1. See `docs/V1_TAX_SCOPE.md`. This scope was amended by the HICBC decision below on 15 August 2026.
+V1 covers England, Wales and Northern Ireland and includes PAYE/multiple
+employment, sole trade, dividends, savings, UK and foreign property, student
+loans, HICBC and bounded internal MTD readiness. Scottish Income Tax, Capital
+Gains Tax, full MTD filing, accounting write-back, VAT expansion and Corporation
+Tax remain outside v1. See `docs/V1_TAX_SCOPE.md`. This scope was amended by the
+HICBC decisions below on 15 and 17 August 2026.
 
 This is no longer an open decision. Any change should be recorded as a new founder scope decision rather than inferred from dormant code.
 
@@ -22,27 +34,42 @@ check-ins, evidence requests, transfers and history. Technical or statutory
 terms may remain in internal contracts where necessary, but must not displace
 clear customer language.
 
-## Resolved: HICBC outside v1 customer scope (15 August 2026)
+## Superseded: HICBC outside v1 customer scope (15 August 2026)
 
-HICBC is outside the October v1 customer scope. It must not be included in a
-customer's estimated total tax, amount that may still need covering, suggested
-additional amount to put aside, personalised warnings or launch claims.
+The 15 August decision to keep HICBC outside the October v1 customer scope was
+superseded by the founder decision of 17 August below. It is retained here only
+to make the scope change explicit and must not be used for implementation.
 
-Existing HICBC code, fixtures and assurance documents may remain as isolated
-post-v1 work, but must not contribute to a supported-customer calculation or an
-overall launch pass. Customer results should identify HICBC as an excluded area
-where that disclosure is relevant, without attempting to infer liability from
-the customer's income alone. Unknown partner and Child Benefit facts must never
-be silently treated as zero.
+Unknown partner and Child Benefit facts must still never be silently treated as
+zero.
 
-## Resolved: HICBC partner support is authorised post-v1 work (17 August 2026)
+## Resolved: HICBC is an October v1 launch target (17 August 2026)
 
-Reserved may build bounded HICBC **partner-support** capability that improves
-the accuracy of the responsibility determination where partner information is
-available. This authorisation is explicitly **post-v1**: it does not place HICBC
-inside the October v1 supported tax total, reserve or set-aside guidance, payment
-initiation, filing, launch-readiness claims, or the existing Personal Allowance
-Explore-your-options result.
+HICBC is included in the intended October v1 customer scope. Reserved should
+calculate it from the customer's own information plus the partner information
+needed to determine responsibility. The single-user HICBC logic has already been
+considered in depth, and a bounded manual partner-estimate capability has been
+implemented.
+
+October should support two routes for the otherwise missing partner evidence:
+
+1. A solo user may provide an estimate of their partner's ANI, including a
+   bounded range where income such as a bonus is uncertain. Reserved must state
+   clearly that the result depends on information supplied by the user and may
+   change when the partner's actual ANI is known.
+2. Two Reserved users may expressly link their accounts for the limited purpose
+   of a privacy-preserving HICBC determination. Reserved may use the minimum
+   HICBC-relevant information needed behind the scenes, but must not reveal or
+   imply either partner's precise ANI, income band, bonus, relative salary or
+   calculated personal tax to the other.
+
+Where sufficiently supported by assured evidence, HICBC may contribute to the
+customer's estimated total tax, amount still to cover, set-aside recommendation
+and related payment journey. Where partner or Child Benefit evidence is missing,
+stale, materially uncertain or contradictory, Reserved must preserve that
+uncertainty, request the smallest useful additional fact, show a bounded result
+where supportable, or exclude HICBC from the actionable total with a clear
+explanation. It must not manufacture a point estimate or payment recommendation.
 
 The work is bounded to:
 
@@ -50,16 +77,16 @@ The work is bounded to:
   combined household income;
 - a manual partner-estimate journey that collects at most a partner ANI point or
   low/high range plus an observation/confirmation date;
-- a narrow, source-neutral, privacy-preserving interface for a future linked
-  partner source (no account linking, invitations, discovery or cross-account
-  database access is built now);
+- a narrow, source-neutral, privacy-preserving interface for linked partner
+  evidence, with consent, unlinking, relationship-period and access boundaries;
 - preserving material uncertainty rather than inventing certainty.
 
 The following prohibitions remain in force and are not overridden by this
 decision:
 
-- HICBC must not enter a v1 customer tax total, reserve amount, set-aside
-  recommendation, payment flow, filing output or launch claim;
+- HICBC must not enter a customer tax total, reserve amount, set-aside
+  recommendation or payment flow unless its evidence is adequate for that
+  purpose and all applicable assurance gates have passed;
 - a linked partner's precise ANI, income band, bonus, relative salary or
   calculated personal tax must never be disclosed or implied to the first user;
 - unknown partner or Child Benefit facts must not be treated as zero;
@@ -72,9 +99,15 @@ authenticated owner scoping on every read and write, no cross-user access,
 server-side input validation, CSRF protection on state-changing requests,
 no-store cache behaviour, deletion and replacement, no raw partner values in
 logs/analytics/notifications, and a privacy-notice and retention review before
-production activation. The HICBC partner feature must not be counted as an
-October launch-supported family unless a separate founder scope decision
-authorises that change.
+production activation.
+
+Linked accounts additionally require explicit consent from both users, strict
+purpose limitation, revocation and unlinking, safe handling of relationship
+changes and periods, prevention of direct and inferential disclosure, and
+independent cross-account authorisation and privacy testing. Both the manual and
+linked routes are October launch targets, but neither may be activated or counted
+as launch-ready until its applicable privacy, retention, legal, security,
+customer-evidence and calculation-assurance gates have passed.
 
 ## Resolved: PAYE current-position proposition for v1 (15 August 2026)
 
@@ -123,33 +156,52 @@ not approval of the three pending arithmetic fixtures.
 
 ## Resolved: money set-aside scope for v1 (15 August 2026)
 
-V1 includes customer-authorised payment initiation (PIS) from the customer's
-current account to a designated account owned by that customer. Reserved may
-calculate and explain a recommended amount, and the customer may accept, edit or
-skip it. No money moves without the customer's explicit approval and bank
-authentication. Reserved does not hold customer funds.
+At £29 per month, the intended proposition is not calculate-and-track only.
+Helping a customer separate money into a savings account owned by that customer,
+potentially an interest-bearing account, is part of the intended value. Reserved
+does not hold customer funds.
+
+Sweeping VRP is intended for v1 and the October launch scope, subject to Yapily
+feasibility and bank coverage, same-owner destination controls, legal and
+regulatory confirmation, acceptable commercials, exact consent and status
+handling, security review and launch assurance. No money moves without the
+customer's authorisation and the authentication or consent required by the
+customer's bank.
+
+Yapily's latest clarification is that VRP and Single Payments sit under the same
+Yapily Payments product. Reserved will support both Single Payments/PIS and
+sweeping VRP where available, and the customer must choose the payment method.
+Single Payment/PIS is the default and primary introductory journey. Sweeping VRP
+is an expressly opt-in automation option and must never be enabled, preselected
+or implied by default. Both journeys remain subject to Yapily coverage,
+same-owner destination controls, consent, legal and regulatory confirmation,
+security review and payment assurance.
+
+The quoted commercial information does not identify a separate monthly licence
+price for VRP and Single Payments, but any distinct transaction, volume, mandate
+or product charges remain to be confirmed against the draft agreement. The
+provider boundary must remain portable, and neither Stripe Connect nor any other
+historical provider option is the selected v1 architecture unless a later
+founder decision says so.
 
 Customers may choose a routine review cadence, including after income arrives,
 weekly, fortnightly, monthly after payday or on a chosen date, material events
 only, or manual review. A material income change may prompt an exceptional
 review independently of that routine cadence.
 
-Sweeping VRP and other automatic transfers are post-v1 candidates. They should
-be reconsidered using observed PIS usage, customer feedback, bank coverage and
-Yapily's commercial and regulatory position. The provider boundary should
-remain portable so the underlying journey can later support European payment
-rails, including SEPA, without coupling tax logic to a UK-only transfer method.
-
-Implementation remains conditional on acceptable Yapily commercials, exact
-consent and status handling, same-owner destination controls, security review
-and launch assurance.
+The customer may accept, edit or skip a recommended amount. Customers may also
+choose a routine review cadence, but a cadence or review prompt must not be
+misrepresented as consent for a payment. The underlying journey should be able
+to support later European payment rails, including SEPA, without coupling tax
+logic to a UK-only transfer method.
 
 ## Resolved: October external-integration boundary (15 August 2026)
 
-The October scope includes live Yapily account-information access and
-customer-authorised PIS, supported HMRC connections for eligible customers, a
-usable payslip/manual PAYE fallback, and live read-only integrations with
-FreeAgent, Xero and QuickBooks for relevant business-income customers.
+The October scope includes live Yapily account-information access and the
+conditionally approved Yapily Payments journeys described above, supported HMRC
+connections for eligible customers, a usable payslip/manual PAYE fallback, and
+live read-only integrations with FreeAgent, Xero and QuickBooks for relevant
+business-income customers.
 
 The accounting integrations should authenticate securely, allow selection of
 the correct business, import the information needed for the supported tax
@@ -158,8 +210,9 @@ identify incomplete or questionable information, and disconnect cleanly. They
 must feed the shared tax-estimation contracts rather than implement separate
 provider-specific tax calculations.
 
-Accounting write-back, bookkeeping correction, invoice creation, tax-return
-submission, full MTD filing and automatic VRP are not required for October.
+FreeAgent, Xero and QuickBooks are October targets. Accounting write-back,
+bookkeeping correction, invoice creation, tax-return submission, full MTD
+filing, VAT expansion and Corporation Tax are not required for October.
 PAYE-only users should not be asked to connect accounting software. A temporary
 provider outage should degrade safely and offer refresh or an appropriate
 manual fallback rather than disable Reserved as a whole.
@@ -402,13 +455,18 @@ can safely collect and reconcile supported customer information, calculate the
 supported full-tax-year position, explain the result, recommend an additional
 amount to put aside and complete any customer-approved payment initiation.
 
+October remains the founder's launch target. A staged or private beta may be an
+operational step toward launch, but must not silently redefine "October launch"
+as a late-October private beta. Any change to the launch target or the meaning
+of launch requires an explicit founder decision recorded in this document.
+
 The supported calculation must include PAYE and multiple employments,
 sole-trader income, UK property income, foreign property income, dividend
-income, savings interest, supported pension treatment and student-loan
-treatment. It must distinguish tax already taken from pay, tax expected to be
-taken from future pay and money the customer has already put aside. HICBC,
-Scottish Income Tax and Capital Gains Tax are outside the October calculation,
-reserve recommendation and launch claims.
+income, savings interest, supported pension treatment, student-loan treatment
+and HICBC. It must distinguish tax already taken from pay, tax expected to be
+taken from future pay and money the customer has already put aside. Scottish
+Income Tax and Capital Gains Tax are outside the October calculation, reserve
+recommendation and launch claims.
 
 Every supported calculation area must have complete, independently derived and
 approved mandatory assurance coverage. Required RW3 fixtures must be present,
@@ -425,9 +483,9 @@ Possible overpayments must not be presented as confirmed refunds, and
 unsupported calculations must not generate reserve or payment recommendations.
 
 The required October customer journeys must be verified end to end using
-production-capable connections for Yapily account information and
-customer-approved PIS, supported HMRC APIs, payslip extraction and manual entry,
-FreeAgent, Xero and QuickBooks. Provider failures, expired consent, duplicate
+production-capable connections for Yapily account information and the approved
+VRP and/or Single Payments journey, supported HMRC APIs, payslip extraction and
+manual entry, FreeAgent, Xero and QuickBooks. Provider failures, expired consent, duplicate
 imports, uncertain payment status, disconnection and recovery must be tested as
 well as successful journeys. A provider outage may be an accepted limitation
 only where Reserved degrades safely, communicates clearly and offers an

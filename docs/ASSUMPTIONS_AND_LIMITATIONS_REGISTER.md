@@ -195,7 +195,7 @@ numerically unchanged.
 | Exclusion | Impact |
 |---|---|
 | Scottish income tax | Scottish taxpayers face different rates; engine uses England/Wales/NI rates |
-| High Income Child Benefit Charge (HICBC) | Post-v1; not included in any customer total, reserve, scenario or warning |
+| High Income Child Benefit Charge (HICBC) | October v1 launch target (founder decision 17 August 2026) but feature-gated and not launch-ready; contributes to a customer total, reserve or payment only when evidence is adequate for that purpose and gates pass |
 | Capital Gains Tax | Post-v1; engine does not compute CGT |
 | Full MTD filing | Post-v1; only a bounded readiness indication is in scope |
 | PAYE coding interactions | Estimates may differ from actual Self Assessment liability |
@@ -365,11 +365,11 @@ sufficient gross is available.
 - [x] Automated release gate passes with zero failures (root + artefact + parity + Explore-your-options suites; mandatory RW3 fixture gate 43/43)
 - [x] Assurance metadata and UI avoid absolute "verified" claims ("generated_on" + a purpose-specific gate status)
 - [x] "tax year" used for the annual period; stale "Extended basic-rate limit = £50,270" corrected
-- [x] HICBC isolated from customer-facing surfaces (post-v1); unknown partner/Child Benefit facts never silently treated as zero
+- [x] HICBC feature-gated behind an explicit `HICBC_ENABLED` flag (manual partner-estimate and linked-account routes); unknown partner/Child Benefit facts never silently treated as zero; raw partner values never exposed
 
 **Open items (future versions):**
 - [ ] Scottish income tax bands
-- [ ] HICBC customer integration (post-v1)
+- [ ] HICBC customer integration (gated; annual-total/reserve/payment assurance and privacy/retention/legal review outstanding)
 - [ ] Capital Gains Tax computation (post-v1)
 - [ ] Full MTD filing (post-v1)
 - [ ] VAT-registered trader reduction of the retained arithmetic remainder

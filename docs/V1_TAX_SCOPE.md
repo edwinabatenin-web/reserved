@@ -1,6 +1,6 @@
 # Reserved v1 tax scope
 
-Status: founder-confirmed 12 August 2026; HICBC scope amended 15 August 2026.
+Status: founder-confirmed 12 August 2026; HICBC scope amended 17 August 2026.
 
 ## Included in v1
 
@@ -11,22 +11,31 @@ Status: founder-confirmed 12 August 2026; HICBC scope amended 15 August 2026.
 - UK and foreign property income
 - student and postgraduate loan liability, reconciled with deductions evidenced to date
 - Making Tax Digital readiness
+- High Income Child Benefit Charge (HICBC), as an October v1 launch target gated
+  by the founder decisions of 17 August 2026 (see below and
+  `docs/HICBC_PARTNER_SUPPORT.md`)
 
 ## Explicitly outside v1
 
 - Scottish Income Tax (post-v1 Reserved West workstream)
 - Capital Gains Tax
-- High Income Child Benefit Charge (HICBC), including customer calculations,
-  reserve recommendations and personalised warnings
 - submission of full MTD returns
 
-Existing HICBC, Capital Gains and Scottish-tax code must not be treated as v1
-scope merely because it is present in the repository.
+Existing Capital Gains and Scottish-tax code must not be treated as v1 scope
+merely because it is present in the repository.
 
-On 17 August 2026 the founder authorised bounded post-v1 HICBC partner-support
-work (see `docs/HICBC_PARTNER_SUPPORT.md`). That authorisation does not change
-the v1 boundary: HICBC remains excluded from v1 customer totals, reserve or
-set-aside guidance, payments, filing and launch claims.
+On 17 August 2026 the founder brought HICBC inside the October v1 scope with two
+evidence routes: a manual partner-estimate journey and a privacy-preserving
+linked-account consent.  HICBC may contribute to a customer's estimated total
+tax, amount still to cover, set-aside recommendation and related payment journey
+only where its evidence is adequate for that purpose and all applicable
+assurance gates have passed.  Where partner or Child Benefit evidence is
+missing, stale, materially uncertain or contradictory, Reserved must preserve
+that uncertainty, request the smallest useful additional fact, show a bounded
+result where supportable, or exclude HICBC from the actionable total with a
+clear explanation.  Neither the manual nor the linked route may be activated or
+counted as launch-ready until its applicable privacy, retention, legal,
+security, customer-evidence and calculation-assurance gates have passed.
 
 ## Assurance status
 
