@@ -715,3 +715,225 @@ def test_failed_switch_to_b_then_reload_a(tmp_path, monkeypatch):
     assert mod_a2.MARK == "a"
     assert isinstance(mod_a2.__loader__, _VerifiedLoader)
     assert art._FINDER is not None and art._FINDER in sys.meta_path
+
+
+# ── G1: exact verified-snapshot identity (invariant 1 adversarial) ────────────
+# A cached engine may be returned only when every relevant module object, loader,
+# spec loader, finder and cached root belongs to the one active verified snapshot.
+
+
+def _rogue_loader(name, source=b"FAKE = True\n"):
+    """A superficially valid ``_VerifiedLoader`` bound to different bytes."""
+    return _VerifiedLoader(name, source, "<rogue>", art._SnapshotRegistry({}))
+
+
+def _fake_module(name, loader):
+    """A foreign module object named ``name`` carrying ``loader`` as loader/spec."""
+    import types
+
+    mod = types.ModuleType(name)
+    mod.FAKE = True
+    mod.__loader__ = loader
+    mod.__spec__ = importlib.util.spec_from_loader(name, loader)
+    return mod
+
+
+def test_import_registers_exact_module_and_loader_identity(built):
+    out, _ = built
+    prov, buffers = _read_verified_artefact(out)
+    module = _import_from_verified_buffers(out, prov, buffers)
+    registry = art._FINDER._registry
+    assert registry.module_for("reserved_engine") is module
+    assert module.__loader__ is registry.loader_for("reserved_engine")
+    assert module.__spec__.loader is registry.loader_for("reserved_engine")
+
+
+def test_cached_load_rejects_substituted_module_with_superficial_loader(built, monkeypatch):
+    # The original reproduction: a substituted module carrying a freshly built
+    # ``_VerifiedLoader`` with the correct name but different bytes must not survive.
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+    importlib.import_module("reserved_engine.tax_config")
+
+    rogue = _rogue_loader("reserved_engine.tax_config")
+    fake = _fake_module("reserved_engine.tax_config", rogue)
+    sys.modules["reserved_engine.tax_config"] = fake
+
+    load_engine()
+    sub = sys.modules["reserved_engine.tax_config"]
+    assert sub is not fake
+    assert not hasattr(sub, "FAKE")
+    assert isinstance(sub.__loader__, _VerifiedLoader)
+    assert sub.__loader__ is not rogue
+
+
+def test_cached_load_rejects_substituted_module_with_genuine_loader(built, monkeypatch):
+    # Carrying the genuine module's exact loader object is not enough: module-object
+    # identity must also match.
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+    importlib.import_module("reserved_engine.tax_config")
+    genuine_loader = sys.modules["reserved_engine.tax_config"].__loader__
+
+    fake = _fake_module("reserved_engine.tax_config", genuine_loader)
+    sys.modules["reserved_engine.tax_config"] = fake
+
+    load_engine()
+    assert not hasattr(sys.modules["reserved_engine.tax_config"], "FAKE")
+
+
+def test_cached_load_rejects_replacement_loader_on_genuine_module(built, monkeypatch):
+    # A genuine module object with a replacement loader must be rejected.
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+    importlib.import_module("reserved_engine.tax_config")
+    genuine = sys.modules["reserved_engine.tax_config"]
+
+    rogue = _rogue_loader("reserved_engine.tax_config")
+    genuine.__loader__ = rogue
+
+    load_engine()
+    sub = sys.modules["reserved_engine.tax_config"]
+    assert sub.__loader__ is not rogue
+    assert isinstance(sub.__loader__, _VerifiedLoader)
+
+
+def test_cached_load_rejects_loader_spec_disagreement(built, monkeypatch):
+    # ``__loader__`` genuine but ``__spec__.loader`` foreign must be rejected.
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+    importlib.import_module("reserved_engine.tax_config")
+    sub = sys.modules["reserved_engine.tax_config"]
+    sub.__spec__ = importlib.util.spec_from_loader("reserved_engine.tax_config", object())
+
+    load_engine()
+    sub = sys.modules["reserved_engine.tax_config"]
+    assert sub.__spec__.loader is sub.__loader__
+    assert isinstance(sub.__loader__, _VerifiedLoader)
+
+
+def test_cached_load_rejects_module_retained_from_previous_snapshot(tmp_path, monkeypatch):
+    # A stale module/loader from snapshot A re-inserted after switching to B must
+    # not be accepted on a cached load of B.
+    out_a = _build_marked(tmp_path, "a")
+    out_b = _build_marked(tmp_path, "b")
+
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_a))
+    mod_a, _ = load_engine()
+    stale_loader_a = mod_a.__loader__
+
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_b))
+    mod_b, _ = load_engine()
+    assert mod_b is not mod_a
+
+    sys.modules["reserved_engine"] = mod_a  # re-insert A's stale state
+
+    mod_b2, _ = load_engine()
+    assert mod_b2.MARK == "b"
+    assert sys.modules["reserved_engine"] is not mod_a
+    assert sys.modules["reserved_engine"].__loader__ is not stale_loader_a
+
+
+def test_cached_load_rejects_replaced_root_package(built, monkeypatch):
+    # Replacing the top-level package with a foreign object (even one carrying the
+    # genuine loader) must be rejected.
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    module, _ = load_engine()
+
+    fake = _fake_module("reserved_engine", module.__loader__)
+    sys.modules["reserved_engine"] = fake
+
+    module2, _ = load_engine()
+    assert not hasattr(module2, "FAKE")
+    assert sys.modules["reserved_engine"] is not fake
+
+
+def test_cached_load_rejects_reordered_finder(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+
+    sys.meta_path.remove(art._FINDER)
+    sys.meta_path.insert(1, art._FINDER)  # no longer first
+
+    module, _ = load_engine()
+    assert isinstance(module.__loader__, _VerifiedLoader)
+    assert sys.meta_path[0] is art._FINDER
+
+
+def test_cached_load_rejects_replaced_finder_with_other_verified_finder(built, monkeypatch):
+    # A different ``_VerifiedFinder`` installed at the front must be removed and the
+    # graph re-imported, never left to service a different snapshot.
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+
+    rogue_finder = art._VerifiedFinder(art._SnapshotRegistry({}))
+    sys.meta_path.insert(0, rogue_finder)
+
+    module, _ = load_engine()
+    assert isinstance(module.__loader__, _VerifiedLoader)
+    assert sys.meta_path[0] is art._FINDER
+    assert rogue_finder not in sys.meta_path
+
+
+def test_cached_root_invalidated_after_purge(tmp_path, monkeypatch):
+    out_a = _build_marked(tmp_path, "a")
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_a))
+    mod_a, _ = load_engine()
+    assert art._LOADED is not None
+
+    art._purge_reserved_engine()  # as happens after a failed switch/import
+    assert art._LOADED is None
+
+    mod_a2, _ = load_engine()
+    assert mod_a2.MARK == "a"
+    assert mod_a2 is not mod_a
+
+
+def test_load_engine_switch_leaves_no_surviving_a_state(tmp_path, monkeypatch):
+    out_a = _build_marked(tmp_path, "a")
+    out_b = _build_marked(tmp_path, "b")
+
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_a))
+    mod_a, _ = load_engine()
+    importlib.import_module("reserved_engine.income_tax")
+
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out_b))
+    mod_b, _ = load_engine()
+    assert mod_b is not mod_a
+
+    active_registry = art._FINDER._registry
+    for name, mod in list(sys.modules.items()):
+        if name == "reserved_engine" or name.startswith("reserved_engine."):
+            assert mod is not mod_a
+            assert mod.__loader__ is active_registry.loader_for(name)
+    verified_finders = [f for f in sys.meta_path if isinstance(f, art._VerifiedFinder)]
+    assert verified_finders == [art._FINDER]
+
+
+def test_lazy_import_then_cached_load_stays_sound(built, monkeypatch):
+    out, _ = built
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+    importlib.import_module("reserved_engine.optimise")  # genuine lazy import
+    module, _ = load_engine()  # cached path must accept the now-larger graph
+    assert isinstance(module.__loader__, _VerifiedLoader)
+    assert isinstance(sys.modules["reserved_engine.optimise"].__loader__, _VerifiedLoader)
+

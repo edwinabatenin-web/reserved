@@ -58,6 +58,32 @@ CLASSIFICATION_VALUES = {
 # Fail-closed unsupported states must surface as this exact engine exception.
 UNSUPPORTED_EXCEPTION = "UnsupportedStudentLoanPlanCombination"
 
+# Authoritative nested result shapes produced by ``_run_mandatory`` and
+# ``_run_fail_closed`` below.  These are imported by the assurance-metadata
+# consumer (``scripts/generate_assurance_metadata.py``) so the producer and the
+# consumer cannot drift apart on the RW3 execution contract.
+MANDATORY_EXECUTABLE_FIELDS = (
+    "count",
+    "expected_fixture_count",
+    "passed",
+    "failed",
+    "unexpected_error",
+    "missing_adapter",
+    "inventory_mismatch",
+    "failures",
+)
+
+PENDING_FAIL_CLOSED_FIELDS = (
+    "count",
+    "expected_fixture_count",
+    "expected_fail_closed",
+    "unexpected_pass",
+    "unexpected_error",
+    "monetary_leak",
+    "inventory_mismatch",
+    "failures",
+)
+
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()

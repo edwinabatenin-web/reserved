@@ -36,6 +36,11 @@ from reserved_west.release_gate import (  # noqa: E402
     compute_assurance_identity,
     validate_inventory_matches_canonical,
 )
+from reserved_west.rw3_gate import (  # noqa: E402
+    CLASSIFICATION_VALUES,
+    MANDATORY_EXECUTABLE_FIELDS,
+    PENDING_FAIL_CLOSED_FIELDS,
+)
 
 RESULT_PATH = ROOT / "dist" / "release_gate_result.json"
 METADATA_PATH = ROOT / "reserved" / "assurance_metadata.json"
@@ -120,14 +125,52 @@ def _validate_pytest_component(comp: dict, cid: str, errors: list[str]) -> None:
         errors.append(f"component {cid!r} passes with {comp.get('errors')} errored tests")
 
 
-def _validate_rw3_component(comp: dict, cid: str, errors: list[str]) -> None:
-    """Semantically validate the mandatory RW3 component result.
+def _is_nonnegative_int(value) -> bool:
+    """True iff ``value`` is an ``int`` (not a bool) and >= 0."""
+    return type(value) is int and value >= 0
 
-    A ``pass`` is valid only when the underlying gate actually passed with a
-    complete classification and a non-empty, internally coherent mandatory
-    inventory.  A pass that hides ``gate_passed=False``, an incomplete
-    classification, unresolved non-executable/pending evidence or an empty
-    mandatory set is contradictory and must be rejected.
+
+def _validate_count_section(section, cid: str, label: str, required_fields, errors: list[str]) -> bool:
+    """Validate one nested RW3 execution-result section's shape and types.
+
+    Returns ``True`` only when ``section`` is a dict with exactly the required
+    fields, every numeric field is a non-negative int (never a bool), and the
+    ``failures`` field is a list.  Unknown, missing or malformed fields are
+    rejected because they could otherwise hide or obscure a pass decision.
+    """
+    if not isinstance(section, dict):
+        errors.append(f"component {cid!r} {label} is not an object")
+        return False
+
+    if set(section) != set(required_fields):
+        missing = set(required_fields) - set(section)
+        extra = set(section) - set(required_fields)
+        if missing:
+            errors.append(f"component {cid!r} {label} is missing fields: {sorted(missing)}")
+        if extra:
+            errors.append(f"component {cid!r} {label} has unknown fields: {sorted(extra)}")
+
+    well_typed = True
+    for key in required_fields:
+        if key == "failures":
+            if not isinstance(section.get(key), list):
+                errors.append(f"component {cid!r} {label}.{key} is not a list")
+                well_typed = False
+        elif not _is_nonnegative_int(section.get(key)):
+            errors.append(f"component {cid!r} {label}.{key} is not a non-negative integer")
+            well_typed = False
+    return well_typed
+
+
+def _validate_rw3_component(comp: dict, cid: str, errors: list[str]) -> None:
+    """Validate the complete nested RW3 execution contract.
+
+    A ``pass`` must be derivable from and consistent with every underlying RW3
+    field: the classification, the mandatory-executable results, the expected
+    fail-closed results, and the top-level gate/classification booleans.
+    Contradictory nested evidence (non-zero failure counters, count
+    disagreements, unresolved classification, malformed types) is rejected
+    rather than overridden by a top-level pass label.
     """
     gate_passed = comp.get("gate_passed")
     classification_complete = comp.get("classification_complete")
@@ -136,27 +179,79 @@ def _validate_rw3_component(comp: dict, cid: str, errors: list[str]) -> None:
     if not isinstance(classification_complete, bool):
         errors.append(f"component {cid!r} has non-boolean classification_complete")
 
+    # ── Classification counts: exact categories, non-negative ints, mandatory > 0.
     counts = comp.get("classification_counts")
+    counts_ok = False
     if not isinstance(counts, dict):
         errors.append(f"component {cid!r} has no classification_counts")
     else:
-        mandatory = counts.get("mandatory_executable")
-        if not isinstance(mandatory, int) or mandatory <= 0:
+        counts_ok = True
+        if set(counts) != CLASSIFICATION_VALUES:
+            missing = CLASSIFICATION_VALUES - set(counts)
+            extra = set(counts) - CLASSIFICATION_VALUES
+            if missing:
+                errors.append(f"component {cid!r} classification_counts is missing categories: {sorted(missing)}")
+            if extra:
+                errors.append(f"component {cid!r} classification_counts has unknown categories: {sorted(extra)}")
+        for key, val in counts.items():
+            if not _is_nonnegative_int(val):
+                errors.append(f"component {cid!r} classification_counts[{key!r}] is not a non-negative integer")
+                counts_ok = False
+        if counts_ok and counts.get("mandatory_executable", 0) <= 0:
             errors.append(f"component {cid!r} has no mandatory executable fixtures")
-        for key in ("pending_unsupported_fail_closed", "applicable_not_executable",
-                    "pending_founder_decision"):
-            val = counts.get(key, 0)
-            if not isinstance(val, int) or val < 0:
-                errors.append(f"component {cid!r} has invalid {key} count")
+
+    # ── Nested execution results: exact shape and types.
+    mand = comp.get("mandatory_executable")
+    fail = comp.get("pending_unsupported_fail_closed")
+    mand_ok = _validate_count_section(mand, cid, "mandatory_executable", MANDATORY_EXECUTABLE_FIELDS, errors)
+    fail_ok = _validate_count_section(fail, cid, "pending_unsupported_fail_closed", PENDING_FAIL_CLOSED_FIELDS, errors)
+
+    # ── Classification counts must reconcile with the actual nested counts.
+    if counts_ok and mand_ok and counts.get("mandatory_executable") != mand.get("count"):
+        errors.append(f"component {cid!r} mandatory count disagrees with classification")
+    if counts_ok and fail_ok and counts.get("pending_unsupported_fail_closed") != fail.get("count"):
+        errors.append(f"component {cid!r} fail-closed count disagrees with classification")
 
     if comp.get("status") == "pass":
         if gate_passed is not True:
             errors.append(f"component {cid!r} passes with gate_passed={gate_passed!r}")
         if classification_complete is not True:
             errors.append(f"component {cid!r} passes with incomplete classification")
-        if isinstance(counts, dict):
+        if counts_ok:
             if counts.get("applicable_not_executable", 0) != 0 or counts.get("pending_founder_decision", 0) != 0:
                 errors.append(f"component {cid!r} passes with unresolved pending/non-executable classification")
+
+        if mand_ok:
+            if mand["failed"] != 0:
+                errors.append(f"component {cid!r} passes with {mand['failed']} failed mandatory fixtures")
+            if mand["missing_adapter"] != 0:
+                errors.append(f"component {cid!r} passes with {mand['missing_adapter']} missing mandatory adapters")
+            if mand["inventory_mismatch"] != 0:
+                errors.append(f"component {cid!r} passes with mandatory inventory mismatch")
+            if mand["unexpected_error"] != 0:
+                errors.append(f"component {cid!r} passes with {mand['unexpected_error']} unexpected mandatory errors")
+            if mand["failures"]:
+                errors.append(f"component {cid!r} passes with non-empty mandatory failures")
+            if mand["passed"] != mand["count"]:
+                errors.append(f"component {cid!r} mandatory passed {mand['passed']} != count {mand['count']}")
+            if mand["count"] != mand["expected_fixture_count"]:
+                errors.append(f"component {cid!r} mandatory count != expected_fixture_count")
+
+        if fail_ok:
+            if fail["unexpected_pass"] != 0:
+                errors.append(f"component {cid!r} passes with {fail['unexpected_pass']} unexpected fail-closed passes")
+            if fail["monetary_leak"] != 0:
+                errors.append(f"component {cid!r} passes with {fail['monetary_leak']} fail-closed monetary leaks")
+            if fail["inventory_mismatch"] != 0:
+                errors.append(f"component {cid!r} passes with fail-closed inventory mismatch")
+            if fail["unexpected_error"] != 0:
+                errors.append(f"component {cid!r} passes with {fail['unexpected_error']} unexpected fail-closed errors")
+            if fail["failures"]:
+                errors.append(f"component {cid!r} passes with non-empty fail-closed failures")
+            if fail["expected_fail_closed"] != fail["count"]:
+                errors.append(f"component {cid!r} fail-closed expected_fail_closed != count")
+            if fail["count"] != fail["expected_fixture_count"]:
+                errors.append(f"component {cid!r} fail-closed count != expected_fixture_count")
 
 
 def _validate_canonical_result(result: dict) -> list[str]:
@@ -264,10 +359,12 @@ def _validate_canonical_result(result: dict) -> list[str]:
             errors.append("pass decision with non-passing status")
 
     # A6: a passing result must carry no failure evidence.  ``failure_reasons``
-    # is the canonical failure inventory; any non-empty value alongside a pass is
-    # contradictory evidence and must be rejected rather than trusted.
+    # is the canonical failure inventory; it must be a list, and any non-empty
+    # value alongside a pass is contradictory evidence and must be rejected.
     failure_reasons = result.get("failure_reasons")
-    if overall == "pass" and isinstance(failure_reasons, list) and failure_reasons:
+    if not isinstance(failure_reasons, list):
+        errors.append("failure_reasons is not a list")
+    elif overall == "pass" and failure_reasons:
         errors.append("overall pass with non-empty failure_reasons")
 
     # A5: complete, fail-closed October blocker inventory.

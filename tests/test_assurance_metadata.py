@@ -42,9 +42,22 @@ def canonical_result(monkeypatch):
             "classification_counts": {
                 "mandatory_executable": 43,
                 "pending_unsupported_fail_closed": 3,
+                "outside_engine_surface": 61,
+                "applicable_not_executable": 0,
+                "historical": 0,
+                "pending_founder_decision": 0,
             },
             "corpus_id": "wp7-corpus",
-            "mandatory_executable": {}, "pending_unsupported_fail_closed": {},
+            "mandatory_executable": {
+                "count": 43, "expected_fixture_count": 43, "passed": 43,
+                "failed": 0, "unexpected_error": 0, "missing_adapter": 0,
+                "inventory_mismatch": 0, "failures": [],
+            },
+            "pending_unsupported_fail_closed": {
+                "count": 3, "expected_fixture_count": 3, "expected_fail_closed": 3,
+                "unexpected_pass": 0, "unexpected_error": 0, "monetary_leak": 0,
+                "inventory_mismatch": 0, "failures": [],
+            },
         }
 
     monkeypatch.setattr(rg, "_run_pytest_component", fake_pytest)
@@ -370,3 +383,258 @@ def test_rejects_missing_artefact_identity(canonical_result, tmp_path):
     result["verified_artefact"]["content_hash"] = ""
     with pytest.raises(RuntimeError, match="verified-artefact identity"):
         GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+# ── G2: complete nested RW3 consistency (invariant 2 adversarial) ─────────────
+# A pass must be derivable from every nested RW3 execution field; top-level
+# pass labels never override contradictory nested evidence.
+
+
+def _mutate_rw3_nested(result, section, **changes):
+    r = copy.deepcopy(result)
+    for c in r["components"]:
+        if c["id"] == "mandatory_rw3_gate":
+            c[section].update(changes)
+            return r
+    raise AssertionError("mandatory_rw3_gate component not found")
+
+
+def _mutate_rw3_counts(result, **changes):
+    r = copy.deepcopy(result)
+    for c in r["components"]:
+        if c["id"] == "mandatory_rw3_gate":
+            c["classification_counts"].update(changes)
+            return r
+    raise AssertionError("mandatory_rw3_gate component not found")
+
+
+def _rw3_component(result):
+    for c in result["components"]:
+        if c["id"] == "mandatory_rw3_gate":
+            return c
+    raise AssertionError("mandatory_rw3_gate component not found")
+
+
+# ── Mandatory-executable failure counters ─────────────────────────────────────
+
+@pytest.mark.parametrize(
+    "field,msg",
+    [
+        ("failed", "failed mandatory"),
+        ("missing_adapter", "missing mandatory adapters"),
+        ("inventory_mismatch", "mandatory inventory mismatch"),
+        ("unexpected_error", "unexpected mandatory errors"),
+    ],
+)
+def test_rejects_each_mandatory_failure_counter(canonical_result, tmp_path, field, msg):
+    result = _mutate_rw3_nested(canonical_result, "mandatory_executable", **{field: 1})
+    with pytest.raises(RuntimeError, match=msg):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+# ── Fail-closed failure counters ──────────────────────────────────────────────
+
+@pytest.mark.parametrize(
+    "field,msg",
+    [
+        ("unexpected_pass", "unexpected fail-closed passes"),
+        ("monetary_leak", "fail-closed monetary leaks"),
+        ("inventory_mismatch", "fail-closed inventory mismatch"),
+        ("unexpected_error", "unexpected fail-closed errors"),
+    ],
+)
+def test_rejects_each_fail_closed_counter(canonical_result, tmp_path, field, msg):
+    result = _mutate_rw3_nested(canonical_result, "pending_unsupported_fail_closed", **{field: 1})
+    with pytest.raises(RuntimeError, match=msg):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+# ── Expected / actual / passed / classified counts ────────────────────────────
+
+def test_rejects_mandatory_passed_mismatch(canonical_result, tmp_path):
+    result = _mutate_rw3_nested(canonical_result, "mandatory_executable", passed=42)
+    with pytest.raises(RuntimeError, match="mandatory passed"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_mandatory_count_expected_mismatch(canonical_result, tmp_path):
+    result = _mutate_rw3_nested(canonical_result, "mandatory_executable", expected_fixture_count=44)
+    with pytest.raises(RuntimeError, match="count != expected_fixture_count"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_fail_closed_expected_mismatch(canonical_result, tmp_path):
+    result = _mutate_rw3_nested(canonical_result, "pending_unsupported_fail_closed", expected_fail_closed=2)
+    with pytest.raises(RuntimeError, match="expected_fail_closed"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_fail_closed_count_expected_mismatch(canonical_result, tmp_path):
+    result = _mutate_rw3_nested(canonical_result, "pending_unsupported_fail_closed", expected_fixture_count=4)
+    with pytest.raises(RuntimeError, match="count != expected_fixture_count"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_classification_mandatory_disagreement(canonical_result, tmp_path):
+    result = _mutate_rw3_counts(canonical_result, mandatory_executable=44)
+    with pytest.raises(RuntimeError, match="disagree"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_classification_fail_closed_disagreement(canonical_result, tmp_path):
+    result = _mutate_rw3_counts(canonical_result, pending_unsupported_fail_closed=2)
+    with pytest.raises(RuntimeError, match="disagree"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+# ── Nested sections removed / replaced ────────────────────────────────────────
+
+def test_rejects_missing_mandatory_section(canonical_result, tmp_path):
+    r = copy.deepcopy(canonical_result)
+    del _rw3_component(r)["mandatory_executable"]
+    with pytest.raises(RuntimeError, match="mandatory_executable"):
+        GEN.load_canonical_result(_write_result(tmp_path, r))
+
+
+def test_rejects_missing_fail_closed_section(canonical_result, tmp_path):
+    r = copy.deepcopy(canonical_result)
+    del _rw3_component(r)["pending_unsupported_fail_closed"]
+    with pytest.raises(RuntimeError, match="pending_unsupported_fail_closed"):
+        GEN.load_canonical_result(_write_result(tmp_path, r))
+
+
+def test_rejects_mandatory_section_replaced_with_non_object(canonical_result, tmp_path):
+    r = copy.deepcopy(canonical_result)
+    _rw3_component(r)["mandatory_executable"] = "not-an-object"
+    with pytest.raises(RuntimeError, match="not an object"):
+        GEN.load_canonical_result(_write_result(tmp_path, r))
+
+
+# ── Missing / extra fields ────────────────────────────────────────────────────
+
+def test_rejects_missing_nested_field(canonical_result, tmp_path):
+    r = copy.deepcopy(canonical_result)
+    del _rw3_component(r)["mandatory_executable"]["failed"]
+    with pytest.raises(RuntimeError, match="missing fields"):
+        GEN.load_canonical_result(_write_result(tmp_path, r))
+
+
+def test_rejects_extra_nested_field(canonical_result, tmp_path):
+    r = copy.deepcopy(canonical_result)
+    _rw3_component(r)["mandatory_executable"]["sneaky"] = 0
+    with pytest.raises(RuntimeError, match="unknown fields"):
+        GEN.load_canonical_result(_write_result(tmp_path, r))
+
+
+# ── Types: boolean / negative / string / float / null / object counts ─────────
+
+@pytest.mark.parametrize("bad", [-1, True, "43", 43.0, None, {"x": 1}])
+def test_rejects_non_int_count_values(canonical_result, tmp_path, bad):
+    result = _mutate_rw3_nested(canonical_result, "mandatory_executable", failed=bad)
+    with pytest.raises(RuntimeError):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_boolean_classification_count(canonical_result, tmp_path):
+    result = _mutate_rw3_counts(canonical_result, outside_engine_surface=True)
+    with pytest.raises(RuntimeError, match="non-negative integer"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_non_list_failures(canonical_result, tmp_path):
+    result = _mutate_rw3_nested(canonical_result, "mandatory_executable", failures="no")
+    with pytest.raises(RuntimeError, match="failures is not a list"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+# ── Non-empty failure lists ───────────────────────────────────────────────────
+
+def test_rejects_nonempty_mandatory_failures(canonical_result, tmp_path):
+    result = _mutate_rw3_nested(
+        canonical_result, "mandatory_executable",
+        failures=[{"fixture_id": "x", "pack": "CORE", "outcome": "FAIL"}],
+    )
+    with pytest.raises(RuntimeError, match="non-empty mandatory failures"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_nonempty_fail_closed_failures(canonical_result, tmp_path):
+    result = _mutate_rw3_nested(
+        canonical_result, "pending_unsupported_fail_closed",
+        failures=[{"fixture_id": "x"}],
+    )
+    with pytest.raises(RuntimeError, match="non-empty fail-closed failures"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+# ── failure_reasons type/shape ────────────────────────────────────────────────
+
+def test_rejects_failure_reasons_missing(canonical_result, tmp_path):
+    r = copy.deepcopy(canonical_result)
+    del r["failure_reasons"]
+    with pytest.raises(RuntimeError, match="failure_reasons is not a list"):
+        GEN.load_canonical_result(_write_result(tmp_path, r))
+
+
+def test_rejects_failure_reasons_null(canonical_result, tmp_path):
+    result = _mutated(canonical_result, failure_reasons=None)
+    with pytest.raises(RuntimeError, match="failure_reasons is not a list"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_failure_reasons_string(canonical_result, tmp_path):
+    result = _mutated(canonical_result, failure_reasons="all good")
+    with pytest.raises(RuntimeError, match="failure_reasons is not a list"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_failure_reasons_object(canonical_result, tmp_path):
+    result = _mutated(canonical_result, failure_reasons={"n": 0})
+    with pytest.raises(RuntimeError, match="failure_reasons is not a list"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+# ── Classification categories missing / added / zero mandatory ────────────────
+
+def test_rejects_missing_classification_category(canonical_result, tmp_path):
+    r = copy.deepcopy(canonical_result)
+    del _rw3_component(r)["classification_counts"]["historical"]
+    with pytest.raises(RuntimeError, match="missing categories"):
+        GEN.load_canonical_result(_write_result(tmp_path, r))
+
+
+def test_rejects_added_classification_category(canonical_result, tmp_path):
+    r = copy.deepcopy(canonical_result)
+    _rw3_component(r)["classification_counts"]["sneaky"] = 0
+    with pytest.raises(RuntimeError, match="unknown categories"):
+        GEN.load_canonical_result(_write_result(tmp_path, r))
+
+
+def test_rejects_zero_mandatory_fixtures(canonical_result, tmp_path):
+    # Zero mandatory fixtures (with a coherent nested count) must never pass.
+    r = copy.deepcopy(canonical_result)
+    c = _rw3_component(r)
+    c["classification_counts"]["mandatory_executable"] = 0
+    c["mandatory_executable"]["count"] = 0
+    c["mandatory_executable"]["passed"] = 0
+    c["mandatory_executable"]["expected_fixture_count"] = 0
+    with pytest.raises(RuntimeError, match="no mandatory executable"):
+        GEN.load_canonical_result(_write_result(tmp_path, r))
+
+
+# ── Aggregate-cancelling and top-level-vs-nested contradictions ───────────────
+
+def test_rejects_aggregate_cancelling_mutations(canonical_result, tmp_path):
+    # failed=1 with passed=42 keeps passed+failed == count == 43; the failure must
+    # not be hidden by the aggregate remaining consistent.
+    result = _mutate_rw3_nested(canonical_result, "mandatory_executable", failed=1, passed=42)
+    with pytest.raises(RuntimeError, match="failed mandatory"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_top_level_pass_with_nested_failure(canonical_result, tmp_path):
+    # Keep every top-level pass flag intact but flip one nested fail-closed counter.
+    result = _mutate_rw3_nested(canonical_result, "pending_unsupported_fail_closed", unexpected_pass=1)
+    with pytest.raises(RuntimeError, match="unexpected fail-closed passes"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+

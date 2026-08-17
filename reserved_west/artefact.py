@@ -209,13 +209,55 @@ def _build_module_map(buffers: dict[str, bytes], target: Path) -> dict[str, tupl
     return modules
 
 
-class _VerifiedLoader(importlib.abc.Loader):
-    """Loads one ``reserved_engine`` module from an immutable verified byte buffer."""
+class _SnapshotRegistry:
+    """Opaque per-snapshot registry of exact loaders and loaded module objects.
 
-    def __init__(self, fullname: str, source_bytes: bytes, filename: str):
+    The registry is the single authority for one verified snapshot.  It maps
+    each manifested module name to its exact ``_VerifiedLoader`` object and,
+    after successful execution, to the exact module object the import system
+    produced.  Trust is membership/identity based: a loaded module is trusted
+    only when ``sys.modules[name]`` *is* the registered module object and its
+    ``__loader__``/``__spec__.loader`` *are* the registered loader object.  A
+    copyable token, class, name, filename or hash on an unregistered module is
+    not sufficient.
+    """
+
+    def __init__(self, module_map: dict[str, tuple]):
+        self.module_map = module_map
+        self._loaders: dict[str, _VerifiedLoader] = {}
+        self._modules: dict[str, object] = {}
+
+    def loader_for(self, fullname: str) -> _VerifiedLoader | None:
+        entry = self.module_map.get(fullname)
+        if entry is None:
+            return None
+        loader = self._loaders.get(fullname)
+        if loader is None:
+            source_bytes, _is_package, filename = entry
+            loader = _VerifiedLoader(fullname, source_bytes, filename, self)
+            self._loaders[fullname] = loader
+        return loader
+
+    def module_for(self, fullname: str) -> object | None:
+        return self._modules.get(fullname)
+
+    def register_module(self, fullname: str, module: object) -> None:
+        self._modules[fullname] = module
+
+
+class _VerifiedLoader(importlib.abc.Loader):
+    """Loads one ``reserved_engine`` module from an immutable verified byte buffer.
+
+    The loader is bound to the snapshot registry that created it and registers
+    the executed module object back onto that registry, so a module/loader pair
+    can later be checked for exact snapshot membership.
+    """
+
+    def __init__(self, fullname: str, source_bytes: bytes, filename: str, registry: _SnapshotRegistry):
         self.fullname = fullname
         self._source_bytes = source_bytes
         self.filename = filename
+        self._registry = registry
 
     def create_module(self, spec):
         return None  # let the import system create the module normally
@@ -235,6 +277,9 @@ class _VerifiedLoader(importlib.abc.Loader):
             self.filename,
         )
         exec(code, module.__dict__)
+        # Only after successful execution is the exact module object registered
+        # as belonging to this verified snapshot.
+        self._registry.register_module(self.fullname, module)
 
     def get_source(self, fullname: str) -> str:
         return self._source_bytes.decode("utf-8")
@@ -244,17 +289,17 @@ class _VerifiedLoader(importlib.abc.Loader):
 
 
 class _VerifiedFinder(importlib.abc.MetaPathFinder):
-    """Narrowly scoped finder serving only the active verified snapshot."""
+    """Narrowly scoped finder serving only its own verified snapshot registry."""
 
-    def __init__(self, modules: dict[str, tuple]):
-        self._modules = modules
+    def __init__(self, registry: _SnapshotRegistry):
+        self._registry = registry
 
     def find_spec(self, fullname: str, path=None, target=None):
-        entry = self._modules.get(fullname)
+        entry = self._registry.module_map.get(fullname)
         if entry is None:
             return None  # never service an unrelated or unmanifested import
-        source_bytes, is_package, filename = entry
-        loader = _VerifiedLoader(fullname, source_bytes, filename)
+        loader = self._registry.loader_for(fullname)
+        _source_bytes, is_package, filename = entry
         return importlib.util.spec_from_loader(
             fullname, loader, origin=filename, is_package=is_package
         )
@@ -277,36 +322,45 @@ def _purge_reserved_engine() -> None:
     global _FINDER, _LOADED
     for name in [name for name in sys.modules if name == "reserved_engine" or name.startswith("reserved_engine.")]:
         del sys.modules[name]
-    if _FINDER is not None:
-        if _FINDER in sys.meta_path:
-            sys.meta_path.remove(_FINDER)
-        _FINDER = None
+    # Remove every verified-artefact finder, not only the cached one: a stale
+    # finder from a previous snapshot (or a substituted one) must never remain in
+    # ``sys.meta_path`` to service a later import of a different snapshot.
+    for finder in [f for f in sys.meta_path if isinstance(f, _VerifiedFinder)]:
+        sys.meta_path.remove(finder)
+    _FINDER = None
     _LOADED = None
 
 
-def _loaded_offenders(module_map: dict[str, tuple]) -> list[str]:
-    """Return descriptions of loaded ``reserved_engine`` modules not from the verified snapshot.
+def _loaded_offenders(registry: _SnapshotRegistry) -> list[str]:
+    """Return descriptions of loaded ``reserved_engine`` modules not exactly bound to the snapshot.
 
-    This checks the module's loader identity (and that the module name is
-    manifested), which is stronger than a filename check: a foreign, previously
-    cached or lazily satisfied module can never masquerade as a verified module
-    merely by sharing a path.
+    A module is trusted only when it is the exact module object registered for
+    this snapshot AND its ``__loader__``/``__spec__.loader`` are the exact
+    registered loader object.  A foreign, previously cached, lazily satisfied or
+    substituted module — even one carrying a ``_VerifiedLoader``-shaped object
+    with the right name — is rejected by identity, not by type or naming.
     """
     offenders = []
     for name, mod in list(sys.modules.items()):
         if name != "reserved_engine" and not name.startswith("reserved_engine."):
             continue
-        loader = getattr(mod, "__loader__", None)
-        if not isinstance(loader, _VerifiedLoader) or loader.fullname != name:
-            offenders.append(f"{name} -> {type(loader).__name__}")
-        elif name not in module_map:
+        loader = registry.loader_for(name)
+        if loader is None:
             offenders.append(f"{name} -> unmanifested")
+            continue
+        if registry.module_for(name) is not mod:
+            offenders.append(f"{name} -> unregistered module object")
+        if getattr(mod, "__loader__", None) is not loader:
+            offenders.append(f"{name} -> foreign loader ({type(getattr(mod, '__loader__', None)).__name__})")
+        spec = getattr(mod, "__spec__", None)
+        if spec is not None and getattr(spec, "loader", None) is not loader:
+            offenders.append(f"{name} -> spec.loader mismatch")
     return offenders
 
 
-def _verify_loaded_modules(module_map: dict[str, tuple]) -> None:
-    """Raise unless every loaded ``reserved_engine`` module came from the verified snapshot."""
-    offenders = _loaded_offenders(module_map)
+def _verify_loaded_modules(registry: _SnapshotRegistry) -> None:
+    """Raise unless every loaded ``reserved_engine`` module is exactly bound to the snapshot."""
+    offenders = _loaded_offenders(registry)
     if offenders:
         raise RuntimeError(
             "reserved_engine module(s) not loaded from the verified snapshot: "
@@ -318,9 +372,10 @@ def _import_from_verified_buffers(target: Path, prov: dict, buffers: dict[str, b
     global _FINDER
 
     module_map = _build_module_map(buffers, target)
+    registry = _SnapshotRegistry(module_map)
     _purge_reserved_engine()
 
-    finder = _VerifiedFinder(module_map)
+    finder = _VerifiedFinder(registry)
     sys.meta_path.insert(0, finder)
     _FINDER = finder
 
@@ -328,7 +383,7 @@ def _import_from_verified_buffers(target: Path, prov: dict, buffers: dict[str, b
     sys.dont_write_bytecode = True
     try:
         module = importlib.import_module("reserved_engine")
-        _verify_loaded_modules(module_map)
+        _verify_loaded_modules(registry)
     except Exception:
         _purge_reserved_engine()
         raise
@@ -381,7 +436,6 @@ def load_engine(*, rebuild: bool = False) -> tuple[object, dict]:
         "content_hash": prov["content_hash"],
         "module": module,
         "prov": prov,
-        "module_map": module_map,
     }
     return module, prov
 
@@ -389,21 +443,25 @@ def load_engine(*, rebuild: bool = False) -> tuple[object, dict]:
 def _cached_module_graph_is_sound(module_map: dict[str, tuple], cached_module: object) -> bool:
     """Return ``True`` only if the complete active import state is bound to the verified snapshot.
 
-    A cached return is permitted only when the top-level package is still the
-    one the cache recorded, the verified-artefact finder is still installed and
-    still serves the same manifested module map, and every loaded
-    ``reserved_engine`` submodule still carries a verified loader.  Otherwise the
-    graph may have been substituted, detached or purged by a prior failed switch,
-    and the cache must not return it as trusted.
+    A cached return is permitted only when the verified-artefact finder is still
+    the first meta-path finder (the position it was installed at), still serves
+    exactly the freshly-read verified module map, the top-level package is still
+    the one the cache recorded, and every loaded ``reserved_engine`` module is
+    the exact registered object with the exact registered loader.  Otherwise the
+    graph may have been substituted, detached, reordered or purged, and the
+    cache must not return it as trusted.
     """
     global _FINDER
-    if _FINDER is None or _FINDER not in sys.meta_path:
+    if not sys.meta_path or sys.meta_path[0] is not _FINDER:
         return False
-    if _FINDER._modules != module_map:
+    if not isinstance(_FINDER, _VerifiedFinder):
+        return False
+    registry = _FINDER._registry
+    if registry.module_map != module_map:
         return False
     if sys.modules.get("reserved_engine") is not cached_module:
         return False
-    return _loaded_offenders(module_map) == []
+    return _loaded_offenders(registry) == []
 
 
 def _reject_new_bytecode(target: Path) -> None:
