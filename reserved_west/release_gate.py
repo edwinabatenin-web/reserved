@@ -112,6 +112,12 @@ OCTOBER_LAUNCH_COMPONENTS = [
      "note": "Suite has not been repeated in the target runtime."},
     {"id": "operational_readiness", "state": "not_implemented",
      "note": "Monitoring, backups, incident response and rollback are not evidenced."},
+    {"id": "hicbc_manual_privacy_retention_legal", "state": "privacy_retention_review_required",
+     "note": "HICBC manual partner-estimate privacy notice, lawful basis and retention schedule await founder/legal/privacy approval."},
+    {"id": "hicbc_linked_consent_privacy_security", "state": "privacy_retention_review_required",
+     "note": "HICBC linked-account consent, cross-account authorisation and privacy/security evidence await independent review."},
+    {"id": "hicbc_annual_integration_assurance", "state": "not_executable",
+     "note": "HICBC annual-total/reserve/payment integration is not yet independently assured."},
 ]
 
 # Supported October calculation families: these must be mandatory, executable
@@ -214,7 +220,13 @@ def validate_inventory_matches_canonical(components: list) -> list[str]:
 
 # ── October blocker-inventory integrity ──────────────────────────────────────
 
-_VALID_OCTOBER_STATES = {"not_executable", "externally_blocked", "not_implemented", "evidence_missing"}
+_VALID_OCTOBER_STATES = {
+    "not_executable",
+    "externally_blocked",
+    "not_implemented",
+    "evidence_missing",
+    "privacy_retention_review_required",
+}
 
 
 def validate_october_inventory() -> list[str]:

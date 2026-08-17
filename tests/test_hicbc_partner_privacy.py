@@ -38,6 +38,7 @@ def app(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "_INSTANCE", tmp_path)
     monkeypatch.setenv("FLASK_ENV", "development")
     monkeypatch.delenv("CLERK_PUBLISHABLE_KEY", raising=False)
+    monkeypatch.setenv("HICBC_ENABLED", "1")
     application = create_app()
     application.config["TESTING"] = True
     application.config["WTF_CSRF_ENABLED"] = False
@@ -183,6 +184,7 @@ def test_hicbc_csrf_protection(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "_INSTANCE", tmp_path)
     monkeypatch.setenv("FLASK_ENV", "development")
     monkeypatch.delenv("CLERK_PUBLISHABLE_KEY", raising=False)
+    monkeypatch.setenv("HICBC_ENABLED", "1")
     application = create_app()
     application.config["TESTING"] = True
     # CSRF left enabled — a state-changing POST without a token must be rejected.

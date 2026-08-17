@@ -2,6 +2,20 @@ import os
 from datetime import timedelta
 
 
+def _parse_hicbc_enabled(raw: str) -> bool:
+    """Parse the HICBC gate strictly: only an explicit true value enables it."""
+    return str(raw).strip().lower() in {"1", "true", "yes", "on", "enabled"}
+
+
+def hicbc_enabled() -> bool:
+    """Return whether the HICBC feature gate is enabled for this process.
+
+    Read at call time so the gate reflects the process environment rather than
+    an import-time snapshot.
+    """
+    return _parse_hicbc_enabled(os.environ.get("HICBC_ENABLED", ""))
+
+
 class Config:
     # ── Core ──────────────────────────────────────────────────────────────────
     SECRET_KEY        = os.environ.get("SESSION_SECRET", "reserved-local-preview-only")
@@ -28,3 +42,12 @@ class Config:
     # server-side verification is skipped — dev/test previews work unchanged.
     TURNSTILE_SITE_KEY   = os.environ.get("TURNSTILE_SITE_KEY",   "")
     TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+
+    # ── HICBC feature gate (disabled by default) ───────────────────────────────
+    # HICBC routes (manual partner estimate + linked accounts) are registered
+    # only when the gate is explicitly enabled.  Absent, empty, malformed or
+    # false values keep the feature disabled.  It must never be inferred from
+    # database rows, credentials, the environment name or any other flag.
+    # Read at ``create_app()`` time via :func:`hicbc_enabled` so tests and
+    # deployments can set it deliberately and deterministically.
+    HICBC_ENABLED = _parse_hicbc_enabled(os.environ.get("HICBC_ENABLED", ""))

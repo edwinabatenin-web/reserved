@@ -5,7 +5,7 @@ from flask import Flask, render_template, request as _req, session as _session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .auth import is_production_environment
-from .config import Config
+from .config import Config, hicbc_enabled
 from .database import init_db
 from .extensions import csrf
 from .web.routes import web
@@ -55,7 +55,8 @@ def create_app() -> Flask:
     app.register_blueprint(api, url_prefix="/api")
     app.register_blueprint(founder)
     app.register_blueprint(v2)  # V2 preview — not linked from public nav
-    app.register_blueprint(hicbc)  # post-v1 HICBC partner preview
+    if hicbc_enabled():
+        app.register_blueprint(hicbc)  # October v1 HICBC — feature-gated
 
     # ── Template globals ──────────────────────────────────────────────────────
     # Expose canonical_base and turnstile_site_key to every template so that

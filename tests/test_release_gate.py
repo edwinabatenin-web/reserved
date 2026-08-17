@@ -105,7 +105,7 @@ def test_exact_contract_rejects_duplicate_id():
 def test_october_inventory_is_complete_and_fail_closed():
     octo = rg.october_launch_candidate()
     assert octo["status"] == "not_ready"
-    assert octo["blocker_count"] == 13
+    assert octo["blocker_count"] == 16
     assert octo["blocker_count"] == len(octo["blocking_components"])
     ids = [b["id"] for b in octo["blocking_components"]]
     for required in (
@@ -122,6 +122,9 @@ def test_october_inventory_is_complete_and_fail_closed():
         "privacy_security_review",
         "target_environment_testing",
         "operational_readiness",
+        "hicbc_manual_privacy_retention_legal",
+        "hicbc_linked_consent_privacy_security",
+        "hicbc_annual_integration_assurance",
     ):
         assert required in ids
     assert octo["supported_calculation_families"]
@@ -256,7 +259,13 @@ def test_october_launch_candidate_is_not_ready_and_lists_blockers():
     octo = rg.october_launch_candidate()
     assert octo["status"] == "not_ready"
     states = {b["state"] for b in octo["blocking_components"]}
-    assert states <= {"not_executable", "externally_blocked", "not_implemented", "evidence_missing"}
+    assert states <= {
+        "not_executable",
+        "externally_blocked",
+        "not_implemented",
+        "evidence_missing",
+        "privacy_retention_review_required",
+    }
 
 
 def test_render_result_renders_invalid_inventory():

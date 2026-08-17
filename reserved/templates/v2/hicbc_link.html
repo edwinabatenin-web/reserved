@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Child Benefit charge — linked account — Reserved{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Post-v1 preview</p>
+        <h1>Link accounts for Child Benefit charge</h1>
+        <p>Linking lets Reserved compare income behind the scenes to work out who the High Income Child Benefit Charge applies to. Neither of you will see the other's income.</p>
+    </div>
+</section>
+
+{% if view.message %}
+<section class="panel" aria-live="polite">
+    <p class="hicbc-household-change">{{ view.message }}</p>
+</section>
+{% endif %}
+
+<section class="panel">
+    <h2>Link status</h2>
+    {% if view.linked %}
+        <p>Your accounts are linked for the {{ view.tax_year }} tax year.</p>
+        <form method="post" action="{{ url_for('hicbc.link_revoke') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="tax_year" value="{{ view.tax_year }}">
+            <button type="submit" class="button-secondary">Remove link</button>
+        </form>
+    {% else %}
+        <p>Your accounts are not linked.</p>
+    {% endif %}
+</section>
+
+{% if not view.linked %}
+<section class="panel">
+    <h2>Create a link invitation</h2>
+    <p>You can create a single-use code and share it privately with the other person. They must be signed in to their own Reserved account to accept it.</p>
+    <form method="post" action="{{ url_for('hicbc.link_invite') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="tax_year" value="{{ view.tax_year }}">
+        <button type="submit">Create invitation code</button>
+    </form>
+    {% if invitation_token %}
+        <p class="hicbc-invitation">Share this one-time code with the other person. It expires soon and can only be used once: <code>{{ invitation_token }}</code></p>
+    {% endif %}
+</section>
+
+<section class="panel">
+    <h2>Accept a link invitation</h2>
+    <p>Enter the one-time code the other person shared with you.</p>
+    <form method="post" action="{{ url_for('hicbc.link_accept') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="tax_year" value="{{ view.tax_year }}">
+        <label>Invitation code
+            <input name="invitation_token" type="text" autocomplete="off" value="">
+        </label>
+        <button type="submit">Link accounts</button>
+    </form>
+</section>
+{% endif %}
+{% endblock %}

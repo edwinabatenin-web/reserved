@@ -261,7 +261,7 @@ def test_build_metadata_records_identity_and_october_status(canonical_result):
     meta = GEN.build_metadata(canonical_result)
     assert meta["status"] == "deterministic_engine_remediation_gate_passed"
     assert meta["october_launch_candidate"]["status"] == "not_ready"
-    assert meta["october_launch_candidate"]["blocker_count"] == 13
+    assert meta["october_launch_candidate"]["blocker_count"] == 16
     assert meta["engine_version"] == "4.0.0"
     assert meta["rules_version"] == "uk-2026-27-v4"
     assert meta.get("period_of_assessment") is None  # removed in favour of tax_year

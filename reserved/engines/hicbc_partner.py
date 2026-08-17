@@ -325,6 +325,7 @@ def determine_hicbc_responsibility(
     child_benefit_amount,
     has_relevant_partner: bool | None,
     partner_evidence: PartnerEvidence | None = None,
+    additional_evidence: tuple[PartnerEvidence, ...] = (),
     tax_year: str = "2026/27",
     previous_responsibility_status: str | None = None,
 ) -> HicbcResponsibilityResult:
@@ -334,6 +335,12 @@ def determine_hicbc_responsibility(
     (which must never be treated as zero), otherwise a non-negative annual
     amount.  ``has_relevant_partner`` is ``None`` when the user has not stated
     whether they have a partner for HICBC purposes.
+
+    ``partner_evidence`` is the effective evidence used for the comparison.
+    ``additional_evidence`` lists further provenance records (for example the
+    manual estimate when linked evidence is also present) that are retained for
+    audit but do not themselves drive the comparison.  Neither source receives
+    unconditional precedence.
     """
     cfg = get_config(tax_year)
     ani = _amount(user_ani, "user_ani")
@@ -343,10 +350,11 @@ def determine_hicbc_responsibility(
     uncertainties: list[EstimateUncertainty] = []
     evidence_items: list[EstimateEvidenceItem] = []
 
-    if partner_evidence is not None:
-        if partner_evidence.tax_year != tax_year:
-            raise ValueError("Partner evidence tax year must match the requested tax year")
-        evidence_items.append(_evidence_item(partner_evidence))
+    for evidence in (partner_evidence,) + tuple(additional_evidence):
+        if evidence is not None:
+            if evidence.tax_year != tax_year:
+                raise ValueError("Partner evidence tax year must match the requested tax year")
+            evidence_items.append(_evidence_item(evidence))
 
     def _finish(
         *,

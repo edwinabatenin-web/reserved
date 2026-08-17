@@ -19,6 +19,9 @@
         <p><strong>Possible charge that may apply to you:</strong> between £{{ view.possible_charge_low }} and £{{ view.possible_charge_high }}.</p>
     {% endif %}
     <p>Your projected adjusted net income: £{{ '%.2f'|format(user_ani) }} (for {{ tax_year }}).</p>
+    {% if household_change %}
+        <p class="hicbc-household-change">Your household tax position has changed.</p>
+    {% endif %}
     {% if view.messages %}
         <ul class="hicbc-messages">
             {% for message in view.messages %}<li>{{ message }}</li>{% endfor %}

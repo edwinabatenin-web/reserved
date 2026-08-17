@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import secrets
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -271,6 +272,47 @@ CREATE TABLE IF NOT EXISTS hicbc_estimates (
     UNIQUE(user_id, tax_year)
 );
 
+-- ── HICBC linked-account consent ──────────────────────────────────────────────
+-- A mutually consented, HICBC-only link between two Reserved users.  user_low_id
+-- and user_high_id are the normalised (ordered) pair so a pair has at most one
+-- row per tax year.  status is 'active' or 'revoked'.  No partner financial
+-- value is stored here — only identity, consent state, purpose, period facts and
+-- timestamps.  Relationship start is NULL until the users confirm it (unknown
+-- relationship-period facts must not be silently treated as full-year).
+CREATE TABLE IF NOT EXISTS hicbc_links (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_low_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_high_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tax_year                TEXT    NOT NULL,
+    purpose                 TEXT    NOT NULL DEFAULT 'hicbc_responsibility',
+    status                  TEXT    NOT NULL,
+    initiator_id            INTEGER NOT NULL,
+    relationship_started_at TEXT,
+    created_at              TEXT    NOT NULL,
+    accepted_at             TEXT    NOT NULL,
+    revoked_at              TEXT,
+    revoked_by              INTEGER,
+    UNIQUE(user_low_id, user_high_id, tax_year)
+);
+
+-- ── HICBC link invitations ────────────────────────────────────────────────────
+-- Single-use, short-lived, high-entropy invitation tokens.  Only the SHA-256
+-- hash of the token is stored; the raw token is returned to the creator exactly
+-- once for out-of-band sharing.  No partner financial value is stored.
+CREATE TABLE IF NOT EXISTS hicbc_link_invitations (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash   TEXT    NOT NULL UNIQUE,
+    creator_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tax_year     TEXT    NOT NULL,
+    purpose      TEXT    NOT NULL DEFAULT 'hicbc_responsibility',
+    status       TEXT    NOT NULL,
+    expires_at   TEXT    NOT NULL,
+    created_at   TEXT    NOT NULL,
+    accepted_at  TEXT,
+    accepted_by  INTEGER,
+    link_id      INTEGER
+);
+
 -- ── Tax optimisation saved scenarios ─────────────────────────────────────────
 -- Stores pension-scenario comparisons the user has chosen to save from the
 -- Optimise page.  Linked to users (not profiles) so they survive profile edits.
@@ -390,7 +432,7 @@ CREATE TABLE IF NOT EXISTS invoice_matches (
 # - The DDL block above always reflects the full target schema; migrations
 #   handle upgrade paths for databases created before the current DDL.
 #
-_SCHEMA_VERSION = 6   # increment when adding new migration entries below
+_SCHEMA_VERSION = 7   # increment when adding new migration entries below
 
 _MIGRATIONS: dict[int, list[str]] = {
     # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
@@ -468,6 +510,38 @@ _MIGRATIONS: dict[int, list[str]] = {
             UNIQUE(user_id, tax_year)
         )""",
     ],
+    # Version 7 — HICBC linked-account consent: a mutually consented, HICBC-only
+    # link between two Reserved users plus single-use invitation tokens.
+    7: [
+        """CREATE TABLE IF NOT EXISTS hicbc_links (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_low_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            user_high_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tax_year                TEXT    NOT NULL,
+            purpose                 TEXT    NOT NULL DEFAULT 'hicbc_responsibility',
+            status                  TEXT    NOT NULL,
+            initiator_id            INTEGER NOT NULL,
+            relationship_started_at TEXT,
+            created_at              TEXT    NOT NULL,
+            accepted_at             TEXT    NOT NULL,
+            revoked_at              TEXT,
+            revoked_by              INTEGER,
+            UNIQUE(user_low_id, user_high_id, tax_year)
+        )""",
+        """CREATE TABLE IF NOT EXISTS hicbc_link_invitations (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            token_hash   TEXT    NOT NULL UNIQUE,
+            creator_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tax_year     TEXT    NOT NULL,
+            purpose      TEXT    NOT NULL DEFAULT 'hicbc_responsibility',
+            status       TEXT    NOT NULL,
+            expires_at   TEXT    NOT NULL,
+            created_at   TEXT    NOT NULL,
+            accepted_at  TEXT,
+            accepted_by  INTEGER,
+            link_id      INTEGER
+        )""",
+    ],
 }
 
 
@@ -515,6 +589,10 @@ def init_db() -> None:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _iso_now_plus_minutes(minutes: int) -> str:
+    return (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat(timespec="seconds")
 
 
 def _hash_ip(ip: str | None) -> str | None:
@@ -1433,6 +1511,209 @@ def delete_hicbc_estimate(user_id: int, tax_year: str) -> bool:
             (user_id, tax_year),
         ).rowcount
     return rowcount > 0
+
+
+def delete_all_hicbc_estimates_for_user(user_id: int) -> int:
+    """Delete every HICBC partner estimate owned by ``user_id``.
+
+    This is the repository hook that a later account-deletion workflow must
+    invoke; it does not itself delete the ``users`` row.  Returns the number of
+    rows removed.
+    """
+    with _connection() as conn:
+        rowcount = conn.execute(
+            "DELETE FROM hicbc_estimates WHERE user_id = ?",
+            (user_id,),
+        ).rowcount
+    return rowcount
+
+
+# ── HICBC linked-account consent ────────────────────────────────────────────────
+
+_LINK_STATUS_ACTIVE = "active"
+_LINK_STATUS_REVOKED = "revoked"
+
+_INVITATION_STATUS_PENDING = "pending"
+_INVITATION_STATUS_ACCEPTED = "accepted"
+_INVITATION_STATUS_REVOKED = "revoked"
+
+# Invitations are short-lived and single-use.
+_INVITATION_TTL_MINUTES = 60
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_hicbc_link_invitation(
+    user_id: int,
+    tax_year: str,
+    *,
+    expires_in_minutes: int = _INVITATION_TTL_MINUTES,
+) -> str:
+    """Create a single-use HICBC link invitation and return its raw token.
+
+    The raw token is returned exactly once (for out-of-band sharing) and is never
+    stored; only its SHA-256 hash is persisted.  The token is high-entropy,
+    short-lived and single-use.
+    """
+    token = secrets.token_urlsafe(32)
+    now = _now()
+    expires_at = _iso_now_plus_minutes(expires_in_minutes)
+    with _connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO hicbc_link_invitations
+                (token_hash, creator_id, tax_year, purpose, status, expires_at, created_at)
+            VALUES (?, ?, ?, 'hicbc_responsibility', ?, ?, ?)
+            """,
+            (_token_hash(token), user_id, tax_year, _INVITATION_STATUS_PENDING, expires_at, now),
+        )
+    return token
+
+
+def accept_hicbc_link_invitation(user_id: int, token: str, tax_year: str) -> dict | None:
+    """Accept a pending invitation and establish (or re-activate) a mutual link.
+
+    Returns the active link row as a dict on success, or ``None`` when the token
+    is invalid, expired, already used, a self-link, or a duplicate active link
+    already exists.  Fails closed and never leaks which of those reasons applied
+    to a caller who is not the legitimate participant.
+    """
+    now = _now()
+    with _connection() as conn:
+        invitation = conn.execute(
+            "SELECT * FROM hicbc_link_invitations WHERE token_hash = ? AND tax_year = ?",
+            (_token_hash(token), tax_year),
+        ).fetchone()
+        if invitation is None:
+            return None
+        invitation = dict(invitation)
+        if invitation["status"] != _INVITATION_STATUS_PENDING:
+            return None
+        if invitation["expires_at"] <= now:
+            return None
+        creator_id = invitation["creator_id"]
+        if creator_id == user_id:
+            return None  # self-link rejected
+
+        low, high = sorted((creator_id, user_id))
+        existing = conn.execute(
+            "SELECT * FROM hicbc_links WHERE user_low_id = ? AND user_high_id = ? AND tax_year = ?",
+            (low, high, tax_year),
+        ).fetchone()
+        if existing is not None and existing["status"] == _LINK_STATUS_ACTIVE:
+            return None  # duplicate active link
+
+        # Single-use token consumption.
+        conn.execute(
+            """
+            UPDATE hicbc_link_invitations
+            SET status = ?, accepted_at = ?, accepted_by = ?
+            WHERE id = ?
+            """,
+            (_INVITATION_STATUS_ACCEPTED, now, user_id, invitation["id"]),
+        )
+
+        if existing is None:
+            cur = conn.execute(
+                """
+                INSERT INTO hicbc_links
+                    (user_low_id, user_high_id, tax_year, purpose, status, initiator_id,
+                     relationship_started_at, created_at, accepted_at)
+                VALUES (?, ?, ?, 'hicbc_responsibility', ?, ?, NULL, ?, ?)
+                """,
+                (low, high, tax_year, _LINK_STATUS_ACTIVE, creator_id, now, now),
+            )
+            link_id = cur.lastrowid
+        else:
+            link_id = existing["id"]
+            conn.execute(
+                """
+                UPDATE hicbc_links
+                SET status = ?, initiator_id = ?, accepted_at = ?, revoked_at = NULL, revoked_by = NULL
+                WHERE id = ?
+                """,
+                (_LINK_STATUS_ACTIVE, creator_id, now, existing["id"]),
+            )
+
+        conn.execute(
+            "UPDATE hicbc_link_invitations SET link_id = ? WHERE id = ?",
+            (link_id, invitation["id"]),
+        )
+        return _get_hicbc_link_row(conn, link_id)
+
+
+def _get_hicbc_link_row(conn, link_id: int) -> dict:
+    row = conn.execute("SELECT * FROM hicbc_links WHERE id = ?", (link_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_active_hicbc_link(user_id: int, tax_year: str) -> dict | None:
+    """Return the active HICBC link involving ``user_id`` for ``tax_year``, if any."""
+    with _connection() as conn:
+        row = conn.execute(
+            """
+            SELECT * FROM hicbc_links
+            WHERE (user_low_id = ? OR user_high_id = ?) AND tax_year = ? AND status = ?
+            """,
+            (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_hicbc_link_partner_id(user_id: int, tax_year: str) -> int | None:
+    """Return the other participant's user_id for an active link, or None."""
+    link = get_active_hicbc_link(user_id, tax_year)
+    if link is None:
+        return None
+    if link["user_low_id"] == user_id:
+        return link["user_high_id"]
+    return link["user_low_id"]
+
+
+def revoke_hicbc_link(user_id: int, tax_year: str) -> bool:
+    """Revoke the active HICBC link involving ``user_id``.
+
+    Either participant may revoke.  Revocation takes effect immediately for
+    future calculations; the link row is retained (status 'revoked') as minimal
+    audit evidence and is never used again for cross-account access.  Returns
+    True if an active link was revoked.
+    """
+    now = _now()
+    with _connection() as conn:
+        row = conn.execute(
+            """
+            SELECT id FROM hicbc_links
+            WHERE (user_low_id = ? OR user_high_id = ?) AND tax_year = ? AND status = ?
+            """,
+            (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE),
+        ).fetchone()
+        if row is None:
+            return False
+        conn.execute(
+            "UPDATE hicbc_links SET status = ?, revoked_at = ?, revoked_by = ? WHERE id = ?",
+            (_LINK_STATUS_REVOKED, now, user_id, row["id"]),
+        )
+    return True
+
+
+def delete_all_hicbc_links_for_user(user_id: int) -> int:
+    """Delete every HICBC link and invitation involving ``user_id``.
+
+    Account-deletion hook: removes links (both sides) and the user's invitations.
+    Returns the number of link/invitation rows removed.
+    """
+    with _connection() as conn:
+        links = conn.execute(
+            "DELETE FROM hicbc_links WHERE user_low_id = ? OR user_high_id = ?",
+            (user_id, user_id),
+        ).rowcount
+        invitations = conn.execute(
+            "DELETE FROM hicbc_link_invitations WHERE creator_id = ? OR accepted_by = ?",
+            (user_id, user_id),
+        ).rowcount
+    return links + invitations
 
 
 def save_optimise_scenario(
