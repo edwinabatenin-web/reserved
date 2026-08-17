@@ -23,6 +23,11 @@ Status: founder-confirmed 12 August 2026; HICBC scope amended 15 August 2026.
 Existing HICBC, Capital Gains and Scottish-tax code must not be treated as v1
 scope merely because it is present in the repository.
 
+On 17 August 2026 the founder authorised bounded post-v1 HICBC partner-support
+work (see `docs/HICBC_PARTNER_SUPPORT.md`). That authorisation does not change
+the v1 boundary: HICBC remains excluded from v1 customer totals, reserve or
+set-aside guidance, payments, filing and launch claims.
+
 ## Assurance status
 
 The current engine is **not yet Reserved West validated** and must not be described as production-ready. Validation requires an independent reference implementation or manually derived fixtures, boundary and interaction cases, documented sources, and review of discrepancies. Reusing the same formulas in both implementations is not independent validation.

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Child Benefit charge — Reserved{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Post-v1 preview</p>
+        <h1>High Income Child Benefit Charge</h1>
+        <p>This is a limited post-v1 preview. It is separate from your main tax estimate, your amount to put aside and any payment or filing guidance.</p>
+    </div>
+</section>
+
+<section class="panel" aria-live="polite">
+    <h2>Current estimate</h2>
+    <p class="hicbc-headline">{{ view.headline }}</p>
+    {% if view.projected_user_hicbc is not none %}
+        <p><strong>Estimated charge that may apply to you:</strong> £{{ view.projected_user_hicbc }}</p>
+    {% elif view.possible_charge_low is not none and view.possible_charge_high is not none %}
+        <p><strong>Possible charge that may apply to you:</strong> between £{{ view.possible_charge_low }} and £{{ view.possible_charge_high }}.</p>
+    {% endif %}
+    <p>Your projected adjusted net income: £{{ '%.2f'|format(user_ani) }} (for {{ tax_year }}).</p>
+    {% if view.messages %}
+        <ul class="hicbc-messages">
+            {% for message in view.messages %}<li>{{ message }}</li>{% endfor %}
+        </ul>
+    {% endif %}
+</section>
+
+<section class="panel">
+    <h2>Update your information</h2>
+    <p>This estimate uses partner information you supply. It may change when either person's adjusted net income or the Child Benefit facts change.</p>
+
+    {% if errors %}
+    <div class="flash flash-error" role="alert">
+        <strong>Check your information</strong>
+        <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('hicbc.save_estimate') }}" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="tax_year" value="{{ tax_year }}">
+
+        <fieldset>
+            <legend>Child Benefit</legend>
+            <label>Do you receive Child Benefit?
+                <select name="receives_child_benefit">
+                    <option value="" {% if not row or row.receives_child_benefit is none %}selected{% endif %}>I'm not sure</option>
+                    <option value="yes" {% if row and row.receives_child_benefit == 1 %}selected{% endif %}>Yes</option>
+                    <option value="no" {% if row and row.receives_child_benefit == 0 %}selected{% endif %}>No</option>
+                </select>
+            </label>
+            <label>Number of children you receive Child Benefit for
+                <input name="child_benefit_children" type="number" min="0" value="{{ row.child_benefit_children if row else 0 }}">
+            </label>
+            <label>Annual Child Benefit total (optional — leave blank to use standard rates)
+                <input name="child_benefit_annual" type="number" min="0" step="0.01" value="{{ row.child_benefit_annual if row else '' }}">
+            </label>
+        </fieldset>
+
+        <fieldset>
+            <legend>Partner</legend>
+            <label>Do you have a partner for High Income Child Benefit Charge purposes?
+                <select name="has_relevant_partner">
+                    <option value="" {% if not row or row.has_relevant_partner is none %}selected{% endif %}>I'm not sure</option>
+                    <option value="yes" {% if row and row.has_relevant_partner == 1 %}selected{% endif %}>Yes</option>
+                    <option value="no" {% if row and row.has_relevant_partner == 0 %}selected{% endif %}>No</option>
+                </select>
+            </label>
+            <label>Partner income estimate type
+                <select name="representation">
+                    <option value="point" {% if row and row.representation == 'point' %}selected{% endif %}>A single amount</option>
+                    <option value="range" {% if row and row.representation == 'range' %}selected{% endif %}>A range</option>
+                </select>
+            </label>
+            <label>Partner estimated adjusted net income (single amount)
+                <input name="partner_ani_point" type="number" min="0" step="0.01" value="{{ row.partner_ani_point if row else '' }}">
+            </label>
+            <label>Partner estimated adjusted net income — lower end
+                <input name="partner_ani_low" type="number" min="0" step="0.01" value="{{ row.partner_ani_low if row else '' }}">
+            </label>
+            <label>Partner estimated adjusted net income — upper end
+                <input name="partner_ani_high" type="number" min="0" step="0.01" value="{{ row.partner_ani_high if row else '' }}">
+            </label>
+        </fieldset>
+
+        <button type="submit">Save estimate</button>
+    </form>
+
+    <form method="post" action="{{ url_for('hicbc.delete_estimate') }}" onsubmit="return confirm('Remove your saved Child Benefit charge estimate?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="tax_year" value="{{ tax_year }}">
+        <button type="submit" class="button-secondary">Remove saved estimate</button>
+    </form>
+</section>
+{% endblock %}

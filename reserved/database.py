@@ -240,6 +240,37 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     child_benefit_annual    REAL    -- explicit override; NULL = use standard rates
 );
 
+-- ── HICBC partner estimates (post-v1) ────────────────────────────────────────
+-- One row per (user_id, tax_year) holds the user's bounded manual HICBC inputs:
+-- Child Benefit facts and the partner income estimate used only for the
+-- responsibility comparison.  Money/ANI values are stored as canonical Decimal
+-- strings (TEXT), never binary floating point, so validation-critical values
+-- round-trip without precision loss.  The partner's raw figures are persisted
+-- only to serve the internal comparison and are never returned in a
+-- customer-facing payload.
+CREATE TABLE IF NOT EXISTS hicbc_estimates (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id                 INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tax_year                TEXT    NOT NULL,
+    receives_child_benefit  INTEGER,              -- NULL=unknown, 0=no, 1=yes
+    child_benefit_children  INTEGER NOT NULL DEFAULT 0,
+    child_benefit_annual    TEXT,                 -- Decimal string; NULL = use standard rates
+    has_relevant_partner    INTEGER,              -- NULL=unknown, 0=no, 1=yes
+    representation          TEXT,                 -- NULL | 'point' | 'range'
+    partner_ani_point       TEXT,                 -- Decimal string
+    partner_ani_low         TEXT,                 -- Decimal string
+    partner_ani_high        TEXT,                 -- Decimal string
+    evidence_id             TEXT    NOT NULL,
+    source_kind             TEXT    NOT NULL DEFAULT 'user_supplied_partner_estimate',
+    observed_at             TEXT    NOT NULL,
+    confirmed_at            TEXT,
+    completeness            TEXT    NOT NULL DEFAULT 'complete_for_purpose',
+    recency_state           TEXT    NOT NULL DEFAULT 'current',
+    created_at              TEXT    NOT NULL,
+    updated_at              TEXT    NOT NULL,
+    UNIQUE(user_id, tax_year)
+);
+
 -- ── Tax optimisation saved scenarios ─────────────────────────────────────────
 -- Stores pension-scenario comparisons the user has chosen to save from the
 -- Optimise page.  Linked to users (not profiles) so they survive profile edits.
@@ -359,7 +390,7 @@ CREATE TABLE IF NOT EXISTS invoice_matches (
 # - The DDL block above always reflects the full target schema; migrations
 #   handle upgrade paths for databases created before the current DDL.
 #
-_SCHEMA_VERSION = 5   # increment when adding new migration entries below
+_SCHEMA_VERSION = 6   # increment when adding new migration entries below
 
 _MIGRATIONS: dict[int, list[str]] = {
     # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
@@ -410,6 +441,32 @@ _MIGRATIONS: dict[int, list[str]] = {
     # a saved comparison cannot silently lose the year it was calculated under.
     5: [
         "ALTER TABLE optimise_scenarios ADD COLUMN tax_year TEXT",
+    ],
+    # Version 6 — Post-v1 HICBC partner estimates: Child Benefit facts plus the
+    # partner ANI estimate used only for the responsibility comparison.
+    6: [
+        """CREATE TABLE IF NOT EXISTS hicbc_estimates (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id                 INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tax_year                TEXT    NOT NULL,
+            receives_child_benefit  INTEGER,
+            child_benefit_children  INTEGER NOT NULL DEFAULT 0,
+            child_benefit_annual    TEXT,
+            has_relevant_partner    INTEGER,
+            representation          TEXT,
+            partner_ani_point       TEXT,
+            partner_ani_low         TEXT,
+            partner_ani_high        TEXT,
+            evidence_id             TEXT    NOT NULL,
+            source_kind             TEXT    NOT NULL DEFAULT 'user_supplied_partner_estimate',
+            observed_at             TEXT    NOT NULL,
+            confirmed_at            TEXT,
+            completeness            TEXT    NOT NULL DEFAULT 'complete_for_purpose',
+            recency_state           TEXT    NOT NULL DEFAULT 'current',
+            created_at              TEXT    NOT NULL,
+            updated_at              TEXT    NOT NULL,
+            UNIQUE(user_id, tax_year)
+        )""",
     ],
 }
 
@@ -1277,6 +1334,105 @@ def get_profile_by_user(user_id: int) -> dict | None:
         except (ValueError, TypeError):
             pass
     return profile
+
+
+# ── HICBC partner estimates (post-v1) ─────────────────────────────────────────
+# Money/ANI values are canonical Decimal strings.  ``save_hicbc_estimate``
+# preserves the evidence_id across updates (replacement) so the evidence stays a
+# single stable identity for the user/tax-year; a fresh insert gets a new one.
+
+def save_hicbc_estimate(user_id: int, data: dict) -> None:
+    """Upsert the HICBC partner estimate for ``user_id`` and ``tax_year``.
+
+    ``data`` keys (all optional except ``tax_year``):
+        receives_child_benefit (None|0|1), child_benefit_children (int),
+        child_benefit_annual (Decimal str|None), has_relevant_partner (None|0|1),
+        representation (None|'point'|'range'),
+        partner_ani_point/low/high (Decimal str|None),
+        source_kind, observed_at, confirmed_at, completeness, recency_state.
+    """
+    import uuid
+
+    tax_year = data.get("tax_year")
+    if not tax_year:
+        raise ValueError("tax_year is required")
+    now = _now()
+    with _connection() as conn:
+        existing = conn.execute(
+            "SELECT evidence_id FROM hicbc_estimates WHERE user_id = ? AND tax_year = ?",
+            (user_id, tax_year),
+        ).fetchone()
+        evidence_id = existing["evidence_id"] if existing else uuid.uuid4().hex
+        observed_at = data.get("observed_at") or now
+        conn.execute(
+            """
+            INSERT INTO hicbc_estimates
+                (user_id, tax_year, receives_child_benefit, child_benefit_children,
+                 child_benefit_annual, has_relevant_partner, representation,
+                 partner_ani_point, partner_ani_low, partner_ani_high,
+                 evidence_id, source_kind, observed_at, confirmed_at,
+                 completeness, recency_state, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, tax_year) DO UPDATE SET
+                receives_child_benefit = excluded.receives_child_benefit,
+                child_benefit_children = excluded.child_benefit_children,
+                child_benefit_annual   = excluded.child_benefit_annual,
+                has_relevant_partner   = excluded.has_relevant_partner,
+                representation         = excluded.representation,
+                partner_ani_point      = excluded.partner_ani_point,
+                partner_ani_low        = excluded.partner_ani_low,
+                partner_ani_high       = excluded.partner_ani_high,
+                source_kind            = excluded.source_kind,
+                observed_at            = excluded.observed_at,
+                confirmed_at           = excluded.confirmed_at,
+                completeness           = excluded.completeness,
+                recency_state          = excluded.recency_state,
+                updated_at             = excluded.updated_at
+            """,
+            (
+                user_id,
+                tax_year,
+                data.get("receives_child_benefit"),
+                int(data.get("child_benefit_children") or 0),
+                data.get("child_benefit_annual"),
+                data.get("has_relevant_partner"),
+                data.get("representation"),
+                data.get("partner_ani_point"),
+                data.get("partner_ani_low"),
+                data.get("partner_ani_high"),
+                evidence_id,
+                data.get("source_kind") or "user_supplied_partner_estimate",
+                observed_at,
+                data.get("confirmed_at"),
+                data.get("completeness") or "complete_for_purpose",
+                data.get("recency_state") or "current",
+                now,
+                now,
+            ),
+        )
+
+
+def get_hicbc_estimate(user_id: int, tax_year: str) -> dict | None:
+    """Return the HICBC partner estimate row for ``user_id``/``tax_year``."""
+    with _connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM hicbc_estimates WHERE user_id = ? AND tax_year = ?",
+            (user_id, tax_year),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def delete_hicbc_estimate(user_id: int, tax_year: str) -> bool:
+    """Delete the HICBC partner estimate for ``user_id``/``tax_year``.
+
+    Returns True if a row was deleted (enforces ownership).
+    """
+    with _connection() as conn:
+        rowcount = conn.execute(
+            "DELETE FROM hicbc_estimates WHERE user_id = ? AND tax_year = ?",
+            (user_id, tax_year),
+        ).rowcount
+    return rowcount > 0
 
 
 def save_optimise_scenario(

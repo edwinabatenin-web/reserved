@@ -10,6 +10,7 @@ from .database import init_db
 from .extensions import csrf
 from .web.routes import web
 from .web.founder import founder
+from .web.hicbc import hicbc
 from .web.v2 import v2
 from .api.routes import api
 
@@ -54,6 +55,7 @@ def create_app() -> Flask:
     app.register_blueprint(api, url_prefix="/api")
     app.register_blueprint(founder)
     app.register_blueprint(v2)  # V2 preview — not linked from public nav
+    app.register_blueprint(hicbc)  # post-v1 HICBC partner preview
 
     # ── Template globals ──────────────────────────────────────────────────────
     # Expose canonical_base and turnstile_site_key to every template so that

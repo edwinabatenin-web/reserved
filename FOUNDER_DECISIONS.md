@@ -35,6 +35,47 @@ where that disclosure is relevant, without attempting to infer liability from
 the customer's income alone. Unknown partner and Child Benefit facts must never
 be silently treated as zero.
 
+## Resolved: HICBC partner support is authorised post-v1 work (17 August 2026)
+
+Reserved may build bounded HICBC **partner-support** capability that improves
+the accuracy of the responsibility determination where partner information is
+available. This authorisation is explicitly **post-v1**: it does not place HICBC
+inside the October v1 supported tax total, reserve or set-aside guidance, payment
+initiation, filing, launch-readiness claims, or the existing Personal Allowance
+Explore-your-options result.
+
+The work is bounded to:
+
+- calculating HICBC from each individual's adjusted net income (ANI), not a
+  combined household income;
+- a manual partner-estimate journey that collects at most a partner ANI point or
+  low/high range plus an observation/confirmation date;
+- a narrow, source-neutral, privacy-preserving interface for a future linked
+  partner source (no account linking, invitations, discovery or cross-account
+  database access is built now);
+- preserving material uncertainty rather than inventing certainty.
+
+The following prohibitions remain in force and are not overridden by this
+decision:
+
+- HICBC must not enter a v1 customer tax total, reserve amount, set-aside
+  recommendation, payment flow, filing output or launch claim;
+- a linked partner's precise ANI, income band, bonus, relative salary or
+  calculated personal tax must never be disclosed or implied to the first user;
+- unknown partner or Child Benefit facts must not be treated as zero;
+- where the two partners have equal ANI there is no statutory "higher-income"
+  person, so responsibility must fail safe as ambiguous rather than inventing a
+  tie-break.
+
+The manual partner estimate is third-party personal data. It requires
+authenticated owner scoping on every read and write, no cross-user access,
+server-side input validation, CSRF protection on state-changing requests,
+no-store cache behaviour, deletion and replacement, no raw partner values in
+logs/analytics/notifications, and a privacy-notice and retention review before
+production activation. The HICBC partner feature must not be counted as an
+October launch-supported family unless a separate founder scope decision
+authorises that change.
+
 ## Resolved: PAYE current-position proposition for v1 (15 August 2026)
 
 V1 should help PAYE users estimate whether their full-tax-year position is
