@@ -7,6 +7,71 @@ The engine version is exposed at runtime as `reserved.engines.ENGINE_VERSION`.
 
 ---
 
+## [4.0.0] — 2026-08-14
+
+### Relief-at-Source pension contributions extend BOTH limits
+
+**Breaking correction:** a gross Relief-at-Source pension contribution now
+extends **both** the basic-rate limit and the higher-rate limit (the point at
+which the additional 45 % rate begins) by the gross contribution amount.
+
+    extended basic-rate limit  = £37,700 + pension
+    extended higher-rate limit = £125,140 + pension
+
+The higher-rate band width (£87,440) is unchanged; the additional-rate
+threshold shifts up by the contribution amount.  There is **no cap** at
+£125,140.
+
+This **supersedes** the v2.0.1 "eBRL cap at ART" treatment (recorded below),
+which left the higher-rate limit fixed at £125,140 and overcharged the
+additional-rate slice.  The v2.0.1 entry is retained unchanged as a
+historical record; it was based on PTM044100, which does not address the
+higher-rate limit, whereas PTM056120 ("Basic and higher rate limits") states
+explicitly: *"Both the basic rate limit and the higher rate limit will be
+increased by the gross amount of any contribution paid using RAS."*
+
+**Authority:** HMRC Pensions Tax Manual PTM056120; Finance Act 2004 s.192.
+
+**Representative corrections:**
+
+| Income | Pension | v3.0.0 (wrong) | v4.0.0 (correct) |
+|---|---|---|---|
+| £125,141 | £1 | £42,516.25 | £42,516.20 (RW3-PEN-005) |
+| £200,000 | £80,000 | £59,046.50 | £55,432.00 |
+
+**Impact:** results change only when a gross pension contribution is present
+and taxable income reaches the additional-rate threshold.  Zero-pension and
+below-ART results are unchanged.
+
+**Regression tests:** `tests/test_el003_regression.py` (decisive boundaries),
+`tests/test_engine_adapters.py::test_rw3_pen_005_is_executable_and_passing`,
+and the Optimise/artefact band-extension tests.
+
+**Rules versions:** `uk-2026-27-v4`, `uk-2025-26-v2`.
+
+**Status:** derived from authoritative material and implemented with explicit
+workings; awaiting subsequent independent re-review.
+
+### Assurance terminology and metadata (2026-08-14)
+
+No engine behaviour change; engine version remains `4.0.0`.  This records the
+assurance-facing terminology decisions so the UI and metadata cannot be read
+as an absolute claim of correctness.
+
+* The assurance metadata field `verified_date` is renamed to `generated_on`,
+  and the top-level `status` is either `release_gate_passed` or
+  `release_gate_failed`.  "Verified" is deliberately avoided.
+* The annual period is labelled **period of assessment** (value `2026/27`)
+  rather than the ambiguous "tax year".  The engine's `tax_year` code
+  identifier is unchanged.
+* The golden-persona wording "Extended basic-rate limit = £50,270 + £5,000"
+  is corrected to **Extended higher-rate threshold = £50,270 + £5,000**
+  (£50,270 is the higher-rate threshold, not the £37,700 basic-rate limit).
+* The assurance metadata now records the mandatory RW3 fixture-gate result,
+  its classification counts, and the artefact source identity.
+
+---
+
 ## [3.0.0] — 2026-08-13
 
 ### PA taper taxable-band coordinate defect resolved

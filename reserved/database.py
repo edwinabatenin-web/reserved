@@ -248,6 +248,7 @@ CREATE TABLE IF NOT EXISTS optimise_scenarios (
     user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     opportunity  TEXT    NOT NULL,   -- "PA_TAPER" | "HICBC"
     label        TEXT,               -- user-provided name (optional)
+    tax_year     TEXT,               -- applicable tax year; NULL only for pre-migration records
     inputs_json  TEXT    NOT NULL,   -- JSON: projected_income, pension, extra, annual_cb
     outputs_json TEXT    NOT NULL,   -- JSON: before, after, it_reduction, hicbc_reduction, total
     saved_at     TEXT    NOT NULL
@@ -358,7 +359,7 @@ CREATE TABLE IF NOT EXISTS invoice_matches (
 # - The DDL block above always reflects the full target schema; migrations
 #   handle upgrade paths for databases created before the current DDL.
 #
-_SCHEMA_VERSION = 4   # increment when adding new migration entries below
+_SCHEMA_VERSION = 5   # increment when adding new migration entries below
 
 _MIGRATIONS: dict[int, list[str]] = {
     # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
@@ -404,6 +405,11 @@ _MIGRATIONS: dict[int, list[str]] = {
             outputs_json TEXT    NOT NULL,
             saved_at     TEXT    NOT NULL
         )""",
+    ],
+    # Version 5 — Persist the applicable tax year with saved Explore scenarios so
+    # a saved comparison cannot silently lose the year it was calculated under.
+    5: [
+        "ALTER TABLE optimise_scenarios ADD COLUMN tax_year TEXT",
     ],
 }
 
@@ -1279,6 +1285,7 @@ def save_optimise_scenario(
     inputs: dict,
     outputs: dict,
     label: str | None = None,
+    tax_year: str | None = None,
 ) -> int:
     """Save a pension-contribution scenario comparison for a user.
 
@@ -1289,6 +1296,9 @@ def save_optimise_scenario(
     inputs:      Dict of calculation inputs (projected_income, pension, extra, annual_cb).
     outputs:     Dict of results (before, after, it_reduction, hicbc_reduction, total_benefit).
     label:       Optional user-supplied name for this comparison.
+    tax_year:    Applicable tax year the scenario was calculated under.  A new
+                 save must carry a supported year (enforced by the caller);
+                 ``None`` is reserved for legacy/pre-migration records only.
 
     Returns the new row ID.
     """
@@ -1296,9 +1306,9 @@ def save_optimise_scenario(
     with _connection() as conn:
         cur = conn.execute(
             """INSERT INTO optimise_scenarios
-               (user_id, opportunity, label, inputs_json, outputs_json, saved_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (user_id, opportunity, label, json.dumps(inputs), json.dumps(outputs), _now()),
+               (user_id, opportunity, label, tax_year, inputs_json, outputs_json, saved_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, opportunity, label, tax_year, json.dumps(inputs), json.dumps(outputs), _now()),
         )
         return cur.lastrowid
 

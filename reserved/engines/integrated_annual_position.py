@@ -94,13 +94,20 @@ def _personal_allowance(ani: Decimal, cfg: dict) -> Decimal:
     return max(ZERO, cfg["PERSONAL_ALLOWANCE"] - reduction)
 
 
-def _ordinary_tax(amount: Decimal, cursor: Decimal, basic_limit: Decimal, cfg: dict) -> Decimal:
-    """Tax ``amount`` stacked from taxable-income ``cursor``."""
+def _ordinary_tax(
+    amount: Decimal, cursor: Decimal, basic_limit: Decimal, higher_rate_limit: Decimal, cfg: dict
+) -> Decimal:
+    """Tax ``amount`` stacked from taxable-income ``cursor``.
+
+    ``basic_limit`` and ``higher_rate_limit`` are the (possibly
+    Relief-at-Source-extended) basic-rate limit and the higher-rate limit at
+    which the additional rate begins (HMRC Pensions Tax Manual PTM056120).
+    """
     tax = ZERO
     end = cursor + amount
     bands = (
         (basic_limit, cfg["INCOME_TAX_RATES"]["basic"]),
-        (cfg["ADDITIONAL_RATE_THRESHOLD"], cfg["INCOME_TAX_RATES"]["higher"]),
+        (higher_rate_limit, cfg["INCOME_TAX_RATES"]["higher"]),
         (Decimal("Infinity"), cfg["INCOME_TAX_RATES"]["additional"]),
     )
     for ceiling, rate in bands:
@@ -113,12 +120,14 @@ def _ordinary_tax(amount: Decimal, cursor: Decimal, basic_limit: Decimal, cfg: d
     return tax
 
 
-def _dividend_tax(amount: Decimal, cursor: Decimal, basic_limit: Decimal, cfg: dict) -> Decimal:
+def _dividend_tax(
+    amount: Decimal, cursor: Decimal, basic_limit: Decimal, higher_rate_limit: Decimal, cfg: dict
+) -> Decimal:
     tax = ZERO
     end = cursor + amount
     bands = (
         (basic_limit, cfg["DIVIDEND_TAX_RATES"]["basic"]),
-        (cfg["ADDITIONAL_RATE_THRESHOLD"], cfg["DIVIDEND_TAX_RATES"]["higher"]),
+        (higher_rate_limit, cfg["DIVIDEND_TAX_RATES"]["higher"]),
         (Decimal("Infinity"), cfg["DIVIDEND_TAX_RATES"]["additional"]),
     )
     for ceiling, rate in bands:
@@ -299,15 +308,16 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
     pa_left = max(ZERO, pa_left - savings)
     taxable_dividends = max(ZERO, dividends - pa_left)
 
-    basic_limit = min(cfg["BASIC_RATE_BAND"] + pension, cfg["ADDITIONAL_RATE_THRESHOLD"])
-    non_savings_tax = _money(_ordinary_tax(taxable_ns, ZERO, basic_limit, cfg))
+    basic_limit = cfg["BASIC_RATE_BAND"] + pension
+    higher_rate_limit = cfg["ADDITIONAL_RATE_THRESHOLD"] + pension
+    non_savings_tax = _money(_ordinary_tax(taxable_ns, ZERO, basic_limit, higher_rate_limit, cfg))
     cursor = taxable_ns
 
     starting_rate = min(taxable_savings, max(ZERO, cfg["SAVINGS"]["starting_rate_limit"] - taxable_ns))
     savings_after_starting = taxable_savings - starting_rate
     cursor += starting_rate
     total_taxable = taxable_ns + taxable_savings + taxable_dividends
-    if total_taxable > cfg["ADDITIONAL_RATE_THRESHOLD"]:
+    if total_taxable > higher_rate_limit:
         psa = cfg["SAVINGS"]["personal_savings_allowance_additional"]
     elif total_taxable > basic_limit:
         psa = cfg["SAVINGS"]["personal_savings_allowance_higher"]
@@ -316,12 +326,12 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
     psa_used = min(psa, savings_after_starting)
     cursor += psa_used
     taxable_savings_after_allowances = savings_after_starting - psa_used
-    savings_tax = _money(_ordinary_tax(taxable_savings_after_allowances, cursor, basic_limit, cfg))
+    savings_tax = _money(_ordinary_tax(taxable_savings_after_allowances, cursor, basic_limit, higher_rate_limit, cfg))
     cursor += taxable_savings_after_allowances
 
     dividend_allowance = min(cfg["DIVIDEND_ALLOWANCE"], taxable_dividends)
     cursor += dividend_allowance
-    dividend_tax = _money(_dividend_tax(taxable_dividends - dividend_allowance, cursor, basic_limit, cfg))
+    dividend_tax = _money(_dividend_tax(taxable_dividends - dividend_allowance, cursor, basic_limit, higher_rate_limit, cfg))
     income_tax = _money(non_savings_tax + savings_tax + dividend_tax)
     class_4 = _class_4(trade, cfg)
 

@@ -58,7 +58,7 @@
                 <span>Dashboard</span>
             </a>
             <a class="{{ 'active' if request.endpoint in ('v2.optimise_view', 'v2.optimise_calculate', 'v2.optimise_save_scenario') }}" href="{{ url_for('v2.optimise_view') }}"{% if request.endpoint in ('v2.optimise_view', 'v2.optimise_calculate', 'v2.optimise_save_scenario') %} aria-current="page"{% endif %}>
-                <span>Optimise</span>
+                <span>Explore your options</span>
             </a>
             <a class="{{ 'active' if request.endpoint in ('web.connections', 'v2.connections') }}" href="{{ url_for('web.connections') }}"{% if request.endpoint in ('web.connections', 'v2.connections') %} aria-current="page"{% endif %}>
                 <span>Connections</span>

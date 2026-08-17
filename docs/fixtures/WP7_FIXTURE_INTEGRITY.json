@@ -1,12 +1,13 @@
 {
   "algorithm": "sha256",
-  "generated_on": "2026-08-13",
-  "purpose": "Detect any fixture change requiring deliberate re-derivation/review and manifest update.",
+  "classification_manifest": "336a5d8dd42101179ac060bb291d4e4d594f455953c4bbe85006d91585aefc39",
   "files": {
     "RW3_CORE_FIXTURES.json": "12e9131e49aee869b304a066f52c27eea51e0a69790016767cbf73793a4a8493",
     "RW3_CORE_MULTI_UNDERGRADUATE_PENDING_FIXTURES.json": "cec581a53e962c4436c4faa7b72f504f0f38ed455dc11020c335b81903e25586",
     "RW3_PAYE_EVIDENCE_FIXTURES.json": "b18f4c2f0c27575cbefb445f167320ca2d7d331aab0e0ab3b36accc8306ac67a",
     "RW3_TRANCHE_H_FIXTURES.json": "c37f45f6f8d26e1cf7c5749f81c15d2e457651a56b8f5f585618ef7788d8565a",
     "RW3_V1_PREIMPLEMENTATION_FIXTURES.json": "e9c9d1da029f277d9a7316a1e9c3ed4d10c629c14442fed9a2acacfae136f7e2"
-  }
+  },
+  "generated_on": "2026-08-13",
+  "purpose": "Detect any fixture change requiring deliberate re-derivation/review and manifest update."
 }

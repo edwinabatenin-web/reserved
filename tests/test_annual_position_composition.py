@@ -58,9 +58,9 @@ def test_complete_components_are_linked_without_combining_money():
     assert not hasattr(result, "combined_balance")
     assert not hasattr(result, "amount_due")
     assert "customer_presentation" in result.prohibited_uses
-    assert result.annual_tax.ruleset_version == "uk-2026-27-v3"
+    assert result.annual_tax.ruleset_version == "uk-2026-27-v4"
     assert result.annual_tax.included_families == ("income_tax", "class_4_ni")
-    assert result.student_loans.ruleset_version == "uk-2026-27-v3"
+    assert result.student_loans.ruleset_version == "uk-2026-27-v4"
     assert result.student_loans.basis_evidence_ids == ("E-SYNTHETIC-BASIS",)
     assert result.student_loans.as_of == date(2027, 4, 5)
     assert result.student_loans.declared_employment_ids == ("synthetic-job-a",)

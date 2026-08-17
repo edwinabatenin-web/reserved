@@ -44,9 +44,9 @@ def D(s: str) -> Decimal:
 # start_income = 40000 + 15000 = 55000
 # end_income   = 55000 + 10000 = 65000
 # ANI          = 65000 − 5000  = 60000 → PA = 12570 (full)
-# Extended BRL = 50270 + 5000  = 55270
+# Extended HRT (higher-rate threshold) = 50270 + 5000  = 55270
 #
-# Income tax (55000→65000, BRL=55270):
+# Income tax (55000→65000, HRT=55270):
 #   55000→55270  20 % × 270    =    54.00
 #   55270→65000  40 % × 9730   = 3,892.00
 #                              = 3,946.00
@@ -203,9 +203,9 @@ def test_emily_total():
 #
 # start = 45000, end = 55000
 # ANI  = 55000 − 6000 = 49000 → PA = 12570 (full)
-# Extended BRL = 50270 + 6000 = 56270
+# Extended HRT (higher-rate threshold) = 50270 + 6000 = 56270
 #
-# Income tax (45000→55000, BRL=56270):
+# Income tax (45000→55000, HRT=56270):
 #   All income falls within the extended basic band → 20 % × 10000 = 2,000.00
 #
 # WITHOUT pension: 20%×5270 + 40%×4730 = 1054 + 1892 = 2,946.00
@@ -307,9 +307,9 @@ def test_olivia_total():
 #
 # start = 95000, end = 103000
 # ANI  = 103000 − 12000 = 91000 < 100000 → PA = 12570 (full)
-# Extended BRL = 50270 + 12000 = 62270
+# Extended HRT (higher-rate threshold) = 50270 + 12000 = 62270
 #
-# Income tax (95000→103000, BRL=62270):
+# Income tax (95000→103000, HRT=62270):
 #   Both start and end are above 62270 → higher rate band
 #   40 % × 8000 = 3,200.00
 #

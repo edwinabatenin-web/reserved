@@ -21,7 +21,7 @@ PA taper (Finance (No.2) Act 2015):
 HICBC (Finance Act 2012 s.681B, revised April 2024):
   Threshold: £60,000  Taper: 1 % per £200  Full charge: £80,000
 """
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 PA              = Decimal("12570")
@@ -57,7 +57,9 @@ def income_tax_total_ref(income: Decimal, pension: Decimal) -> Decimal:
 
     ANI = income − pension (clamped to 0).
     PA reduced by £1 per £2 ANI above £100,000.
-    BRL extended by pension, capped at ART.
+    A gross RAS contribution extends BOTH the basic-rate limit and the
+    higher-rate limit (additional-rate threshold) by the gross amount
+    (HMRC Pensions Tax Manual PTM056120).  No cap applies.
 
     Rates: 0 % / 20 % / 40 % / 45 %.
     Source: ITEPA 2003 Part 2; Income Tax Act 2007 s.35.
@@ -67,12 +69,13 @@ def income_tax_total_ref(income: Decimal, pension: Decimal) -> Decimal:
 
     ani = max(Decimal("0"), income - pension)
     pa  = personal_allowance_ref(ani)
-    basic_band = min((BRL - PA) + pension, ART)
+    basic_band = (BRL - PA) + pension
+    art = ART + pension
     taxable_income = max(Decimal("0"), income - pa)
 
     bands = [
         (basic_band,      Decimal("0.20")),
-        (ART,             Decimal("0.40")),
+        (art,             Decimal("0.40")),
         (Decimal("Inf"), Decimal("0.45")),
     ]
 
@@ -92,13 +95,21 @@ def income_tax_total_ref(income: Decimal, pension: Decimal) -> Decimal:
 
 
 def hicbc_ref(ani: Decimal, annual_cb: Decimal) -> Decimal:
-    """High Income Child Benefit Charge.
+    """High Income Child Benefit Charge with statutory staged flooring.
 
-    Source: Finance Act 2012 s.681B (revised April 2024).
-    Formula: charge_pct = min(100, max(0, (ANI − 60,000) / 200))
-             HICBC = annual_cb × charge_pct / 100
+    Source: Finance Act 2012 s.681B (revised April 2024); ITEPA 2003 s.681C(3).
+
+    Staged whole-pound flooring (matching HMRC CH2300C and the independently
+    reviewed RW3-HICBC fixtures):
+      1. appropriate percentage = floor((ANI − 60,000) / 200), capped at 100;
+      2. relevant total benefit  = floor(annual_cb);
+      3. charge = floor(relevant_benefit × percentage / 100).
     """
     if ani <= HICBC_LOWER or annual_cb <= Decimal("0"):
         return Decimal("0")
-    charge_pct = min(Decimal("100"), (ani - HICBC_LOWER) / Decimal("200"))
-    return p(annual_cb * charge_pct / Decimal("100"))
+    charge_pct = min(Decimal("100"), (ani - HICBC_LOWER) // Decimal("200"))
+    relevant_benefit = annual_cb.to_integral_value(rounding=ROUND_FLOOR)
+    charge = (relevant_benefit * charge_pct / Decimal("100")).to_integral_value(
+        rounding=ROUND_FLOOR
+    )
+    return charge

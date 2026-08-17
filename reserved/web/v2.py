@@ -76,6 +76,7 @@ from reserved.providers.banking.ingestion import (
 )
 from reserved.providers.banking.yapily import YapilyClient
 from reserved.services.dashboard import build_dashboard, DEFAULT_PROFILE
+from reserved.tax_year_context import UnsupportedTaxYear, configured_tax_year, resolve_tax_year
 
 log = logging.getLogger(__name__)
 
@@ -853,6 +854,7 @@ def settings_page():
                 "v2/settings.html", profile=form_profile,
                 settings_errors=list(settings_error_fields.values()),
                 settings_error_fields=settings_error_fields,
+                tax_year=configured_tax_year(),
             ), 400
         profile = _normalise_settings(request.form)
         save_profile_by_user(g.user_id, _profile_to_db_data(profile))
@@ -862,7 +864,7 @@ def settings_page():
 
     profile, _ = _get_profile()
     form_profile = _profile_to_form_values(profile)
-    return render_template("v2/settings.html", profile=form_profile)
+    return render_template("v2/settings.html", profile=form_profile, tax_year=configured_tax_year())
 
 
 @v2.get("/review")
@@ -890,8 +892,10 @@ def review_queue():
 @require_auth
 def optimise_view():
     """
-    Tax Optimise page — detects PA taper and HICBC interactions and offers
+    Explore-your-options page — detects the Personal Allowance taper and offers
     modelled pension-contribution scenarios for the current user's profile.
+
+    HICBC is outside the v1 customer scope and is filtered out here.
 
     Data flow:
       1. _get_profile()         — user's profile (DB-first, session fallback)
@@ -911,6 +915,9 @@ def optimise_view():
         income_override = None
 
     pos, opps = assess_opportunities(profile, projected_income_override=income_override)
+    # HICBC is outside the v1 customer scope (post-v1).  It must not surface in
+    # any customer scenario, total, reserve or personalised warning.
+    opps = [o for o in opps if o.id != "HICBC"]
     saved = list_optimise_scenarios(g.user_id)
 
     return render_template(
@@ -920,6 +927,10 @@ def optimise_view():
         saved_scenarios=saved,
         is_demo=is_demo,
         profile=profile,
+        tax_year=resolve_tax_year(
+            result_tax_year=pos.tax_year,
+            context_tax_year=configured_tax_year(),
+        ),
     )
 
 
@@ -931,18 +942,16 @@ def optimise_calculate():
     JSON API — calculate a before/after scenario for a given pension addition.
 
     Request body (JSON):
-        opportunity_id     str   — "PA_TAPER" | "HICBC"
+        opportunity_id     str   — "PA_TAPER" (HICBC is rejected as out of scope)
         projected_income   float
         current_pension    float
         additional_pension float
-        annual_cb          float — annual Child Benefit; 0 if not applicable
 
     Response (JSON):
         ok            bool
-        before        dict — ANI, PA, IT, HICBC, total for current position
+        before        dict — ANI, PA, IT, total for current position (income-tax only)
         after         dict — same for scenario position
         it_reduction        str
-        hicbc_reduction     str
         total_benefit       str
         basic_rate_relief   str   — HMRC top-up added to pension pot (NOT in total)
         caveats             list[str]
@@ -957,7 +966,6 @@ def optimise_calculate():
         projected_income   = Decimal(str(data.get("projected_income",   "0")))
         current_pension    = Decimal(str(data.get("current_pension",    "0")))
         additional_pension = Decimal(str(data.get("additional_pension", "0")))
-        annual_cb          = Decimal(str(data.get("annual_cb",          "0")))
         opportunity_id     = str(data.get("opportunity_id", "PA_TAPER"))
     except (InvalidOperation, TypeError, ValueError) as exc:
         return jsonify({"ok": False, "error": f"Invalid numeric input: {exc}"}), 400
@@ -965,10 +973,18 @@ def optimise_calculate():
     if additional_pension < Decimal("0"):
         return jsonify({"ok": False, "error": "Additional pension must not be negative."}), 400
 
+    # HICBC is outside the v1 customer scope; the customer scenario API must not
+    # compute or return it.
+    if opportunity_id == "HICBC":
+        return jsonify({
+            "ok": False,
+            "error": "High Income Child Benefit Charge is outside the current scope.",
+        }), 400
+
     try:
         r = model_pension_scenario(
             projected_income, current_pension, additional_pension,
-            opportunity_id, annual_cb=annual_cb,
+            opportunity_id, annual_cb=Decimal("0"),
         )
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
@@ -976,27 +992,27 @@ def optimise_calculate():
     def fmt(v):
         return f"{float(v):,.2f}"
 
+    # Customer-facing figures are income-tax only; HICBC is never included in a
+    # customer total or benefit even though the internal engine may model it.
     return jsonify({
         "ok": True,
         "before": {
             "ani":   fmt(r.before.adjusted_net_income),
             "pa":    fmt(r.before.personal_allowance),
             "it":    fmt(r.before.estimated_income_tax),
-            "hicbc": fmt(r.before.hicbc),
-            "total": fmt(r.before.total_charges()),
+            "total": fmt(r.before.estimated_income_tax),
         },
         "after": {
             "ani":   fmt(r.after.adjusted_net_income),
             "pa":    fmt(r.after.personal_allowance),
             "it":    fmt(r.after.estimated_income_tax),
-            "hicbc": fmt(r.after.hicbc),
-            "total": fmt(r.after.total_charges()),
+            "total": fmt(r.after.estimated_income_tax),
         },
         "it_reduction":      fmt(r.it_reduction),
-        "hicbc_reduction":   fmt(r.hicbc_reduction),
-        "total_benefit":     fmt(r.total_benefit),
+        "total_benefit":     fmt(r.it_reduction),
         "basic_rate_relief": fmt(r.basic_rate_relief_to_pension),
         "total_pension":     fmt(r.total_pension),
+        "tax_year":          r.before.tax_year,
         "caveats":           r.caveats,
     })
 
@@ -1005,7 +1021,12 @@ def optimise_calculate():
 @require_auth
 @csrf.exempt
 def optimise_save_scenario():
-    """Save a pension-comparison scenario for the current user."""
+    """Save a pension-comparison scenario for the current user.
+
+    The applicable tax year is required and validated fail-closed: a missing,
+    malformed, unsupported or contradictory year is rejected rather than silently
+    replaced with the currently configured year.
+    """
     from reserved.database import save_optimise_scenario
 
     data     = request.get_json(silent=True) or {}
@@ -1014,7 +1035,20 @@ def optimise_save_scenario():
     outputs  = data.get("outputs") or {}
     opp_id   = str(data.get("opportunity_id") or "unknown")
 
-    row_id = save_optimise_scenario(g.user_id, opp_id, inputs, outputs, label=label)
+    tax_year = data.get("tax_year")
+    if tax_year is None:
+        return jsonify({"ok": False, "error": "A tax year is required to save a scenario."}), 400
+    try:
+        resolved_year = resolve_tax_year(
+            result_tax_year=tax_year,
+            context_tax_year=configured_tax_year(),
+        )
+    except UnsupportedTaxYear as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    row_id = save_optimise_scenario(
+        g.user_id, opp_id, inputs, outputs, label=label, tax_year=resolved_year
+    )
     return jsonify({"ok": True, "id": row_id})
 
 

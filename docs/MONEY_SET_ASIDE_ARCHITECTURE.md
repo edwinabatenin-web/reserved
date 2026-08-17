@@ -2,9 +2,15 @@
 
 ## Status
 
-The final money-movement solution is **TBC**. Reserved currently estimates and
-tracks an amount; it must not initiate a payment or imply that a provider has
-been selected.
+Founder decision (15 August 2026): v1 includes customer-authorised payment
+initiation (PIS) from the customer's current account to a designated account
+owned by that customer. No money moves without the customer's explicit approval
+and bank authentication, and Reserved does not hold customer funds. The exact
+provider solution remains **TBC** and conditional on acceptable Yapily
+commercials, consent/status handling, same-owner destination controls, security
+review and launch assurance. Until that conditional journey is implemented and
+approved, Reserved estimates and tracks an amount and must not initiate a
+payment or imply that a provider has been selected.
 
 ## Decision boundary
 
@@ -22,9 +28,11 @@ assessment. Stripe is one historical option, not an architectural default.
 
 ## Reversible design
 
-`MoneyMovementProvider` is an optional boundary with a safe `TrackOnlyProvider`
-for v1. Future adapters may implement one-off bank payment, sweeping VRP or
-another approved mechanism without changing the tax engine.
+`MoneyMovementProvider` is an optional boundary; `TrackOnlyProvider` remains the
+safe current state until the conditional v1 customer-authorised PIS journey is
+implemented and approved. Adapters implement customer-authorised one-off bank
+payment (v1 PIS) or, post-v1, sweeping VRP or another approved mechanism,
+without changing the tax engine.
 
 Core records use provider-neutral identifiers and states. Provider credentials,
 account identifiers and consent tokens must not enter tax calculation payloads.

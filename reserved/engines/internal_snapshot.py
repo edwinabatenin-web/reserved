@@ -61,7 +61,7 @@ _LOAN_PROHIBITIONS = {"customer_combined_balance", "filing", "payment", "refund"
 _COMPOSITION_PROHIBITIONS = {"customer_presentation", "reserve_guidance", "filing", "payment", "refund"}
 _COMPOSITION_LIMITATIONS = {"components_are_linked_not_aggregated", "no_combined_customer_balance_or_amount_due"}
 _REFERENCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-_SUPPORTED_RULESET = "uk-2026-27-v3"
+_SUPPORTED_RULESET = "uk-2026-27-v4"
 
 
 def _encode(value: Any) -> Any:

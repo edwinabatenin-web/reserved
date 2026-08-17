@@ -1,8 +1,8 @@
 """
 Reserved West — Scenario Runner
 
-Executes each scenario through both the independent reference calculator
-and the Reserved engine, records variances, and classifies outcomes.
+Executes each scenario through both the historical/shared-lineage reference
+calculator and the Reserved engine, records variances, and classifies outcomes.
 
 Outcome codes
 -------------
@@ -61,20 +61,50 @@ EL-001 regression:           any future failure of the permanent EL-001 tests or
 Historic note: engine v1.0.0 classified taper-zone variance as KNOWN_LIMITATION.
 This is no longer valid.  KNOWN_LIMITATION has been removed from the outcome set.
 """
+
+
+###############################################################################
+# ⚠  SUPERSEDED — LEGACY ENGINE-VS-REFERENCE HARNESS
+###############################################################################
+# This scenario runner compares the Reserved engine against
+# reserved_west/reference_calculator.py, which is historical/shared-lineage
+# regression evidence, not an independent oracle.  It is NOT the current
+# independent RW3 accuracy gate (that is reserved_west/release_gate.py →
+# engine_adapters.py → literal_fixture_runner.py against docs/fixtures/RW3_*).
+# Its results must not be presented as current independent accuracy evidence.
+###############################################################################
 from decimal import Decimal
 from typing import Any
 
-# Reference calculator (independent)
+# Reference calculator (historical/shared-lineage regression evidence — NOT an
+# independent accuracy oracle; see the supersession notice at the top of this
+# module and of reserved_west/reference_calculator.py)
 from reserved_west.reference_calculator import ref_estimate, ref_cgt, in_el001_zone
 
-# Engine under test (reserved_engine bundle)
-import sys, os
-_BUNDLE = os.path.join(os.path.dirname(__file__), "..", "reserved-engine-2.0.0")
-if _BUNDLE not in sys.path:
-    sys.path.insert(0, _BUNDLE)
+# Engine under test: the deterministic release artefact built from
+# reserved/engines (see scripts/build_engine_artefact.py).  Reserved West must
+# not import the mutable working tree directly, nor the historical
+# reserved-engine-2.0.0 bundle.  Loading is lazy so that importing this module
+# (e.g. to use _classify) does not force an artefact build.
+from reserved_west.artefact import load_engine
 
-from reserved_engine.income_tax import estimate_incremental_liability
-from reserved_engine.capital_gains import estimate_cgt, CapitalDisposal
+_ENGINE = None
+_PROVENANCE = None
+
+
+def _engine_symbols():
+    """Load the release artefact once and return the imported module."""
+    global _ENGINE, _PROVENANCE
+    if _ENGINE is None:
+        _ENGINE, _PROVENANCE = load_engine()
+    return _ENGINE
+
+
+def engine_provenance() -> dict:
+    """Return the provenance of the artefact currently under test."""
+    _engine_symbols()
+    return dict(_PROVENANCE or {})
+
 
 PENNY = Decimal("0.01")
 ZERO  = Decimal("0")
@@ -120,7 +150,7 @@ def _run_income_tax(scenario: dict) -> dict:
 
     try:
         ref    = ref_estimate(invoice, profile, tax_year)
-        engine = estimate_incremental_liability(invoice, profile, tax_year)
+        engine = _engine_symbols().estimate_incremental_liability(invoice, profile, tax_year)
     except Exception as exc:
         return {
             **_base(scenario),
@@ -174,6 +204,9 @@ def _run_cgt(scenario: dict) -> dict:
 
     # Build engine CapitalDisposal objects
     try:
+        engine_mod    = _engine_symbols()
+        CapitalDisposal = engine_mod.CapitalDisposal
+        estimate_cgt    = engine_mod.estimate_cgt
         engine_disposals = [
             CapitalDisposal(
                 asset_type       = d.get("asset_type", "shares"),

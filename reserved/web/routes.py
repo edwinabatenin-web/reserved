@@ -18,6 +18,7 @@ from reserved.engines.capital_gains import CapitalDisposal, estimate_cgt
 from reserved.engines import tax_config
 from reserved.services.dashboard import build_dashboard, DEFAULT_PROFILE
 from reserved.services.roadmap import FEATURES
+from reserved.tax_year_context import configured_tax_year
 
 log = logging.getLogger(__name__)
 web = Blueprint("web", __name__)
@@ -378,6 +379,7 @@ def settings():
                 "settings.html", profile=form_profile,
                 settings_errors=list(settings_error_fields.values()),
                 settings_error_fields=settings_error_fields,
+                tax_year=configured_tax_year(),
             ), 400
         profile = _normalise_settings(request.form)
         uid = current_user_id()
@@ -397,7 +399,7 @@ def settings():
         return redirect(url_for("web.dashboard"))
     profile, _ = _get_profile()
     form_profile = _profile_to_form_values(profile)
-    return render_template("settings.html", profile=form_profile)
+    return render_template("settings.html", profile=form_profile, tax_year=configured_tax_year())
 
 
 @web.route("/capital-gains", methods=["GET", "POST"])
@@ -533,34 +535,33 @@ def tax_assurance():
         metadata = json.loads(meta_path.read_text())
     else:
         metadata = {
+            "status": None,
             "tax_year": tax_config.TAX_YEAR,
             "rules_version": tax_config.RULES_VERSION,
-            "verified_date": None,
+            "generated_on": None,
             "test_counts": None,
             "all_tests_passed": None,
             "scope": {
                 "in_scope": [
-                    "Income tax — England/Wales/NI sole traders",
-                    "Class 4 National Insurance",
-                    "Student loan Plans 1, 2, 4, 5 and Postgraduate",
-                    "Pension Relief at Source (basic-rate band extension)",
-                    "Capital Gains Tax — basic/higher rate split",
-                    "Annual Exempt Amount offset",
-                    "Brought-forward loss relief",
+                    "Income tax — England, Wales and Northern Ireland",
+                    "PAYE and multiple employments",
+                    "Sole-trade income",
+                    "Dividends and savings interest",
+                    "UK and foreign property income",
+                    "Student and postgraduate loan liability",
+                    "Relief-at-Source pension treatment",
+                    "Bounded Making Tax Digital indication",
                 ],
                 "out_of_scope": [
-                    "Scottish income tax",
-                    "Dividend and savings income",
-                    "PAYE coding interactions",
-                    "VAT-registered traders",
-                    "Residential property CGT rates",
-                    "BADR / Investors' Relief",
-                    "Share pooling and same-day/30-day matching",
+                    "High Income Child Benefit Charge (HICBC) — post-v1",
+                    "Scottish Income Tax — post-v1",
+                    "Capital Gains Tax — post-v1",
+                    "Full MTD filing — post-v1",
                 ],
             },
             "assumptions": [
-                "Illustrative sole-trader estimate only; not a tax return or professional advice.",
-                "Scottish income tax, dividend tax, and savings income are outside scope.",
+                "An estimate, not a tax return, filing or professional advice.",
+                "Unknown partner and Child Benefit facts are never treated as zero.",
                 "Pension contributions are treated as Relief at Source (gross figure expected).",
             ],
         }

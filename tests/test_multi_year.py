@@ -61,14 +61,14 @@ def test_explicit_2026_27():
     """Explicit ``tax_year="2026/27"`` works and sets correct metadata."""
     r = estimate_incremental_liability("1000", _ZERO, tax_year="2026/27")
     assert r["tax_year"]      == "2026/27"
-    assert r["rules_version"] == "uk-2026-27-v3"
+    assert r["rules_version"] == "uk-2026-27-v4"
 
 
 def test_explicit_2025_26_metadata():
     """``tax_year="2025/26"`` sets 2025/26 metadata fields."""
     r = estimate_incremental_liability("1000", _ZERO, tax_year="2025/26")
     assert r["tax_year"]      == "2025/26"
-    assert r["rules_version"] == "uk-2025-26-v1"
+    assert r["rules_version"] == "uk-2025-26-v2"
 
 
 def test_invalid_tax_year_raises_value_error():

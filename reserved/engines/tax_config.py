@@ -30,7 +30,7 @@ from decimal import Decimal
 # Kept for backward compatibility.  New code should use get_config().
 
 TAX_YEAR      = "2026/27"
-RULES_VERSION = "uk-2026-27-v3"
+RULES_VERSION = "uk-2026-27-v4"
 
 PERSONAL_ALLOWANCE            = Decimal("12570")
 PERSONAL_ALLOWANCE_TAPER_START = Decimal("100000")
@@ -122,7 +122,7 @@ CONFIGS: dict = {
     "2025/26": {
         **_FROZEN_IT_BANDS,
         "tax_year":      "2025/26",
-        "rules_version": "uk-2025-26-v1",
+        "rules_version": "uk-2025-26-v2",
         "DIVIDEND_ALLOWANCE": Decimal("500"),
         "DIVIDEND_TAX_RATES": {
             "basic": Decimal("0.0875"),
@@ -153,7 +153,7 @@ CONFIGS: dict = {
     "2026/27": {
         **_FROZEN_IT_BANDS,
         "tax_year":      "2026/27",
-        "rules_version": "uk-2026-27-v3",
+        "rules_version": "uk-2026-27-v4",
         "DIVIDEND_ALLOWANCE": DIVIDEND_ALLOWANCE,
         "DIVIDEND_TAX_RATES": DIVIDEND_TAX_RATES,
         "CHILD_BENEFIT": CHILD_BENEFIT,

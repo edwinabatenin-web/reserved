@@ -35,8 +35,8 @@ Class 4 NI:
   Social Security Contributions and Benefits Act 1992 s.15
 
 Pension Relief at Source:
-  Finance Act 2004 s.192; HMRC Pensions Tax Manual PTM044100
-  BRL extension: HMRC IT manual at EIM45820
+  Finance Act 2004 s.192; HMRC Pensions Tax Manual PTM056120
+  BRL/higher-rate-limit extension: HMRC IT manual at EIM45820
 
 Student loan repayments:
   Education (Student Loans) (Repayment) Regulations 2009 (SI 2009/470)
@@ -47,6 +47,31 @@ Capital Gains Tax:
   Finance (No.2) Act 2023 s.8 (AEA £3,000 from 2024/25)
   Autumn Budget 2024: rates revised to 18 % basic / 24 % higher
 """
+
+
+###############################################################################
+# ⚠  SUPERSEDED — HISTORICAL / SHARED-LINEAGE REGRESSION EVIDENCE ONLY
+###############################################################################
+# This module must NOT be used as a current validation oracle and is excluded
+# from the current independent RW3 accuracy corpus.
+#
+#   * It is retained historical/shared-lineage regression evidence: its
+#     thresholds and formulas were derived alongside the Reserved engine, so
+#     agreement between the two is circular, not independent accuracy evidence.
+#   * It is excluded from the mandatory RW3 independent accuracy pass (see
+#     docs/fixtures/WP7_ASSURANCE_CORPUS.json → excluded_from_accuracy_pass_counts).
+#   * Its EL-001 narrative is superseded: the engine has used a true before/after
+#     total-tax differential (Personal Allowance derived independently at both
+#     endpoints) since v2.0.0, so the "engine uses end-state PA / divergence
+#     expected" description below is historical only.
+#   * Its Student Loan rounding (ROUND_HALF_UP to the penny) does NOT establish
+#     current annual Self Assessment correctness; production floors each annual
+#     component to whole pounds.
+#
+# The arithmetic below is preserved unchanged as historical regression evidence.
+# Do not correct or modernise it unless that change is separately authorised and
+# independently re-derived.
+###############################################################################
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
@@ -149,18 +174,21 @@ def _total_income_tax(income: Decimal, pension: Decimal, cfg: dict) -> Decimal:
 
     Implements England/Wales/NI rates.  Scottish rates are out of scope.
 
-    Pension RaS (Finance Act 2004 s.192 / PTM044100):
+    Pension RaS (Finance Act 2004 s.192 / HMRC Pensions Tax Manual PTM056120):
       - Gross contributions reduce ANI for PA taper.
-      - Gross contributions extend the basic-rate band by the same amount.
+      - Gross contributions extend BOTH the basic-rate limit and the higher-rate
+        limit (the point at which the additional rate begins) by the same gross
+        amount, preserving the higher-rate band width (£87,440).  No cap applies.
     """
     if income <= ZERO:
         return ZERO
 
     ani  = max(ZERO, income - pension)
     pa   = _personal_allowance(ani, cfg)
-    # Extended BRL cannot exceed ART (avoids negative higher-rate band widths)
-    basic_band = min((cfg["BRL"] - cfg["PA"]) + pension, cfg["ART"])
-    art  = cfg["ART"]
+    # PTM056120: a gross RAS contribution shifts both the basic-rate limit and
+    # the higher-rate limit up by the same amount.
+    basic_band = (cfg["BRL"] - cfg["PA"]) + pension
+    art  = cfg["ART"] + pension
     taxable_income = max(ZERO, income - pa)
 
     tax = ZERO

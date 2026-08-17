@@ -14,7 +14,7 @@ HMRC sources
   Finance (No.2) Act 2015   — PA taper
   Finance Act 2012 s.681B   — HICBC formula (revised April 2024)
   Finance Act 2004 s.192    — Pension Relief at Source
-  HMRC PTM044100            — RaS band extension
+  HMRC PTM056120            — RaS basic/higher-rate limit extension
 
 Gate 1 PASS criteria
 ────────────────────
@@ -52,7 +52,7 @@ from reference.hicbc_reference import (
 )
 from reference.pension_reference import (
     net_to_gross, gross_to_net, basic_rate_relief,
-    extended_brl, it_saving_from_pension,
+    extended_brl, extended_hrl, it_saving_from_pension,
     ANNUAL_ALLOWANCE,
 )
 
@@ -138,16 +138,24 @@ class TestHICBCReference:
         assert hicbc_charge(Decimal("100000"), Decimal("0")) == Decimal("0.00")
 
     def test_full_charge_at_80k(self):
-        """HICBC equals full annual CB when ANI ≥ £80,000."""
+        """HICBC equals the whole-pound relevant benefit when ANI ≥ £80,000.
+
+        At 100 % the charge is the relevant total benefit floored to whole
+        pounds: £1,406.60 → £1,406.
+        """
         cb = annual_cb_for_children(1)
-        assert hicbc_charge(Decimal("80000"), cb) == cb
-        assert hicbc_charge(Decimal("90000"), cb) == cb
-        assert hicbc_charge(Decimal("125140"), cb) == cb
+        expected = p(Decimal("1406.00"))
+        assert hicbc_charge(Decimal("80000"), cb) == expected
+        assert hicbc_charge(Decimal("90000"), cb) == expected
+        assert hicbc_charge(Decimal("125140"), cb) == expected
 
     def test_half_charge_at_70k(self):
-        """ANI = £70,000: (70000-60000)/200 = 50 % of CB charged."""
+        """ANI = £70,000 → 50 complete £200 steps → 50 % of CB, staged-floor.
+
+        relevant benefit = floor(1406.60) = 1406; 1406 × 50 / 100 = 703.
+        """
         cb = annual_cb_for_children(1)
-        expected = p(cb * Decimal("50") / Decimal("100"))
+        expected = p(Decimal("703.00"))
         assert hicbc_charge(Decimal("70000"), cb) == expected
 
     def test_pension_to_eliminate_hicbc(self):
@@ -160,15 +168,15 @@ class TestHICBCReference:
         assert pension_to_eliminate_hicbc(Decimal("55000")) == Decimal("0.00")
 
     def test_annual_cb_one_child(self):
-        """1-child CB = eldest-only = £26.60 × 52."""
-        expected = p(Decimal("26.60") * Decimal("52"))
+        """1-child CB = eldest/only = £27.05 × 52 = £1,406.60."""
+        expected = p(Decimal("27.05") * Decimal("52"))
         assert annual_cb_for_children(1) == expected
 
     def test_annual_cb_two_children(self):
-        """2-child CB = eldest + 1 additional."""
+        """2-child CB = eldest (£27.05) + 1 additional (£17.90) = £44.95 × 52."""
         expected = p(
-            Decimal("26.60") * Decimal("52")
-            + Decimal("17.60") * Decimal("52")
+            Decimal("27.05") * Decimal("52")
+            + Decimal("17.90") * Decimal("52")
         )
         assert annual_cb_for_children(2) == expected
 
@@ -176,13 +184,11 @@ class TestHICBCReference:
         assert annual_cb_for_children(0) == Decimal("0.00")
 
     def test_charge_percentage_linear(self):
-        """Charge percentage rises 0.5 % per £100 of ANI above £60,000."""
-        pct_60k  = charge_percentage(Decimal("60000"))
-        pct_60_1 = charge_percentage(Decimal("60100"))
-        pct_60_2 = charge_percentage(Decimal("60200"))
-        assert pct_60k  == Decimal("0")
-        assert p(pct_60_1) == p(Decimal("0.5"))
-        assert p(pct_60_2) == Decimal("1.0")
+        """Charge percentage rises by 1 for each complete £200 step (staged)."""
+        assert charge_percentage(Decimal("60000")) == Decimal("0")
+        assert charge_percentage(Decimal("60199")) == Decimal("0")
+        assert charge_percentage(Decimal("60200")) == Decimal("1")
+        assert charge_percentage(Decimal("60400")) == Decimal("2")
 
     def test_charge_percentage_caps_at_100(self):
         assert charge_percentage(Decimal("80000")) == Decimal("100")
@@ -208,13 +214,20 @@ class TestPensionRaSReference:
         assert basic_rate_relief(Decimal("10000")) == Decimal("2000.00")
 
     def test_extended_brl(self):
-        """BRL extended by gross pension, capped at ART."""
-        assert extended_brl(Decimal("10000")) == Decimal("60270.00")
+        """Basic-rate band (£37,700) extended by gross pension, uncapped."""
+        assert extended_brl(Decimal("0"))     == Decimal("37700.00")
+        assert extended_brl(Decimal("10000")) == Decimal("47700.00")
 
-    def test_extended_brl_cap_at_art(self):
-        """BRL cannot exceed ART (£125,140)."""
-        assert extended_brl(Decimal("100000")) == Decimal("125140.00")
-        assert extended_brl(Decimal("200000")) == Decimal("125140.00")
+    def test_extended_brl_no_cap(self):
+        """PTM056120: the basic-rate limit is extended with no ART cap."""
+        assert extended_brl(Decimal("100000")) == Decimal("137700.00")
+        assert extended_brl(Decimal("200000")) == Decimal("237700.00")
+
+    def test_extended_hrl_mirrors_extension(self):
+        """The higher-rate limit extends by the same gross amount (PTM056120)."""
+        assert extended_hrl(Decimal("0"))     == Decimal("125140.00")
+        assert extended_hrl(Decimal("1"))     == Decimal("125141.00")
+        assert extended_hrl(Decimal("80000")) == Decimal("205140.00")
 
     def test_it_saving_basic_rate_below_taper(self):
         """At £60,000 income with no pension, adding £5,000 pension saves £1,000 IT.
@@ -231,24 +244,21 @@ class TestPensionRaSReference:
         assert saving == Decimal("1000.00")
 
     def test_it_saving_in_taper_zone(self):
-        """£10,000 pension at £110,000 income (ANI drops from £110k to £100k).
+        """£10,000 pension at £110,000 income (ANI £110k → £100k).
 
-        The income itself remains £110k; the pension changes the band thresholds:
-          • Restores £5k PA (shifts £5k from 20%-band to 0%): saves £5k × 20% = £1,000
-          • Extends BRL by £10k (shifts £10k from 40% to 20%): saves £10k × 20% = £2,000
-          • Total: £3,000
-
-        (The 60% effective marginal rate applies to income *above* the taper
-        threshold — but here we are measuring the income-tax effect of a
-        pension contribution that shifts band thresholds, not a marginal £1
-        of income.)
+        Without pension: ANI=110,000 → PA=7,570; taxable=102,430 →
+          37,700 @ 20 % (7,540) + 64,730 @ 40 % (25,892) = 33,432.
+        With £10,000 pension: ANI=100,000 → PA=12,570; taxable=97,430;
+          basic band extends to 47,700 →
+          47,700 @ 20 % (9,540) + 49,730 @ 40 % (19,892) = 29,432.
+        Saving = 33,432 − 29,432 = £4,000.
         """
         saving = it_saving_from_pension(
             projected_income  = Decimal("110000"),
             current_pension   = Decimal("0"),
             additional_pension= Decimal("10000"),
         )
-        assert saving == Decimal("3000.00")
+        assert saving == Decimal("4000.00")
 
     def test_no_saving_above_art(self):
         """Pension contribution that stays above ART — saving comes from ANI reduction only."""

@@ -160,3 +160,31 @@ def test_runner_enforces_published_schema_shapes_and_pending_review_state():
     for invalid in invalid_cases:
         with pytest.raises(ValueError):
             validate_pack(invalid)
+
+
+def test_rw3_gate_implementation_does_not_import_reference_calculator():
+    """The mandatory RW3 gate executes fixtures against the engine artefact,
+    never against the historical shared-lineage reference calculator."""
+    gate_impl_files = [
+        "reserved_west/release_gate.py",
+        "reserved_west/rw3_gate.py",
+        "reserved_west/artefact.py",
+        "reserved_west/engine_adapters.py",
+        "reserved_west/literal_fixture_runner.py",
+    ]
+    for rel in gate_impl_files:
+        text = (ROOT / rel).read_text()
+        assert "reference_calculator" not in text, f"{rel} references reference_calculator"
+        assert "ref_estimate" not in text, f"{rel} references ref_estimate"
+
+
+def test_metadata_does_not_describe_reference_calculator_as_independent():
+    """The persisted assurance metadata must not name the historical reference
+    calculator as current independent accuracy evidence."""
+    meta = json.loads((ROOT / "reserved" / "assurance_metadata.json").read_text())
+    blob = json.dumps(meta)
+    assert "reference_calculator" not in blob
+    assert "ref_estimate" not in blob
+    for comp in meta.get("component_inventory", []):
+        assert "reference_calculator" not in comp.get("id", "")
+        assert "reference_calculator" not in comp.get("description", "")

@@ -103,20 +103,24 @@ def _income_tax_between(
     start: Decimal,
     end: Decimal,
     basic_rate_band: Decimal,
+    higher_rate_limit: Decimal,
     cfg: dict,
 ) -> Decimal:
     """Return tax on *taxable income* in the half-open interval [start, end).
 
-    Band widths are measured from zero taxable income. Keeping the £37,700
-    basic-rate band separate from the £50,270 gross-income threshold prevents
-    a reduced Personal Allowance from silently widening the basic-rate band.
+    ``basic_rate_band`` is the (possibly extended) basic-rate limit and
+    ``higher_rate_limit`` is the (possibly extended) higher-rate limit at which
+    the additional rate begins.  Band widths are measured from zero taxable
+    income; both limits are passed in explicitly so callers can apply the
+    Relief-at-Source band extension (which shifts both boundaries) without the
+    helper silently fixing the higher-rate limit at the statutory threshold.
     """
     if end <= start:
         return Decimal("0")
 
     bands = [
         (basic_rate_band,                         cfg["INCOME_TAX_RATES"]["basic"]),
-        (cfg["ADDITIONAL_RATE_THRESHOLD"],        cfg["INCOME_TAX_RATES"]["higher"]),
+        (higher_rate_limit,                       cfg["INCOME_TAX_RATES"]["higher"]),
         (Decimal("Infinity"),                    cfg["INCOME_TAX_RATES"]["additional"]),
     ]
 
@@ -147,28 +151,31 @@ def _total_income_tax(
     ``estimate_incremental_liability`` to produce a correct before/after
     differential across the PA taper zone.
 
-    Pension RaS (Finance Act 2004 s.192):
+    Pension RaS (Finance Act 2004 s.192; HMRC Pensions Tax Manual PTM056120):
       - Reduces ANI (``ANI = income − pension``) for the PA taper test.
-      - Extends the basic-rate band ceiling by the gross pension amount.
+      - Extends BOTH the basic-rate limit and the higher-rate limit (the point
+        at which the additional rate begins) by the gross pension amount, so
+        the higher-rate band width (£87,440) is unchanged.
     """
     if income <= Decimal("0"):
         return Decimal("0")
 
     ani                       = max(Decimal("0"), income - pension)
     allowance                 = _personal_allowance(ani, cfg)
-    # Cap eBRL at ART: a pension contribution cannot extend the basic-rate band
-    # beyond the Additional Rate Threshold (£125,140).  Without the cap, an
-    # uncapped eBRL > ART causes _income_tax_between to absorb the ART and 45%
-    # band into the 20% slice, suppressing the additional rate entirely.
-    # Reference: HMRC Pensions Tax Manual PTM044100; reference_calculator.py line ~162.
     taxable_income = max(Decimal("0"), income - allowance)
-    extended_basic_rate_band = min(
-        cfg["BASIC_RATE_BAND"] + pension,
-        cfg["ADDITIONAL_RATE_THRESHOLD"],
-    )
+    # A gross Relief-at-Source contribution shifts both the basic-rate limit and
+    # the higher-rate limit up by the same amount (PTM056120).  No cap applies:
+    # a contribution larger than the basic-rate band simply moves both boundaries
+    # and preserves the £87,440 higher-rate band width.
+    extended_basic_rate_band  = cfg["BASIC_RATE_BAND"] + pension
+    extended_higher_rate_limit = cfg["ADDITIONAL_RATE_THRESHOLD"] + pension
 
     return _income_tax_between(
-        Decimal("0"), taxable_income, extended_basic_rate_band, cfg
+        Decimal("0"),
+        taxable_income,
+        extended_basic_rate_band,
+        extended_higher_rate_limit,
+        cfg,
     )
 
 
