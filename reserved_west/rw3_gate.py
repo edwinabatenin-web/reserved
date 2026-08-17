@@ -130,6 +130,77 @@ def _validate_classification(classification: dict) -> None:
             raise RuntimeError(f"classification expected_fixture_count invalid: {filename!r}")
 
 
+def derive_expected_classification_counts(
+    packs_by_filename: dict, classification: dict
+) -> dict[str, int]:
+    """Derive the complete expected classification inventory from loaded authorities.
+
+    ``packs_by_filename`` maps corpus filenames to loaded (already validated)
+    pack dicts; ``classification`` is the integrity-verified classification
+    manifest.  Every corpus pack must be classified exactly once, and each pack's
+    ``expected_fixture_count`` must equal the actual number of fixtures in the
+    integrity-verified pack.  Returns ``{category: authoritative_fixture_count}``
+    over exactly ``CLASSIFICATION_VALUES``.
+    """
+    classified = classification.get("packs")
+    if not isinstance(classified, dict):
+        raise RuntimeError("classification manifest has no packs")
+
+    # Exact, duplicate-free, unclassified-free correspondence between the corpus
+    # and the classification manifest.  A pack omitted, added, moved or left
+    # unclassified is a contradiction, never a silently-tolerable difference.
+    if set(packs_by_filename) != set(classified):
+        missing = set(packs_by_filename) - set(classified)
+        extra = set(classified) - set(packs_by_filename)
+        if missing:
+            raise RuntimeError(
+                f"corpus pack(s) missing from classification manifest: {sorted(missing)}"
+            )
+        raise RuntimeError(
+            f"classification manifest lists pack(s) absent from corpus: {sorted(extra)}"
+        )
+
+    counts: dict[str, int] = {value: 0 for value in CLASSIFICATION_VALUES}
+    for filename, pack in packs_by_filename.items():
+        entry = classified[filename]
+        actual = len(pack.get("fixtures", []))
+        expected = entry.get("expected_fixture_count")
+        if type(expected) is not int or expected < 0:
+            raise RuntimeError(f"classification expected_fixture_count invalid: {filename!r}")
+        if actual != expected:
+            raise RuntimeError(
+                f"classification expected_fixture_count mismatch for {filename!r}: "
+                f"manifest {expected}, corpus {actual}"
+            )
+        value = entry.get("classification")
+        if value not in counts:
+            raise RuntimeError(f"unknown classification for {filename!r}: {value!r}")
+        counts[value] += actual
+    return counts
+
+
+def authoritative_classification_counts(
+    corpus_path: Path | str = DEFAULT_CORPUS,
+    classification_path: Path | str = DEFAULT_CLASSIFICATION,
+    integrity_path: Path | str = DEFAULT_INTEGRITY,
+) -> dict[str, int]:
+    """Derive the complete authoritative classification inventory.
+
+    The reported counts in a canonical result are evidence to validate, not the
+    source of their own expected values: this recomputes the expected count for
+    every category from the integrity-verified corpus allowlist, the
+    integrity-verified classification manifest and the actual per-pack fixture
+    counts.
+    """
+    corpus, packs = load_corpus(corpus_path)
+    classification = load_classification(classification_path, integrity_path)
+    filenames = corpus["included_fixture_packs"]
+    if len(filenames) != len(set(filenames)):
+        raise RuntimeError("corpus allowlist contains a duplicate pack filename")
+    packs_by_filename = dict(zip(filenames, packs))
+    return derive_expected_classification_counts(packs_by_filename, classification)
+
+
 # ── Gate evaluation (pure, testable) ─────────────────────────────────────────
 
 def evaluate_gate(packs_by_filename: dict, classification: dict, adapters: dict, provenance: dict) -> dict:

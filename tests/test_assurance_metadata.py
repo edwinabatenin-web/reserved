@@ -638,3 +638,66 @@ def test_rejects_top_level_pass_with_nested_failure(canonical_result, tmp_path):
     with pytest.raises(RuntimeError, match="unexpected fail-closed passes"):
         GEN.load_canonical_result(_write_result(tmp_path, result))
 
+
+# ── G3: authoritative RW3 classification completeness (invariant 1 adversarial) ─
+# Reported category counts are evidence to validate, not the source of their own
+# expected values.  Every reported count must equal the independently derived
+# authoritative inventory from the integrity-verified corpus + classification
+# manifest; movement, omission, offsetting and aggregate-preserving drift are
+# rejected.
+
+
+@pytest.mark.parametrize(
+    "category",
+    ["outside_engine_surface", "historical", "applicable_not_executable", "pending_founder_decision"],
+)
+def test_rejects_incorrect_excluded_category_count(canonical_result, tmp_path, category):
+    result = _mutate_rw3_counts(canonical_result, **{category: 1})
+    with pytest.raises(RuntimeError, match="authoritative"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_mandatory_count_drift_with_consistent_nested_section(canonical_result, tmp_path):
+    # Mutate the classification count AND the nested section consistently so only
+    # the independent authoritative comparison catches the disagreement.
+    r = copy.deepcopy(canonical_result)
+    c = _rw3_component(r)
+    c["classification_counts"]["mandatory_executable"] = 42
+    c["mandatory_executable"]["count"] = 42
+    c["mandatory_executable"]["passed"] = 42
+    c["mandatory_executable"]["expected_fixture_count"] = 42
+    with pytest.raises(RuntimeError, match="authoritative"):
+        GEN.load_canonical_result(_write_result(tmp_path, r))
+
+
+def test_rejects_fail_closed_count_drift_with_consistent_nested_section(canonical_result, tmp_path):
+    r = copy.deepcopy(canonical_result)
+    c = _rw3_component(r)
+    c["classification_counts"]["pending_unsupported_fail_closed"] = 4
+    c["pending_unsupported_fail_closed"]["count"] = 4
+    c["pending_unsupported_fail_closed"]["expected_fail_closed"] = 4
+    c["pending_unsupported_fail_closed"]["expected_fixture_count"] = 4
+    with pytest.raises(RuntimeError, match="authoritative"):
+        GEN.load_canonical_result(_write_result(tmp_path, r))
+
+
+def test_rejects_offsetting_category_changes(canonical_result, tmp_path):
+    # The exact independent reproduction: outside 61→60 with historical 0→1 keeps
+    # the aggregate total but moves a fixture between excluded categories.
+    result = _mutate_rw3_counts(
+        canonical_result, outside_engine_surface=60, historical=1,
+    )
+    with pytest.raises(RuntimeError, match="authoritative"):
+        GEN.load_canonical_result(_write_result(tmp_path, result))
+
+
+def test_rejects_correct_aggregate_with_incorrect_distribution(canonical_result, tmp_path):
+    r = copy.deepcopy(canonical_result)
+    c = _rw3_component(r)
+    total = sum(c["classification_counts"].values())
+    c["classification_counts"]["outside_engine_surface"] -= 2
+    c["classification_counts"]["historical"] += 2
+    assert sum(c["classification_counts"].values()) == total  # aggregate unchanged
+    with pytest.raises(RuntimeError, match="authoritative"):
+        GEN.load_canonical_result(_write_result(tmp_path, r))
+

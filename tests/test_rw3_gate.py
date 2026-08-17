@@ -12,6 +12,8 @@ import pytest
 from reserved.engines.income_tax import UnsupportedStudentLoanPlanCombination
 from reserved_west.rw3_gate import (
     CLASSIFICATION_VALUES,
+    authoritative_classification_counts,
+    derive_expected_classification_counts,
     evaluate_gate,
     load_classification,
     run_mandatory_rw3_gate,
@@ -346,3 +348,77 @@ def test_outside_engine_surface_classification_does_not_block_gate():
     assert result["classification_complete"] is True
     assert result["classification_counts"]["outside_engine_surface"] == 1
     assert result["gate_passed"] is True
+
+
+# ── Authoritative classification completeness (invariant 1) ───────────────────
+
+def test_authoritative_classification_counts_matches_current_corpus():
+    counts = authoritative_classification_counts()
+    assert counts == {
+        "mandatory_executable": 43,
+        "pending_unsupported_fail_closed": 3,
+        "outside_engine_surface": 61,
+        "applicable_not_executable": 0,
+        "historical": 0,
+        "pending_founder_decision": 0,
+    }
+
+
+def test_derive_counts_maps_packs_to_categories():
+    packs = {
+        "CORE.json": _pack([_fixture("RW3-TST-001", "annual_income_tax", {"income": "1"}, {"income_tax": "0.00"})]),
+        "PENDING.json": _pack([_fixture("RW3-TST-002", "incremental_liability", {"invoice_amount": "1"}, {"national_insurance": "0.00"})]),
+        "OUT.json": _pack([
+            _fixture("RW3-TST-003", "annual_income_tax", {"income": "1"}, {"income_tax": "0.00"}),
+            _fixture("RW3-TST-004", "annual_income_tax", {"income": "2"}, {"income_tax": "0.00"}),
+        ]),
+    }
+    classification = _classification({
+        "CORE.json": {"classification": "mandatory_executable", "expected_fixture_count": 1},
+        "PENDING.json": {"classification": "pending_unsupported_fail_closed", "expected_fixture_count": 1},
+        "OUT.json": {"classification": "outside_engine_surface", "expected_fixture_count": 2},
+    })
+    counts = derive_expected_classification_counts(packs, classification)
+    assert counts["mandatory_executable"] == 1
+    assert counts["pending_unsupported_fail_closed"] == 1
+    assert counts["outside_engine_surface"] == 2
+    assert counts["applicable_not_executable"] == 0
+    assert counts["historical"] == 0
+    assert counts["pending_founder_decision"] == 0
+
+
+def test_derive_counts_rejects_omitted_pack():
+    packs = {"CORE.json": _pack([_fixture("RW3-TST-001", "annual_income_tax", {"income": "1"}, {"income_tax": "0.00"})])}
+    classification = _classification({})  # CORE.json left unclassified
+    with pytest.raises(RuntimeError, match="missing from classification"):
+        derive_expected_classification_counts(packs, classification)
+
+
+def test_derive_counts_rejects_added_pack():
+    packs = {"CORE.json": _pack([_fixture("RW3-TST-001", "annual_income_tax", {"income": "1"}, {"income_tax": "0.00"})])}
+    classification = _classification({
+        "CORE.json": {"classification": "mandatory_executable", "expected_fixture_count": 1},
+        "GHOST.json": {"classification": "historical", "expected_fixture_count": 0},
+    })
+    with pytest.raises(RuntimeError, match="absent from corpus"):
+        derive_expected_classification_counts(packs, classification)
+
+
+def test_derive_counts_rejects_expected_count_mismatch():
+    packs = {"CORE.json": _pack([_fixture("RW3-TST-001", "annual_income_tax", {"income": "1"}, {"income_tax": "0.00"})])}
+    classification = _classification({"CORE.json": {"classification": "mandatory_executable", "expected_fixture_count": 2}})
+    with pytest.raises(RuntimeError, match="mismatch"):
+        derive_expected_classification_counts(packs, classification)
+
+
+def test_authoritative_rejects_duplicate_allowlist(monkeypatch):
+    import reserved_west.rw3_gate as rwg
+
+    corpus = {"included_fixture_packs": ["CORE.json", "CORE.json"]}
+    packs = [{}, {}]
+    classification = _classification({"CORE.json": {"classification": "mandatory_executable", "expected_fixture_count": 1}})
+    monkeypatch.setattr(rwg, "load_corpus", lambda *a, **k: (corpus, packs))
+    monkeypatch.setattr(rwg, "load_classification", lambda *a, **k: classification)
+    with pytest.raises(RuntimeError, match="duplicate"):
+        rwg.authoritative_classification_counts()
+

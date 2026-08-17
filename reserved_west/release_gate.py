@@ -282,6 +282,7 @@ ASSURANCE_IDENTITY_INPUTS = [
     "reserved_west/literal_fixture_runner.py",
     "scripts/build_engine_artefact.py",
     "scripts/run_release_gate.py",
+    "scripts/generate_assurance_metadata.py",
     "docs/fixtures/RW3_ASSURANCE_CLASSIFICATION.json",
     "docs/fixtures/WP7_FIXTURE_INTEGRITY.json",
     "docs/fixtures/WP7_ASSURANCE_CORPUS.json",

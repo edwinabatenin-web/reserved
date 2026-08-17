@@ -137,6 +137,31 @@ def test_compute_assurance_identity_is_stable():
     assert rg.compute_assurance_identity() == rg.compute_assurance_identity()
 
 
+def test_assurance_identity_covers_metadata_consumer(monkeypatch):
+    # The metadata consumer decides whether contradictory evidence is accepted and
+    # how canonical evidence becomes persisted metadata; a semantic change to it
+    # must not remain invisible to the assurance-implementation identity.
+    from pathlib import Path
+
+    rel = "scripts/generate_assurance_metadata.py"
+    assert rel in rg.ASSURANCE_IDENTITY_INPUTS
+
+    baseline = rg.compute_assurance_identity()
+    target = rg.ROOT / rel
+    original = target.read_bytes()
+    real_read_bytes = Path.read_bytes
+
+    def read_bytes(self):
+        if str(self) == str(target):
+            return original + b"\n# semantic change\n"
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    changed = rg.compute_assurance_identity()
+    monkeypatch.undo()
+    assert changed != baseline
+
+
 def test_canonical_result_digest_is_stable_and_content_bound():
     r1 = {"schema": "reserved-canonical-gate-result-1", "a": 1, "b": [1, 2]}
     r2 = {"schema": "reserved-canonical-gate-result-1", "b": [1, 2], "a": 1}

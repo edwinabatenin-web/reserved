@@ -335,26 +335,43 @@ def _loaded_offenders(registry: _SnapshotRegistry) -> list[str]:
     """Return descriptions of loaded ``reserved_engine`` modules not exactly bound to the snapshot.
 
     A module is trusted only when it is the exact module object registered for
-    this snapshot AND its ``__loader__``/``__spec__.loader`` are the exact
-    registered loader object.  A foreign, previously cached, lazily satisfied or
-    substituted module — even one carrying a ``_VerifiedLoader``-shaped object
-    with the right name — is rejected by identity, not by type or naming.
+    this snapshot, its ``__loader__``/``__spec__.loader`` are the exact
+    registered loader object, and the registered loader's own name, filename and
+    source bytes still equal the verified module-map entry.  A foreign, previously
+    cached, lazily satisfied, substituted or internally-mutated module/loader is
+    rejected by identity and value, not by type or naming.
     """
     offenders = []
     for name, mod in list(sys.modules.items()):
         if name != "reserved_engine" and not name.startswith("reserved_engine."):
             continue
+        entry = registry.module_map.get(name)
+        if entry is None:
+            offenders.append(f"{name} -> unmanifested")
+            continue
+        source_bytes, _is_package, filename = entry
         loader = registry.loader_for(name)
         if loader is None:
-            offenders.append(f"{name} -> unmanifested")
+            offenders.append(f"{name} -> no registered loader")
             continue
         if registry.module_for(name) is not mod:
             offenders.append(f"{name} -> unregistered module object")
         if getattr(mod, "__loader__", None) is not loader:
             offenders.append(f"{name} -> foreign loader ({type(getattr(mod, '__loader__', None)).__name__})")
         spec = getattr(mod, "__spec__", None)
-        if spec is not None and getattr(spec, "loader", None) is not loader:
+        if spec is None:
+            offenders.append(f"{name} -> missing __spec__")
+        elif getattr(spec, "loader", None) is not loader:
             offenders.append(f"{name} -> spec.loader mismatch")
+        # The exact registered loader's own fields must equal the verified entry.
+        if loader.fullname != name:
+            offenders.append(f"{name} -> loader name mismatch")
+        if loader.filename != filename:
+            offenders.append(f"{name} -> loader filename mismatch")
+        if loader._source_bytes != source_bytes:
+            offenders.append(f"{name} -> loader source bytes mismatch")
+        if getattr(loader, "_registry", None) is not registry:
+            offenders.append(f"{name} -> loader registry mismatch")
     return offenders
 
 

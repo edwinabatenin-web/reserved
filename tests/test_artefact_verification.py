@@ -937,3 +937,132 @@ def test_lazy_import_then_cached_load_stays_sound(built, monkeypatch):
     assert isinstance(module.__loader__, _VerifiedLoader)
     assert isinstance(sys.modules["reserved_engine.optimise"].__loader__, _VerifiedLoader)
 
+
+# ── G2: complete active verified-loader entry (invariant 2 adversarial) ───────
+# Beyond exact object identity, a cached module is trusted only when its spec
+# exists and the registered loader's own name/filename/source-bytes/registry
+# still equal the verified module-map entry.
+
+
+def _load_tax_config(monkeypatch, out):
+    monkeypatch.setattr(art, "_LOADED", None)
+    monkeypatch.setenv("RESERVED_ENGINE_ARTEFACT", str(out))
+    load_engine()
+    importlib.import_module("reserved_engine.tax_config")
+    return sys.modules["reserved_engine.tax_config"]
+
+
+def test_cached_load_rejects_missing_spec(built, monkeypatch):
+    out, _ = built
+    sub = _load_tax_config(monkeypatch, out)
+    old = sub.__loader__
+    sub.__spec__ = None
+    load_engine()
+    new = sys.modules["reserved_engine.tax_config"]
+    assert new.__loader__ is not old
+    assert new.__spec__ is not None
+    assert new.__spec__.loader is new.__loader__
+
+
+def test_cached_load_rejects_null_spec_loader(built, monkeypatch):
+    out, _ = built
+    sub = _load_tax_config(monkeypatch, out)
+    sub.__spec__.loader = None
+    load_engine()
+    new = sys.modules["reserved_engine.tax_config"]
+    assert new.__spec__.loader is new.__loader__
+
+
+def test_cached_load_rejects_replaced_spec_loader(built, monkeypatch):
+    out, _ = built
+    sub = _load_tax_config(monkeypatch, out)
+    sub.__spec__ = importlib.util.spec_from_loader("reserved_engine.tax_config", object())
+    load_engine()
+    new = sys.modules["reserved_engine.tax_config"]
+    assert new.__spec__.loader is new.__loader__
+
+
+def test_cached_load_rejects_mutated_loader_source_bytes(built, monkeypatch):
+    out, _ = built
+    sub = _load_tax_config(monkeypatch, out)
+    old = sub.__loader__
+    old._source_bytes = b"TAX_CONFIG = 'HACKED'\n"
+    load_engine()
+    new = sys.modules["reserved_engine.tax_config"]
+    assert new.__loader__ is not old
+    assert "HACKED" not in new.__loader__.get_source("reserved_engine.tax_config")
+
+
+def test_cached_load_rejects_mutated_loader_filename(built, monkeypatch):
+    out, _ = built
+    sub = _load_tax_config(monkeypatch, out)
+    old = sub.__loader__
+    old.filename = "<tampered>/tax_config.py"
+    load_engine()
+    new = sys.modules["reserved_engine.tax_config"]
+    assert new.__loader__ is not old
+    assert new.__loader__.filename != "<tampered>/tax_config.py"
+
+
+def test_cached_load_rejects_mutated_loader_name(built, monkeypatch):
+    out, _ = built
+    sub = _load_tax_config(monkeypatch, out)
+    old = sub.__loader__
+    old.fullname = "reserved_engine.other"
+    load_engine()
+    new = sys.modules["reserved_engine.tax_config"]
+    assert new.__loader__ is not old
+    assert new.__loader__.fullname == "reserved_engine.tax_config"
+
+
+def test_cached_load_rejects_mutated_loader_registry(built, monkeypatch):
+    out, _ = built
+    sub = _load_tax_config(monkeypatch, out)
+    old = sub.__loader__
+    old._registry = art._SnapshotRegistry({})
+    load_engine()
+    new = sys.modules["reserved_engine.tax_config"]
+    assert new.__loader__ is not old
+
+
+def test_cached_load_rejects_loader_fields_changed_together(built, monkeypatch):
+    out, _ = built
+    sub = _load_tax_config(monkeypatch, out)
+    old = sub.__loader__
+    old._source_bytes = b"TAX_CONFIG = 'HACKED'\n"
+    old.filename = "<tampered>/tax_config.py"
+    old.fullname = "reserved_engine.other"
+    load_engine()
+    new = sys.modules["reserved_engine.tax_config"]
+    assert new.__loader__ is not old
+
+
+def test_cached_load_rejects_mutated_registry_module_map(built, monkeypatch):
+    out, _ = built
+    sub = _load_tax_config(monkeypatch, out)
+    registry = art._FINDER._registry
+    entry = registry.module_map["reserved_engine.tax_config"]
+    registry.module_map["reserved_engine.tax_config"] = (b"TAX_CONFIG = 'HACKED'\n", entry[1], entry[2])
+    load_engine()
+    new = sys.modules["reserved_engine.tax_config"]
+    assert isinstance(new.__loader__, _VerifiedLoader)
+    assert "HACKED" not in new.__loader__.get_source("reserved_engine.tax_config")
+
+
+def test_cached_load_rejects_loader_and_registry_comutation(built, monkeypatch):
+    # Mutating the loader and the registry entry together (so they still agree
+    # with each other) must still fail: both now disagree with the freshly read,
+    # integrity-verified artefact bytes.
+    out, _ = built
+    sub = _load_tax_config(monkeypatch, out)
+    old = sub.__loader__
+    registry = art._FINDER._registry
+    name = "reserved_engine.tax_config"
+    fake_bytes = b"TAX_CONFIG = 'HACKED'\n"
+    old._source_bytes = fake_bytes
+    registry.module_map[name] = (fake_bytes, registry.module_map[name][1], registry.module_map[name][2])
+    load_engine()
+    new = sys.modules["reserved_engine.tax_config"]
+    assert new.__loader__ is not old
+    assert "HACKED" not in new.__loader__.get_source("reserved_engine.tax_config")
+

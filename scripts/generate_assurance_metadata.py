@@ -40,6 +40,7 @@ from reserved_west.rw3_gate import (  # noqa: E402
     CLASSIFICATION_VALUES,
     MANDATORY_EXECUTABLE_FIELDS,
     PENDING_FAIL_CLOSED_FIELDS,
+    authoritative_classification_counts,
 )
 
 RESULT_PATH = ROOT / "dist" / "release_gate_result.json"
@@ -162,7 +163,7 @@ def _validate_count_section(section, cid: str, label: str, required_fields, erro
     return well_typed
 
 
-def _validate_rw3_component(comp: dict, cid: str, errors: list[str]) -> None:
+def _validate_rw3_component(comp: dict, cid: str, errors: list[str], authoritative: dict | None = None) -> None:
     """Validate the complete nested RW3 execution contract.
 
     A ``pass`` must be derivable from and consistent with every underlying RW3
@@ -171,6 +172,12 @@ def _validate_rw3_component(comp: dict, cid: str, errors: list[str]) -> None:
     Contradictory nested evidence (non-zero failure counters, count
     disagreements, unresolved classification, malformed types) is rejected
     rather than overridden by a top-level pass label.
+
+    ``authoritative`` (when provided) is the complete expected classification
+    inventory derived independently from the integrity-verified corpus and
+    classification manifest; the reported counts must equal it exactly, so an
+    omitted, duplicated, moved or offsetting count can never be concealed by an
+    unchanged aggregate.
     """
     gate_passed = comp.get("gate_passed")
     classification_complete = comp.get("classification_complete")
@@ -199,6 +206,18 @@ def _validate_rw3_component(comp: dict, cid: str, errors: list[str]) -> None:
                 counts_ok = False
         if counts_ok and counts.get("mandatory_executable", 0) <= 0:
             errors.append(f"component {cid!r} has no mandatory executable fixtures")
+        # Every reported category count must equal the independently derived
+        # authoritative count.  Exact per-category equality closes the
+        # aggregate-preserving movement/offset defect: a fixture omitted,
+        # added, moved or offset between categories changes one or more counts
+        # and is therefore rejected even when the total is unchanged.
+        if counts_ok and authoritative is not None:
+            for key in CLASSIFICATION_VALUES:
+                if counts.get(key) != authoritative.get(key):
+                    errors.append(
+                        f"component {cid!r} classification_counts[{key!r}] "
+                        f"{counts.get(key)!r} != authoritative {authoritative.get(key)!r}"
+                    )
 
     # ── Nested execution results: exact shape and types.
     mand = comp.get("mandatory_executable")
@@ -311,6 +330,16 @@ def _validate_canonical_result(result: dict) -> list[str]:
     else:
         errors.extend(validate_inventory_matches_canonical(inventory))
 
+    # Derive the complete authoritative RW3 classification inventory once from
+    # the integrity-verified corpus and classification manifest.  The reported
+    # counts are evidence to validate, not the source of their own expected
+    # values; if those authorities disagree, fail closed.
+    authoritative = None
+    try:
+        authoritative = authoritative_classification_counts()
+    except Exception as exc:  # noqa: BLE001 — any authority failure blocks metadata
+        errors.append(f"cannot derive authoritative RW3 classification inventory: {exc}")
+
     # A3: exactly one coherent result per mandatory component; no unknown or
     # duplicate results; counts internally coherent; zero-test can never pass.
     comps = result.get("components")
@@ -341,7 +370,7 @@ def _validate_canonical_result(result: dict) -> list[str]:
             if canonical["kind"] == "pytest":
                 _validate_pytest_component(comp, cid, errors)
             else:  # rw3
-                _validate_rw3_component(comp, cid, errors)
+                _validate_rw3_component(comp, cid, errors, authoritative)
 
     # A3: the overall decision must follow from the complete component results.
     overall = result.get("overall_decision")
