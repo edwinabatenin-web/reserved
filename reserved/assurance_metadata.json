@@ -91,10 +91,10 @@
     "engine_version": "4.0.0",
     "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
     "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-    "generated_on": "2026-08-17T10:29:32Z",
+    "generated_on": "2026-08-17T15:41:46Z",
     "rules_version": "uk-2026-27-v4",
     "schema": "reserved-engine-artefact-provenance-1",
-    "source_commit": "d4cd9f2820792a82ea434336a982a0974418ef32",
+    "source_commit": "fe848aa49c2bc506c58271405e14c971cc1f2bc6",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -117,7 +117,7 @@
     "source_path": "reserved/engines"
   },
   "production_source": {
-    "source_commit": "d4cd9f2820792a82ea434336a982a0974418ef32",
+    "source_commit": "fe848aa49c2bc506c58271405e14c971cc1f2bc6",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -171,8 +171,8 @@
       "path": "reserved-optimise-assurance/tests/"
     }
   ],
-  "assurance_implementation_identity": "027f8b70b349719e63bedaf40080954342c17c6327d18290ba5dc04bb71e99c5",
-  "canonical_result_digest": "e09429afdf24ee2be3508a40380a65fb247c2494eae3d4804ecd8ccb4eaacef8",
+  "assurance_implementation_identity": "944ddbff7d0d9a38e9ac939f5ad5c6c39e773a6a9a05dcf092edb0d89de9198f",
+  "canonical_result_digest": "b12c780dee655c69ae06b5a50ee3e6370b9888db1c3e954d1105cfb7d3276e8b",
   "rw3_fixture_gate": {
     "gate_passed": true,
     "classification_complete": true,
@@ -190,10 +190,10 @@
       "engine_version": "4.0.0",
       "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
       "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-      "generated_on": "2026-08-17T10:29:32Z",
+      "generated_on": "2026-08-17T15:41:46Z",
       "rules_version": "uk-2026-27-v4",
       "schema": "reserved-engine-artefact-provenance-1",
-      "source_commit": "d4cd9f2820792a82ea434336a982a0974418ef32",
+      "source_commit": "fe848aa49c2bc506c58271405e14c971cc1f2bc6",
       "source_files": {
         "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
         "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -216,9 +216,9 @@
       "source_path": "reserved/engines"
     }
   },
-  "generated_on": "2026-08-17T10:29:32Z",
+  "generated_on": "2026-08-17T15:41:46Z",
   "test_counts": {
-    "passed": 1395,
+    "passed": 1420,
     "failed": 0,
     "errors": 0,
     "skipped": 0
