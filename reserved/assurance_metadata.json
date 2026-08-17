@@ -87,14 +87,14 @@
   "rules_version": "uk-2026-27-v4",
   "engine_version": "4.0.0",
   "engine_artefact": {
-    "content_hash": "9b44b46e6d08bb6ebeace588fd26c7e8804e92d5be513e320260c145b345a0d3",
+    "content_hash": "12ae7ac531482bb3db302d0de674208e7f37075bfb879653888e0c5046614f3a",
     "engine_version": "4.0.0",
     "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
     "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-    "generated_on": "2026-08-17T15:41:46Z",
+    "generated_on": "2026-08-17T21:25:15Z",
     "rules_version": "uk-2026-27-v4",
     "schema": "reserved-engine-artefact-provenance-1",
-    "source_commit": "fe848aa49c2bc506c58271405e14c971cc1f2bc6",
+    "source_commit": "410b92fe0c1e347665f55240ad94ee2de73631bb",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -104,6 +104,7 @@
       "annual_position_composition.py": "8f6c0864cce23e40cb80072a48bb7cbefeab27ad7beded756a2d5201e2b8ab19",
       "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
       "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
+      "hicbc_partner.py": "bb3cd4bd976aa2858f08bd6abea27acb23bcf085b9147022269802785c2b8990",
       "income_tax.py": "ca824c442f3d58bdc235e3e9e0be543d25d3eda9dc414545b5efde27eabff879",
       "integrated_annual_position.py": "3fb7544f56eb4d528eb27db410a96e4e537d5e9265c718a326cb75418256faa7",
       "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
@@ -117,7 +118,7 @@
     "source_path": "reserved/engines"
   },
   "production_source": {
-    "source_commit": "fe848aa49c2bc506c58271405e14c971cc1f2bc6",
+    "source_commit": "410b92fe0c1e347665f55240ad94ee2de73631bb",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -127,6 +128,7 @@
       "annual_position_composition.py": "8f6c0864cce23e40cb80072a48bb7cbefeab27ad7beded756a2d5201e2b8ab19",
       "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
       "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
+      "hicbc_partner.py": "bb3cd4bd976aa2858f08bd6abea27acb23bcf085b9147022269802785c2b8990",
       "income_tax.py": "ca824c442f3d58bdc235e3e9e0be543d25d3eda9dc414545b5efde27eabff879",
       "integrated_annual_position.py": "3fb7544f56eb4d528eb27db410a96e4e537d5e9265c718a326cb75418256faa7",
       "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
@@ -172,7 +174,7 @@
     }
   ],
   "assurance_implementation_identity": "944ddbff7d0d9a38e9ac939f5ad5c6c39e773a6a9a05dcf092edb0d89de9198f",
-  "canonical_result_digest": "b12c780dee655c69ae06b5a50ee3e6370b9888db1c3e954d1105cfb7d3276e8b",
+  "canonical_result_digest": "fefcff0ae4a9c40ac6afd8dbf59a70b27972ad02e94536c02ef4fad3689ede52",
   "rw3_fixture_gate": {
     "gate_passed": true,
     "classification_complete": true,
@@ -186,14 +188,14 @@
     },
     "corpus_id": "RW3-WP7-DRAFT-CORPUS-1",
     "artefact": {
-      "content_hash": "9b44b46e6d08bb6ebeace588fd26c7e8804e92d5be513e320260c145b345a0d3",
+      "content_hash": "12ae7ac531482bb3db302d0de674208e7f37075bfb879653888e0c5046614f3a",
       "engine_version": "4.0.0",
       "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
       "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-      "generated_on": "2026-08-17T15:41:46Z",
+      "generated_on": "2026-08-17T21:25:15Z",
       "rules_version": "uk-2026-27-v4",
       "schema": "reserved-engine-artefact-provenance-1",
-      "source_commit": "fe848aa49c2bc506c58271405e14c971cc1f2bc6",
+      "source_commit": "410b92fe0c1e347665f55240ad94ee2de73631bb",
       "source_files": {
         "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
         "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -203,6 +205,7 @@
         "annual_position_composition.py": "8f6c0864cce23e40cb80072a48bb7cbefeab27ad7beded756a2d5201e2b8ab19",
         "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
         "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
+        "hicbc_partner.py": "bb3cd4bd976aa2858f08bd6abea27acb23bcf085b9147022269802785c2b8990",
         "income_tax.py": "ca824c442f3d58bdc235e3e9e0be543d25d3eda9dc414545b5efde27eabff879",
         "integrated_annual_position.py": "3fb7544f56eb4d528eb27db410a96e4e537d5e9265c718a326cb75418256faa7",
         "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
@@ -216,9 +219,9 @@
       "source_path": "reserved/engines"
     }
   },
-  "generated_on": "2026-08-17T15:41:46Z",
+  "generated_on": "2026-08-17T21:25:15Z",
   "test_counts": {
-    "passed": 1420,
+    "passed": 1486,
     "failed": 0,
     "errors": 0,
     "skipped": 0
