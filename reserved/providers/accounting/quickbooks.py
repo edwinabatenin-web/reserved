@@ -3,7 +3,11 @@ from .base import AccountingProvider
 
 class QuickBooksProvider(AccountingProvider):
     """
-    Documented placeholder for the QuickBooks integration.
+    Disabled placeholder for the QuickBooks integration.
+
+    Any future implementation must emit source observations and semantic
+    adapter results for the provider-neutral canonical accounting pipeline.
+    Raw QuickBooks fields must never be passed to the tax engine.
 
     Launch scope:
     - OAuth connection card and demand validation.

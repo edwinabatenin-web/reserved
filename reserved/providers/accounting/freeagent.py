@@ -3,7 +3,12 @@ from .base import AccountingProvider
 
 class FreeAgentProvider(AccountingProvider):
     """
-    Documented placeholder for the FreeAgent integration.
+    Disabled placeholder for the FreeAgent integration.
+
+    Any future implementation must emit source observations and semantic
+    adapter results for the provider-neutral canonical accounting pipeline.
+    Raw FreeAgent fields must never be passed to the tax engine, and provider
+    allowability metadata remains an assertion rather than a tax decision.
 
     Launch scope:
     - OAuth connection card and demand validation.
