@@ -10,6 +10,22 @@ One coherent launch version, rather than separate Alpha and Beta products:
 - bank connection and transaction ingestion through approved Yapily scope;
 - Stripe Connect onboarding and verified transfer lifecycle;
 - immutable reconciliation records;
+- external API failure and resilience controls across HMRC, Yapily, FreeAgent,
+  Xero and QuickBooks:
+  - isolate each provider behind its own adapter and the canonical Reserved data
+    model;
+  - pin provider/API versions where supported;
+  - maintain contract tests and validate response schemas;
+  - fail closed when required fields are missing, renamed or incompatible;
+  - monitor provider changelogs and deprecation notices;
+  - localise provider failures so unrelated functionality remains available;
+  - retain last-known-good data with its timestamp where safe and appropriate;
+  - test source reconciliation and detect material divergence;
+  - monitor and alert on connection, authentication, schema and data-volume
+    health;
+  - combine webhooks with periodic reconciliation rather than relying on
+    webhooks alone;
+  - run automated regression tests for provider and API-version changes;
 - Capital Gains manual-entry preview;
 - clear limitations and user confirmations;
 - private-beta monitoring and support processes.

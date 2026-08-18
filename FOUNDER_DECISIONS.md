@@ -273,6 +273,35 @@ not block the bounded launch if the payslip/manual journey is independently
 shown to be usable, but Reserved must not advertise unavailable automation or
 imply that partial HMRC data is a complete live PAYE record.
 
+## Resolved: external data freshness and completeness (18 August 2026)
+
+Reserved will not treat an external source as authoritative solely because it
+is connected, recently retrieved or supplied by an authoritative institution.
+Reliability and source priority must be assessed per datum according to what the
+value means, the period it represents, its effective or as-of date, the age of
+the underlying update, whether the source is complete for the intended purpose,
+and whether a better source exists.
+
+Reserved must preserve provenance and freshness metadata and reconcile
+overlapping sources rather than silently preferring HMRC, accounting software,
+banking data or customer-provided evidence. Where freshness or completeness is
+insufficient for the intended calculation, Reserved must use an appropriate
+fallback, qualify the result, or request additional evidence rather than
+silently treating the datum as current or complete.
+
+## Resolved: external integration resilience (18 August 2026)
+
+External integrations are replaceable evidence sources, not components of the
+tax engine. Provider-specific APIs must be isolated behind Reserved's canonical
+data model so that a provider outage, schema change or deprecation cannot
+silently alter tax calculations or unnecessarily disable unrelated Reserved
+functionality.
+
+Provider failures must remain local to the affected evidence route. Required
+provider fields must be validated before normalisation, and unavailable, stale
+or incompatible evidence must retain an explicit state rather than becoming a
+zero, a default or a differently interpreted datum.
+
 ## Resolved: customer-facing “Explore your options” terminology (15 August 2026)
 
 The customer-facing feature name is **Explore your options**. Individual

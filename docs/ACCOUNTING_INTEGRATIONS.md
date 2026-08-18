@@ -22,6 +22,21 @@ For cash-basis sole traders, payment timing will normally drive the income
 estimate. Invoice and service dates remain valuable for matching, forecasting
 and overdue-payment insight.
 
+## Canonical data requirements
+
+Accounting method and MTD update-period basis are separate concepts and must be
+stored independently for each applicable business or property income source.
+
+| Attribute | Allowed values | Meaning and use |
+|---|---|---|
+| `accounting_method` | `cash`; `traditional-accrual` | Determines when income and expenses are recognised for tax. Cash and traditional-accrual users can therefore require different recognition treatment for the same invoice, payment, expense or prepayment. |
+| `mtd_update_period_basis` | `standard-tax-year`; `calendar` | Determines the convention used for MTD quarterly reporting periods. It does not determine the accounting recognition method. Filing deadlines remain the same for standard-tax-year and calendar update periods. |
+
+Neither attribute may be inferred from the other. Provider data must be mapped
+to these canonical values only where its meaning and applicable income source
+are established; otherwise the value remains unknown and requires confirmation
+or an appropriate qualified fallback.
+
 ## Verified provider constraints (12 August 2026)
 
 | Provider | OAuth / test environment | Pagination / limits | Implementation boundary |
