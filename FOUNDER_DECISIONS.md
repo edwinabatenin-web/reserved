@@ -109,6 +109,56 @@ linked routes are October launch targets, but neither may be activated or counte
 as launch-ready until its applicable privacy, retention, legal, security,
 customer-evidence and calculation-assurance gates have passed.
 
+## Resolved: linked-HICBC limited inference and mutual permission (18 August 2026)
+
+The linked-account HICBC journey may disclose to each user the minimum outcome
+needed to explain that user's own correct HICBC position. This includes the
+unavoidable possibility that a user may infer that linked information caused
+their own estimate to change, or that HICBC is or is not included in that
+estimate. This limited inference is permitted because withholding it would make
+the linked-account determination unusable.
+
+This decision clarifies and partially supersedes the broader prohibition above
+on implying a partner's position. It does not permit disclosure of the partner's
+precise ANI, income, ANI band, income band, bonus, comparative or relative income,
+calculated personal tax, underlying evidence, or any other avoidable financial
+information. Customer language must describe only the receiving user's own tax
+consequence. Reserved must not provide repeated hypothetical calculations,
+comparative wording, bands or other probing mechanisms that could be used to
+reverse-engineer the partner's finances.
+
+Both partners must separately and affirmatively enable linked HICBC after being
+shown a concise explanation that:
+
+- Reserved will use the limited relevant information available in both linked
+  accounts to calculate each user's own HICBC position;
+- neither person will see the other's income or financial details;
+- either person may nevertheless see that their own estimate changed after
+  linked information was considered; and
+- either person may turn off linked HICBC and unlink the accounts.
+
+The acknowledgement must not be preselected or bundled invisibly into general
+terms. Reserved must retain an auditable record of the notice shown, its version,
+who agreed, when they agreed, and any subsequent withdrawal or unlinking. When
+either partner withdraws permission or unlinks, linked evidence must not be used
+in new calculations and the affected result must revert safely to an
+indeterminate, manual-evidence or otherwise supported state. Retention or
+deletion required for another documented purpose must be handled under its own
+stated basis and must not silently preserve linked calculation access.
+
+The mutual product permission described here must not be assumed to settle the
+separate UK GDPR lawful-basis analysis. Reserved must document the applicable
+lawful basis, transparency information, purpose limitation, data minimisation,
+withdrawal, unlinking, deletion and anti-probing controls before activation.
+
+External legal or privacy advice is not an automatic launch prerequisite for
+this bounded capability. A documented internal privacy-assurance review is
+required before activation. External advice should be obtained if that review
+identifies a material unresolved legal or privacy question. This does not relax
+any outstanding technical, privacy, retention, security, evidence or calculation
+assurance gate, and it does not authorise activation while linked evidence can
+appear falsely determinate or actionable.
+
 ## Resolved: PAYE current-position proposition for v1 (15 August 2026)
 
 V1 should help PAYE users estimate whether their full-tax-year position is
