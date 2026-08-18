@@ -1,8 +1,10 @@
-"""C1 regression: HICBC is isolated from all customer-facing surfaces (post-v1).
+"""HICBC is not yet wired into customer totals/reserve/API (conditional v1).
 
-HICBC must not appear in any customer estimated total, reserve, scenario,
-personalised warning or API payload.  The post-v1 HICBC arithmetic may remain
-internally, but a supported customer position must never expose it.
+HICBC is an intended October v1 family but remains disconnected from customer
+estimated total, reserve, scenario, personalised warning and API payload until
+the applicable evidence and assurance gates pass.  The arithmetic may remain
+internal; a supported customer position must not expose it while those gates
+are unresolved.
 """
 from decimal import Decimal
 from pathlib import Path

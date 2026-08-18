@@ -59,6 +59,12 @@ def _user(clerk_id: str, income: float) -> int:
     return uid
 
 
+def _mutual_consent(a: int, b: int, tax_year: str = TAX_YEAR) -> None:
+    """Record separate, versioned mutual permission for both participants."""
+    assert db.record_hicbc_link_consent(a, tax_year, "hicbc-notice-v1") is True
+    assert db.record_hicbc_link_consent(b, tax_year, "hicbc-notice-v1") is True
+
+
 # ── Link lifecycle ────────────────────────────────────────────────────────────
 
 def test_link_lifecycle_invite_accept_revoke_relink(tmp_db):
@@ -154,6 +160,7 @@ def test_linked_partner_raw_ani_never_in_customer_payload(app):
     b = _user("clerk_b", 90000)
     token = db.create_hicbc_link_invitation(a, TAX_YEAR)
     db.accept_hicbc_link_invitation(b, token, TAX_YEAR)
+    _mutual_consent(a, b)
 
     client = app.test_client()
     client.get("/v2/demo-login")
@@ -170,6 +177,7 @@ def test_manual_and_linked_conflict_yields_range_not_silent_selection(app):
     b = _user("clerk_b", 90000)
     token = db.create_hicbc_link_invitation(a, TAX_YEAR)
     db.accept_hicbc_link_invitation(b, token, TAX_YEAR)
+    _mutual_consent(a, b)
 
     # Manual estimate says partner ~50k; linked evidence says partner ~90k.
     db.save_hicbc_estimate(a, {
@@ -201,6 +209,7 @@ def test_linked_only_evidence_is_used_when_no_manual_estimate(app):
     b = _user("clerk_b", 90000)
     token = db.create_hicbc_link_invitation(a, TAX_YEAR)
     db.accept_hicbc_link_invitation(b, token, TAX_YEAR)
+    _mutual_consent(a, b)
 
     # No manual estimate, but Child Benefit facts are still required; set them
     # via a manual row that does not declare a partner.
@@ -221,6 +230,7 @@ def test_revoked_link_removes_linked_evidence(app):
     b = _user("clerk_b", 90000)
     token = db.create_hicbc_link_invitation(a, TAX_YEAR)
     db.accept_hicbc_link_invitation(b, token, TAX_YEAR)
+    _mutual_consent(a, b)
 
     db.save_hicbc_estimate(a, {
         "tax_year": TAX_YEAR,

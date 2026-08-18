@@ -487,7 +487,7 @@ def build_metadata(result: dict) -> dict:
                 "Bounded Making Tax Digital indication",
             ],
             "out_of_scope": [
-                "High Income Child Benefit Charge (HICBC) — post-v1",
+                "High Income Child Benefit Charge (HICBC) — October v1 target (not yet activated)",
                 "Scottish Income Tax — post-v1",
                 "Capital Gains Tax — post-v1",
                 "Full MTD filing — post-v1",

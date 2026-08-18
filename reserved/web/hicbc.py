@@ -1,9 +1,18 @@
-"""Post-v1 HICBC partner-estimate manual path.
+"""October v1 HICBC partner-estimate path (conditional inclusion).
 
-This blueprint is a bounded, clearly-labelled post-v1 preview.  It is **not**
-part of the October v1 customer tax total, reserve/set-aside guidance, payment
-initiation, filing or launch claim, and it does not alter the Personal Allowance
+HICBC is an intended October v1 family.  It may contribute to a customer tax
+total, reserve/set-aside guidance or payment journey only when the evidence is
+adequate for that purpose and the applicable assurance gates have passed; the
+annual-total/reserve/payment integration gate is intentionally not wired in this
+package, so this blueprint never adds HICBC to a v1 customer total, reserve,
+payment, filing or launch claim, and it does not alter the Personal Allowance
 Explore-your-options result.
+
+Linked-account evidence is treated as non-actionable unless both partners have
+recorded separate, versioned mutual permission and the underlying evidence is
+adequate and current.  In this pass the profile-derived linked value is always
+partial (never a determinate full ANI), and the linked customer presentation is
+gated behind the disabled-by-default ``HICBC_ENABLED`` feature flag.
 
 Privacy boundary
 ----------------
@@ -31,6 +40,7 @@ from reserved.database import (
     get_hicbc_estimate,
     get_hicbc_link_partner_id,
     get_profile_by_user,
+    has_mutual_hicbc_link_consent,
     revoke_hicbc_link,
     save_hicbc_estimate,
 )
@@ -156,21 +166,28 @@ def _opaque_subject_reference(partner_id: int) -> str:
 
 
 def _linked_partner_evidence(user_id: int, tax_year: str) -> PartnerEvidence | None:
-    """Return privacy-minimised linked partner evidence for an active link.
+    """Return privacy-minimised linked partner evidence for a unique active link.
 
-    Reads the linked partner's own ANI only for the internal responsibility
-    comparison, under an active, mutually consented, HICBC-only link.  The raw
-    value is held inside :class:`PartnerEvidence` and never reaches a customer
-    payload (``customer_view`` strips it).
+    The linked value is always *partial* in this pass: there is no assured
+    full-ANI producer, the relationship period is not explicitly established as
+    full-year, and the observation time is the partner profile's update time
+    (never retrieval/calculation time).  Missing versioned mutual permission or a
+    tax-year mismatch returns ``None`` so the result reverts safely to manual
+    evidence or an insufficient state.
     """
+    if not has_mutual_hicbc_link_consent(user_id, tax_year):
+        return None
     partner_id = get_hicbc_link_partner_id(user_id, tax_year)
     if partner_id is None:
         return None
     partner_profile = get_profile_by_user(partner_id) or {}
-    partner_ani = _user_ani_from_profile(partner_profile)
+    profile_year = partner_profile.get("tax_year")
+    if profile_year is not None and profile_year != tax_year:
+        return None  # mismatched evidence year is never relabelled as current
     link = get_active_hicbc_link(user_id, tax_year)
     link_id = link["id"] if link else 0
-    now = _now_iso()
+    partner_ani = _user_ani_from_profile(partner_profile)
+    observed_at = partner_profile.get("updated_at") or "unknown"
     return PartnerEvidence(
         evidence_id=f"linked_{link_id}_{tax_year.replace('/', '-')}",
         source_kind=SOURCE_LINKED_PARTNER,
@@ -181,18 +198,15 @@ def _linked_partner_evidence(user_id: int, tax_year: str) -> PartnerEvidence | N
         point=partner_ani,
         low=None,
         high=None,
-        effective_period=tax_year,
-        observed_at=now,
+        effective_period="unknown",  # full-year relationship coverage not established
+        observed_at=observed_at,
         confirmed_at=None,
-        completeness="complete_for_purpose",
-        recency_state="current",
+        completeness="partial",  # profile projection, not an assured full ANI
+        recency_state="unconfirmed",  # no freshness policy asserts currency
         consent_state="consented",
+        ani_components=(),  # no assured ANI components are represented
+        conflict=False,
     )
-
-
-def _now_iso() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _evidence_bounds(evidence: PartnerEvidence) -> tuple[Decimal, Decimal]:
@@ -208,15 +222,17 @@ def _merge_partner_evidence(
 
     Neither source has precedence.  The two are merged into a range spanning both
     (or a point when they agree exactly); ``conflict`` is True only when the two
-    sources do not overlap, so the caller can record the disagreement.
+    sources are disjoint (a material disagreement), and the merged evidence never
+    fabricates a fresh observation time — it carries the older source's
+    observation time and an uncertain recency state.
     """
     mlow, mhigh = _evidence_bounds(manual)
     llow, lhigh = _evidence_bounds(linked)
-    conflict = (mhigh < llow) or (lhigh < mhigh)
+    conflict = (mhigh < llow) or (lhigh < mlow)
     low = min(mlow, llow)
     high = max(mhigh, lhigh)
     tax_year = manual.tax_year
-    now = _now_iso()
+    observed_at = min(manual.observed_at, linked.observed_at)
     common = dict(
         evidence_id=f"merged_{manual.evidence_id[:8]}_{linked.evidence_id[:8]}",
         source_kind=_MERGED_SOURCE_KIND,
@@ -224,11 +240,13 @@ def _merge_partner_evidence(
         subject_reference="partner",
         tax_year=tax_year,
         effective_period=tax_year,
-        observed_at=now,
+        observed_at=observed_at,
         confirmed_at=None,
         completeness="partial",
-        recency_state="current",
+        recency_state="unconfirmed",
         consent_state="consented",
+        ani_components=manual.ani_components + linked.ani_components,
+        conflict=conflict,
     )
     if low == high:
         return PartnerEvidence(representation="point", point=low, low=None, high=None, **common), conflict

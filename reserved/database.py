@@ -241,7 +241,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     child_benefit_annual    REAL    -- explicit override; NULL = use standard rates
 );
 
--- ── HICBC partner estimates (post-v1) ────────────────────────────────────────
+-- ── HICBC partner estimates (October v1) ────────────────────────────────────────
 -- One row per (user_id, tax_year) holds the user's bounded manual HICBC inputs:
 -- Child Benefit facts and the partner income estimate used only for the
 -- responsibility comparison.  Money/ANI values are stored as canonical Decimal
@@ -311,6 +311,21 @@ CREATE TABLE IF NOT EXISTS hicbc_link_invitations (
     accepted_at  TEXT,
     accepted_by  INTEGER,
     link_id      INTEGER
+);
+
+-- ── HICBC link mutual permission ─────────────────────────────────────────────
+-- One row per (link, participant) records the participant's separate,
+-- affirmative, versioned linked-HICBC permission.  Missing rows (or a missing
+-- notice_version) mean versioned mutual permission has not yet been established
+-- and linked evidence must not be treated as adequately consented.
+CREATE TABLE IF NOT EXISTS hicbc_link_consents (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    link_id        INTEGER NOT NULL REFERENCES hicbc_links(id) ON DELETE CASCADE,
+    user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    notice_version TEXT    NOT NULL,
+    consented_at   TEXT    NOT NULL,
+    withdrawn_at   TEXT,
+    UNIQUE(link_id, user_id)
 );
 
 -- ── Tax optimisation saved scenarios ─────────────────────────────────────────
@@ -432,7 +447,7 @@ CREATE TABLE IF NOT EXISTS invoice_matches (
 # - The DDL block above always reflects the full target schema; migrations
 #   handle upgrade paths for databases created before the current DDL.
 #
-_SCHEMA_VERSION = 7   # increment when adding new migration entries below
+_SCHEMA_VERSION = 8   # increment when adding new migration entries below
 
 _MIGRATIONS: dict[int, list[str]] = {
     # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
@@ -540,6 +555,20 @@ _MIGRATIONS: dict[int, list[str]] = {
             accepted_at  TEXT,
             accepted_by  INTEGER,
             link_id      INTEGER
+        )""",
+    ],
+    # Version 8 — HICBC linked-account versioned mutual permission.  Invitation
+    # acceptance alone no longer counts as launch-adequate consent; each
+    # participant must separately, affirmatively consent to a recorded notice.
+    8: [
+        """CREATE TABLE IF NOT EXISTS hicbc_link_consents (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            link_id        INTEGER NOT NULL REFERENCES hicbc_links(id) ON DELETE CASCADE,
+            user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            notice_version TEXT    NOT NULL,
+            consented_at   TEXT    NOT NULL,
+            withdrawn_at   TEXT,
+            UNIQUE(link_id, user_id)
         )""",
     ],
 }
@@ -1414,7 +1443,7 @@ def get_profile_by_user(user_id: int) -> dict | None:
     return profile
 
 
-# ── HICBC partner estimates (post-v1) ─────────────────────────────────────────
+# ── HICBC partner estimates (October v1) ─────────────────────────────────────────
 # Money/ANI values are canonical Decimal strings.  ``save_hicbc_estimate``
 # preserves the evidence_id across updates (replacement) so the evidence stays a
 # single stable identity for the user/tax-year; a fresh insert gets a new one.
@@ -1572,16 +1601,35 @@ def create_hicbc_link_invitation(
     return token
 
 
+def _has_other_active_link(conn, user_id: int, tax_year: str, low: int, high: int) -> bool:
+    """True if ``user_id`` already has an active link with a *different* partner."""
+    row = conn.execute(
+        """
+        SELECT id FROM hicbc_links
+        WHERE (user_low_id = ? OR user_high_id = ?)
+          AND tax_year = ?
+          AND status = ?
+          AND NOT (user_low_id = ? AND user_high_id = ?)
+        """,
+        (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE, low, high),
+    ).fetchone()
+    return row is not None
+
+
 def accept_hicbc_link_invitation(user_id: int, token: str, tax_year: str) -> dict | None:
     """Accept a pending invitation and establish (or re-activate) a mutual link.
 
     Returns the active link row as a dict on success, or ``None`` when the token
-    is invalid, expired, already used, a self-link, or a duplicate active link
-    already exists.  Fails closed and never leaks which of those reasons applied
-    to a caller who is not the legitimate participant.
+    is invalid, expired, already used, a self-link, a duplicate active link, or
+    either participant already has an active link with a different partner.
+
+    The check-and-insert runs inside ``BEGIN IMMEDIATE`` so concurrent accepts
+    cannot both observe an absent active link and insert two partners for one
+    user.  Fails closed and never leaks which reason applied to a non-participant.
     """
     now = _now()
     with _connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         invitation = conn.execute(
             "SELECT * FROM hicbc_link_invitations WHERE token_hash = ? AND tax_year = ?",
             (_token_hash(token), tax_year),
@@ -1598,6 +1646,11 @@ def accept_hicbc_link_invitation(user_id: int, token: str, tax_year: str) -> dic
             return None  # self-link rejected
 
         low, high = sorted((creator_id, user_id))
+        if _has_other_active_link(conn, creator_id, tax_year, low, high):
+            return None  # creator already linked to a different partner
+        if _has_other_active_link(conn, user_id, tax_year, low, high):
+            return None  # acceptor already linked to a different partner
+
         existing = conn.execute(
             "SELECT * FROM hicbc_links WHERE user_low_id = ? AND user_high_id = ? AND tax_year = ?",
             (low, high, tax_year),
@@ -1650,20 +1703,27 @@ def _get_hicbc_link_row(conn, link_id: int) -> dict:
 
 
 def get_active_hicbc_link(user_id: int, tax_year: str) -> dict | None:
-    """Return the active HICBC link involving ``user_id`` for ``tax_year``, if any."""
+    """Return the active HICBC link involving ``user_id`` for ``tax_year``.
+
+    Returns ``None`` when there is no active link **or** when more than one
+    active link exists (ambiguous/malformed data).  Never selects an arbitrary
+    partner.
+    """
     with _connection() as conn:
-        row = conn.execute(
+        rows = conn.execute(
             """
             SELECT * FROM hicbc_links
             WHERE (user_low_id = ? OR user_high_id = ?) AND tax_year = ? AND status = ?
             """,
             (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE),
-        ).fetchone()
-    return dict(row) if row else None
+        ).fetchall()
+    if len(rows) == 1:
+        return dict(rows[0])
+    return None
 
 
 def get_hicbc_link_partner_id(user_id: int, tax_year: str) -> int | None:
-    """Return the other participant's user_id for an active link, or None."""
+    """Return the other participant's user_id for a uniquely active link, or None."""
     link = get_active_hicbc_link(user_id, tax_year)
     if link is None:
         return None
@@ -1678,24 +1738,72 @@ def revoke_hicbc_link(user_id: int, tax_year: str) -> bool:
     Either participant may revoke.  Revocation takes effect immediately for
     future calculations; the link row is retained (status 'revoked') as minimal
     audit evidence and is never used again for cross-account access.  Returns
-    True if an active link was revoked.
+    True if exactly one active link was revoked; ambiguous (multiple) active
+    links fail closed and are left untouched.
     """
     now = _now()
     with _connection() as conn:
-        row = conn.execute(
+        rows = conn.execute(
             """
             SELECT id FROM hicbc_links
             WHERE (user_low_id = ? OR user_high_id = ?) AND tax_year = ? AND status = ?
             """,
             (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE),
-        ).fetchone()
-        if row is None:
+        ).fetchall()
+        if len(rows) != 1:
             return False
         conn.execute(
             "UPDATE hicbc_links SET status = ?, revoked_at = ?, revoked_by = ? WHERE id = ?",
-            (_LINK_STATUS_REVOKED, now, user_id, row["id"]),
+            (_LINK_STATUS_REVOKED, now, user_id, rows[0]["id"]),
         )
     return True
+
+
+def record_hicbc_link_consent(user_id: int, tax_year: str, notice_version: str) -> bool:
+    """Record one participant's affirmative, versioned linked-HICBC consent.
+
+    ``notice_version`` must be non-empty; it is the auditable identifier of the
+    concise explanation the participant was shown.  Recording is per-participant:
+    mutual permission is established only once *both* participants have recorded
+    consent for the same active link.  Returns False when there is no unique
+    active link or the notice version is empty.
+    """
+    if not notice_version or not isinstance(notice_version, str):
+        return False
+    link = get_active_hicbc_link(user_id, tax_year)
+    if link is None:
+        return False
+    now = _now()
+    with _connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO hicbc_link_consents (link_id, user_id, notice_version, consented_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(link_id, user_id) DO UPDATE SET
+                notice_version = excluded.notice_version,
+                consented_at = excluded.consented_at,
+                withdrawn_at = NULL
+            """,
+            (link["id"], user_id, notice_version, now),
+        )
+    return True
+
+
+def has_mutual_hicbc_link_consent(user_id: int, tax_year: str) -> bool:
+    """True iff both participants have recorded, non-withdrawn versioned consent."""
+    link = get_active_hicbc_link(user_id, tax_year)
+    if link is None:
+        return False
+    with _connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT user_id FROM hicbc_link_consents
+            WHERE link_id = ? AND withdrawn_at IS NULL
+            """,
+            (link["id"],),
+        ).fetchall()
+    consented = {row["user_id"] for row in rows}
+    return consented == {link["user_low_id"], link["user_high_id"]}
 
 
 def delete_all_hicbc_links_for_user(user_id: int) -> int:

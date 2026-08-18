@@ -915,8 +915,9 @@ def optimise_view():
         income_override = None
 
     pos, opps = assess_opportunities(profile, projected_income_override=income_override)
-    # HICBC is outside the v1 customer scope (post-v1).  It must not surface in
-    # any customer scenario, total, reserve or personalised warning.
+    # HICBC is an October v1 target but is not yet wired into the annual total,
+    # reserve or personalised warning (the integration gate is disconnected and
+    # the applicable assurance gates are unresolved).  It must not surface here.
     opps = [o for o in opps if o.id != "HICBC"]
     saved = list_optimise_scenarios(g.user_id)
 

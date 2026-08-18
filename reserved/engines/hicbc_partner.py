@@ -1,13 +1,15 @@
 """Bounded HICBC partner-responsibility determination.
 
-Post-v1 capability.  This module produces a single coherent internal result
-that separates the user's individual Adjusted Net Income, the partner evidence
-used only for comparison, the responsibility status, the user's own projected
-HICBC, any household-level change status, evidence provenance and uncertainty.
+October v1 capability (conditionally included).  This module produces a single
+coherent internal result that separates the user's individual Adjusted Net
+Income, the partner evidence used only for comparison, the responsibility
+status, the user's own projected HICBC, any household-level change status,
+evidence provenance and uncertainty.
 
-It does **not** add HICBC to any v1 customer total, reserve/set-aside guidance,
-payment flow, filing output or launch claim, and it never exposes a linked
-partner's raw ANI, income band or calculated personal tax to the user.
+HICBC may contribute to a customer total, reserve/set-aside guidance or payment
+journey only when the evidence is adequate for that purpose and the applicable
+assurance gates have passed.  This module never exposes a linked partner's raw
+ANI, income band or calculated personal tax to the user.
 
 Correctness and safe uncertainty handling are the objectives.  Code reduction
 is not.  The module is deliberately provider-neutral: a manual partner estimate
@@ -87,9 +89,11 @@ RECENCY_UNKNOWN = "unknown"
 
 _UNCERTAIN_RECENCY_STATES = frozenset({RECENCY_UNCONFIRMED, RECENCY_STALE, RECENCY_UNKNOWN})
 
+# Uses that remain prohibited until the applicable gate is independently passed.
+# ``v1_customer_tax_total`` and ``reserve_or_set_aside_guidance`` are
+# *conditional* rather than categorically prohibited: the purpose gate in
+# ``hicbc_integration`` decides them and they are not actioned in this package.
 _PROHIBITED_USES = (
-    "v1_customer_tax_total",
-    "reserve_or_set_aside_guidance",
     "payment_initiation",
     "filing_or_submission",
     "october_launch_claim",
@@ -97,7 +101,7 @@ _PROHIBITED_USES = (
 )
 
 _PERMITTED_USES = (
-    "post_v1_hicbc_responsibility_estimate",
+    "hicbc_responsibility_estimate",
 )
 
 
@@ -140,6 +144,8 @@ class PartnerEvidence:
     completeness: str  # complete_for_purpose | partial | unknown
     recency_state: str  # current | unconfirmed | stale | unknown
     consent_state: str  # consented | revoked | not_required (manual)
+    ani_components: tuple[str, ...] = ()  # ANI components/adjustments represented
+    conflict: bool = False  # sources materially disagree (disjoint evidence)
 
     def __post_init__(self) -> None:
         if not all((self.evidence_id, self.source_kind, self.source_reference,
@@ -176,6 +182,7 @@ class PartnerEvidence:
         return (
             self.completeness == EvidenceCompleteness.PARTIAL.value
             or self.recency_state in _UNCERTAIN_RECENCY_STATES
+            or self.conflict
         )
 
 
@@ -249,6 +256,19 @@ def _compare_to_user(user_ani: Decimal, evidence: PartnerEvidence) -> str:
     return "overlap"
 
 
+def _material_uncertainty_reason(evidence: PartnerEvidence) -> UncertaintyReason:
+    """Choose the uncertainty reason for materially-uncertain partner evidence.
+
+    A genuine source conflict (disjoint manual/linked operands) is reported as
+    ``CONFLICTING``, distinct from a merely incomplete or stale-but-usable value.
+    """
+    if evidence.conflict:
+        return UncertaintyReason.CONFLICTING
+    if evidence.recency_state in _UNCERTAIN_RECENCY_STATES:
+        return UncertaintyReason.STALE
+    return UncertaintyReason.INCOMPLETE
+
+
 def _partner_is_above_threshold(evidence: PartnerEvidence | None, threshold: Decimal) -> bool | None:
     """Return True/False/None for whether the partner is above ``threshold``."""
     if evidence is None:
@@ -313,7 +333,7 @@ def _uncertainty(
 
 def _base_limitations() -> tuple[str, ...]:
     return (
-        "hicbc_is_post_v1_and_excluded_from_v1_totals_reserve_payment_filing_and_launch",
+        "hicbc_is_october_v1_and_conditionally_included_pending_evidence_and_assurance",
         "partner_responsibility_requires_partner_evidence_or_explicit_absence",
         "equal_or_overlapping_ani_is_not_tie_broken",
     )
@@ -509,7 +529,7 @@ def determine_hicbc_responsibility(
         if material_uncertainty:
             uncertainties.append(_uncertainty(
                 "hicbc_partner_evidence_uncertain",
-                UncertaintyReason.STALE if partner_evidence.recency_state in _UNCERTAIN_RECENCY_STATES else UncertaintyReason.INCOMPLETE,
+                _material_uncertainty_reason(partner_evidence),
                 "partner_evidence",
                 "Partner income evidence is incomplete or not current; the current indication is that the user is the higher-income person.",
                 EstimateEffect(kind=EffectKind.NOT_DETERMINABLE),
@@ -532,7 +552,7 @@ def determine_hicbc_responsibility(
         if material_uncertainty:
             uncertainties.append(_uncertainty(
                 "hicbc_partner_evidence_uncertain",
-                UncertaintyReason.STALE if partner_evidence.recency_state in _UNCERTAIN_RECENCY_STATES else UncertaintyReason.INCOMPLETE,
+                _material_uncertainty_reason(partner_evidence),
                 "partner_evidence",
                 "Partner income evidence is incomplete or not current; the current indication is that the partner is the higher-income person.",
                 EstimateEffect(kind=EffectKind.NOT_DETERMINABLE),
@@ -551,7 +571,8 @@ def determine_hicbc_responsibility(
 
     # comparison in {"equal", "overlap"} → ambiguous; bound the possible charge.
     reason = (
-        UncertaintyReason.CONFLICTING if comparison == "equal"
+        UncertaintyReason.CONFLICTING
+        if comparison == "equal" or partner_evidence.conflict
         else UncertaintyReason.REPRESENTATION_UNCLEAR
     )
     explanation = (
