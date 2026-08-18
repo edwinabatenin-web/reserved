@@ -102,14 +102,14 @@
   "rules_version": "uk-2026-27-v4",
   "engine_version": "4.0.0",
   "engine_artefact": {
-    "content_hash": "601cd32396c3492a9e20e6d19eb9ea5d975365466e4ab9ad9e53ad0eb44b3359",
+    "content_hash": "4a09ffb23a631648804aaea9dcbb656f9e089691b6a4bd224a1180d751ea41ee",
     "engine_version": "4.0.0",
     "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
     "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-    "generated_on": "2026-08-17T22:29:40Z",
+    "generated_on": "2026-08-18T15:33:20Z",
     "rules_version": "uk-2026-27-v4",
     "schema": "reserved-engine-artefact-provenance-1",
-    "source_commit": "58936c2f70d7202b86cdcda6eb953816b38b7808",
+    "source_commit": "253135bf895cf06e5f9b55e11ff7dc67ddc0b4a9",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -120,7 +120,7 @@
       "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
       "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
       "hicbc_integration.py": "1e015676a90da8be7929833ce76d9266d9ae15acca0e5f641353312ebeeb921c",
-      "hicbc_partner.py": "e2757e896e67ac3922d293ab04be65308b1cf5717436f40d4d3ae905d06489a0",
+      "hicbc_partner.py": "8d2eff2991e9ab219e279414d0cef51a0f153a0da82af9cfc64a6210f79ed501",
       "income_tax.py": "ca824c442f3d58bdc235e3e9e0be543d25d3eda9dc414545b5efde27eabff879",
       "integrated_annual_position.py": "3fb7544f56eb4d528eb27db410a96e4e537d5e9265c718a326cb75418256faa7",
       "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
@@ -134,7 +134,7 @@
     "source_path": "reserved/engines"
   },
   "production_source": {
-    "source_commit": "58936c2f70d7202b86cdcda6eb953816b38b7808",
+    "source_commit": "253135bf895cf06e5f9b55e11ff7dc67ddc0b4a9",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -145,7 +145,7 @@
       "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
       "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
       "hicbc_integration.py": "1e015676a90da8be7929833ce76d9266d9ae15acca0e5f641353312ebeeb921c",
-      "hicbc_partner.py": "e2757e896e67ac3922d293ab04be65308b1cf5717436f40d4d3ae905d06489a0",
+      "hicbc_partner.py": "8d2eff2991e9ab219e279414d0cef51a0f153a0da82af9cfc64a6210f79ed501",
       "income_tax.py": "ca824c442f3d58bdc235e3e9e0be543d25d3eda9dc414545b5efde27eabff879",
       "integrated_annual_position.py": "3fb7544f56eb4d528eb27db410a96e4e537d5e9265c718a326cb75418256faa7",
       "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
@@ -190,8 +190,8 @@
       "path": "reserved-optimise-assurance/tests/"
     }
   ],
-  "assurance_implementation_identity": "9ad0b7e05d786a312c464f48edd92f6eb396c1eac1960129ed5ca0bef11b80c1",
-  "canonical_result_digest": "7b0e13631e3b9fe1a8690eea9353c154ff86f36986fd34022bdfa24fcc251570",
+  "assurance_implementation_identity": "6c364f926ad88ecad68a27397df95d806e2604b6c9f1205c5be04e0027d6a48b",
+  "canonical_result_digest": "92378f524d2b736d44dabf7dfadd998c857ced513e7b4de1b5c833693e26a78a",
   "rw3_fixture_gate": {
     "gate_passed": true,
     "classification_complete": true,
@@ -205,14 +205,14 @@
     },
     "corpus_id": "RW3-WP7-DRAFT-CORPUS-1",
     "artefact": {
-      "content_hash": "601cd32396c3492a9e20e6d19eb9ea5d975365466e4ab9ad9e53ad0eb44b3359",
+      "content_hash": "4a09ffb23a631648804aaea9dcbb656f9e089691b6a4bd224a1180d751ea41ee",
       "engine_version": "4.0.0",
       "evidence_uncertainty_sha256": "20fa970652aec23dae9a48301bb6e2360d166279026dfd298b30a1792af0e7a6",
       "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-      "generated_on": "2026-08-17T22:29:40Z",
+      "generated_on": "2026-08-18T15:33:20Z",
       "rules_version": "uk-2026-27-v4",
       "schema": "reserved-engine-artefact-provenance-1",
-      "source_commit": "58936c2f70d7202b86cdcda6eb953816b38b7808",
+      "source_commit": "253135bf895cf06e5f9b55e11ff7dc67ddc0b4a9",
       "source_files": {
         "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
         "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -223,7 +223,7 @@
         "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
         "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
         "hicbc_integration.py": "1e015676a90da8be7929833ce76d9266d9ae15acca0e5f641353312ebeeb921c",
-        "hicbc_partner.py": "e2757e896e67ac3922d293ab04be65308b1cf5717436f40d4d3ae905d06489a0",
+        "hicbc_partner.py": "8d2eff2991e9ab219e279414d0cef51a0f153a0da82af9cfc64a6210f79ed501",
         "income_tax.py": "ca824c442f3d58bdc235e3e9e0be543d25d3eda9dc414545b5efde27eabff879",
         "integrated_annual_position.py": "3fb7544f56eb4d528eb27db410a96e4e537d5e9265c718a326cb75418256faa7",
         "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
@@ -237,9 +237,9 @@
       "source_path": "reserved/engines"
     }
   },
-  "generated_on": "2026-08-17T22:29:40Z",
+  "generated_on": "2026-08-18T15:33:20Z",
   "test_counts": {
-    "passed": 1522,
+    "passed": 1561,
     "failed": 0,
     "errors": 0,
     "skipped": 0
@@ -257,7 +257,7 @@
       "Bounded Making Tax Digital indication"
     ],
     "out_of_scope": [
-      "High Income Child Benefit Charge (HICBC) \u2014 post-v1",
+      "High Income Child Benefit Charge (HICBC) \u2014 October v1 target (not yet activated)",
       "Scottish Income Tax \u2014 post-v1",
       "Capital Gains Tax \u2014 post-v1",
       "Full MTD filing \u2014 post-v1"
