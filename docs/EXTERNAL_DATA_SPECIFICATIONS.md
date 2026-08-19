@@ -56,6 +56,12 @@ All accounting integrations must implement this boundary:
 > canonical accounting event/evidence → recognition & allowability decision →
 > tax engine**
 
+The stage contracts (`SourceObservation`, `SemanticAdapterResult`,
+`RecognitionDecision` and `CanonicalAccountingTaxInput`) are concrete, frozen
+dataclasses and the normalisation is fail-closed: a canonical object cannot be
+constructed without a valid observation and adapter result, and recognition is
+never inferred from an invoice issue date.
+
 Raw provider records and fields never enter the tax engine directly. Provider
 observations are evidence and may be **selected, corroborating, superseded,
 excluded, conflicting or unresolved**, with reasons and references to competing

@@ -11,16 +11,40 @@ part of canonical records.
 Reserved's canonical flow is:
 
 1. Import an invoice from FreeAgent, Xero or QuickBooks.
-2. Normalise it into Reserved's invoice schema.
+2. Observe the raw provider record as an immutable `SourceObservation`, translate
+   it through a `SemanticAdapterResult`, and only then construct canonical
+   accounting evidence. Raw provider records never enter tax calculations and a
+   provider adapter never emits a final recognition or allowability decision.
 3. Observe a bank credit through Open Banking.
 4. score possible invoice matches using amount, date, payer, reference and provider payment records.
 5. Auto-match only when confidence is high and the result is unambiguous.
 6. Ask the user to confirm ambiguous matches.
-7. Use the relevant accounting basis to determine tax timing.
+7. Produce an explicit, evidence-linked `RecognitionDecision` (cash or accrual)
+   from the relevant accounting basis; recognition is never inferred from an
+   invoice issue date alone.
 
 For cash-basis sole traders, payment timing will normally drive the income
 estimate. Invoice and service dates remain valuable for matching, forecasting
 and overdue-payment insight.
+
+## Enforced provider-neutral boundary
+
+The canonical contracts now make the boundary executable and fail-closed:
+
+- `SourceObservation` records the observed provider field paths and the digest
+  of the observed representation, never canonical keys or a transformed payload.
+- `SemanticAdapterResult` carries translated candidate facts and flags missing,
+  unsupported and conflicting facts; it cannot produce a final decision.
+- `RecognitionDecision` is explicit and evidence-linked; a missing candidate
+  remains missing (never zero) and an unknown accounting method cannot select
+  cash or accrual.
+- `CanonicalAccountingTaxInput` is the only synthetic object that may cross the
+  accounting/tax boundary, and only from a valid event + recognition decision.
+- Allocation edges are validated for sign, references, business/event/currency
+  compatibility, duplicate identity and reversal correctness.
+
+The FreeAgent, Xero and QuickBooks adapters remain disabled placeholders; the
+tests exercise the boundary with synthetic inputs only.
 
 ## Canonical data requirements
 

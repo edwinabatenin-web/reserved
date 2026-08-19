@@ -4,7 +4,11 @@ from .contracts import ProviderCapabilities, SyncPage, SyncStatus
 
 
 class AccountingProvider(ABC):
-    """Normalised interface implemented by FreeAgent, Xero and QuickBooks.
+    """Normalised interface for FreeAgent, Xero and QuickBooks.
+
+    The concrete providers are currently disabled placeholders; any future
+    implementation must emit ``SourceObservation`` and ``SemanticAdapterResult``
+    for the provider-neutral canonical accounting pipeline.
 
     `credential_reference` is an opaque identifier for encrypted server-side
     tokens. Raw refresh/access tokens must not cross this interface in logs or
