@@ -106,6 +106,21 @@ Outstanding or settled status is derived from the allocation graph, not
 assertion but cannot replace payments, credit allocations, refunds, write-offs,
 reversals or overpayments.
 
+The synthetic boundary additionally enforces, after the corrective remediation
+pass: the adapted payload is bound to its observation by source-record digest;
+the canonical document must match the observation's business and record
+identity; unsupported/conflicting facts and conflicting/excluded observations
+fail closed and the observation's evidence state is preserved, while a
+superseded observation may be documented but cannot resolve into a recognition
+decision; the accounting method is one canonical enum value; recognition
+decisions are validated against
+the canonical candidate and the tax year against the recognised date;
+classification derives from the document type (never the amount sign) and
+expenses require a decided allowability decision; missing or invalid FX facts
+fail closed rather than becoming zero; allocation edges respect settlement
+capacity and type; and effective periods must not overlap or be ambiguously
+open-ended.
+
 Unresolved policy choices and provider facts are cross-referenced, not answered
 here: see `FOUNDER_DECISIONS.md` and the accounting-software entries in
 `docs/DESIGN_QUESTIONS.md`.

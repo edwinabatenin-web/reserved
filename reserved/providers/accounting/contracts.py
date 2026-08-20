@@ -263,6 +263,12 @@ class FxProvenance:
             raise ValueError("FX conversion requires original and base currency identity")
         if self.original_currency == self.base_currency:
             raise ValueError("FX conversion requires distinct original and base currencies")
+        if self.fx_rate <= 0:
+            raise ValueError("FX rate must be positive")
+        if self.fx_rate_date is None:
+            raise ValueError("FX conversion requires a rate date")
+        if not self.fx_source:
+            raise ValueError("FX conversion requires a source")
 
 
 @dataclass(frozen=True)

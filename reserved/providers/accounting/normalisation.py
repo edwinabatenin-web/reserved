@@ -16,12 +16,13 @@ import json
 
 from .contracts import (
     AccountingDocument, AccountingLine, AccountingMethod, AccountingProviderName,
-    AllocationEdge, AllocationType, AllowabilityDecision, CanonicalAccountingTaxInput,
-    CanonicalDocumentState, DecisionAuthority, DocumentCandidate, DocumentType,
-    EvidenceState, FxProvenance, Money, Provenance, RecognitionCandidate,
-    RecognitionDecision, RecognitionDecisionOutcome, SemanticAdapterResult,
-    SettlementState, SettlementSummary, SourceIdentity, SourceObservation,
-    TaxAmountSemantics, TaxBreakdown,
+    AllocationEdge, AllocationType, AllowabilityDecision, AllowabilityOutcome,
+    CanonicalAccountingTaxInput, CanonicalDocumentState, DecisionAuthority,
+    DocumentCandidate, DocumentType, EvidenceState, FxProvenance, Money,
+    PaymentType, Provenance, RecognitionCandidate, RecognitionDecision,
+    RecognitionDecisionOutcome, SemanticAdapterResult, SettlementState,
+    SettlementSummary, SourceIdentity, SourceObservation, TaxAmountSemantics,
+    TaxBreakdown,
 )
 
 
@@ -140,23 +141,68 @@ def _accrual_candidate(raw_record, observation):
     return RecognitionCandidate(raw_on, raw_amt, AccountingMethod.TRADITIONAL_ACCRUAL, (observation.observation_id,))
 
 
+_FX_REQUIRED_FIELDS = (
+    "provider_fx_original_amount", "provider_fx_original_currency",
+    "provider_fx_base_amount", "provider_fx_base_currency",
+    "provider_fx_rate", "provider_fx_rate_date", "provider_fx_source",
+)
+
+
 def _fx_from_raw(raw_record, observation):
-    if not any(key in raw_record for key in (
-        "provider_fx_rate", "provider_fx_base_amount", "provider_fx_base_currency",
-    )):
-        return None
-    return FxProvenance(
-        original_amount=_as_amount(raw_record.get("provider_fx_original_amount")) or Decimal("0"),
-        original_currency=_as_str(raw_record.get("provider_fx_original_currency")) or "",
-        base_amount=_as_amount(raw_record.get("provider_fx_base_amount")) or Decimal("0"),
-        base_currency=_as_str(raw_record.get("provider_fx_base_currency")) or "",
-        fx_rate=_as_amount(raw_record.get("provider_fx_rate")) or Decimal("0"),
-        fx_rate_date=_as_date(raw_record.get("provider_fx_rate_date")),
-        fx_source=_as_str(raw_record.get("provider_fx_source")) or "",
-        rounding_method=_as_str(raw_record.get("provider_fx_rounding")) or "unspecified",
-        conversion_method=_as_str(raw_record.get("provider_fx_conversion")) or "unspecified",
-        observation_id=observation.observation_id,
-    )
+    """Translate FX facts without inventing a rate, a parity or a zero.
+
+    Returns ``(fx, errors)``. ``fx`` is ``None`` when no FX facts are present
+    (a document in its own functional currency) or when FX facts are incomplete;
+    any incomplete/invalid FX evidence is returned as an explicit error so the
+    caller can fail closed rather than substituting zero for a missing value.
+    """
+    if not any(key in raw_record for key in _FX_REQUIRED_FIELDS):
+        return None, ()
+
+    original_amount = _as_amount(raw_record.get("provider_fx_original_amount"))
+    original_currency = _as_str(raw_record.get("provider_fx_original_currency"))
+    base_amount = _as_amount(raw_record.get("provider_fx_base_amount"))
+    base_currency = _as_str(raw_record.get("provider_fx_base_currency"))
+    fx_rate = _as_amount(raw_record.get("provider_fx_rate"))
+    fx_rate_date = _as_date(raw_record.get("provider_fx_rate_date"))
+    fx_source = _as_str(raw_record.get("provider_fx_source"))
+
+    missing = []
+    if original_amount is None:
+        missing.append("provider_fx_original_amount")
+    if not original_currency:
+        missing.append("provider_fx_original_currency")
+    if base_amount is None:
+        missing.append("provider_fx_base_amount")
+    if not base_currency:
+        missing.append("provider_fx_base_currency")
+    if fx_rate is None:
+        missing.append("provider_fx_rate")
+    if fx_rate_date is None:
+        missing.append("provider_fx_rate_date")
+    if not fx_source:
+        missing.append("provider_fx_source")
+    if missing:
+        return None, (f"missing FX fact(s): {', '.join(missing)}",)
+    if base_amount != original_amount * fx_rate:
+        return None, ("inconsistent FX amount/rate relationship",)
+
+    try:
+        fx = FxProvenance(
+            original_amount=original_amount,
+            original_currency=original_currency,
+            base_amount=base_amount,
+            base_currency=base_currency,
+            fx_rate=fx_rate,
+            fx_rate_date=fx_rate_date,
+            fx_source=fx_source,
+            rounding_method=_as_str(raw_record.get("provider_fx_rounding")) or "unspecified",
+            conversion_method=_as_str(raw_record.get("provider_fx_conversion")) or "unspecified",
+            observation_id=observation.observation_id,
+        )
+    except ValueError as exc:
+        return None, (f"invalid FX facts: {exc}",)
+    return fx, ()
 
 
 def _line_from_raw(line: dict) -> AccountingLine | None:
@@ -190,19 +236,38 @@ def adapt_observation(*, observation: SourceObservation, raw_record: dict) -> Se
 
     This is a *synthetic* provider-neutral adapter used to prove the boundary.
     It never produces a final recognition or allowability decision and never
-    retains raw provider objects.
+    retains raw provider objects.  The raw payload is bound to the observation
+    by digest so adapted values cannot be paired with another observation's
+    provenance.
     """
+    if _digest(raw_record) != observation.provenance.source_record_digest:
+        raise CanonicalQuarantineError("raw record does not match the source observation digest")
+
     document_id = _as_str(raw_record.get("provider_document_id"))
     business_id = _as_str(raw_record.get("provider_business_id"))
     document_type = _as_enum(DocumentType, raw_record.get("provider_document_kind"))
     currency = (_as_str(raw_record.get("provider_currency")) or "").upper()
     gross = _as_amount(raw_record.get("provider_total"))
     issue_date = _as_date(raw_record.get("provider_issued_on"))
+
     raw_lines = raw_record.get("provider_lines")
-    lines = tuple(
-        line for line in (_line_from_raw(item) for item in raw_lines)
-        if line is not None
-    ) if isinstance(raw_lines, list) else ()
+    lines = []
+    malformed_lines = 0
+    if isinstance(raw_lines, list):
+        for item in raw_lines:
+            if not isinstance(item, dict):
+                malformed_lines += 1
+                continue
+            line = _line_from_raw(item)
+            if line is None:
+                malformed_lines += 1
+            else:
+                lines.append(line)
+
+    fx, fx_errors = _fx_from_raw(raw_record, observation)
+    unsupported_facts = list(fx_errors or ())
+    if malformed_lines:
+        unsupported_facts.append(f"malformed_source_lines:{malformed_lines}")
 
     candidate = DocumentCandidate(
         document_id=document_id or "",
@@ -211,7 +276,7 @@ def adapt_observation(*, observation: SourceObservation, raw_record: dict) -> Se
         issue_date=issue_date,
         currency=currency,
         gross_amount=gross,
-        lines=lines,
+        lines=tuple(lines),
         provider_status=_as_str(raw_record.get("provider_status_text")),
         amount_paid=_as_amount(raw_record.get("provider_paid_total")),
         due_date=_as_date(raw_record.get("provider_due_on")),
@@ -220,7 +285,7 @@ def adapt_observation(*, observation: SourceObservation, raw_record: dict) -> Se
         economic_event_id=_as_str(raw_record.get("provider_event_id")),
         cash_candidate=_cash_candidate(raw_record, observation),
         accrual_candidate=_accrual_candidate(raw_record, observation),
-        fx=_fx_from_raw(raw_record, observation),
+        fx=fx,
     )
     return SemanticAdapterResult(
         observation_id=observation.observation_id,
@@ -228,6 +293,7 @@ def adapt_observation(*, observation: SourceObservation, raw_record: dict) -> Se
         transformation="synthetic provider record to candidate facts",
         document_candidate=candidate,
         missing_facts=observation.missing_fields,
+        unsupported_facts=tuple(unsupported_facts),
         provider_assertions=(("amount_paid=" + str(raw_record["provider_paid_total"]),)
             if raw_record.get("provider_paid_total") not in (None, "") else ()),
     )
@@ -269,6 +335,14 @@ def normalise_document(*, observation: SourceObservation, adapter_result: Semant
         raise CanonicalQuarantineError("normalisation requires a semantic adapter result")
     if adapter_result.observation_id != observation.observation_id:
         raise CanonicalQuarantineError("adapter result does not reference the source observation")
+    if observation.evidence_state in (EvidenceState.CONFLICTING, EvidenceState.EXCLUDED):
+        raise CanonicalQuarantineError(
+            f"source observation is {observation.evidence_state.value} and cannot be normalised"
+        )
+    if adapter_result.unsupported_facts:
+        raise CanonicalQuarantineError("unsupported provider facts: " + ", ".join(adapter_result.unsupported_facts))
+    if adapter_result.conflicting_facts:
+        raise CanonicalQuarantineError("conflicting provider facts: " + ", ".join(adapter_result.conflicting_facts))
     candidate = adapter_result.document_candidate
     if candidate is None:
         raise CanonicalQuarantineError("adapter result has no document candidate")
@@ -277,8 +351,12 @@ def normalise_document(*, observation: SourceObservation, adapter_result: Semant
 
     if not candidate.document_id:
         raise CanonicalQuarantineError("missing document_id")
+    if candidate.document_id != observation.provenance.record_id:
+        raise CanonicalQuarantineError("document_id does not match the observed record_id")
     if not candidate.business_id:
         raise CanonicalQuarantineError("missing business_id")
+    if candidate.business_id != observation.provenance.identity.business_id:
+        raise CanonicalQuarantineError("business_id does not match the observation identity")
     if candidate.document_type is None:
         raise CanonicalQuarantineError("missing document_type")
     if not candidate.currency:
@@ -315,6 +393,7 @@ def normalise_document(*, observation: SourceObservation, adapter_result: Semant
         cash_candidate=candidate.cash_candidate,
         accrual_candidate=candidate.accrual_candidate,
         fx=candidate.fx,
+        evidence_state=observation.evidence_state,
     )
 
 
@@ -327,8 +406,13 @@ _ALLOCATION_DIRECTION = {
     AllocationType.REFUND: Decimal("-1"),
 }
 
+_ALLOCATION_PAYMENT_TYPES = {
+    AllocationType.PAYMENT: frozenset({PaymentType.PAYMENT, PaymentType.RECEIPT}),
+    AllocationType.REFUND: frozenset({PaymentType.REFUND}),
+}
 
-def validate_allocations(document, allocations, payments=None) -> list[str]:
+
+def validate_allocations(document, allocations, payments=None, *, already_allocated=None) -> list[str]:
     """Return every invariant violation in an allocation set (empty == valid).
 
     Validates sign, references, business/event/currency compatibility, duplicate
@@ -393,18 +477,32 @@ def validate_allocations(document, allocations, payments=None) -> list[str]:
             application_seen.add(key)
 
     if payments is not None:
+        allocated: dict[str, Decimal] = {key: Decimal(value) for key, value in (already_allocated or {}).items()}
         for edge in allocations:
             if edge.allocation_type in (AllocationType.PAYMENT, AllocationType.REFUND) and edge.payment_id:
                 payment = payments.get(edge.payment_id)
                 if payment is None:
                     errors.append(f"allocation {edge.allocation_id} references an unknown payment")
-                else:
-                    if payment.business_id != document.business_id:
-                        errors.append(f"allocation {edge.allocation_id} payment belongs to a different business")
-                    if payment.economic_event_id != document.economic_event_id:
-                        errors.append(f"allocation {edge.allocation_id} payment belongs to a different economic event")
-                    if payment.money.original_currency != document.currency:
-                        errors.append(f"allocation {edge.allocation_id} payment has incompatible currency")
+                    continue
+                if payment.business_id != document.business_id:
+                    errors.append(f"allocation {edge.allocation_id} payment belongs to a different business")
+                if payment.economic_event_id != document.economic_event_id:
+                    errors.append(f"allocation {edge.allocation_id} payment belongs to a different economic event")
+                if payment.money.original_currency != document.currency:
+                    errors.append(f"allocation {edge.allocation_id} payment has incompatible currency")
+                compatible = _ALLOCATION_PAYMENT_TYPES.get(edge.allocation_type)
+                if compatible is not None and payment.payment_type not in compatible:
+                    errors.append(
+                        f"allocation {edge.allocation_id} payment type {payment.payment_type.value} "
+                        f"is incompatible with {edge.allocation_type.value}"
+                    )
+                running = allocated.get(edge.payment_id, Decimal("0")) + edge.amount
+                if running > payment.money.original_amount:
+                    errors.append(
+                        f"allocations for payment {edge.payment_id} exceed its amount "
+                        f"({running} > {payment.money.original_amount})"
+                    )
+                allocated[edge.payment_id] = running
 
     return errors
 
@@ -450,7 +548,25 @@ def derive_settlement_state(document, allocations, payments=None) -> SettlementS
 
 # ── Recognition and allowability decisions ───────────────────────────────────
 
+def _coerce_method(value) -> AccountingMethod:
+    """Return the unambiguous canonical ``AccountingMethod`` for ``value``.
+
+    A plain string (for example ``"cash"``) is mapped to the canonical enum so
+    runtime comparisons cannot silently select a different recognition basis;
+    unknown or mistyped values fail closed.
+    """
+    if isinstance(value, AccountingMethod):
+        return value
+    if isinstance(value, str):
+        try:
+            return AccountingMethod(value)
+        except ValueError:
+            raise CanonicalQuarantineError(f"unsupported accounting method: {value!r}") from None
+    raise CanonicalQuarantineError(f"unsupported accounting method: {type(value).__name__!r}")
+
+
 def select_recognition_candidate(document, method) -> RecognitionCandidate | None:
+    method = _coerce_method(method)
     if method is AccountingMethod.UNKNOWN:
         raise CanonicalQuarantineError("accounting method is unknown; recognition cannot be selected")
     return document.cash_candidate if method is AccountingMethod.CASH else document.accrual_candidate
@@ -471,6 +587,11 @@ def build_recognition_decision(
     Unknown method and missing candidates fail closed to ``UNABLE_TO_SELECT``;
     the decision never invents a recognised amount or date.
     """
+    if document.evidence_state in (EvidenceState.CONFLICTING, EvidenceState.EXCLUDED, EvidenceState.SUPERSEDED):
+        raise CanonicalQuarantineError(
+            f"cannot resolve a recognition decision from a {document.evidence_state.value} observation"
+        )
+    method = _coerce_method(method)
     if method is AccountingMethod.UNKNOWN:
         return RecognitionDecision(
             decision_id, document.economic_event_id, document.business_id, method,
@@ -499,6 +620,47 @@ def build_recognition_decision(
     )
 
 
+_DOCUMENT_TYPE_CLASSIFICATION = {
+    DocumentType.INVOICE: "turnover",
+    DocumentType.SALES_RECEIPT: "turnover",
+    DocumentType.BILL: "expense",
+    DocumentType.CREDIT_NOTE: "credit_note",
+    DocumentType.REFUND: "refund",
+    DocumentType.WRITE_OFF: "write_off",
+}
+
+_DECIDED_ALLOWABILITY_OUTCOMES = frozenset({
+    AllowabilityOutcome.ALLOWABLE,
+    AllowabilityOutcome.DISALLOWABLE,
+    AllowabilityOutcome.MIXED_APPORTIONED,
+    AllowabilityOutcome.ADJUSTMENT_REQUIRED,
+})
+
+
+def _tax_year_start_for_date(value: date) -> int:
+    """Return the UK tax-year start year (6 April boundary) for a date."""
+    if (value.month, value.day) >= (4, 6):
+        return value.year
+    return value.year - 1
+
+
+def _tax_year_start_year(label: str) -> int | None:
+    """Parse a consecutive tax-year label (``2026/27`` or ``2026-27``).
+
+    Returns the start year for a well-formed label, else ``None``.
+    """
+    text = str(label).strip()
+    for sep in ("/", "-"):
+        if sep in text:
+            left, right = text.split(sep, 1)
+            if len(left) == 4 and left.isdigit() and len(right) == 2 and right.isdigit():
+                start = int(left)
+                if int(right) == (start + 1) % 100:
+                    return start
+            return None
+    return None
+
+
 def build_canonical_tax_input(
     *,
     input_id: str,
@@ -513,8 +675,12 @@ def build_canonical_tax_input(
 ) -> CanonicalAccountingTaxInput:
     """Produce the only approved synthetic accounting-to-tax input.
 
-    Refuses to produce an input unless the recognition decision selected a
-    candidate, and refuses cross-business/cross-event decisions.
+    Refuses to produce an input unless the recognition decision is internally
+    consistent with the canonical document and its own candidate (amount, date,
+    supporting observation IDs, tax year and accounting method), and refuses
+    cross-business/cross-event decisions. Classification is derived from the
+    document type, never from the amount sign, and expense documents require a
+    decided allowability decision.
     """
     if recognition_decision.outcome not in (
         RecognitionDecisionOutcome.CASH,
@@ -528,6 +694,31 @@ def build_canonical_tax_input(
     if recognition_decision.business_id != document.business_id:
         raise CanonicalQuarantineError("recognition decision belongs to a different business")
 
+    method = _coerce_method(recognition_decision.method)
+    expected_candidate = document.cash_candidate if method is AccountingMethod.CASH else document.accrual_candidate
+    if expected_candidate is None or expected_candidate.amount is None or expected_candidate.date is None:
+        raise CanonicalQuarantineError("document has no matching canonical recognition candidate")
+    if recognition_decision.recognised_amount != expected_candidate.amount:
+        raise CanonicalQuarantineError("recognised amount does not match the canonical candidate")
+    if recognition_decision.recognised_date != expected_candidate.date:
+        raise CanonicalQuarantineError("recognised date does not match the canonical candidate")
+    if set(recognition_decision.supporting_observation_ids) != set(expected_candidate.source_observation_ids):
+        raise CanonicalQuarantineError("supporting observation IDs do not match the canonical candidate")
+
+    expected_start = _tax_year_start_for_date(recognition_decision.recognised_date)
+    supplied_start = _tax_year_start_year(tax_year)
+    if supplied_start is None or supplied_start != expected_start:
+        raise CanonicalQuarantineError("tax year does not match the recognised date")
+
+    classification = _DOCUMENT_TYPE_CLASSIFICATION.get(document.document_type)
+    if classification is None:
+        raise CanonicalQuarantineError("unsupported document type for canonical tax input")
+    if document.document_type is DocumentType.BILL:
+        if allowability is None:
+            raise CanonicalQuarantineError("expense document requires an allowability decision")
+        if allowability.outcome not in _DECIDED_ALLOWABILITY_OUTCOMES:
+            raise CanonicalQuarantineError("expense allowability is unresolved")
+
     return CanonicalAccountingTaxInput(
         input_id=input_id,
         purpose=purpose,
@@ -537,7 +728,7 @@ def build_canonical_tax_input(
         tax_year=tax_year,
         recognised_amount=recognition_decision.recognised_amount,
         recognised_date=recognition_decision.recognised_date,
-        classification="turnover" if document.gross_amount >= 0 else "credit",
+        classification=classification,
         currency=document.currency,
         base_currency=document.fx.base_currency if document.fx else document.currency,
         evidence_observation_ids=recognition_decision.supporting_observation_ids,
@@ -568,9 +759,18 @@ def validate_effective_period_records(records, *, subject_attr="business_id") ->
         ordered = sorted(group, key=lambda r: r.effective_from)
         for i, current in enumerate(ordered):
             for later in ordered[i + 1:]:
-                if later.effective_from < (current.effective_to or later.effective_from):
-                    if current.effective_to != later.effective_from:
-                        errors.append(f"overlapping effective periods for {subject}: {current.effective_from}..{current.effective_to} and {later.effective_from}..{later.effective_to}")
                 if later.effective_from == current.effective_from:
                     errors.append(f"duplicate effective period start for {subject}: {current.effective_from}")
+                    continue
+                if current.effective_to is None:
+                    errors.append(
+                        f"open-ended period for {subject} starting {current.effective_from} "
+                        f"overlaps a later period starting {later.effective_from}"
+                    )
+                    continue
+                if later.effective_from < current.effective_to:
+                    errors.append(
+                        f"overlapping effective periods for {subject}: "
+                        f"{current.effective_from}..{current.effective_to} and {later.effective_from}..{later.effective_to}"
+                    )
     return errors

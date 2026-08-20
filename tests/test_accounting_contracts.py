@@ -17,7 +17,7 @@ from reserved.providers.accounting.contracts import (
     CompletenessState, CorrectionLifecycle, DecisionAuthority, DocumentType,
     EffectiveDatedAccountingMethod, EvidenceState, FxProvenance, Money,
     OwnershipConfidence, OwnershipEvidence, OwnershipSubject, PaymentType,
-    RecognitionDecision, RecognitionDecisionOutcome, SettlementState,
+    RecognitionCandidate, RecognitionDecision, RecognitionDecisionOutcome, SettlementState,
     SourceObservation, TaxAmountSemantics, TaxBreakdown, Uncertainty,
     UncertaintyKind, VatCategory, VatRegistrationPeriod, VatRegistrationState,
 )
@@ -67,8 +67,8 @@ def observe(raw):
         provider="xero", raw_record=raw, user_id="user-1",
         connected_organisation_id="org-1", business_id="business-1",
         import_run_id="run-1", api_name="synthetic", api_version="v1",
-        resource="invoices", record_id="doc-1", retrieved_at=RETRIEVED_AT,
-        adapter_version="syn-1",
+        resource="invoices", record_id=raw.get("provider_document_id", "doc-1"),
+        retrieved_at=RETRIEVED_AT, adapter_version="syn-1",
     )
 
 
@@ -619,3 +619,409 @@ def test_freshness_bookkeeping_and_retrieval_completeness_are_independent():
     assert state.record_freshness is CompletenessState.COMPLETE
     assert state.retrieval is CompletenessState.INCOMPLETE
     assert state.bookkeeping is CompletenessState.UNKNOWN
+
+
+# ── Group A — observation identity, provenance and evidence state ──────────────
+
+def test_adapted_raw_record_must_match_observation_digest():
+    # Raw A observed; raw B (internally consistent, different total) adapted.
+    obs_a = observe(raw_record())
+    raw_b = raw_record(
+        provider_total="999.00",
+        provider_lines=[raw_line(total="999.00", provider_line_net="999.00", provider_line_tax="0.00")],
+    )
+    with pytest.raises(CanonicalQuarantineError, match="does not match the source observation digest"):
+        adapt_observation(observation=obs_a, raw_record=raw_b)
+
+
+def test_modified_payload_after_observation_is_rejected():
+    raw = raw_record()
+    observation = observe(raw)
+    tampered = dict(raw)
+    tampered["provider_total"] = "500.00"
+    with pytest.raises(CanonicalQuarantineError, match="does not match the source observation digest"):
+        adapt_observation(observation=observation, raw_record=tampered)
+
+
+def test_business_identity_mismatch_fails_closed():
+    raw = raw_record(provider_business_id="business-2")
+    observation = observe(raw)  # observe identity carries business-1
+    with pytest.raises(CanonicalQuarantineError, match="business_id does not match"):
+        normalise_document(observation=observation,
+                           adapter_result=adapt_observation(observation=observation, raw_record=raw))
+
+
+def test_record_id_substitution_fails_closed():
+    raw = raw_record()
+    observation = observe_provider_record(
+        provider="xero", raw_record=raw, user_id="user-1",
+        connected_organisation_id="org-1", business_id="business-1",
+        import_run_id="run-1", api_name="synthetic", api_version="v1",
+        resource="invoices", record_id="other-doc", retrieved_at=RETRIEVED_AT,
+        adapter_version="syn-1",
+    )
+    with pytest.raises(CanonicalQuarantineError, match="document_id does not match"):
+        normalise_document(observation=observation,
+                           adapter_result=adapt_observation(observation=observation, raw_record=raw))
+
+
+def test_unsupported_facts_quarantine_normalisation():
+    observation = observe(raw_record())
+    adapter = adapt_observation(observation=observation, raw_record=raw_record())
+    adapter = replace(adapter, unsupported_facts=("provider_total",))
+    with pytest.raises(CanonicalQuarantineError, match="unsupported provider facts"):
+        normalise_document(observation=observation, adapter_result=adapter)
+
+
+def test_conflicting_facts_quarantine_normalisation():
+    observation = observe(raw_record())
+    adapter = adapt_observation(observation=observation, raw_record=raw_record())
+    adapter = replace(adapter, conflicting_facts=("provider_issued_on",))
+    with pytest.raises(CanonicalQuarantineError, match="conflicting provider facts"):
+        normalise_document(observation=observation, adapter_result=adapter)
+
+
+@pytest.mark.parametrize("state", [EvidenceState.CONFLICTING, EvidenceState.EXCLUDED])
+def test_conflicting_or_excluded_observation_quarantine_normalisation(state):
+    observation = replace(observe(raw_record()), evidence_state=state)
+    adapter = adapt_observation(observation=observe(raw_record()), raw_record=raw_record())
+    with pytest.raises(CanonicalQuarantineError, match="cannot be normalised"):
+        normalise_document(observation=observation, adapter_result=adapter)
+
+
+def test_observation_evidence_state_is_preserved_on_document():
+    observation = replace(observe(raw_record()), evidence_state=EvidenceState.SELECTED)
+    d = normalise_document(observation=observation,
+                           adapter_result=adapt_observation(observation=observation, raw_record=raw_record()))
+    assert d.evidence_state is EvidenceState.SELECTED
+
+
+def test_superseded_observation_cannot_resolve_recognition():
+    raw = raw_record(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    observation = replace(observe(raw), evidence_state=EvidenceState.SUPERSEDED)
+    d = normalise_document(observation=observation,
+                           adapter_result=adapt_observation(observation=observation, raw_record=raw))
+    assert d.evidence_state is EvidenceState.SUPERSEDED
+    with pytest.raises(CanonicalQuarantineError, match="superseded"):
+        build_recognition_decision(decision_id="decision-1", document=d, method=AccountingMethod.CASH,
+                                   effective_from=date(2026, 4, 6), policy_version="v1")
+
+
+def test_malformed_line_plus_reconciling_lines_fails_closed():
+    raw = raw_record(provider_lines=[
+        raw_line(total="120.00", lid="good"),
+        {"provider_line_id": "bad"},  # missing total -> malformed, silently dropped before
+    ])
+    observation = observe(raw)
+    adapter = adapt_observation(observation=observation, raw_record=raw)
+    assert any("malformed_source_lines" in fact for fact in adapter.unsupported_facts)
+    with pytest.raises(CanonicalQuarantineError, match="unsupported provider facts"):
+        normalise_document(observation=observation, adapter_result=adapter)
+
+
+def test_diagnostic_errors_do_not_disclose_raw_payload_values():
+    raw = raw_record(provider_total="999999.99", provider_contact_name="SECRET-CONTACT")
+    observation = observe(raw)
+    with pytest.raises(CanonicalQuarantineError) as exc:
+        adapt_observation(observation=observation, raw_record=raw_record(provider_total="120.00"))
+    message = str(exc.value)
+    assert "999999.99" not in message
+    assert "SECRET-CONTACT" not in message
+
+
+# ── Group B — classification, recognition and tax-input integrity ─────────────
+
+def test_string_cash_method_selects_cash_not_accrual():
+    d = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00",
+            provider_accrual_on="2026-08-01", provider_accrual_amt="120.00")
+    candidate = select_recognition_candidate(d, "cash")
+    assert candidate is not None
+    assert candidate.amount == Decimal("50.00")
+    decision = build_recognition_decision(decision_id="decision-1", document=d, method="cash",
+                                          effective_from=date(2026, 4, 6), policy_version="v1")
+    assert decision.outcome is RecognitionDecisionOutcome.CASH
+    assert decision.recognised_amount == Decimal("50.00")
+
+
+def test_invalid_accounting_method_value_fails_closed():
+    d = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    with pytest.raises(CanonicalQuarantineError, match="unsupported accounting method"):
+        select_recognition_candidate(d, "accrual")
+
+
+@pytest.mark.parametrize("method", [None, 123, object()])
+def test_mistyped_accounting_method_fails_closed(method):
+    d = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    with pytest.raises(CanonicalQuarantineError, match="unsupported accounting method"):
+        select_recognition_candidate(d, method)
+
+
+def test_forged_recognition_amount_fails_closed():
+    d = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    forged = RecognitionDecision(
+        "decision-forged", d.economic_event_id, d.business_id, AccountingMethod.CASH,
+        date(2026, 4, 6), None, RecognitionDecisionOutcome.CASH, DecisionAuthority.RESERVED_RULE, "v1",
+        selected_candidate=RecognitionCandidate(date(2026, 8, 10), Decimal("9999"),
+                                                AccountingMethod.CASH, ("bogus-obs",)),
+        recognised_amount=Decimal("9999"), recognised_date=date(2026, 8, 10),
+        supporting_observation_ids=("bogus-obs",),
+    )
+    with pytest.raises(CanonicalQuarantineError, match="recognised amount does not match"):
+        build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=d,
+                                  recognition_decision=forged, tax_year="2026-27", policy_version="v1")
+
+
+def test_forged_supporting_evidence_fails_closed():
+    d = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    forged = RecognitionDecision(
+        "decision-forged", d.economic_event_id, d.business_id, AccountingMethod.CASH,
+        date(2026, 4, 6), None, RecognitionDecisionOutcome.CASH, DecisionAuthority.RESERVED_RULE, "v1",
+        selected_candidate=RecognitionCandidate(date(2026, 8, 10), Decimal("50"),
+                                                AccountingMethod.CASH, ("bogus-obs",)),
+        recognised_amount=Decimal("50"), recognised_date=date(2026, 8, 10),
+        supporting_observation_ids=("bogus-obs",),
+    )
+    with pytest.raises(CanonicalQuarantineError, match="supporting observation IDs do not match"):
+        build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=d,
+                                  recognition_decision=forged, tax_year="2026-27", policy_version="v1")
+
+
+def test_tax_year_must_match_recognised_date():
+    d = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    decision = build_recognition_decision(decision_id="decision-1", document=d, method=AccountingMethod.CASH,
+                                          effective_from=date(2026, 4, 6), policy_version="v1")
+    with pytest.raises(CanonicalQuarantineError, match="tax year does not match"):
+        build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=d,
+                                  recognition_decision=decision, tax_year="2099/00", policy_version="v1")
+
+
+@pytest.mark.parametrize("tax_year", ["garbage", "2026", "26/27", "2026/28"])
+def test_malformed_tax_year_fails_closed(tax_year):
+    d = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    decision = build_recognition_decision(decision_id="decision-1", document=d, method=AccountingMethod.CASH,
+                                          effective_from=date(2026, 4, 6), policy_version="v1")
+    with pytest.raises(CanonicalQuarantineError, match="tax year does not match"):
+        build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=d,
+                                  recognition_decision=decision, tax_year=tax_year, policy_version="v1")
+
+
+def test_recognition_decision_reused_for_other_document_fails_closed():
+    d = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    decision = build_recognition_decision(decision_id="decision-1", document=d, method=AccountingMethod.CASH,
+                                          effective_from=date(2026, 4, 6), policy_version="v1")
+    other = doc(provider_document_id="doc-2", provider_event_id="event-2")
+    with pytest.raises(CanonicalQuarantineError, match="different economic event"):
+        build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=other,
+                                  recognition_decision=decision, tax_year="2026-27", policy_version="v1")
+
+
+def test_positive_bill_is_not_classified_as_turnover_by_sign():
+    d = doc(provider_document_kind="bill", provider_cash_on="2026-08-10", provider_cash_amt="120.00")
+    decision = build_recognition_decision(decision_id="decision-1", document=d, method=AccountingMethod.CASH,
+                                          effective_from=date(2026, 4, 6), policy_version="v1")
+    allow = AllowabilityDecision("allow-1", AllowabilityOutcome.ALLOWABLE, DecisionAuthority.RESERVED_RULE,
+                                 RETRIEVED_AT, "business expense")
+    tax_input = build_canonical_tax_input(input_id="i1", purpose="expense", scope="sa", document=d,
+                                          recognition_decision=decision, tax_year="2026-27",
+                                          policy_version="v1", allowability=allow)
+    assert tax_input.classification == "expense"
+
+
+def test_expense_without_allowability_fails_closed():
+    d = doc(provider_document_kind="bill", provider_cash_on="2026-08-10", provider_cash_amt="120.00")
+    decision = build_recognition_decision(decision_id="decision-1", document=d, method=AccountingMethod.CASH,
+                                          effective_from=date(2026, 4, 6), policy_version="v1")
+    with pytest.raises(CanonicalQuarantineError, match="requires an allowability decision"):
+        build_canonical_tax_input(input_id="i1", purpose="expense", scope="sa", document=d,
+                                  recognition_decision=decision, tax_year="2026-27", policy_version="v1")
+
+
+def test_expense_with_unresolved_allowability_fails_closed():
+    d = doc(provider_document_kind="bill", provider_cash_on="2026-08-10", provider_cash_amt="120.00")
+    decision = build_recognition_decision(decision_id="decision-1", document=d, method=AccountingMethod.CASH,
+                                          effective_from=date(2026, 4, 6), policy_version="v1")
+    unresolved = AllowabilityDecision("allow-1", AllowabilityOutcome.INSUFFICIENT_FACTS,
+                                      DecisionAuthority.RESERVED_RULE, RETRIEVED_AT, "unknown")
+    with pytest.raises(CanonicalQuarantineError, match="allowability is unresolved"):
+        build_canonical_tax_input(input_id="i1", purpose="expense", scope="sa", document=d,
+                                  recognition_decision=decision, tax_year="2026-27",
+                                  policy_version="v1", allowability=unresolved)
+
+
+def test_valid_accrual_recognition_still_works():
+    d = doc(provider_accrual_on="2026-08-01", provider_accrual_amt="120.00")
+    decision = build_recognition_decision(decision_id="decision-1", document=d,
+                                          method=AccountingMethod.TRADITIONAL_ACCRUAL,
+                                          effective_from=date(2026, 4, 6), policy_version="v1")
+    tax_input = build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=d,
+                                          recognition_decision=decision, tax_year="2026-27", policy_version="v1")
+    assert tax_input.recognised_amount == Decimal("120.00")
+    assert tax_input.classification == "turnover"
+
+
+def test_valid_cash_recognition_still_works():
+    d = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    decision = build_recognition_decision(decision_id="decision-1", document=d, method=AccountingMethod.CASH,
+                                          effective_from=date(2026, 4, 6), policy_version="v1")
+    tax_input = build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=d,
+                                          recognition_decision=decision, tax_year="2026-27", policy_version="v1")
+    assert tax_input.recognised_amount == Decimal("50.00")
+    assert tax_input.classification == "turnover"
+
+
+# ── Group C — FX, settlement and effective-period correctness ─────────────────
+
+def _payment(payment_id, amount, ptype=PaymentType.PAYMENT, *, d=None, business_id="business-1",
+             event_id="event-1", currency="GBP"):
+    document = d or doc()
+    return AccountingPayment(payment_id, business_id, ptype, date(2026, 8, 3),
+                             Money(Decimal(amount), currency), document.provenance, event_id)
+
+
+def _fx_record(**overrides):
+    base = {
+        "provider_fx_original_amount": "100.00",
+        "provider_fx_original_currency": "EUR",
+        "provider_fx_base_amount": "85.00",
+        "provider_fx_base_currency": "GBP",
+        "provider_fx_rate": "0.85",
+        "provider_fx_rate_date": "2026-08-01",
+        "provider_fx_source": "ECB",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_missing_fx_rate_fails_closed():
+    fx = _fx_record()
+    del fx["provider_fx_rate"]
+    raw = raw_record(**fx)
+    observation = observe(raw)
+    adapter = adapt_observation(observation=observation, raw_record=raw)
+    assert any("missing FX fact" in f for f in adapter.unsupported_facts)
+    with pytest.raises(CanonicalQuarantineError, match="unsupported provider facts"):
+        normalise_document(observation=observation, adapter_result=adapter)
+
+
+def test_missing_fx_source_amount_fails_closed():
+    fx = _fx_record()
+    del fx["provider_fx_original_amount"]
+    raw = raw_record(**fx)
+    observation = observe(raw)
+    with pytest.raises(CanonicalQuarantineError, match="unsupported provider facts"):
+        normalise_document(observation=observation,
+                           adapter_result=adapt_observation(observation=observation, raw_record=raw))
+
+
+def test_zero_fx_rate_is_rejected_not_substituted():
+    raw = raw_record(**_fx_record(provider_fx_rate="0"))
+    observation = observe(raw)
+    with pytest.raises(CanonicalQuarantineError, match="unsupported provider facts"):
+        normalise_document(observation=observation,
+                           adapter_result=adapt_observation(observation=observation, raw_record=raw))
+
+
+def test_same_currency_fx_is_rejected():
+    raw = raw_record(**_fx_record(provider_fx_base_currency="EUR", provider_fx_original_currency="EUR"))
+    observation = observe(raw)
+    with pytest.raises(CanonicalQuarantineError, match="unsupported provider facts"):
+        normalise_document(observation=observation,
+                           adapter_result=adapt_observation(observation=observation, raw_record=raw))
+
+
+def test_invalid_fx_rate_date_fails_closed():
+    raw = raw_record(**_fx_record(provider_fx_rate_date="not-a-date"))
+    observation = observe(raw)
+    with pytest.raises(CanonicalQuarantineError, match="unsupported provider facts"):
+        normalise_document(observation=observation,
+                           adapter_result=adapt_observation(observation=observation, raw_record=raw))
+
+
+def test_inconsistent_fx_amount_rate_relationship_fails_closed():
+    raw = raw_record(**_fx_record(provider_fx_base_amount="999.00"))
+    observation = observe(raw)
+    adapter = adapt_observation(observation=observation, raw_record=raw)
+    assert any("inconsistent FX amount/rate" in f for f in adapter.unsupported_facts)
+    with pytest.raises(CanonicalQuarantineError, match="unsupported provider facts"):
+        normalise_document(observation=observation, adapter_result=adapter)
+
+
+def test_allocation_exceeding_payment_capacity_fails_closed():
+    d = doc()
+    payment = _payment("payment-1", "10", d=d)
+    allocation = AllocationEdge("a1", "business-1", "event-1", "GBP", "payment-1", "doc-1",
+                                AllocationType.PAYMENT, Decimal("120"), date(2026, 8, 3))
+    errors = validate_allocations(d, (allocation,), {"payment-1": payment})
+    assert any("exceed its amount" in e for e in errors)
+
+
+def test_refund_payment_cannot_back_payment_allocation():
+    d = doc()
+    refund = _payment("payment-r", "120", PaymentType.REFUND, d=d)
+    allocation = AllocationEdge("a1", "business-1", "event-1", "GBP", "payment-r", "doc-1",
+                                AllocationType.PAYMENT, Decimal("120"), date(2026, 8, 3))
+    errors = validate_allocations(d, (allocation,), {"payment-r": refund})
+    assert any("is incompatible with" in e for e in errors)
+
+
+def test_cumulative_allocation_across_calls_cannot_exceed_payment():
+    d = doc()
+    payment = _payment("payment-1", "100", d=d)
+    first = AllocationEdge("a1", "business-1", "event-1", "GBP", "payment-1", "doc-1",
+                           AllocationType.PAYMENT, Decimal("60"), date(2026, 8, 3))
+    assert validate_allocations(d, (first,), {"payment-1": payment}) == []
+    second = AllocationEdge("a2", "business-1", "event-1", "GBP", "payment-1", "doc-1",
+                            AllocationType.PAYMENT, Decimal("60"), date(2026, 8, 3))
+    errors = validate_allocations(d, (second,), {"payment-1": payment},
+                                  already_allocated={"payment-1": Decimal("60")})
+    assert any("exceed its amount" in e for e in errors)
+
+
+def test_valid_partial_and_full_payment_allocation():
+    d = doc()
+    payment = _payment("payment-1", "120", d=d)
+    partial = AllocationEdge("a1", "business-1", "event-1", "GBP", "payment-1", "doc-1",
+                             AllocationType.PAYMENT, Decimal("30"), date(2026, 8, 3))
+    assert validate_allocations(d, (partial,), {"payment-1": payment}) == []
+    full = AllocationEdge("a2", "business-1", "event-1", "GBP", "payment-1", "doc-1",
+                          AllocationType.PAYMENT, Decimal("120"), date(2026, 8, 3))
+    assert validate_allocations(d, (full,), {"payment-1": payment}) == []
+
+
+def test_two_open_ended_periods_fail_closed():
+    cash = EffectiveDatedAccountingMethod("b1", AccountingMethod.CASH, date(2026, 4, 6))
+    accrual = EffectiveDatedAccountingMethod("b1", AccountingMethod.TRADITIONAL_ACCRUAL, date(2026, 10, 1))
+    errors = validate_effective_period_records((cash, accrual))
+    assert any("open-ended" in e for e in errors)
+
+
+def test_exact_boundary_transition_is_permitted():
+    cash = EffectiveDatedAccountingMethod("b1", AccountingMethod.CASH, date(2026, 4, 6), date(2027, 4, 5))
+    accrual = EffectiveDatedAccountingMethod("b1", AccountingMethod.TRADITIONAL_ACCRUAL, date(2027, 4, 6))
+    assert validate_effective_period_records((cash, accrual)) == []
+
+
+def test_gap_between_periods_is_permitted():
+    cash = EffectiveDatedAccountingMethod("b1", AccountingMethod.CASH, date(2026, 4, 6), date(2026, 10, 1))
+    accrual = EffectiveDatedAccountingMethod("b1", AccountingMethod.TRADITIONAL_ACCRUAL, date(2026, 12, 1))
+    assert validate_effective_period_records((cash, accrual)) == []
+
+
+def test_out_of_order_insertion_detects_overlap():
+    cash = EffectiveDatedAccountingMethod("b1", AccountingMethod.CASH, date(2026, 4, 6), date(2027, 4, 5))
+    accrual = EffectiveDatedAccountingMethod("b1", AccountingMethod.TRADITIONAL_ACCRUAL, date(2026, 10, 1))
+    assert validate_effective_period_records((accrual, cash)) != []
+
+
+def test_contradictory_basis_same_instant_fails_closed():
+    cash = EffectiveDatedAccountingMethod("b1", AccountingMethod.CASH, date(2026, 4, 6))
+    accrual = EffectiveDatedAccountingMethod("b1", AccountingMethod.TRADITIONAL_ACCRUAL, date(2026, 4, 6))
+    errors = validate_effective_period_records((cash, accrual))
+    assert any("duplicate effective period start" in e for e in errors)
+
+
+def test_distinct_businesses_remain_isolated_for_effective_periods():
+    cash = EffectiveDatedAccountingMethod("b1", AccountingMethod.CASH, date(2026, 4, 6))
+    accrual = EffectiveDatedAccountingMethod("b2", AccountingMethod.TRADITIONAL_ACCRUAL, date(2026, 10, 1))
+    assert validate_effective_period_records((cash, accrual)) == []
+

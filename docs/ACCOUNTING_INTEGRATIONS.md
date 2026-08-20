@@ -46,6 +46,37 @@ The canonical contracts now make the boundary executable and fail-closed:
 The FreeAgent, Xero and QuickBooks adapters remain disabled placeholders; the
 tests exercise the boundary with synthetic inputs only.
 
+### Corrected contract enforcement
+
+The boundary now additionally enforces the following fail-closed invariants,
+each covered by an adversarial regression test:
+
+- The raw payload is bound to its observation by digest: a raw record that does
+  not hash to the observation's source digest is rejected, and a canonical
+  document whose `business_id` or `document_id` differs from the observation's
+  identity/record identity is rejected.
+- Unsupported facts, conflicting facts, and observations marked conflicting or
+  excluded fail closed; the observation's evidence state is preserved on the
+  canonical document and malformed source lines are never silently discarded.
+  A superseded observation may be documented but cannot resolve into a
+  recognition decision.
+- The accounting method is coerced to one canonical enum value; unknown or
+  mistyped values fail closed and cannot silently select a different recognition
+  basis.
+- A recognition decision must be internally consistent with the canonical
+  document and its candidate (amount, date, supporting observation IDs), and the
+  tax year is checked against the recognised date under the 6-April boundary.
+- Classification is derived from the document type, never from the amount sign;
+  an expense document requires a decided allowability decision.
+- Missing or invalid FX facts fail closed; a rate, source amount or rate date is
+  never substituted with zero. Allocation edges must not exceed the referenced
+  settlement's capacity and must use a compatible settlement type. Effective
+  periods for one business must not overlap or be ambiguously open-ended.
+
+This is a synthetic, provider-neutral boundary only. It is not connected to
+routes, persistence, the production tax engine, reserve calculations, filing or
+payments, and the provider adapters remain disabled placeholders.
+
 ## Canonical data requirements
 
 Accounting method and MTD update-period basis are separate concepts and must be
@@ -53,7 +84,7 @@ stored independently for each applicable business or property income source.
 
 | Attribute | Allowed values | Meaning and use |
 |---|---|---|
-| `accounting_method` | `cash`; `traditional-accrual` | Determines when income and expenses are recognised for tax. Cash and traditional-accrual users can therefore require different recognition treatment for the same invoice, payment, expense or prepayment. |
+| `accounting_method` | `cash`; `traditional_accrual` | Determines when income and expenses are recognised for tax. Cash and traditional-accrual users can therefore require different recognition treatment for the same invoice, payment, expense or prepayment. |
 | `mtd_update_period_basis` | `standard-tax-year`; `calendar` | Determines the convention used for MTD quarterly reporting periods. It does not determine the accounting recognition method. Filing deadlines remain the same for standard-tax-year and calendar update periods. |
 
 Neither attribute may be inferred from the other. Provider data must be mapped
