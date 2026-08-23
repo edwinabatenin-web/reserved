@@ -77,6 +77,109 @@ This is a synthetic, provider-neutral boundary only. It is not connected to
 routes, persistence, the production tax engine, reserve calculations, filing or
 payments, and the provider adapters remain disabled placeholders.
 
+## v3 canonical-contract convergence (provider-neutral)
+
+The shared contract is pinned at `CANONICAL_CONTRACT_VERSION = "v3"`
+(`reserved/providers/accounting/contracts.py`). v3 is the frozen, provider-neutral
+foundation for later FreeAgent correction and Xero/QuickBooks implementation
+workstreams. It is not a redesign, not provider implementation, and not a
+production integration.
+
+v3 incorporates the lessons of the completed FreeAgent, Xero and QuickBooks
+evidence reviews without implementing any provider. The sections below are
+marked where they remain historical/unresolved rather than rewriting history.
+
+### Accepted convergence decisions (C1-C12)
+
+- **C1 lifecycle**: raw provider status is preserved verbatim as source evidence;
+  a conservative, reason-bearing `CanonicalDocumentState` translation exists but
+  unknown/mixed statuses map to `UNKNOWN`. Settlement still derives only from
+  allocation evidence; `Paid`, zero balance or zero amount-due never establish
+  settlement. Correction/void/deletion (`CorrectionLifecycle`) stays distinct
+  from settlement and from tax recognition.
+- **C2 line values**: canonical line money is line gross; `TaxBreakdown` retains
+  net/tax/gross; `LineValueSemantics` records whether a raw line was net, gross,
+  inclusive, exclusive or unknown; `LineRole` keeps discounts, shipping, tax and
+  adjustments explicit. Document net/tax/gross reconcile exactly (no tolerance,
+  no fabricated balancing line) and otherwise fail closed.
+- **C3 economic direction**: provider-neutral `EconomicDirection`
+  (`RECEIVABLE`/`PAYABLE`/`UNKNOWN`). Unknown direction blocks income/expense
+  interpretation. No provider-specific types are added to the shared model.
+- **C4 prepayments/overpayments**: represented on payment/economic-event evidence
+  via direction + `unapplied_amount`; no universal Xero resource types are added.
+  Multiple retrieval paths must converge on one stable identity (duplicate
+  identities are rejected).
+- **C5 balance assertions**: optional immutable `ProviderBalanceAssertions`
+  (`amount_due`, `amount_paid`, `amount_credited`, `balance`, `fully_settled_date`)
+  are reconciliation-only; missing stays missing and nothing is derived merely to
+  populate the shape.
+- **C6 date semantics**: issue, posting, supply, due, provider creation/update and
+  payment/allocation dates are distinct; Xero `Date` / QuickBooks `TxnDate` are
+  never substituted into `created_at`. A document with incomplete dates cannot
+  cross recognition/tax gates without an adequate selected recognition date.
+- **C7 revision/staleness**: optional provider-native `revision_id` (e.g.
+  QuickBooks `SyncToken`) is never synthesised from a timestamp.
+  `classify_observation_relation` distinguishes identical, conflicting and
+  revision-changed observations; same-version materially-different content fails
+  closed as conflict, and timestamps do not alone order observations.
+- **C8 incomplete FX**: `FxProvenance` stays strictly complete/consistent;
+  `FxObservation` separately preserves only the FX facts actually observed.
+  A foreign-currency record without a validated conversion is never treated as
+  native currency and is barred from tax use.
+- **C9 identity**: `connected_organisation_id` (authorised connection/grant
+  context) and `business_id` (provider business/tenant/realm) are defined
+  centrally; cross-connection, cross-business, cross-tenant and cross-resource
+  substitution is rejected.
+- **C10 provider configuration is not tax policy**: VAT basis is not the Income
+  Tax accounting method; provider category/account/tax-code is not allowability;
+  ownership/share requires separate evidence.
+- **C11 resource-level completeness**: `ResourceCompleteness` carries pagination,
+  terminal-page, source-totals, watermark/revision, tombstone, webhook, polling
+  and freshness dimensions per resource. Lack of totals/CDC/webhooks is never
+  described as complete.
+- **C12 schema vs prerequisites**: `SourceSchema.request_prerequisites` is kept
+  distinct from response `required_fields`; a nested-items query requirement is
+  not encoded as unconditional response requiredness.
+
+### Source evidence vs Reserved decisions
+
+Provider facts remain reconciliation evidence only. Income Tax accounting method,
+tax recognition, deductibility/allowability, ownership/customer share, settlement,
+reserve calculations, filing and payments are Reserved decisions made through the
+existing recognition/allowability gates, never by provider status, balance or
+category. Provider adapters stay disabled unless separately approved.
+
+### Version and compatibility boundary
+
+v3 is internal and provider-disabled. Before changing a public or persisted
+internal shape, every caller, serializer, fixture, snapshot and test must be
+accounted for; unsupported older/newer shapes are rejected rather than
+interpreted opportunistically. No production persistence is introduced merely to
+test migration.
+
+### Remaining provider-specific uncertainties (deferred, not blockers)
+
+- FreeAgent line `price` is net and the candidate adapter treated it as line
+  gross; genuine taxable invoices/credit notes were therefore quarantined
+  (historical finding — correction is a separate package, not this one).
+- Xero `PAID` is not universal settlement truth; `AmountDue`/`AmountPaid`/
+  `AmountCredited` are assertions, not authoritative allocation evidence;
+  prepayments/overpayments/refunds and credit direction must be mapped by the
+  Xero adapter.
+- QuickBooks `SyncToken` is an optional revision identity; there is no lifecycle
+  status directly comparable to the shared state; `TxnDate` is a posting date;
+  `CreditMemo`/`VendorCredit` need economic direction; `minorversion` may affect
+  schema interpretation.
+- Exact resource field mappings, webhook coverage and completeness remain
+  provider-adapter responsibilities and are not inferred from this shared model.
+
+### Readiness
+
+The v3 shared contract is coherent and tested, and is ready for a separate
+read-only review. It is **not** production-ready or launch-ready: providers
+remain disabled and the contract is not connected to customer routes,
+persistence, tax calculations, reserves, filing or payments.
+
 ## Canonical data requirements
 
 Accounting method and MTD update-period basis are separate concepts and must be
