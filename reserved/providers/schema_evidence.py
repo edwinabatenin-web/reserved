@@ -51,6 +51,7 @@ class SourceSchema:
     required_fields: frozenset[str]
     known_fields: frozenset[str]
     expected_kinds: Mapping[str, frozenset[str]]
+    request_prerequisites: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if not self.mapping_version.strip():
@@ -62,6 +63,19 @@ class SourceSchema:
         for field, kinds in self.expected_kinds.items():
             if not kinds or not kinds <= _ALLOWED_KINDS:
                 raise SchemaContractError(f"Invalid expected kinds for {field}")
+        for prerequisite in self.request_prerequisites:
+            if not isinstance(prerequisite, str) or not prerequisite.strip():
+                raise SchemaContractError("Request prerequisites must be non-empty strings")
+
+    @property
+    def response_required_fields(self) -> frozenset[str]:
+        """Fields the official selected response schema itself requires.
+
+        Distinct from ``request_prerequisites``, which are what the adapter must
+        request/enrich (for example nested-item expansion) and must not be
+        encoded as unconditional response requiredness.
+        """
+        return self.required_fields
 
 
 @dataclass(frozen=True)

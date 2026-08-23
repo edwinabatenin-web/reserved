@@ -20,6 +20,14 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
+# Pinned shared-contract version. v3 separates raw status/lifecycle from
+# settlement and correction, makes line gross + net/tax/gross totals explicit,
+# adds provider-neutral economic direction, prepayment/overpayment treatment,
+# provider balance assertions, explicit date semantics, revision identity and
+# partial-FX preservation. Older/newer shapes must be rejected explicitly rather
+# than interpreted opportunistically.
+CANONICAL_CONTRACT_VERSION = "v3"
+
 
 class ValueEnum(str, Enum):
     pass
@@ -55,12 +63,45 @@ class AllocationType(ValueEnum):
     PAYMENT = "payment"; CREDIT = "credit"; REFUND = "refund"; WRITE_OFF = "write_off"; REVERSAL = "reversal"
 
 
+class EconomicDirection(ValueEnum):
+    """Provider-neutral economic direction of a document or payment.
+
+    ``RECEIVABLE`` denotes money owed *to* the business (a sales invoice, a
+    customer prepayment/overpayment, a credit received). ``PAYABLE`` denotes
+    money owed *by* the business (a supplier bill, a vendor credit). An unknown
+    direction must block income/expense interpretation; it must never default
+    to a convenient receivable or payable.
+    """
+
+    RECEIVABLE = "receivable"; PAYABLE = "payable"; UNKNOWN = "unknown"
+
+
 class VatRegistrationState(ValueEnum):
     REGISTERED = "registered"; NOT_REGISTERED = "not_registered"; UNKNOWN = "unknown"
 
 
 class TaxAmountSemantics(ValueEnum):
     INCLUSIVE = "inclusive"; EXCLUSIVE = "exclusive"; NOT_APPLICABLE = "not_applicable"; UNKNOWN = "unknown"
+
+
+class LineValueSemantics(ValueEnum):
+    """What a raw provider line value meant *before* translation.
+
+    The canonical ``AccountingLine.money`` always represents line gross; this
+    enum records the raw-value semantics the adapter identified so a net,
+    gross, tax-inclusive, tax-exclusive or unknown source value is never
+    silently reinterpreted as one of the others.
+    """
+
+    NET = "net"; GROSS = "gross"; INCLUSIVE = "inclusive"; EXCLUSIVE = "exclusive"; UNKNOWN = "unknown"
+
+
+class LineRole(ValueEnum):
+    """Explicit role of a line so discounts, shipping, tax and adjustments are
+    represented rather than silently netted into the gross."""
+
+    LINE_ITEM = "line_item"; DISCOUNT = "discount"; SHIPPING = "shipping"
+    TAX = "tax"; ADJUSTMENT = "adjustment"; UNKNOWN = "unknown"
 
 
 class OwnershipConfidence(ValueEnum):
@@ -87,6 +128,20 @@ class CorrectionLifecycle(ValueEnum):
 class EvidenceState(ValueEnum):
     SELECTED = "selected"; CORROBORATING = "corroborating"; SUPERSEDED = "superseded"
     EXCLUDED = "excluded"; CONFLICTING = "conflicting"; UNRESOLVED = "unresolved"
+
+
+class ObservationRelation(ValueEnum):
+    """Relationship between two observations of the same source identity.
+
+    Used to decide how a newer observation relates to an existing one without
+    allowing either to silently overwrite the other. Ordering across distinct
+    provider revision tokens requires an explicit provider rule; timestamps do
+    not order observations on their own.
+    """
+
+    IDENTICAL = "identical"
+    CONFLICTING = "conflicting"
+    REVISION_CHANGED = "revision_changed"
 
 
 class CompletenessState(ValueEnum):
@@ -138,6 +193,16 @@ def validate_effective_period(effective_from, effective_to):
 
 @dataclass(frozen=True)
 class ProviderCapabilities:
+    """Coarse provider-level resource availability only (not a completeness claim).
+
+    These booleans describe which resource *families* a provider exposes at all.
+    They are deliberately not a completeness verdict: pagination, terminal-page
+    evidence, source totals, incremental watermark/revision support, tombstone
+    detection, webhook coverage, polling/refresh fallback, known exclusions and
+    freshness limitations are all resource- and purpose-specific and are carried
+    by ``ResourceCompleteness``.
+    """
+
     businesses: bool = True
     invoices: bool = True
     expenses: bool = True
@@ -148,6 +213,17 @@ class ProviderCapabilities:
 
 @dataclass(frozen=True)
 class SourceIdentity:
+    """The complete identity of a source observation.
+
+    ``connected_organisation_id`` is the authorised connection/grant context
+    (the OAuth connection, tenant or app installation through which records
+    were obtained). ``business_id`` is the provider business, tenant, company or
+    realm whose records are imported. They are distinct concepts: a single
+    connection may hold several businesses, and cross-connection, cross-business
+    or cross-tenant substitution must be rejected. Provider-specific mappings
+    live in the adapters, never in this shared identity.
+    """
+
     user_id: str
     provider: AccountingProviderName
     connected_organisation_id: str
@@ -173,6 +249,7 @@ class Provenance:
     effective_at: datetime | None = None
     transformation: str | None = None
     rounding: str | None = None
+    revision_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -217,6 +294,56 @@ class SemanticAdapterResult:
 
 
 @dataclass(frozen=True)
+class ProviderBalanceAssertions:
+    """Optional immutable provider-asserted balance facts.
+
+    These are reconciliation evidence only. They must never determine
+    settlement: settlement is derived from the allocation graph. Missing values
+    remain ``None`` and adapters must not derive unsupported values merely to
+    populate this shape.
+    """
+
+    amount_due: Decimal | None = None
+    amount_paid: Decimal | None = None
+    amount_credited: Decimal | None = None
+    balance: Decimal | None = None
+    fully_settled_date: date | None = None
+
+    def __post_init__(self):
+        for value in (self.amount_due, self.amount_paid, self.amount_credited, self.balance):
+            if value is not None and not _finite(value):
+                raise ValueError("provider balance assertions must be finite decimals")
+
+
+@dataclass(frozen=True)
+class FxObservation:
+    """Preserved partial/observed FX evidence (distinct from validated conversion).
+
+    A complete, internally consistent conversion is represented by
+    ``FxProvenance``. This shape instead preserves whatever FX facts were
+    actually observed without inventing the missing ones; ``completeness``
+    records why it is not a validated conversion. A foreign-currency record
+    that only has an ``FxObservation`` (and no ``FxProvenance``) must never be
+    treated as native currency nor admitted to a tax-input path.
+    """
+
+    source_currency: str | None = None
+    base_currency: str | None = None
+    rate: Decimal | None = None
+    rate_direction: str | None = None
+    source_amount: Decimal | None = None
+    base_amount: Decimal | None = None
+    rate_date: date | None = None
+    source: str | None = None
+    completeness: CompletenessState = CompletenessState.INCOMPLETE
+
+    def __post_init__(self):
+        for value in (self.rate, self.source_amount, self.base_amount):
+            if value is not None and not _finite(value):
+                raise ValueError("observed FX amounts and rate must be finite decimals")
+
+
+@dataclass(frozen=True)
 class DocumentCandidate:
     """Translated, provider-neutral document facts emitted by a semantic adapter.
 
@@ -227,13 +354,24 @@ class DocumentCandidate:
 
     document_id: str
     business_id: str
+    connected_organisation_id: str
     document_type: DocumentType
     issue_date: date | None
     currency: str
     gross_amount: Decimal | None
     lines: tuple["AccountingLine", ...] = ()
     provider_status: str | None = None
-    amount_paid: Decimal | None = None
+    # Adapter-translated controlled document state. ``None`` defers to the
+    # provider-neutral status map so providers with a vocabulary not covered by
+    # that map can supply a faithful, conservative translation without
+    # overriding the raw status.
+    canonical_state: CanonicalDocumentState | None = None
+    canonical_state_reason: str | None = None
+    net_amount: Decimal | None = None
+    vat_amount: Decimal | None = None
+    economic_direction: EconomicDirection = EconomicDirection.UNKNOWN
+    posting_date: date | None = None
+    supply_date: date | None = None
     due_date: date | None = None
     document_number: str | None = None
     contact_name: str | None = None
@@ -241,6 +379,8 @@ class DocumentCandidate:
     cash_candidate: "RecognitionCandidate | None" = None
     accrual_candidate: "RecognitionCandidate | None" = None
     fx: "FxProvenance | None" = None
+    observed_fx: FxObservation | None = None
+    provider_balance: ProviderBalanceAssertions | None = None
 
 
 @dataclass(frozen=True)
@@ -384,6 +524,16 @@ class OwnershipEvidence:
 
 @dataclass(frozen=True)
 class AccountingLine:
+    """A canonical document line.
+
+    ``money.original_amount`` always represents the line gross. ``tax`` retains
+    the net/tax/gross breakdown and inclusive/exclusive/not-applicable
+    semantics. ``value_semantics`` records what the raw provider line value
+    meant before translation (net, gross, inclusive, exclusive or unknown) and
+    ``role`` keeps discounts, shipping, tax and adjustments explicit so they
+    cannot be silently netted into the gross.
+    """
+
     line_id: str
     money: Money
     tax: TaxBreakdown
@@ -392,6 +542,8 @@ class AccountingLine:
     provider_account_id: str | None = None
     property_allocation_id: str | None = None
     tracking_allocation_ids: tuple[str, ...] = ()
+    value_semantics: LineValueSemantics = LineValueSemantics.UNKNOWN
+    role: LineRole = LineRole.LINE_ITEM
 
 
 @dataclass(frozen=True)
@@ -410,6 +562,7 @@ class RecognitionCandidate:
 class AccountingDocument:
     document_id: str
     business_id: str
+    connected_organisation_id: str
     document_type: DocumentType
     issue_date: date
     currency: str
@@ -419,9 +572,14 @@ class AccountingDocument:
     economic_event_id: str
     provider_status: str  # raw provider status, preserved as evidence (unrestricted)
     canonical_state: CanonicalDocumentState = CanonicalDocumentState.UNKNOWN
+    canonical_state_reason: str | None = None
     settlement_state: SettlementState = SettlementState.UNKNOWN
     correction_lifecycle: CorrectionLifecycle = CorrectionLifecycle.NONE
-    amount_paid: Decimal | None = None  # untrusted provider assertion, never settlement truth
+    net_amount: Decimal | None = None
+    vat_amount: Decimal | None = None
+    economic_direction: EconomicDirection = EconomicDirection.UNKNOWN
+    posting_date: date | None = None
+    supply_date: date | None = None
     due_date: date | None = None
     document_number: str | None = None
     contact_name: str | None = None
@@ -430,10 +588,21 @@ class AccountingDocument:
     replaces_document_id: str | None = None
     evidence_state: EvidenceState = EvidenceState.UNRESOLVED
     fx: FxProvenance | None = None
+    observed_fx: FxObservation | None = None
+    provider_balance: ProviderBalanceAssertions | None = None
 
     def __post_init__(self):
         if not _finite(self.gross_amount):
             raise ValueError("document gross_amount must be a finite decimal")
+        if not self.connected_organisation_id:
+            raise ValueError("document connected_organisation_id must not be empty")
+        if self.net_amount is not None and not _finite(self.net_amount):
+            raise ValueError("document net_amount must be a finite decimal")
+        if self.vat_amount is not None and not _finite(self.vat_amount):
+            raise ValueError("document vat_amount must be a finite decimal")
+        if self.net_amount is not None and self.vat_amount is not None:
+            if self.net_amount + self.vat_amount != self.gross_amount:
+                raise ValueError("document net_amount + vat_amount must equal gross_amount")
 
 
 # Kept as an alias only for compatibility. Prefer ``AccountingDocument``: the
@@ -451,6 +620,8 @@ class AccountingPayment:
     provenance: Provenance
     economic_event_id: str
     correction_lifecycle: CorrectionLifecycle = CorrectionLifecycle.NONE
+    economic_direction: EconomicDirection = EconomicDirection.UNKNOWN
+    unapplied_amount: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -538,6 +709,33 @@ class Completeness:
     bookkeeping: CompletenessState
     reconciliation: CompletenessState
     reason: str | None = None
+
+
+@dataclass(frozen=True)
+class ResourceCompleteness:
+    """Resource- and purpose-specific sync completeness evidence.
+
+    Replaces any broad provider-level completeness flag. A resource must not be
+    described as complete merely because a provider total, CDC feed or webhook
+    is unavailable; each dimension is recorded honestly as ``complete``,
+    ``incomplete``, ``unknown`` or ``not_applicable`` with a reason.
+    """
+
+    resource: str
+    pagination: CompletenessState = CompletenessState.UNKNOWN
+    terminal_page_evidence: CompletenessState = CompletenessState.UNKNOWN
+    independent_source_totals: CompletenessState = CompletenessState.UNKNOWN
+    incremental_watermark_or_revision: CompletenessState = CompletenessState.UNKNOWN
+    deletion_tombstone_detection: CompletenessState = CompletenessState.UNKNOWN
+    webhook_coverage: CompletenessState = CompletenessState.UNKNOWN
+    polling_or_full_refresh: CompletenessState = CompletenessState.UNKNOWN
+    known_exclusions: CompletenessState = CompletenessState.UNKNOWN
+    freshness_limitations: CompletenessState = CompletenessState.UNKNOWN
+    reason: str | None = None
+
+    def __post_init__(self):
+        if not self.resource:
+            raise ValueError("resource completeness requires a resource identity")
 
 
 @dataclass(frozen=True)
