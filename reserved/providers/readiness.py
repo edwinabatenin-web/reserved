@@ -63,10 +63,28 @@ def _present(environment: Mapping[str, str], name: str) -> bool:
 
 
 def _callback_is_safe(value: str) -> bool:
-    parsed = urlparse(value)
-    if parsed.scheme == "https" and bool(parsed.netloc):
-        return True
-    return parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"}
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return False
+
+    try:
+        username = parsed.username
+        password = parsed.password
+        hostname = parsed.hostname
+        parsed.port  # validate port syntax; raises ValueError when invalid
+    except ValueError:
+        return False
+
+    if username is not None or password is not None:
+        return False
+
+    if parsed.scheme == "https":
+        if not hostname or not hostname.strip("."):
+            return False
+        return not any(char.isspace() for char in hostname)
+
+    return parsed.scheme == "http" and hostname in {"localhost", "127.0.0.1"}
 
 
 def assess_provider(spec: ProviderSpec, environment: Mapping[str, str]) -> ReadinessResult:

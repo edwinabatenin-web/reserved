@@ -66,6 +66,89 @@ def test_insecure_non_local_callback_is_rejected():
     assert assess_provider(item, environment).state is ReadinessState.INCOMPLETE
 
 
+def test_malformed_ipv6_callback_fails_closed_without_raising():
+    item = spec("xero")
+    for value in ("http://[::1", "https://[::1"):
+        environment = configured("xero")
+        environment[item.callback_variable] = value
+        result = assess_provider(item, environment)
+        assert result.state is ReadinessState.INCOMPLETE
+        assert value not in repr(result)
+
+
+def test_credential_bearing_https_callback_is_rejected():
+    item = spec("xero")
+    for value in (
+        "https://user:secret@reserved.example/callback",
+        "https://token@reserved.example/callback",
+        "https://:@reserved.example/callback",
+    ):
+        environment = configured("xero")
+        environment[item.callback_variable] = value
+        result = assess_provider(item, environment)
+        assert result.state is ReadinessState.INCOMPLETE
+        assert value not in repr(result)
+
+
+def test_missing_host_https_callback_is_rejected():
+    item = spec("xero")
+    for value in ("https://:443/path", "https:///path", "https://", "https://user@"):
+        environment = configured("xero")
+        environment[item.callback_variable] = value
+        assert assess_provider(item, environment).state is ReadinessState.INCOMPLETE
+
+
+def test_dot_only_and_whitespace_https_callback_hostnames_are_rejected():
+    item = spec("xero")
+    for value in (
+        "https://.",
+        "https://../callback",
+        "https://.../callback",
+        "https://a b/callback",
+    ):
+        environment = configured("xero")
+        environment[item.callback_variable] = value
+        result = assess_provider(item, environment)
+        assert result.state is ReadinessState.INCOMPLETE
+        assert value not in repr(result)
+
+
+def test_syntactically_invalid_port_callback_is_rejected():
+    item = spec("xero")
+    for value in (
+        "https://reserved.example:invalid/callback",
+        "https://reserved.example:99999/callback",
+        "http://localhost:invalid/callback",
+    ):
+        environment = configured("xero")
+        environment[item.callback_variable] = value
+        assert assess_provider(item, environment).state is ReadinessState.INCOMPLETE
+
+
+def test_valid_https_callback_is_preserved():
+    item = spec("xero")
+    for value in (
+        "https://sandbox.reserved.example/oauth/xero/callback",
+        "https://reserved.example:8443/callback",
+    ):
+        environment = configured("xero")
+        environment[item.callback_variable] = value
+        assert assess_provider(item, environment).state is ReadinessState.CONFIGURED_NOT_IMPLEMENTED
+
+
+def test_http_loopback_hosts_are_preserved():
+    item = spec("xero")
+    for value in (
+        "http://localhost/callback",
+        "http://localhost:8000/callback",
+        "http://127.0.0.1/callback",
+        "http://127.0.0.1:8080/callback",
+    ):
+        environment = configured("xero")
+        environment[item.callback_variable] = value
+        assert assess_provider(item, environment).state is ReadinessState.CONFIGURED_NOT_IMPLEMENTED
+
+
 def test_oauth_state_is_provider_bound_single_use_and_not_stored_raw():
     session = {}
     store = OAuthStateStore(session, ttl_seconds=60)
