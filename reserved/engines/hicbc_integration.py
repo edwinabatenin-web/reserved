@@ -84,7 +84,10 @@ def integrate_hicbc(result: HicbcResponsibilityResult, purpose: str) -> HicbcCon
                 actionable=False,
                 reason="Insufficient Child Benefit or partner facts to estimate HICBC.",
             )
-        if status == "bounded_range":
+        if status in ("bounded_range", "calculated_with_material_uncertainty"):
+            # Materially uncertain or ambiguous evidence must never surface an
+            # exact charge or identical low/high bounds; only a bounded possible
+            # charge is shown.
             return HicbcContribution(
                 purpose=purpose,
                 included=True,
@@ -93,23 +96,22 @@ def integrate_hicbc(result: HicbcResponsibilityResult, purpose: str) -> HicbcCon
                 charge_high=high,
                 adequacy="bounded",
                 actionable=False,
-                reason="Responsibility is ambiguous; only a bounded possible charge is shown.",
+                reason=(
+                    "Responsibility is ambiguous; only a bounded possible charge is shown."
+                    if status == "bounded_range" else
+                    "Material uncertainty; only a bounded possible charge is shown."
+                ),
             )
-        if point is not None:
-            adequacy = (
-                "adequate"
-                if status in _DETERMINATE_STATUSES
-                else "adequate_with_material_uncertainty"
-            )
+        if point is not None and status in _DETERMINATE_STATUSES:
             return HicbcContribution(
                 purpose=purpose,
                 included=True,
                 charge=point,
                 charge_low=point,
                 charge_high=point,
-                adequacy=adequacy,
+                adequacy="adequate",
                 actionable=False,
-                reason="Qualified informational HICBC estimate.",
+                reason="Determinate informational HICBC estimate.",
             )
         return HicbcContribution(
             purpose=purpose,

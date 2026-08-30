@@ -253,10 +253,14 @@ CREATE TABLE IF NOT EXISTS hicbc_estimates (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id                 INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     tax_year                TEXT    NOT NULL,
-    receives_child_benefit  INTEGER,              -- NULL=unknown, 0=no, 1=yes
+    receives_child_benefit  INTEGER,              -- legacy; superseded by child_benefit_claimant
+    child_benefit_claimant  TEXT,                 -- NULL='person'|'partner'|'none'; NULL=unknown
     child_benefit_children  INTEGER NOT NULL DEFAULT 0,
-    child_benefit_annual    TEXT,                 -- Decimal string; NULL = use standard rates
+    child_benefit_annual    TEXT,                 -- Decimal string; NULL = derive from children/weeks
+    child_benefit_weeks_entitled INTEGER,         -- NULL=unknown; otherwise 0..53
     has_relevant_partner    INTEGER,              -- NULL=unknown, 0=no, 1=yes
+    relationship_covers_full_year INTEGER,        -- NULL=unknown, 0=status changed, 1=status held full year
+    partner_status_period_semantics TEXT,         -- NULL=legacy/unknown; 'status_answer_full_year'=defined semantics
     representation          TEXT,                 -- NULL | 'point' | 'range'
     partner_ani_point       TEXT,                 -- Decimal string
     partner_ani_low         TEXT,                 -- Decimal string
@@ -447,7 +451,7 @@ CREATE TABLE IF NOT EXISTS invoice_matches (
 # - The DDL block above always reflects the full target schema; migrations
 #   handle upgrade paths for databases created before the current DDL.
 #
-_SCHEMA_VERSION = 8   # increment when adding new migration entries below
+_SCHEMA_VERSION = 10   # increment when adding new migration entries below
 
 _MIGRATIONS: dict[int, list[str]] = {
     # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
@@ -570,6 +574,23 @@ _MIGRATIONS: dict[int, list[str]] = {
             withdrawn_at   TEXT,
             UNIQUE(link_id, user_id)
         )""",
+    ],
+    # Version 9 — HICBC claimant identity and bounded period facts.  The manual
+    # estimate must record who is the Child Benefit claimant (person / partner /
+    # none), the number of Child Benefit entitlement weeks, and whether the
+    # relationship covers the full tax year, so the engine never silently treats
+    # a mid-year relationship or partial entitlement as a full-year fact.
+    9: [
+        "ALTER TABLE hicbc_estimates ADD COLUMN child_benefit_claimant TEXT",
+        "ALTER TABLE hicbc_estimates ADD COLUMN child_benefit_weeks_entitled INTEGER",
+        "ALTER TABLE hicbc_estimates ADD COLUMN relationship_covers_full_year INTEGER",
+    ],
+    # Version 10 — distinguish the corrected customer-input semantics from any
+    # pre-correction row.  Existing rows remain NULL and therefore fail closed
+    # until the customer reconfirms whether their preceding partner-status
+    # answer was true for the whole tax year.
+    10: [
+        "ALTER TABLE hicbc_estimates ADD COLUMN partner_status_period_semantics TEXT",
     ],
 }
 
@@ -1452,8 +1473,13 @@ def save_hicbc_estimate(user_id: int, data: dict) -> None:
     """Upsert the HICBC partner estimate for ``user_id`` and ``tax_year``.
 
     ``data`` keys (all optional except ``tax_year``):
-        receives_child_benefit (None|0|1), child_benefit_children (int),
-        child_benefit_annual (Decimal str|None), has_relevant_partner (None|0|1),
+        receives_child_benefit (None|0|1), child_benefit_claimant
+        (None|'person'|'partner'|'none'), child_benefit_children (int),
+        child_benefit_annual (Decimal str|None),
+        child_benefit_weeks_entitled (int|None), has_relevant_partner (None|0|1),
+        relationship_covers_full_year (None|0|1: whether the preceding partner
+        status answer held for the full tax year), partner_status_period_semantics
+        (None|'status_answer_full_year'; NULL identifies legacy ambiguous rows),
         representation (None|'point'|'range'),
         partner_ani_point/low/high (Decimal str|None),
         source_kind, observed_at, confirmed_at, completeness, recency_state.
@@ -1474,35 +1500,48 @@ def save_hicbc_estimate(user_id: int, data: dict) -> None:
         conn.execute(
             """
             INSERT INTO hicbc_estimates
-                (user_id, tax_year, receives_child_benefit, child_benefit_children,
-                 child_benefit_annual, has_relevant_partner, representation,
+                (user_id, tax_year, receives_child_benefit, child_benefit_claimant,
+                 child_benefit_children, child_benefit_annual,
+                 child_benefit_weeks_entitled, has_relevant_partner,
+                 relationship_covers_full_year, partner_status_period_semantics, representation,
                  partner_ani_point, partner_ani_low, partner_ani_high,
                  evidence_id, source_kind, observed_at, confirmed_at,
                  completeness, recency_state, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id, tax_year) DO UPDATE SET
-                receives_child_benefit = excluded.receives_child_benefit,
-                child_benefit_children = excluded.child_benefit_children,
-                child_benefit_annual   = excluded.child_benefit_annual,
-                has_relevant_partner   = excluded.has_relevant_partner,
-                representation         = excluded.representation,
-                partner_ani_point      = excluded.partner_ani_point,
-                partner_ani_low        = excluded.partner_ani_low,
-                partner_ani_high       = excluded.partner_ani_high,
-                source_kind            = excluded.source_kind,
-                observed_at            = excluded.observed_at,
-                confirmed_at           = excluded.confirmed_at,
-                completeness           = excluded.completeness,
-                recency_state          = excluded.recency_state,
-                updated_at             = excluded.updated_at
+                receives_child_benefit      = excluded.receives_child_benefit,
+                child_benefit_claimant      = excluded.child_benefit_claimant,
+                child_benefit_children      = excluded.child_benefit_children,
+                child_benefit_annual        = excluded.child_benefit_annual,
+                child_benefit_weeks_entitled = excluded.child_benefit_weeks_entitled,
+                has_relevant_partner        = excluded.has_relevant_partner,
+                relationship_covers_full_year = excluded.relationship_covers_full_year,
+                partner_status_period_semantics = excluded.partner_status_period_semantics,
+                representation              = excluded.representation,
+                partner_ani_point           = excluded.partner_ani_point,
+                partner_ani_low             = excluded.partner_ani_low,
+                partner_ani_high            = excluded.partner_ani_high,
+                source_kind                 = excluded.source_kind,
+                observed_at                 = excluded.observed_at,
+                confirmed_at                = excluded.confirmed_at,
+                completeness                = excluded.completeness,
+                recency_state               = excluded.recency_state,
+                updated_at                  = excluded.updated_at
             """,
             (
                 user_id,
                 tax_year,
                 data.get("receives_child_benefit"),
+                data.get("child_benefit_claimant"),
                 int(data.get("child_benefit_children") or 0),
                 data.get("child_benefit_annual"),
+                data.get("child_benefit_weeks_entitled"),
                 data.get("has_relevant_partner"),
+                data.get("relationship_covers_full_year"),
+                data.get("partner_status_period_semantics") or (
+                    "status_answer_full_year"
+                    if "relationship_covers_full_year" in data else None
+                ),
                 data.get("representation"),
                 data.get("partner_ani_point"),
                 data.get("partner_ani_low"),
@@ -1759,16 +1798,23 @@ def revoke_hicbc_link(user_id: int, tax_year: str) -> bool:
     return True
 
 
+# Single authoritative linked-HICBC consent-notice version.  Mutual permission is
+# established only when *both* participants have recorded this recognised version;
+# an arbitrary or incompatible notice version must never satisfy consent.
+HICBC_NOTICE_VERSION = "hicbc-notice-v1"
+
+
 def record_hicbc_link_consent(user_id: int, tax_year: str, notice_version: str) -> bool:
     """Record one participant's affirmative, versioned linked-HICBC consent.
 
-    ``notice_version`` must be non-empty; it is the auditable identifier of the
-    concise explanation the participant was shown.  Recording is per-participant:
-    mutual permission is established only once *both* participants have recorded
-    consent for the same active link.  Returns False when there is no unique
-    active link or the notice version is empty.
+    ``notice_version`` must be the recognised authoritative version; it is the
+    auditable identifier of the concise explanation the participant was shown.
+    Recording is per-participant: mutual permission is established only once
+    *both* participants have recorded consent for the same active link.  Returns
+    False when there is no unique active link or the notice version is not the
+    recognised version.
     """
-    if not notice_version or not isinstance(notice_version, str):
+    if notice_version != HICBC_NOTICE_VERSION:
         return False
     link = get_active_hicbc_link(user_id, tax_year)
     if link is None:
@@ -1790,17 +1836,18 @@ def record_hicbc_link_consent(user_id: int, tax_year: str, notice_version: str) 
 
 
 def has_mutual_hicbc_link_consent(user_id: int, tax_year: str) -> bool:
-    """True iff both participants have recorded, non-withdrawn versioned consent."""
+    """True iff both participants recorded the recognised, non-withdrawn consent."""
     link = get_active_hicbc_link(user_id, tax_year)
     if link is None:
         return False
     with _connection() as conn:
         rows = conn.execute(
             """
-            SELECT DISTINCT user_id FROM hicbc_link_consents
+            SELECT user_id FROM hicbc_link_consents
             WHERE link_id = ? AND withdrawn_at IS NULL
+              AND notice_version = ?
             """,
-            (link["id"],),
+            (link["id"], HICBC_NOTICE_VERSION),
         ).fetchall()
     consented = {row["user_id"] for row in rows}
     return consented == {link["user_low_id"], link["user_high_id"]}

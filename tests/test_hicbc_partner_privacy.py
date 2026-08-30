@@ -9,6 +9,7 @@ rendered result section.
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -58,15 +59,18 @@ def _login(client, income=70000):
         "income_estimate": float(income),
         "pension_contribution": 0.0,
         "display_name": "Test User",
+        "tax_year": "2026/27",
     })
     return uid
 
 
 def _estimate_form(**overrides):
     data = {
-        "receives_child_benefit": "yes",
+        "child_benefit_claimant": "person",
         "child_benefit_children": "1",
+        "child_benefit_weeks_entitled": "52",
         "has_relevant_partner": "yes",
+        "relationship_covers_full_year": "yes",
         "representation": "point",
         "partner_ani_point": "55000",
     }
@@ -101,6 +105,74 @@ def test_hicbc_estimate_roundtrip_preserves_decimal_string(test_db):
     assert row["partner_ani_point"] == "79000.01"  # exact string, no float loss
     assert row["child_benefit_annual"] == "1406.60"
     assert row["has_relevant_partner"] == 1
+
+
+def test_hicbc_estimate_roundtrip_preserves_claimant_and_period_facts(test_db):
+    uid, _ = _users(test_db)
+    db.save_hicbc_estimate(uid, {
+        "tax_year": "2026/27",
+        "child_benefit_claimant": "partner",
+        "child_benefit_children": 2,
+        "child_benefit_weeks_entitled": 40,
+        "has_relevant_partner": 1,
+        "relationship_covers_full_year": 0,
+        "representation": "range",
+        "partner_ani_low": "50000",
+        "partner_ani_high": "60000",
+    })
+    row = db.get_hicbc_estimate(uid, "2026/27")
+    assert row is not None
+    # Claimant identity, entitlement weeks and relationship-period facts survive
+    # the persistence round trip without being relabelled to defaults.
+    assert row["child_benefit_claimant"] == "partner"
+    assert row["child_benefit_weeks_entitled"] == 40
+    assert row["relationship_covers_full_year"] == 0
+    assert row["partner_status_period_semantics"] == "status_answer_full_year"
+
+
+def test_v9_migration_leaves_new_facts_unknown(test_db):
+    # A pre-v9 row carries only the legacy columns.  The v9 columns must be NULL
+    # (unknown) after migration — never silently defaulted to the user, 52 weeks
+    # or a full-year relationship.
+    uid, _ = _users(test_db)
+    with db._connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO hicbc_estimates
+                (user_id, tax_year, receives_child_benefit, child_benefit_children,
+                 child_benefit_annual, has_relevant_partner, representation,
+                 partner_ani_point, partner_ani_low, partner_ani_high,
+                 evidence_id, source_kind, observed_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (uid, "2026/27", 1, 1, None, 1, "point", "79000", None, None,
+             "legacy-evidence", "user_supplied_partner_estimate",
+             "2026-08-10T00:00:00+00:00", "2026-08-10T00:00:00+00:00",
+             "2026-08-10T00:00:00+00:00"),
+        )
+    row = db.get_hicbc_estimate(uid, "2026/27")
+    assert row is not None
+    # The new columns are not populated by the pre-v9 record.
+    assert row["child_benefit_claimant"] is None
+    assert row["child_benefit_weeks_entitled"] is None
+    assert row["relationship_covers_full_year"] is None
+
+
+def test_v9_migration_statements_add_columns_without_default():
+    # Each v9 migration statement must be a plain ADD COLUMN (no DEFAULT), so
+    # existing rows keep NULL and are never silently assigned a claimant, weeks
+    # or full-year assumption.
+    for sql in db._MIGRATIONS[9]:
+        upper = sql.strip().upper()
+        assert upper.startswith("ALTER TABLE HICBC_ESTIMATES ADD COLUMN")
+        assert "DEFAULT" not in upper
+
+
+def test_v10_migration_leaves_legacy_period_semantics_unknown():
+    sql = db._MIGRATIONS[10]
+    assert len(sql) == 1
+    assert "PARTNER_STATUS_PERIOD_SEMANTICS" in sql[0].upper()
+    assert "DEFAULT" not in sql[0].upper()
 
 
 def test_hicbc_estimate_owner_isolation(test_db):
@@ -176,6 +248,62 @@ def test_hicbc_save_rejects_non_numeric_partner_ani(client):
     _login(client)
     resp = client.post("/v2/hicbc/estimate", data=_estimate_form(partner_ani_point="abc"))
     assert resp.status_code == 400
+
+
+def test_hicbc_form_explains_that_period_qualifies_partner_answer(client):
+    _login(client)
+    body = client.get("/v2/hicbc/").get_data(as_text=True)
+    assert "Was your answer about having a partner true for the whole 2026/27 tax year?" in body
+    assert "Yes, for the whole tax year" in body
+    assert "No, it changed during the tax year" in body
+    assert "Does the relationship cover" not in body
+
+
+def test_hicbc_save_rejects_malformed_partner_period(client):
+    uid = _login(client)
+    resp = client.post(
+        "/v2/hicbc/estimate",
+        data=_estimate_form(relationship_covers_full_year="whole-ish"),
+    )
+    assert resp.status_code == 400
+    assert db.get_hicbc_estimate(uid, "2026/27") is None
+
+
+@pytest.mark.parametrize(
+    ("partner_answer", "period_answer", "expected_status", "expected_charge"),
+    [
+        ("no", "yes", "person_liable", "703.00"),
+        ("yes", "yes", "person_liable", "703.00"),
+        ("no", "no", "insufficient_facts", None),
+        ("yes", "no", "person_liable", None),
+        ("no", "", "insufficient_facts", None),
+        ("yes", "", "person_liable", None),
+        ("", "yes", "insufficient_facts", None),
+        ("", "no", "insufficient_facts", None),
+    ],
+)
+def test_post_persistence_result_chain_preserves_partner_status_period_semantics(
+    client, partner_answer, period_answer, expected_status, expected_charge
+):
+    uid = _login(client, income=70000)
+    form = _estimate_form(
+        has_relevant_partner=partner_answer,
+        relationship_covers_full_year=period_answer,
+    )
+    if partner_answer != "yes":
+        form.update(representation="", partner_ani_point="")
+
+    posted = client.post("/v2/hicbc/estimate", data=form)
+    assert posted.status_code == 302
+
+    row = db.get_hicbc_estimate(uid, "2026/27")
+    assert row["has_relevant_partner"] == ({"yes": 1, "no": 0}.get(partner_answer))
+    assert row["relationship_covers_full_year"] == ({"yes": 1, "no": 0}.get(period_answer))
+    assert row["partner_status_period_semantics"] == "status_answer_full_year"
+
+    result = client.get("/v2/hicbc/result").get_json()
+    assert result["responsibility_status"] == expected_status
+    assert result["projected_user_hicbc"] == expected_charge
 
 
 def test_hicbc_csrf_protection(tmp_path, monkeypatch):

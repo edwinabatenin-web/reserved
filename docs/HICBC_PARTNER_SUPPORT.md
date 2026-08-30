@@ -42,8 +42,10 @@ environment name or any other feature flag.
 
 ## Responsibility model
 
-The charge falls on the person in the household with the higher ANI.  The engine
-returns a single coherent result (`HicbcResponsibilityResult`) separating:
+The charge falls on the person in the household with the higher ANI; where the
+two ANIs are equal, ITEPA 2003 s.681B places the charge on the Child Benefit
+claimant (condition A under s.681B(2) and condition B under s.681B(3)).  The
+engine returns a single coherent result (`HicbcResponsibilityResult`) separating:
 
 - the user's individual ANI;
 - partner evidence used only for comparison;
@@ -63,7 +65,9 @@ Cases:
 4. Both above, user higher → user carries the charge.
 5. Both above, partner higher → partner carries responsibility; the partner's
    ANI and calculated personal tax are not exposed to the user.
-6. Equal ANI → ambiguous (no statutory "higher" person; no tie-break invented).
+6. Equal ANI → the charge follows the Child Benefit claimant: the user is liable
+   when the user is the claimant, and the partner is liable when the partner is
+   the claimant; an unknown claimant fails safe as insufficient facts.
 7. Overlapping or uncertain partner range → ambiguous; the possible user charge
    is bounded between £0 and the user's full charge rather than collapsed.
 8. Missing, incomplete, stale, revoked or conflicting partner evidence →
@@ -71,6 +75,22 @@ Cases:
    and never zero.
 9. Changes in either ANI → automatic recomputation; responsibility can move
    between partners (reported as a household change status).
+10. Claimant identity alone does **not** establish a personal charge: it only
+    breaks an equal-ANI tie.  A determinate personal charge additionally requires
+    an explicit no-partner-for-the-period fact, adequate partner ANI evidence, or
+    an explicit valid responsibility fact (for example
+    `taxpayer_is_higher_ani_partner=True`).  A false, unknown, malformed or
+    contradictory `taxpayer_is_higher_ani_partner` value is not ignored and is
+    not relabelled as user liability.
+
+### Single-claimant model
+
+The bounded v1 model supports a single Child Benefit claimant per household
+(person, partner, or none).  It does **not** support the two partners separately
+claiming Child Benefit for different children: there is no input channel for a
+second claimant, and the engine never reduces two claims to one invented
+claimant.  A dual-claimant case is explicitly unsupported and must be rejected
+(fail closed) rather than silently assigned a single claimant.
 
 ## Manual partner-estimate path
 
@@ -78,10 +98,28 @@ Cases:
 `/v2/hicbc`:
 
 - state whether they receive Child Benefit (yes/no/unknown) and, if so, the
-  number of children or an explicit annual total;
-- state whether they have a relevant partner for HICBC purposes;
+  number of children and entitlement weeks, or an explicit annual total;
+- state whether they have a relevant partner for HICBC purposes, together with
+  whether that preceding partner-status answer was true for the whole tax year;
 - provide a partner ANI point or a low/high range;
 - update, replace or remove the estimate.
+
+Omitted entitlement weeks remain unknown and are never silently treated as a
+52-week amount.  `relationship_covers_full_year` records whether the preceding
+`has_relevant_partner` answer held for the whole tax year: `1` means the answer
+was true throughout, `0` means the status changed during the year, and `NULL`
+means unknown.  It does not mean that a relationship existed for the whole
+year.  Thus `no` plus `1` establishes no relevant partner throughout the year,
+while either partner answer plus `0` is a changed-status case requiring adequate
+period evidence before a full-year point result is possible.
+
+Schema version 10 adds `partner_status_period_semantics`.  New customer saves
+record `status_answer_full_year`; pre-correction rows retain `NULL` and are
+treated as unknown until the customer reconfirms.  This compatibility boundary
+is necessary because the repository proves the feature is disabled by default
+and declared not activated, but—without accessing live deployment data—it
+cannot prove that no explicit non-production enablement ever persisted a row.
+No old ambiguous value is silently reinterpreted.
 
 The minimum information necessary is collected.  The partner's name, email,
 National Insurance number, employer, bank information and underlying income
@@ -136,7 +174,9 @@ the partner and the partner's own ANI supplies the comparison.
 
 ## Privacy, retention and deletion
 
-- `hicbc_estimates` persists one manual row per `(user_id, tax_year)`; money/ANI
+- `hicbc_estimates` persists one manual row per `(user_id, tax_year)`; the
+  period field qualifies the preceding partner-status answer and its semantics
+  marker distinguishes reconfirmed rows from legacy ambiguous rows; money/ANI
   values are stored as canonical Decimal strings (TEXT), never binary floating
   point.
 - `hicbc_links` and `hicbc_link_invitations` store identity, consent state,
@@ -148,6 +188,13 @@ the partner and the partner's own ANI supplies the comparison.
 - State-changing requests are CSRF-protected; sensitive responses are no-store.
 - Raw partner values are never returned in the customer JSON view, rendered in
   the result section, or logged.
+- The partner-liable customer headline describes only the receiving user's own
+  consequence ("Reserved has not included a High Income Child Benefit Charge in
+  your estimate."); it never states or implies that the partner earns more, is
+  liable, carries the charge, or discloses the partner's ANI, band or tax.
+- Manual partner evidence is labelled as user-supplied; linked evidence is
+  described as shared through a linked account and is never falsely labelled as
+  user-supplied.
 - `delete_all_hicbc_estimates_for_user(user_id)` and
   `delete_all_hicbc_links_for_user(user_id)` are the repository deletion hooks
   that a later account-deletion workflow must invoke.

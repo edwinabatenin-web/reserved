@@ -15,7 +15,7 @@ from reserved.providers.accounting.contracts import (
     AccountingBusiness, AccountingDocument, AccountingLine, AccountingMethod,
     AccountingPayment, AccountingProviderName, AllocationEdge, AllocationType,
     CanonicalDocumentState, CompletenessState, CorrectionLifecycle,
-    EconomicDirection, FxObservation, LineRole, LineValueSemantics, Money,
+    EconomicDirection, FxObservation, FxProvenance, LineRole, LineValueSemantics, Money,
     ObservationRelation, PaymentType, ProviderBalanceAssertions,
     RecognitionDecisionOutcome, ResourceCompleteness, SettlementState, SyncPage,
     TaxAmountSemantics, TaxBreakdown, VatRegistrationPeriod, VatRegistrationState,
@@ -280,7 +280,7 @@ def test_unknown_direction_blocks_income_expense_interpretation():
     with pytest.raises(CanonicalQuarantineError, match="unknown economic direction"):
         build_canonical_tax_input(
             input_id="i1", purpose="income", scope="sa", document=d,
-            recognition_decision=decision, tax_year="2026-27", policy_version="v1",
+            recognition_decision=decision, tax_year="2026-27", policy_version="v1", business_base_currency="GBP",
         )
 
 
@@ -327,7 +327,159 @@ def test_foreign_currency_document_without_validated_conversion_blocked_at_tax_i
     with pytest.raises(CanonicalQuarantineError, match="validated conversion"):
         build_canonical_tax_input(
             input_id="i1", purpose="income", scope="sa", document=fx_doc,
+            recognition_decision=decision, tax_year="2026-27", policy_version="v1", business_base_currency="GBP",
+        )
+
+
+def test_native_currency_document_with_matching_business_base_currency_is_accepted():
+    # A document already in the established business base currency needs no
+    # conversion evidence and is admitted at its own currency.
+    d = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    decision = build_recognition_decision(
+        decision_id="decision-1", document=d, method=AccountingMethod.CASH,
+        effective_from=date(2026, 4, 6), policy_version="v1",
+    )
+    tax_input = build_canonical_tax_input(
+        input_id="i1", purpose="income", scope="sa", document=d,
+        recognition_decision=decision, tax_year="2026-27", policy_version="v1",
+        business_base_currency="GBP",
+    )
+    assert tax_input.currency == "GBP"
+    assert tax_input.base_currency == "GBP"
+
+
+def test_foreign_currency_document_without_any_fx_evidence_fails_closed():
+    # A foreign-currency document with neither validated nor observed FX facts
+    # must not be treated as though its currency were the business base currency.
+    base = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    fx_doc = replace(base, currency="EUR", fx=None, observed_fx=None)
+    decision = build_recognition_decision(
+        decision_id="decision-1", document=fx_doc, method=AccountingMethod.CASH,
+        effective_from=date(2026, 4, 6), policy_version="v1",
+    )
+    assert decision.outcome is RecognitionDecisionOutcome.CASH
+    with pytest.raises(CanonicalQuarantineError, match="validated conversion"):
+        build_canonical_tax_input(
+            input_id="i1", purpose="income", scope="sa", document=fx_doc,
             recognition_decision=decision, tax_year="2026-27", policy_version="v1",
+            business_base_currency="GBP",
+        )
+
+
+def test_foreign_currency_document_with_complete_validated_fx_is_accepted():
+    # A complete, internally consistent conversion to the business base currency
+    # is admitted with the document currency preserved and the base currency
+    # established independently (not inferred from the document).
+    base = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    fx_doc = replace(
+        base, currency="EUR",
+        fx=FxProvenance(
+            original_amount=Decimal("50.00"),
+            original_currency="EUR",
+            base_amount=Decimal("42.50"),
+            base_currency="GBP",
+            fx_rate=Decimal("0.85"),
+            fx_rate_date=date(2026, 8, 1),
+            fx_source="ECB",
+            rounding_method="half-even",
+            conversion_method="direct",
+            observation_id="obs-fx",
+        ),
+        observed_fx=None,
+    )
+    decision = build_recognition_decision(
+        decision_id="decision-1", document=fx_doc, method=AccountingMethod.CASH,
+        effective_from=date(2026, 4, 6), policy_version="v1",
+    )
+    assert decision.outcome is RecognitionDecisionOutcome.CASH
+    tax_input = build_canonical_tax_input(
+        input_id="i1", purpose="income", scope="sa", document=fx_doc,
+        recognition_decision=decision, tax_year="2026-27", policy_version="v1",
+        business_base_currency="GBP",
+    )
+    assert tax_input.currency == "EUR"
+    assert tax_input.base_currency == "GBP"
+
+
+def test_validated_fx_base_currency_mismatch_fails_closed():
+    # A conversion targeting a currency other than the established business base
+    # currency is not a valid conversion for this business.
+    base = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    fx_doc = replace(
+        base, currency="EUR",
+        fx=FxProvenance(
+            original_amount=Decimal("50.00"),
+            original_currency="EUR",
+            base_amount=Decimal("55.00"),
+            base_currency="USD",
+            fx_rate=Decimal("1.10"),
+            fx_rate_date=date(2026, 8, 1),
+            fx_source="ECB",
+            rounding_method="half-even",
+            conversion_method="direct",
+            observation_id="obs-fx",
+        ),
+        observed_fx=None,
+    )
+    decision = build_recognition_decision(
+        decision_id="decision-1", document=fx_doc, method=AccountingMethod.CASH,
+        effective_from=date(2026, 4, 6), policy_version="v1",
+    )
+    with pytest.raises(CanonicalQuarantineError, match="base currency does not match"):
+        build_canonical_tax_input(
+            input_id="i1", purpose="income", scope="sa", document=fx_doc,
+            recognition_decision=decision, tax_year="2026-27", policy_version="v1",
+            business_base_currency="GBP",
+        )
+
+
+def test_validated_fx_original_currency_mismatch_fails_closed():
+    # A validated conversion whose original currency does not match the document
+    # currency is inconsistent and must fail closed even when the base currency
+    # matches the business base currency.
+    base = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    fx_doc = replace(
+        base, currency="EUR",
+        fx=FxProvenance(
+            original_amount=Decimal("50.00"),
+            original_currency="USD",
+            base_amount=Decimal("42.50"),
+            base_currency="GBP",
+            fx_rate=Decimal("0.85"),
+            fx_rate_date=date(2026, 8, 1),
+            fx_source="ECB",
+            rounding_method="half-even",
+            conversion_method="direct",
+            observation_id="obs-fx",
+        ),
+        observed_fx=None,
+    )
+    decision = build_recognition_decision(
+        decision_id="decision-1", document=fx_doc, method=AccountingMethod.CASH,
+        effective_from=date(2026, 4, 6), policy_version="v1",
+    )
+    with pytest.raises(CanonicalQuarantineError, match="original currency does not match"):
+        build_canonical_tax_input(
+            input_id="i1", purpose="income", scope="sa", document=fx_doc,
+            recognition_decision=decision, tax_year="2026-27", policy_version="v1",
+            business_base_currency="GBP",
+        )
+
+
+@pytest.mark.parametrize("base_currency", [None, "", "gbp", "GB", "GBPP", "123", "GB1", "1GB", "G B", "US$"])
+def test_missing_or_invalid_business_base_currency_fails_closed(base_currency):
+    # The gate must never infer base currency from the document: a missing or
+    # malformed business base currency fails closed.
+    d = doc(provider_cash_on="2026-08-10", provider_cash_amt="50.00")
+    decision = build_recognition_decision(
+        decision_id="decision-1", document=d, method=AccountingMethod.CASH,
+        effective_from=date(2026, 4, 6), policy_version="v1",
+    )
+    with pytest.raises(CanonicalQuarantineError, match="business base currency"):
+        build_canonical_tax_input(
+            input_id="i1", purpose="income", scope="sa", document=d,
+            recognition_decision=decision, tax_year="2026-27", policy_version="v1",
+            business_base_currency=base_currency,
         )
 
 

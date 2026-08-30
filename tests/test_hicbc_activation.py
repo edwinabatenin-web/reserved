@@ -104,15 +104,18 @@ def _login_and_profile(client, income=70000):
         "income_estimate": float(income),
         "pension_contribution": 0.0,
         "display_name": "Test User",
+        "tax_year": "2026/27",
     })
     return uid
 
 
 def _estimate_form(**overrides):
     form = {
-        "receives_child_benefit": "1",
+        "child_benefit_claimant": "person",
         "child_benefit_children": "1",
+        "child_benefit_weeks_entitled": "52",
         "has_relevant_partner": "1",
+        "relationship_covers_full_year": "yes",
         "representation": "point",
         "partner_ani_point": "50000",
     }

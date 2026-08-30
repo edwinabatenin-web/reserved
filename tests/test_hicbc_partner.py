@@ -1,4 +1,4 @@
-"""Tests for the bounded HICBC partner-responsibility engine (post-v1).
+"""Tests for the bounded HICBC partner-responsibility engine (October v1 target).
 
 Expected monetary values are derived directly from the current official rules and
 recorded here with year, source and workings; they do not call production HICBC
@@ -23,6 +23,9 @@ from decimal import Decimal
 import pytest
 
 from reserved.engines.hicbc_partner import (
+    ANI_COMPONENT_WHOLE,
+    CLAIMANT_PARTNER,
+    CLAIMANT_PERSON,
     RESPONSIBILITY_AMBIGUOUS,
     RESPONSIBILITY_INSUFFICIENT_FACTS,
     RESPONSIBILITY_NO_CHARGE,
@@ -43,7 +46,8 @@ from reserved.engines.hicbc_partner import (
 
 
 def _evidence(rep, point=None, low=None, high=None, *, completeness="complete_for_purpose",
-              recency="current", consent="not_required", tax_year="2026/27"):
+              recency="current", consent="not_required", tax_year="2026/27",
+              ani_components=(ANI_COMPONENT_WHOLE,)):
     return PartnerEvidence(
         evidence_id="ev1",
         source_kind="user_supplied_partner_estimate",
@@ -60,14 +64,17 @@ def _evidence(rep, point=None, low=None, high=None, *, completeness="complete_fo
         completeness=completeness,
         recency_state=recency,
         consent_state=consent,
+        ani_components=ani_components,
     )
 
 
-def _resolve(user_ani, cb, partner, evidence=None, tax_year="2026/27", previous=None):
+def _resolve(user_ani, cb, partner, evidence=None, tax_year="2026/27", previous=None,
+             claimant=CLAIMANT_PERSON):
     return determine_hicbc_responsibility(
         user_ani=user_ani,
         child_benefit_amount=cb,
         has_relevant_partner=partner,
+        claimant=claimant,
         partner_evidence=evidence,
         tax_year=tax_year,
         previous_responsibility_status=previous,
@@ -150,13 +157,59 @@ def test_both_above_partner_higher_partner_liable():
     assert r.hicbc_percentage is None  # partner's charge detail not computed/exposed
 
 
-def test_equal_ani_ambiguous_bounded():
-    r = _resolve("70000", CB_1, True, _evidence("point", point=Decimal("70000")))
-    assert r.responsibility_status == RESPONSIBILITY_AMBIGUOUS
+def test_equal_ani_user_claimant_is_person_liable():
+    # ITEPA 2003 s.681B(2): condition A — the claimant's partner does not have an
+    # ANI exceeding the claimant's, so equal ANIs leave the claimant liable.
+    r = _resolve("70000", CB_1, True, _evidence("point", point=Decimal("70000")),
+                 claimant=CLAIMANT_PERSON)
+    assert r.responsibility_status == RESPONSIBILITY_PERSON_LIABLE
+    assert r.projected_user_hicbc == Decimal("703.00")
+    assert r.calculation_status == "calculated"
+
+
+def test_equal_ani_partner_claimant_is_partner_liable():
+    # ITEPA 2003 s.681B(3): condition B requires the non-claimant's ANI to exceed
+    # the claimant's, so equal ANIs leave the claimant (partner) liable.
+    r = _resolve("70000", CB_1, True, _evidence("point", point=Decimal("70000")),
+                 claimant=CLAIMANT_PARTNER)
+    assert r.responsibility_status == RESPONSIBILITY_PARTNER_LIABLE
+    assert r.projected_user_hicbc == Decimal("0")
+    assert r.calculation_status == "calculated"
+
+
+def test_equal_ani_unknown_claimant_is_insufficient_facts():
+    r = _resolve("70000", CB_1, True, _evidence("point", point=Decimal("70000")),
+                 claimant=None)
+    assert r.responsibility_status == RESPONSIBILITY_INSUFFICIENT_FACTS
     assert r.projected_user_hicbc is None
-    assert r.possible_charge_low == Decimal("0")
-    assert r.possible_charge_high == Decimal("703.00")
-    assert r.calculation_status == "bounded_range"
+
+
+def test_single_claimant_model_is_an_explicit_limitation():
+    # The bounded v1 model supports exactly one Child Benefit claimant (person or
+    # partner).  Dual-claimant households (each partner claiming for different
+    # children) are not supported and are declared as an explicit limitation, so
+    # they can never be silently reduced to a single invented claimant.
+    r = _resolve("70000", CB_1, True, _evidence("point", point=Decimal("50000")),
+                 claimant=CLAIMANT_PERSON)
+    assert "single_child_benefit_claimant_model_dual_claims_not_supported" in r.limitations
+
+
+def test_condition_b_partner_claimant_user_higher_is_person_liable():
+    # ITEPA 2003 s.681B(3): where the partner is the claimant and the user's ANI
+    # exceeds the partner's, the user is liable (condition B).
+    r = _resolve("70000", CB_1, True, _evidence("point", point=Decimal("50000")),
+                 claimant=CLAIMANT_PARTNER)
+    assert r.responsibility_status == RESPONSIBILITY_PERSON_LIABLE
+    assert r.projected_user_hicbc == Decimal("703.00")
+
+
+def test_condition_a_user_claimant_partner_higher_is_partner_liable():
+    # ITEPA 2003 s.681B(2): where the user is the claimant and the partner's ANI
+    # exceeds the user's, the user is not liable (condition A not met).
+    r = _resolve("70000", CB_1, True, _evidence("point", point=Decimal("90000")),
+                 claimant=CLAIMANT_PERSON)
+    assert r.responsibility_status == RESPONSIBILITY_PARTNER_LIABLE
+    assert r.projected_user_hicbc == Decimal("0")
 
 
 def test_range_entirely_below_user_person_liable():
@@ -215,7 +268,11 @@ def test_stale_partner_evidence_is_calculated_with_material_uncertainty():
                  _evidence("point", point=Decimal("55000"), recency="stale"))
     assert r.responsibility_status == RESPONSIBILITY_PERSON_LIABLE
     assert r.calculation_status == "calculated_with_material_uncertainty"
-    assert r.projected_user_hicbc == Decimal("703.00")
+    # Material uncertainty must not manufacture a point estimate or identical
+    # bounds; the possible charge is bounded [0, full charge].
+    assert r.projected_user_hicbc is None
+    assert r.possible_charge_low == Decimal("0")
+    assert r.possible_charge_high == Decimal("703.00")
 
 
 def test_partial_partner_evidence_is_calculated_with_material_uncertainty():
@@ -293,11 +350,16 @@ def test_responsibility_moves_between_partners_on_ani_change():
 # ── Child Benefit derivation helper ───────────────────────────────────────────
 
 def test_annual_child_benefit_one_child_2026_27():
-    assert annual_child_benefit_amount(children=1) == Decimal("1406.60")
+    assert annual_child_benefit_amount(children=1, weeks_entitled=52) == Decimal("1406.60")
 
 
 def test_annual_child_benefit_two_children_2026_27():
-    assert annual_child_benefit_amount(children=2) == Decimal("2337.40")
+    assert annual_child_benefit_amount(children=2, weeks_entitled=52) == Decimal("2337.40")
+
+
+def test_annual_child_benefit_missing_weeks_unknown():
+    # Omitted entitlement weeks remain unknown and never default to a full year.
+    assert annual_child_benefit_amount(children=1) is None
 
 
 def test_annual_child_benefit_override_wins():
@@ -327,7 +389,7 @@ def test_synthetic_linked_provider_feeds_same_responsibility_logic():
     evidence = linked.fetch_partner_evidence(user_id="user-1", tax_year="2026/27")
     r = determine_hicbc_responsibility(
         user_ani="70000", child_benefit_amount=CB_1, has_relevant_partner=True,
-        partner_evidence=evidence,
+        claimant=CLAIMANT_PERSON, partner_evidence=evidence,
     )
     assert r.responsibility_status == RESPONSIBILITY_PARTNER_LIABLE
     assert r.projected_user_hicbc == Decimal("0")
@@ -349,8 +411,12 @@ def test_customer_view_never_exposes_partner_raw_values():
     assert "partner_evidence" not in view
     assert "original_value" not in view
     assert view["responsibility_status"] == RESPONSIBILITY_PARTNER_LIABLE
-    assert "your partner" in view["headline"]
+    # Partner-liable output must describe only the user's own consequence and
+    # must not imply the partner earns more, is liable or carries the charge.
+    assert "not included" in view["headline"].lower()
+    assert "your partner" not in view["headline"].lower()
     assert "earns more" not in view["headline"].lower()
+    assert "liable" not in view["headline"].lower()
 
 
 def test_customer_view_uses_supplied_partner_message():

@@ -26,6 +26,7 @@ and neutral household messaging only.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from decimal import Decimal, InvalidOperation
 
@@ -45,6 +46,9 @@ from reserved.database import (
     save_hicbc_estimate,
 )
 from reserved.engines.hicbc_partner import (
+    ANI_COMPONENT_WHOLE,
+    CLAIMANT_PARTNER,
+    CLAIMANT_PERSON,
     HOUSEHOLD_CHANGED,
     HOUSEHOLD_MOVED_TO_PARTNER,
     HOUSEHOLD_MOVED_TO_PERSON,
@@ -83,6 +87,43 @@ def _user_ani_from_profile(profile: dict) -> Decimal:
     return max(Decimal("0"), income - pension)
 
 
+def _full_profile_from_row(row: dict) -> dict:
+    """Reconstruct the full settings-shaped profile from a raw DB row.
+
+    Employment salary (``day_job_salary``) is persisted in the ``notes`` JSON
+    column, not as a named column, so the raw row omits it.  Restore it alongside
+    the named financial columns so the ANI resolvers see every supported input;
+    the ``income_estimate`` column remains an explicit annual estimate and is not
+    silently projected as year-to-date.
+    """
+    profile = dict(row)
+    notes = row.get("notes")
+    if notes:
+        try:
+            extra = json.loads(notes)
+        except (ValueError, TypeError):
+            extra = {}
+        if isinstance(extra, dict):
+            for key in ("day_job_salary",):
+                if profile.get(key) is None and extra.get(key) is not None:
+                    profile[key] = extra[key]
+    return profile
+
+
+def _customer_ani_from_row(row: dict | None, tax_year: str) -> Decimal | None:
+    """Derive the customer's own ANI from their persisted profile, fail-closed.
+
+    Returns ``None`` when the profile is absent, its tax year is missing or
+    mismatched, so the caller must fail closed rather than silently using an
+    unscoped or incomplete figure for the requested tax year.
+    """
+    if not row:
+        return None
+    if row.get("tax_year") != tax_year:
+        return None
+    return _user_ani_from_profile(_full_profile_from_row(row))
+
+
 def _tri(raw) -> int | None:
     """Map a form/JSON tri-state to None/0/1."""
     if raw is None:
@@ -94,6 +135,29 @@ def _tri(raw) -> int | None:
         return 1
     if text in ("no", "false", "0", "n"):
         return 0
+    return None
+
+
+def _normalise_has_relevant_partner(value) -> bool | None:
+    """Normalise a persisted ``has_relevant_partner`` tri-state to True/False/None.
+
+    The column is INTEGER (NULL=unknown, 0=no, 1=yes); SQLite may return these as
+    ``int``, ``bool`` or (after any future text migration) ``str``.  Only the
+    canonical values are recognised; anything else fails closed to ``None``
+    rather than relying on Python truthiness or int/bool identity.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return value == 1
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("0", "no", "false", "n"):
+            return False
+        if text in ("1", "yes", "true", "y"):
+            return True
     return None
 
 
@@ -113,6 +177,86 @@ def _decimal(raw, name: str, *, allow_zero: bool = True) -> Decimal | None:
     return value
 
 
+def _normalise_claimant(value) -> str | None:
+    """Normalise a claimant value to 'person' | 'partner' | 'none' | None.
+
+    ``None`` (or an empty/unknown marker) means the claimant identity is not
+    known.  A legacy ``receives_child_benefit`` integer (1=person, 0=none) is
+    accepted for backward compatibility; ``0`` cannot be read as ``partner``
+    because the legacy question conflated "partner is claimant" with "no one".
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return CLAIMANT_PERSON if value else "none"
+    if isinstance(value, int):
+        if value == 1:
+            return CLAIMANT_PERSON
+        if value == 0:
+            return "none"
+        return None
+    text = str(value).strip().lower()
+    if text in ("", "unknown", "unsure", "null"):
+        return None
+    if text in ("person", "you", "yes", "self"):
+        return CLAIMANT_PERSON
+    if text == "partner":
+        return CLAIMANT_PARTNER
+    if text == "none":
+        return "none"
+    return None
+
+
+def _claimant_from_row(row: dict | None) -> str | None:
+    if row is None:
+        return None
+    raw = row.get("child_benefit_claimant")
+    if raw is not None and str(raw).strip() != "":
+        return _normalise_claimant(raw)
+    return _normalise_claimant(row.get("receives_child_benefit"))
+
+
+def _normalise_weeks(raw) -> int | None:
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        value = int(str(raw).strip())
+    except (ValueError, TypeError):
+        return None
+    if not 0 <= value <= 53:
+        return None
+    return value
+
+
+def _normalise_full_year_tri(raw) -> int | None:
+    """Normalise a full-year tri-state (None=unknown, 0=partial, 1=full) to None/0/1."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return 1 if raw else 0
+    if isinstance(raw, int) and raw in (0, 1):
+        return raw
+    text = str(raw).strip().lower()
+    if text in ("", "unknown", "unsure", "null"):
+        return None
+    if text in ("1", "yes", "true", "y", "full", "full_year"):
+        return 1
+    if text in ("0", "no", "false", "n", "partial"):
+        return 0
+    return None
+
+
+def _effective_period_from_row(row: dict) -> str:
+    if row.get("partner_status_period_semantics") != "status_answer_full_year":
+        return "unknown"
+    full_year = _normalise_full_year_tri(row.get("relationship_covers_full_year"))
+    if full_year == 1:
+        return row["tax_year"]
+    if full_year == 0:
+        return "partial"
+    return "unknown"
+
+
 def _partner_evidence_from_row(row: dict) -> PartnerEvidence | None:
     """Build a :class:`PartnerEvidence` from a persisted estimate row."""
     representation = row.get("representation")
@@ -125,12 +269,13 @@ def _partner_evidence_from_row(row: dict) -> PartnerEvidence | None:
         source_reference=row["evidence_id"],
         subject_reference="partner",
         tax_year=tax_year,
-        effective_period=tax_year,
+        effective_period=_effective_period_from_row(row),
         observed_at=row["observed_at"],
         confirmed_at=row.get("confirmed_at"),
         completeness=row.get("completeness") or "complete_for_purpose",
         recency_state=row.get("recency_state") or "current",
         consent_state="not_required",
+        ani_components=(ANI_COMPONENT_WHOLE,),
     )
     if representation == "point":
         point = _decimal(row.get("partner_ani_point"), "partner_ani_point")
@@ -144,19 +289,31 @@ def _partner_evidence_from_row(row: dict) -> PartnerEvidence | None:
     return PartnerEvidence(representation="range", point=None, low=low, high=high, **common)
 
 
-def _child_benefit_amount_from_row(row: dict | None, tax_year: str) -> Decimal | None:
+def _child_benefit_amount_from_row(
+    row: dict | None, tax_year: str, claimant: str | None
+) -> Decimal | None:
+    """Return the relevant (claimant's) Child Benefit amount, or None/0.
+
+    Zero means affirmatively no household entitlement (claimant 'none'); ``None``
+    means the amount is unknown (claimant unknown, or entitlement facts missing)
+    and must not be treated as zero.
+    """
     if row is None:
         return None
-    receives = row.get("receives_child_benefit")
-    if receives == 0:
-        return Decimal("0")
-    if receives != 1:
+    if claimant is None:
         return None
+    if claimant == "none":
+        return Decimal("0")
     annual_override = row.get("child_benefit_annual")
+    if annual_override is not None and str(annual_override).strip() != "":
+        return _decimal(annual_override, "child_benefit_annual")
     children = int(row.get("child_benefit_children") or 0)
-    return annual_child_benefit_amount(
-        children=children, annual_override=annual_override, tax_year=tax_year,
-    )
+    if children <= 0:
+        return None
+    weeks = _normalise_weeks(row.get("child_benefit_weeks_entitled"))
+    if weeks is None:
+        return None  # entitlement weeks unknown -> do not silently assume a full year
+    return annual_child_benefit_amount(children=children, weeks_entitled=weeks, tax_year=tax_year)
 
 
 def _opaque_subject_reference(partner_id: int) -> str:
@@ -182,8 +339,10 @@ def _linked_partner_evidence(user_id: int, tax_year: str) -> PartnerEvidence | N
         return None
     partner_profile = get_profile_by_user(partner_id) or {}
     profile_year = partner_profile.get("tax_year")
-    if profile_year is not None and profile_year != tax_year:
-        return None  # mismatched evidence year is never relabelled as current
+    if profile_year != tax_year:
+        # An absent or mismatched source tax year is never relabelled as the
+        # requested calculation year; the linked evidence fails closed.
+        return None
     link = get_active_hicbc_link(user_id, tax_year)
     link_id = link["id"] if link else 0
     partner_ani = _user_ani_from_profile(partner_profile)
@@ -215,6 +374,35 @@ def _evidence_bounds(evidence: PartnerEvidence) -> tuple[Decimal, Decimal]:
     return evidence.point, evidence.point
 
 
+def _conservative_observed_at(*times: str) -> str:
+    """Combine observation times conservatively; an unknown time dominates.
+
+    ``min()`` would lexically order ``"unknown"`` after any ISO timestamp and
+    therefore silently drop the unknown state in favour of a precise date.  The
+    merged record must not claim a more precise observation time than the sources
+    establish.
+    """
+    if any(t == "unknown" for t in times):
+        return "unknown"
+    return min(times)
+
+
+def _conservative_effective_period(tax_year: str, *periods: str) -> str:
+    """Return the merged relationship period without broadening coverage.
+
+    An unknown period stays unknown; identical periods are preserved; differing
+    periods (for example a full tax year and a limited date range) are downgraded
+    to unknown so the merged record never claims broader temporal coverage than
+    the sources establish.
+    """
+    if any(p == "unknown" for p in periods):
+        return "unknown"
+    distinct = set(periods)
+    if len(distinct) == 1:
+        return next(iter(distinct))
+    return "unknown"
+
+
 def _merge_partner_evidence(
     manual: PartnerEvidence, linked: PartnerEvidence
 ) -> tuple[PartnerEvidence, bool]:
@@ -222,9 +410,9 @@ def _merge_partner_evidence(
 
     Neither source has precedence.  The two are merged into a range spanning both
     (or a point when they agree exactly); ``conflict`` is True only when the two
-    sources are disjoint (a material disagreement), and the merged evidence never
-    fabricates a fresh observation time — it carries the older source's
-    observation time and an uncertain recency state.
+    sources are disjoint (a material disagreement).  Temporal uncertainty is
+    preserved: an unknown observation time or relationship period survives the
+    merge rather than being replaced by a precise date or the full tax year.
     """
     mlow, mhigh = _evidence_bounds(manual)
     llow, lhigh = _evidence_bounds(linked)
@@ -232,14 +420,17 @@ def _merge_partner_evidence(
     low = min(mlow, llow)
     high = max(mhigh, lhigh)
     tax_year = manual.tax_year
-    observed_at = min(manual.observed_at, linked.observed_at)
+    observed_at = _conservative_observed_at(manual.observed_at, linked.observed_at)
+    effective_period = _conservative_effective_period(
+        tax_year, manual.effective_period, linked.effective_period
+    )
     common = dict(
         evidence_id=f"merged_{manual.evidence_id[:8]}_{linked.evidence_id[:8]}",
         source_kind=_MERGED_SOURCE_KIND,
         source_reference=f"merged:{manual.evidence_id}:{linked.evidence_id}",
         subject_reference="partner",
         tax_year=tax_year,
-        effective_period=tax_year,
+        effective_period=effective_period,
         observed_at=observed_at,
         confirmed_at=None,
         completeness="partial",
@@ -258,22 +449,36 @@ def build_responsibility(user_id: int, tax_year: str) -> dict:
 
     Combines the user's manual partner estimate (if any) with linked partner
     evidence (if any) without giving either source precedence.  Returns
-    ``{"result": HicbcResponsibilityResult, "view": dict, "user_ani": Decimal}``.
+    ``{"result": HicbcResponsibilityResult, "view": dict, "user_ani": Decimal | None}``.
+    ``user_ani`` is ``None`` when the customer's own ANI is not established for
+    the requested tax year (the result then fails closed as insufficient facts).
     """
-    profile = get_profile_by_user(user_id) or {}
-    user_ani = _user_ani_from_profile(profile)
+    raw_profile = get_profile_by_user(user_id)
+    user_ani = _customer_ani_from_row(raw_profile, tax_year)
     row = get_hicbc_estimate(user_id, tax_year)
 
     has_partner = None
     manual_evidence = None
+    relationship_full_year = None
     if row is not None:
-        has_partner = row.get("has_relevant_partner")
-        if has_partner == 1:
+        has_partner = _normalise_has_relevant_partner(row.get("has_relevant_partner"))
+        if row.get("partner_status_period_semantics") == "status_answer_full_year":
+            relationship_full_year = _normalise_full_year_tri(
+                row.get("relationship_covers_full_year")
+            )
+        if has_partner is True:
             manual_evidence = _partner_evidence_from_row(row)
 
     linked_evidence = _linked_partner_evidence(user_id, tax_year)
     if linked_evidence is not None:
         has_partner = True  # an active, mutually consented link affirms a partner
+
+    # The period answer qualifies the preceding partner-status answer.  Only a
+    # versioned full-year confirmation can establish that either "yes" or "no"
+    # held throughout the charge period.  Changed, unknown and legacy ambiguous
+    # rows fail closed rather than manufacturing full-year partner facts.
+    if has_partner is False and relationship_full_year != 1:
+        has_partner = None
 
     partner_evidence = None
     additional_evidence: tuple[PartnerEvidence, ...] = ()
@@ -285,12 +490,14 @@ def build_responsibility(user_id: int, tax_year: str) -> dict:
     elif linked_evidence is not None:
         partner_evidence = linked_evidence
 
-    child_benefit_amount = _child_benefit_amount_from_row(row, tax_year)
+    claimant = _claimant_from_row(row)
+    child_benefit_amount = _child_benefit_amount_from_row(row, tax_year, claimant)
 
     result = determine_hicbc_responsibility(
         user_ani=user_ani,
         child_benefit_amount=child_benefit_amount,
         has_relevant_partner=has_partner,
+        claimant=claimant,
         partner_evidence=partner_evidence,
         additional_evidence=additional_evidence,
         tax_year=tax_year,
@@ -338,7 +545,15 @@ def save_estimate():
 
     # ── Server-side validation (fail closed, no raw values logged) ───────────
     errors = []
-    receives_cb = _tri(request.form.get("receives_child_benefit"))
+    claimant = _normalise_claimant(request.form.get("child_benefit_claimant"))
+    if claimant is None:
+        # Legacy fallback for forms that still submit receives_child_benefit.
+        receives_cb = _tri(request.form.get("receives_child_benefit"))
+        if receives_cb == 1:
+            claimant = CLAIMANT_PERSON
+        elif receives_cb == 0:
+            claimant = "none"
+
     children_raw = (request.form.get("child_benefit_children") or "0").strip()
     try:
         children = int(children_raw)
@@ -355,6 +570,24 @@ def save_estimate():
             annual_override = _decimal(annual_raw, "child_benefit_annual", allow_zero=False)
         except ValueError as exc:
             errors.append(str(exc))
+
+    weeks = None
+    weeks_raw = (request.form.get("child_benefit_weeks_entitled") or "").strip()
+    if weeks_raw:
+        try:
+            weeks = int(weeks_raw)
+            if not 0 <= weeks <= 53:
+                raise ValueError
+        except (ValueError, TypeError):
+            weeks = None
+            errors.append("Child Benefit entitlement weeks must be a whole number from 0 to 53.")
+
+    period_raw = (request.form.get("relationship_covers_full_year") or "").strip()
+    if period_raw not in ("", "yes", "no"):
+        relationship_full_year = None
+        errors.append("Choose whether your partner answer was true for the whole tax year.")
+    else:
+        relationship_full_year = _normalise_full_year_tri(period_raw)
 
     has_partner = _tri(request.form.get("has_relevant_partner"))
     representation = (request.form.get("representation") or "").strip()
@@ -393,12 +626,22 @@ def save_estimate():
 
     old_result = build_responsibility(g.user_id, tax_year)["result"]
 
+    legacy_receives = None
+    if claimant == CLAIMANT_PERSON:
+        legacy_receives = 1
+    elif claimant in ("none", CLAIMANT_PARTNER):
+        legacy_receives = 0
+
     save_hicbc_estimate(g.user_id, {
         "tax_year": tax_year,
-        "receives_child_benefit": receives_cb,
+        "receives_child_benefit": legacy_receives,
+        "child_benefit_claimant": claimant,
         "child_benefit_children": children or 0,
         "child_benefit_annual": str(annual_override) if annual_override is not None else None,
+        "child_benefit_weeks_entitled": weeks,
         "has_relevant_partner": has_partner,
+        "relationship_covers_full_year": relationship_full_year,
+        "partner_status_period_semantics": "status_answer_full_year",
         "representation": representation,
         "partner_ani_point": str(partner_point) if partner_point is not None else None,
         "partner_ani_low": str(partner_low) if partner_low is not None else None,

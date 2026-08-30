@@ -224,7 +224,7 @@ def test_only_selected_recognition_produces_canonical_tax_input():
     with pytest.raises(CanonicalQuarantineError, match="without a selected recognition decision"):
         build_canonical_tax_input(input_id="i1", purpose="income", scope="self-assessment",
                                   document=d, recognition_decision=unable,
-                                  tax_year="2026-27", policy_version="v1")
+                                  tax_year="2026-27", policy_version="v1", business_base_currency="GBP")
 
 
 def test_valid_recognition_produces_canonical_tax_input():
@@ -237,7 +237,7 @@ def test_valid_recognition_produces_canonical_tax_input():
     )
     tax_input = build_canonical_tax_input(input_id="i1", purpose="income", scope="self-assessment",
                                           document=d, recognition_decision=decision,
-                                          tax_year="2026-27", policy_version="v1")
+                                          tax_year="2026-27", policy_version="v1", business_base_currency="GBP")
     assert tax_input.recognised_amount == Decimal("50.00")
     assert tax_input.recognised_date == date(2026, 8, 10)
 
@@ -252,7 +252,7 @@ def test_canonical_tax_input_rejects_cross_event_decision():
     with pytest.raises(CanonicalQuarantineError, match="different economic event"):
         build_canonical_tax_input(input_id="i1", purpose="income", scope="self-assessment",
                                   document=other, recognition_decision=decision,
-                                  tax_year="2026-27", policy_version="v1")
+                                  tax_year="2026-27", policy_version="v1", business_base_currency="GBP")
 
 
 # ── Allocation / settlement invariants ────────────────────────────────────────
@@ -768,7 +768,7 @@ def test_forged_recognition_amount_fails_closed():
     )
     with pytest.raises(CanonicalQuarantineError, match="recognised amount does not match"):
         build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=d,
-                                  recognition_decision=forged, tax_year="2026-27", policy_version="v1")
+                                  recognition_decision=forged, tax_year="2026-27", policy_version="v1", business_base_currency="GBP")
 
 
 def test_forged_supporting_evidence_fails_closed():
@@ -783,7 +783,7 @@ def test_forged_supporting_evidence_fails_closed():
     )
     with pytest.raises(CanonicalQuarantineError, match="supporting observation IDs do not match"):
         build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=d,
-                                  recognition_decision=forged, tax_year="2026-27", policy_version="v1")
+                                  recognition_decision=forged, tax_year="2026-27", policy_version="v1", business_base_currency="GBP")
 
 
 def test_tax_year_must_match_recognised_date():
@@ -792,7 +792,7 @@ def test_tax_year_must_match_recognised_date():
                                           effective_from=date(2026, 4, 6), policy_version="v1")
     with pytest.raises(CanonicalQuarantineError, match="tax year does not match"):
         build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=d,
-                                  recognition_decision=decision, tax_year="2099/00", policy_version="v1")
+                                  recognition_decision=decision, tax_year="2099/00", policy_version="v1", business_base_currency="GBP")
 
 
 @pytest.mark.parametrize("tax_year", ["garbage", "2026", "26/27", "2026/28"])
@@ -802,7 +802,7 @@ def test_malformed_tax_year_fails_closed(tax_year):
                                           effective_from=date(2026, 4, 6), policy_version="v1")
     with pytest.raises(CanonicalQuarantineError, match="tax year does not match"):
         build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=d,
-                                  recognition_decision=decision, tax_year=tax_year, policy_version="v1")
+                                  recognition_decision=decision, tax_year=tax_year, policy_version="v1", business_base_currency="GBP")
 
 
 def test_recognition_decision_reused_for_other_document_fails_closed():
@@ -812,7 +812,7 @@ def test_recognition_decision_reused_for_other_document_fails_closed():
     other = doc(provider_document_id="doc-2", provider_event_id="event-2")
     with pytest.raises(CanonicalQuarantineError, match="different economic event"):
         build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=other,
-                                  recognition_decision=decision, tax_year="2026-27", policy_version="v1")
+                                  recognition_decision=decision, tax_year="2026-27", policy_version="v1", business_base_currency="GBP")
 
 
 def test_positive_bill_is_not_classified_as_turnover_by_sign():
@@ -823,7 +823,7 @@ def test_positive_bill_is_not_classified_as_turnover_by_sign():
                                  RETRIEVED_AT, "business expense")
     tax_input = build_canonical_tax_input(input_id="i1", purpose="expense", scope="sa", document=d,
                                           recognition_decision=decision, tax_year="2026-27",
-                                          policy_version="v1", allowability=allow)
+                                          policy_version="v1", business_base_currency="GBP", allowability=allow)
     assert tax_input.classification == "expense"
 
 
@@ -833,7 +833,7 @@ def test_expense_without_allowability_fails_closed():
                                           effective_from=date(2026, 4, 6), policy_version="v1")
     with pytest.raises(CanonicalQuarantineError, match="requires an allowability decision"):
         build_canonical_tax_input(input_id="i1", purpose="expense", scope="sa", document=d,
-                                  recognition_decision=decision, tax_year="2026-27", policy_version="v1")
+                                  recognition_decision=decision, tax_year="2026-27", policy_version="v1", business_base_currency="GBP")
 
 
 def test_expense_with_unresolved_allowability_fails_closed():
@@ -845,7 +845,7 @@ def test_expense_with_unresolved_allowability_fails_closed():
     with pytest.raises(CanonicalQuarantineError, match="allowability is unresolved"):
         build_canonical_tax_input(input_id="i1", purpose="expense", scope="sa", document=d,
                                   recognition_decision=decision, tax_year="2026-27",
-                                  policy_version="v1", allowability=unresolved)
+                                  policy_version="v1", business_base_currency="GBP", allowability=unresolved)
 
 
 def test_valid_accrual_recognition_still_works():
@@ -854,7 +854,7 @@ def test_valid_accrual_recognition_still_works():
                                           method=AccountingMethod.TRADITIONAL_ACCRUAL,
                                           effective_from=date(2026, 4, 6), policy_version="v1")
     tax_input = build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=d,
-                                          recognition_decision=decision, tax_year="2026-27", policy_version="v1")
+                                          recognition_decision=decision, tax_year="2026-27", policy_version="v1", business_base_currency="GBP")
     assert tax_input.recognised_amount == Decimal("120.00")
     assert tax_input.classification == "turnover"
 
@@ -864,7 +864,7 @@ def test_valid_cash_recognition_still_works():
     decision = build_recognition_decision(decision_id="decision-1", document=d, method=AccountingMethod.CASH,
                                           effective_from=date(2026, 4, 6), policy_version="v1")
     tax_input = build_canonical_tax_input(input_id="i1", purpose="income", scope="sa", document=d,
-                                          recognition_decision=decision, tax_year="2026-27", policy_version="v1")
+                                          recognition_decision=decision, tax_year="2026-27", policy_version="v1", business_base_currency="GBP")
     assert tax_input.recognised_amount == Decimal("50.00")
     assert tax_input.classification == "turnover"
 

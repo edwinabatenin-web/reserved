@@ -26,8 +26,28 @@ Authority
 - HMRC PAYE Manual PAYE14015.
 
 The charge applies to the person in the household with the higher adjusted net
-income.  Where the two are equal there is no statutory "higher" person; this
-module fails safe as ambiguous rather than inventing a tie-break.
+income.  Where the two are equal, ITEPA 2003 s.681B places the charge on the
+Child Benefit claimant:
+
+- condition A (s.681B(2)) is met for the claimant P when there is no partner
+  whose adjusted net income *exceeds* P's — so equal incomes leave the claimant
+  liable;
+- condition B (s.681B(3)) is met for the non-claimant P only when P's adjusted
+  net income *exceeds* the claimant's — so equal incomes leave the claimant
+  (not the non-claimant) liable.
+
+The claimant identity is therefore an explicit, validated responsibility input.
+An unknown claimant (with a positive Child Benefit entitlement) fails closed as
+insufficient facts rather than inventing a tie-break.
+
+Single-claimant model
+---------------------
+This pass models a *single* Child Benefit claimant per household (person,
+partner, or none).  It does not support the two partners separately claiming
+Child Benefit for different children; there is no input channel for a second
+claimant, and the engine never reduces two claims to one invented claimant.
+Such a case is explicitly unsupported and must be rejected (fail closed) rather
+than silently assigned a single claimant.
 """
 
 from __future__ import annotations
@@ -62,6 +82,15 @@ RESPONSIBILITY_PARTNER_LIABLE = "partner_liable"
 RESPONSIBILITY_AMBIGUOUS = "ambiguous"
 RESPONSIBILITY_INSUFFICIENT_FACTS = "insufficient_facts"
 
+# ── Child Benefit claimant identity (explicit responsibility input) ──────────
+# The claimant is the person entitled to the Child Benefit that HICBC charges
+# against.  Condition A (s.681B(2)) applies when the user is the claimant;
+# condition B (s.681B(3)) applies when the partner is the claimant.
+CLAIMANT_PERSON = "person"
+CLAIMANT_PARTNER = "partner"
+
+_CLAIMANT_VALUES = frozenset({CLAIMANT_PERSON, CLAIMANT_PARTNER})
+
 _RESPONSIBILITY_VALUES = frozenset({
     RESPONSIBILITY_NO_CHARGE,
     RESPONSIBILITY_PERSON_LIABLE,
@@ -89,6 +118,14 @@ RECENCY_UNKNOWN = "unknown"
 
 _UNCERTAIN_RECENCY_STATES = frozenset({RECENCY_UNCONFIRMED, RECENCY_STALE, RECENCY_UNKNOWN})
 
+UNKNOWN = "unknown"
+
+# Marker for a manual point/range assertion that represents the whole partner ANI
+# directly (no component decomposition).  Such an assertion is still a complete,
+# adequate-for-purpose record, distinct from an empty component set that means
+# "no ANI components are represented".
+ANI_COMPONENT_WHOLE = "whole_ani_assertion"
+
 # Uses that remain prohibited until the applicable gate is independently passed.
 # ``v1_customer_tax_total`` and ``reserve_or_set_aside_guidance`` are
 # *conditional* rather than categorically prohibited: the purpose gate in
@@ -103,6 +140,30 @@ _PROHIBITED_USES = (
 _PERMITTED_USES = (
     "hicbc_responsibility_estimate",
 )
+
+
+# ── Evidence-state vocabularies (fail closed on unknown values) ────────────────
+
+_RECOGNIZED_CONSENT_STATES = frozenset({"consented", "revoked", "not_required"})
+_RECOGNIZED_RECENCY_STATES = frozenset({
+    RECENCY_CURRENT, RECENCY_UNCONFIRMED, RECENCY_STALE, RECENCY_UNKNOWN,
+})
+_RECOGNIZED_COMPLETENESS = frozenset({
+    EvidenceCompleteness.COMPLETE_FOR_PURPOSE.value,
+    EvidenceCompleteness.PARTIAL.value,
+    EvidenceCompleteness.UNKNOWN.value,
+    EvidenceCompleteness.NOT_APPLICABLE.value,
+})
+
+# The single recognised complete ANI component coverage for an assured producer.
+_COMPLETE_ANI_COMPONENTS = frozenset({
+    "employment", "sole_trade", "savings", "dividends",
+    "property", "foreign", "gift_aid", "pension_adjustments",
+})
+
+# A manual point/range assertion may declare the whole ANI directly; any other
+# marker must belong to the complete component set above.
+_VALID_ANI_COMPONENT_MARKERS = _COMPLETE_ANI_COMPONENTS | {ANI_COMPONENT_WHOLE}
 
 
 def _amount(value, name: str) -> Decimal:
@@ -167,6 +228,17 @@ class PartnerEvidence:
             if value is not None:
                 if not value.is_finite() or value < ZERO:
                     raise ValueError(f"Partner evidence {label} must be finite and non-negative")
+        if self.consent_state not in _RECOGNIZED_CONSENT_STATES:
+            raise ValueError(f"Unsupported partner consent state: {self.consent_state!r}")
+        if self.recency_state not in _RECOGNIZED_RECENCY_STATES:
+            raise ValueError(f"Unsupported partner recency state: {self.recency_state!r}")
+        if self.completeness not in _RECOGNIZED_COMPLETENESS:
+            raise ValueError(f"Unsupported partner completeness: {self.completeness!r}")
+        unknown_components = set(self.ani_components) - _VALID_ANI_COMPONENT_MARKERS
+        if unknown_components:
+            raise ValueError(
+                f"Unknown partner ANI component marker(s): {sorted(unknown_components)!r}"
+            )
 
     @property
     def is_range(self) -> bool:
@@ -179,11 +251,13 @@ class PartnerEvidence:
 
     @property
     def has_material_uncertainty(self) -> bool:
-        return (
-            self.completeness == EvidenceCompleteness.PARTIAL.value
-            or self.recency_state in _UNCERTAIN_RECENCY_STATES
-            or self.conflict
-        )
+        """True when the evidence facts do not support a determinate result.
+
+        This is derived from the evidence facts (relationship period, provenance,
+        ANI-component coverage, completeness, recency and conflict), not from
+        caller-supplied completeness/recency strings alone.
+        """
+        return not _is_adequate_for_determinate(self)
 
 
 @dataclass(frozen=True)
@@ -201,7 +275,8 @@ class HicbcResponsibilityResult:
     ruleset_version: str
     calculation_status: str
     responsibility_status: str
-    user_ani: Decimal
+    user_ani: Decimal | None
+    claimant: str | None
     child_benefit_amount: Decimal | None
     child_benefit_facts_complete: bool
     has_relevant_partner: bool | None
@@ -254,6 +329,47 @@ def _compare_to_user(user_ani: Decimal, evidence: PartnerEvidence) -> str:
     if low > user_ani:
         return "partner_higher"
     return "overlap"
+
+
+def _is_complete_component_coverage(components: tuple[str, ...]) -> bool:
+    """True when ``components`` declares a complete, recognised ANI coverage.
+
+    Either the manual whole-ANI assertion or the explicit full component set is
+    accepted.  An empty or partial component set is never complete, even though
+    every individual marker may be recognised.
+    """
+    if components == (ANI_COMPONENT_WHOLE,):
+        return True
+    return set(components) == _COMPLETE_ANI_COMPONENTS
+
+
+def _is_adequate_for_determinate(evidence: PartnerEvidence) -> bool:
+    """Return True only when the evidence facts support a determinate result.
+
+    A determinate HICBC responsibility requires a genuine, complete-for-purpose,
+    current, conflict-free record with full-tax-year relationship coverage, a
+    real observation time, source-appropriate consent and declared complete ANI
+    component coverage.  Caller-supplied ``complete``/``current`` strings alone
+    are insufficient: the adequacy of the underlying facts is what decides
+    determinacy.
+    """
+    if evidence.conflict:
+        return False
+    if evidence.completeness != EvidenceCompleteness.COMPLETE_FOR_PURPOSE.value:
+        return False
+    if evidence.recency_state != RECENCY_CURRENT:
+        return False
+    if evidence.effective_period != evidence.tax_year:
+        return False
+    if evidence.observed_at == UNKNOWN:
+        return False
+    if evidence.consent_state == "revoked":
+        return False
+    if evidence.consent_state == "not_required" and evidence.source_kind == SOURCE_LINKED_PARTNER:
+        return False
+    if not _is_complete_component_coverage(evidence.ani_components):
+        return False
+    return True
 
 
 def _material_uncertainty_reason(evidence: PartnerEvidence) -> UncertaintyReason:
@@ -335,15 +451,18 @@ def _base_limitations() -> tuple[str, ...]:
     return (
         "hicbc_is_october_v1_and_conditionally_included_pending_evidence_and_assurance",
         "partner_responsibility_requires_partner_evidence_or_explicit_absence",
-        "equal_or_overlapping_ani_is_not_tie_broken",
+        "equal_ani_responsibility_follows_the_child_benefit_claimant",
+        "overlapping_ani_range_remains_uncertain",
+        "single_child_benefit_claimant_model_dual_claims_not_supported",
     )
 
 
 def determine_hicbc_responsibility(
     *,
-    user_ani,
-    child_benefit_amount,
+    user_ani: Decimal | None,
+    child_benefit_amount: Decimal | None,
     has_relevant_partner: bool | None,
+    claimant: str | None = None,
     partner_evidence: PartnerEvidence | None = None,
     additional_evidence: tuple[PartnerEvidence, ...] = (),
     tax_year: str = "2026/27",
@@ -351,10 +470,20 @@ def determine_hicbc_responsibility(
 ) -> HicbcResponsibilityResult:
     """Determine the user's projected HICBC responsibility.
 
-    ``child_benefit_amount`` is ``None`` when Child Benefit facts are unknown
-    (which must never be treated as zero), otherwise a non-negative annual
-    amount.  ``has_relevant_partner`` is ``None`` when the user has not stated
-    whether they have a partner for HICBC purposes.
+    ``user_ani`` is ``None`` when the customer's own adjusted net income for the
+    requested tax year is not established (which must never be treated as zero),
+    otherwise a non-negative amount.  ``child_benefit_amount`` is the relevant
+    Child Benefit amount for the household — the amount the claimant is entitled
+    to — ``None`` when unknown (never zero), otherwise non-negative; zero means
+    affirmatively no household entitlement.
+
+    ``claimant`` identifies who is entitled to that Child Benefit:
+    ``CLAIMANT_PERSON`` (the user) or ``CLAIMANT_PARTNER`` (the partner).  It is
+    required whenever there is a positive entitlement; ``None`` (unknown) fails
+    closed as insufficient facts.
+
+    ``has_relevant_partner`` is ``None`` when the user has not stated whether
+    they have a partner for HICBC purposes.
 
     ``partner_evidence`` is the effective evidence used for the comparison.
     ``additional_evidence`` lists further provenance records (for example the
@@ -363,8 +492,11 @@ def determine_hicbc_responsibility(
     unconditional precedence.
     """
     cfg = get_config(tax_year)
-    ani = _amount(user_ani, "user_ani")
+    ani = None if user_ani is None else _amount(user_ani, "user_ani")
     benefit = None if child_benefit_amount is None else _amount(child_benefit_amount, "child_benefit_amount")
+
+    if claimant is not None and claimant not in _CLAIMANT_VALUES:
+        raise ValueError(f"Unknown claimant identity: {claimant!r}")
 
     limitations = list(_base_limitations())
     uncertainties: list[EstimateUncertainty] = []
@@ -392,7 +524,8 @@ def determine_hicbc_responsibility(
             ruleset_version=cfg["rules_version"],
             calculation_status=calculation_status,
             responsibility_status=responsibility,
-            user_ani=ani.quantize(PENNY),
+            user_ani=ani.quantize(PENNY) if ani is not None else None,
+            claimant=claimant,
             child_benefit_amount=benefit.quantize(PENNY) if benefit is not None else None,
             child_benefit_facts_complete=benefit is not None,
             has_relevant_partner=has_relevant_partner,
@@ -407,6 +540,21 @@ def determine_hicbc_responsibility(
             limitations=tuple(limitations),
             permitted_uses=_PERMITTED_USES,
             prohibited_uses=_PROHIBITED_USES,
+        )
+
+    # ── 0. Customer's own ANI unknown → insufficient (never zero). ───────────
+    if ani is None:
+        uncertainties.append(_uncertainty(
+            "hicbc_user_ani_unknown",
+            UncertaintyReason.MISSING,
+            "user_ani",
+            "The customer's own adjusted net income for the requested tax year is not established.",
+            EstimateEffect(kind=EffectKind.NOT_DETERMINABLE),
+            customer_action="Confirm your income details for this tax year to estimate this charge.",
+        ))
+        return _finish(
+            responsibility=RESPONSIBILITY_INSUFFICIENT_FACTS,
+            calculation_status=CalculationStatus.INSUFFICIENT_FACTS.value,
         )
 
     # ── 1. Child Benefit facts unknown → insufficient (never zero). ──────────
@@ -433,6 +581,42 @@ def determine_hicbc_responsibility(
             percentage=0,
             low=ZERO,
             high=ZERO,
+        )
+
+    # ── 2b. Resolve the claimant when the absence of a partner is unambiguous. ──
+    if claimant is None and has_relevant_partner is False:
+        claimant = CLAIMANT_PERSON  # no partner => the user is necessarily the claimant
+
+    # ── 2c. A partner claimant requires a relevant partner. ─────────────────────
+    if claimant == CLAIMANT_PARTNER and has_relevant_partner is not True:
+        uncertainties.append(_uncertainty(
+            "hicbc_child_benefit_claimant_contradicts_partner_facts",
+            UncertaintyReason.CONFLICTING,
+            "child_benefit_claimant",
+            "The partner is recorded as the Child Benefit claimant but no relevant "
+            "partner is declared.",
+            EstimateEffect(kind=EffectKind.NOT_DETERMINABLE),
+            customer_action="Confirm who receives Child Benefit and whether you have a partner.",
+        ))
+        return _finish(
+            responsibility=RESPONSIBILITY_INSUFFICIENT_FACTS,
+            calculation_status=CalculationStatus.INSUFFICIENT_FACTS.value,
+        )
+
+    # ── 2d. With a relevant partner, the claimant must be known. ────────────────
+    if claimant is None and has_relevant_partner is True:
+        uncertainties.append(_uncertainty(
+            "hicbc_child_benefit_claimant_unknown",
+            UncertaintyReason.MISSING,
+            "child_benefit_claimant",
+            "There is a Child Benefit entitlement but it is not known whether the "
+            "user or the partner is the claimant.",
+            EstimateEffect(kind=EffectKind.NOT_DETERMINABLE),
+            customer_action="Confirm who receives Child Benefit to estimate this charge.",
+        ))
+        return _finish(
+            responsibility=RESPONSIBILITY_INSUFFICIENT_FACTS,
+            calculation_status=CalculationStatus.INSUFFICIENT_FACTS.value,
         )
 
     threshold = cfg["HICBC"]["lower_threshold"]
@@ -532,15 +716,22 @@ def determine_hicbc_responsibility(
                 _material_uncertainty_reason(partner_evidence),
                 "partner_evidence",
                 "Partner income evidence is incomplete or not current; the current indication is that the user is the higher-income person.",
-                EstimateEffect(kind=EffectKind.NOT_DETERMINABLE),
+                EstimateEffect(kind=EffectKind.RANGE, low=ZERO, high=full_charge),
                 customer_action="Update or confirm the partner estimate to improve this result.",
             ))
+            # No point estimate may be manufactured for materially uncertain
+            # evidence: the possible charge is bounded [0, full charge].
+            return _finish(
+                responsibility=RESPONSIBILITY_PERSON_LIABLE,
+                calculation_status=CalculationStatus.CALCULATED_WITH_MATERIAL_UNCERTAINTY.value,
+                projected=None,
+                percentage=None,
+                low=ZERO,
+                high=full_charge,
+            )
         return _finish(
             responsibility=RESPONSIBILITY_PERSON_LIABLE,
-            calculation_status=(
-                CalculationStatus.CALCULATED_WITH_MATERIAL_UNCERTAINTY.value
-                if material_uncertainty else CalculationStatus.CALCULATED.value
-            ),
+            calculation_status=CalculationStatus.CALCULATED.value,
             projected=full_charge,
             percentage=full_percentage,
             low=full_charge,
@@ -555,38 +746,100 @@ def determine_hicbc_responsibility(
                 _material_uncertainty_reason(partner_evidence),
                 "partner_evidence",
                 "Partner income evidence is incomplete or not current; the current indication is that the partner is the higher-income person.",
-                EstimateEffect(kind=EffectKind.NOT_DETERMINABLE),
+                EstimateEffect(kind=EffectKind.RANGE, low=ZERO, high=full_charge),
                 customer_action="Update or confirm the partner estimate to improve this result.",
             ))
+            # No £0–£0 point may be manufactured: the possible charge is bounded
+            # [0, full charge] because the partner might not actually be higher.
+            return _finish(
+                responsibility=RESPONSIBILITY_PARTNER_LIABLE,
+                calculation_status=CalculationStatus.CALCULATED_WITH_MATERIAL_UNCERTAINTY.value,
+                projected=None,
+                low=ZERO,
+                high=full_charge,
+            )
         return _finish(
             responsibility=RESPONSIBILITY_PARTNER_LIABLE,
-            calculation_status=(
-                CalculationStatus.CALCULATED_WITH_MATERIAL_UNCERTAINTY.value
-                if material_uncertainty else CalculationStatus.CALCULATED.value
-            ),
+            calculation_status=CalculationStatus.CALCULATED.value,
             projected=ZERO,
             low=ZERO,
             high=ZERO,
         )
 
-    # comparison in {"equal", "overlap"} → ambiguous; bound the possible charge.
+    if comparison == "equal":
+        # ITEPA 2003 s.681B: with equal ANIs the charge follows the Child Benefit
+        # claimant.  Condition A (s.681B(2)) is met for the claimant when no
+        # partner's ANI exceeds the claimant's; condition B (s.681B(3)) requires
+        # the non-claimant's ANI to exceed the claimant's.
+        if claimant == CLAIMANT_PERSON:
+            if material_uncertainty:
+                uncertainties.append(_uncertainty(
+                    "hicbc_partner_evidence_uncertain",
+                    _material_uncertainty_reason(partner_evidence),
+                    "partner_evidence",
+                    "The partner income evidence is incomplete or not current; the "
+                    "equal-income indication therefore remains uncertain.",
+                    EstimateEffect(kind=EffectKind.RANGE, low=ZERO, high=full_charge),
+                    customer_action="Update or confirm the partner estimate to improve this result.",
+                ))
+                return _finish(
+                    responsibility=RESPONSIBILITY_PERSON_LIABLE,
+                    calculation_status=CalculationStatus.CALCULATED_WITH_MATERIAL_UNCERTAINTY.value,
+                    projected=None,
+                    percentage=None,
+                    low=ZERO,
+                    high=full_charge,
+                )
+            return _finish(
+                responsibility=RESPONSIBILITY_PERSON_LIABLE,
+                calculation_status=CalculationStatus.CALCULATED.value,
+                projected=full_charge,
+                percentage=full_percentage,
+                low=full_charge,
+                high=full_charge,
+            )
+
+        # claimant == CLAIMANT_PARTNER
+        limitations.append("hicbc_liability_belongs_to_child_benefit_claimant")
+        if material_uncertainty:
+            uncertainties.append(_uncertainty(
+                "hicbc_partner_evidence_uncertain",
+                _material_uncertainty_reason(partner_evidence),
+                "partner_evidence",
+                "The partner income evidence is incomplete or not current; the "
+                "equal-income indication therefore remains uncertain.",
+                EstimateEffect(kind=EffectKind.RANGE, low=ZERO, high=full_charge),
+                customer_action="Update or confirm the partner estimate to improve this result.",
+            ))
+            return _finish(
+                responsibility=RESPONSIBILITY_PARTNER_LIABLE,
+                calculation_status=CalculationStatus.CALCULATED_WITH_MATERIAL_UNCERTAINTY.value,
+                projected=None,
+                low=ZERO,
+                high=full_charge,
+            )
+        return _finish(
+            responsibility=RESPONSIBILITY_PARTNER_LIABLE,
+            calculation_status=CalculationStatus.CALCULATED.value,
+            projected=ZERO,
+            low=ZERO,
+            high=ZERO,
+        )
+
+    # comparison == "overlap" → ambiguous; bound the possible charge.
     reason = (
         UncertaintyReason.CONFLICTING
-        if comparison == "equal" or partner_evidence.conflict
+        if partner_evidence.conflict
         else UncertaintyReason.REPRESENTATION_UNCLEAR
-    )
-    explanation = (
-        "The user and partner adjusted net incomes are equal; there is no statutory higher-income person, so responsibility is not determined."
-        if comparison == "equal" else
-        "The partner income range overlaps the user's adjusted net income; responsibility could move between partners."
     )
     uncertainties.append(_uncertainty(
         "hicbc_responsibility_ambiguous",
         reason,
         "partner_evidence",
-        explanation,
+        "The partner income range overlaps the user's adjusted net income; "
+        "responsibility could move between partners.",
         EstimateEffect(kind=EffectKind.RANGE, low=ZERO, high=full_charge),
-        customer_action="Update or confirm the partner estimate to resolve the overlap or equality.",
+        customer_action="Update or confirm the partner estimate to resolve the overlap.",
     ))
     return _finish(
         responsibility=RESPONSIBILITY_AMBIGUOUS,
@@ -622,17 +875,20 @@ def annual_child_benefit_amount(
 ) -> Decimal | None:
     """Derive the annual Child Benefit amount from child counts + year rates.
 
-    Returns ``None`` when no children are recorded and no override is supplied
-    (unknown, not zero).  ``annual_override`` is an explicit annual total that,
-    when supplied, is used verbatim.
+    Returns ``None`` when no children are recorded, when entitlement weeks are
+    omitted, or when no override is supplied (unknown, not zero).  Omitted weeks
+    must never silently become a full-year amount.  ``annual_override`` is an
+    explicit annual total that, when supplied, is used verbatim.
     """
     cfg = get_config(tax_year)
     if annual_override is not None:
         return _amount(annual_override, "annual_override")
     if children is None or children <= 0:
         return None
+    if weeks_entitled is None:
+        return None  # omitted entitlement weeks remain unknown
     weekly = cfg["CHILD_BENEFIT"]
-    weeks = weekly["weeks_per_year"] if weeks_entitled is None else Decimal(str(weeks_entitled))
+    weeks = Decimal(str(weeks_entitled))
     if weeks < ZERO or weeks > Decimal("53"):
         raise ValueError("weeks_entitled must be between 0 and 53")
     eldest = weekly["eldest_weekly"]
@@ -679,18 +935,35 @@ _CUSTOMER_HEADLINES = {
         "High Income Child Benefit Charge may apply to you."
     ),
     RESPONSIBILITY_PARTNER_LIABLE: (
-        "Based on the information currently available, Reserved estimates that this "
-        "charge may apply to your partner rather than to you."
+        "Based on the information currently available, Reserved has not included a "
+        "High Income Child Benefit Charge in your estimate."
     ),
     RESPONSIBILITY_AMBIGUOUS: (
         "Responsibility for the High Income Child Benefit Charge cannot currently be "
-        "determined because the available income information is equal or overlapping."
+        "determined because the available income information is overlapping."
     ),
     RESPONSIBILITY_INSUFFICIENT_FACTS: (
         "Reserved needs more information to estimate whether the High Income Child "
         "Benefit Charge applies to you."
     ),
 }
+
+
+def _partner_provenance_message(result: HicbcResponsibilityResult) -> str | None:
+    """Return source-specific partner provenance, never falsely "you supplied".
+
+    Manual estimates are user-supplied; linked evidence is shared through a
+    linked account and must not be described as user-supplied.  A merged or
+    otherwise combined source is described neutrally.
+    """
+    evidence = result.partner_evidence
+    if evidence is None:
+        return None
+    if evidence.source_kind == SOURCE_MANUAL_PARTNER_ESTIMATE:
+        return "This estimate uses partner information you supplied."
+    if evidence.source_kind == SOURCE_LINKED_PARTNER:
+        return "This estimate uses information shared through a linked account."
+    return "This estimate uses partner information from your records and a linked account."
 
 
 def customer_view(result: HicbcResponsibilityResult) -> dict:
@@ -702,8 +975,9 @@ def customer_view(result: HicbcResponsibilityResult) -> dict:
     user's own projected charge or bounded possible charge.
     """
     messages = []
-    if result.partner_evidence is not None:
-        messages.append("This estimate uses partner information you supplied.")
+    provenance = _partner_provenance_message(result)
+    if provenance is not None:
+        messages.append(provenance)
     if result.household_change_status in {HOUSEHOLD_CHANGED, HOUSEHOLD_MOVED_TO_PARTNER, HOUSEHOLD_MOVED_TO_PERSON}:
         messages.append("Your household tax position has changed.")
     for uncertainty in result.uncertainties:

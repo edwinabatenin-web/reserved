@@ -6,7 +6,7 @@
   "territory": "England, Wales and Northern Ireland",
   "derived_by": "Codex builder stream",
   "derived_on": "2026-08-13",
-  "review": {"reviewer": "Codex independent second-person review stream", "reviewed_on": "2026-08-13", "decision": "approved", "notes": "All 53 fixtures independently reviewed against cited official sources for applicability, arithmetic, rounding, semantics and deliberate limitations. HICBC fixtures were re-derived after identifying an incomplete prior interpretation of staged section 681C(3) rounding; RW3-HICBC-004 and RW3-HICBC-012 were corrected from 1392 to 1391. See docs/RW3_V1_PREIMPLEMENTATION_FORMAL_REVIEW.md."},
+  "review": {"reviewer": "Codex independent second-person review stream", "reviewed_on": "2026-08-13", "decision": "approved", "notes": "All 53 fixtures independently reviewed against cited official sources for applicability, arithmetic, rounding, semantics and deliberate limitations. HICBC fixtures were re-derived after identifying an incomplete prior interpretation of staged section 681C(3) rounding; RW3-HICBC-004 and RW3-HICBC-012 were corrected from 1392 to 1391. See docs/RW3_V1_PREIMPLEMENTATION_FORMAL_REVIEW.md. Following the bounded evidence-adequacy re-review, HICBC inputs now state an explicit responsibility fact (taxpayer_is_higher_ani_partner) and, for explicit annual amounts, full-period confirmation (payments_received_for_full_charge_period), so claimant identity alone is no longer treated as establishing a personal charge and omitted weeks or an unconfirmed annual amount are not silently treated as full-year amounts."},
   "rounding": "Monetary liabilities fixed to pounds and pence except HICBC, for which the relevant total Child Benefit amount, percentage and calculated charge are each rounded down at their statutory stage under ITEPA 2003 s681C(3). Dividend literals avoid fractional-penny ambiguity. No periodic PAYE or student-loan rounding is inferred from these fixtures.",
   "sources": [
     {"title": "Income Tax rates and allowances", "url": "https://www.gov.uk/government/publications/rates-and-allowances-income-tax/income-tax-rates-and-allowances-current-and-past", "supports": "Taxable bands, starting rate for savings, dividend allowance and rates"},
@@ -153,91 +153,91 @@
     },
     {
       "id": "RW3-HICBC-001", "family": "hicbc_liability", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 0, "weeks_entitled": 52},
+      "inputs": {"adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 0, "weeks_entitled": 52, "taxpayer_is_higher_ani_partner": true},
       "expected": {"annual_child_benefit": "1406.60", "hicbc": "703.00"},
       "derivation": ["27.05 weekly for 52 weeks is 1406.60", "ANI is halfway through the 60000 to 80000 charge range", "50% of benefit is 703.30 and the statutory charge is rounded down to 703 whole pounds"]
     },
     {
       "id": "RW3-HICBC-002", "family": "hicbc_liability", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "60199", "annual_child_benefit": "1406.60"},
+      "inputs": {"adjusted_net_income": "60199", "annual_child_benefit": "1406.60", "taxpayer_is_higher_ani_partner": true, "payments_received_for_full_charge_period": true},
       "expected": {"charge_percentage": "0", "hicbc": "0.00"},
       "derivation": ["199 divided by 200 is not a whole percentage", "Section 681C(3) rounds the percentage down to zero"]
     },
     {
       "id": "RW3-HICBC-003", "family": "hicbc_liability", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "60200", "annual_child_benefit": "1406.60"},
+      "inputs": {"adjusted_net_income": "60200", "annual_child_benefit": "1406.60", "taxpayer_is_higher_ani_partner": true, "payments_received_for_full_charge_period": true},
       "expected": {"charge_percentage": "1", "hicbc": "14.00"},
       "derivation": ["200 over the threshold produces 1%", "1% of 1406.60 is 14.066 and the statutory charge is rounded down to 14 whole pounds"]
     },
     {
       "id": "RW3-HICBC-004", "family": "hicbc_liability", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "79999", "annual_child_benefit": "1406.60"},
+      "inputs": {"adjusted_net_income": "79999", "annual_child_benefit": "1406.60", "taxpayer_is_higher_ani_partner": true, "payments_received_for_full_charge_period": true},
       "expected": {"charge_percentage": "99", "hicbc": "1391.00"},
       "derivation": ["19999 divided by 200 is 99.995 and the percentage is rounded down to 99", "The relevant total benefit 1406.60 is first rounded down to 1406", "99% of 1406 is 1391.94 and the calculated charge is rounded down to 1391 whole pounds"]
     },
     {
       "id": "RW3-HICBC-005", "family": "hicbc_liability", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "80000", "annual_child_benefit": "1406.60"},
+      "inputs": {"adjusted_net_income": "80000", "annual_child_benefit": "1406.60", "taxpayer_is_higher_ani_partner": true, "payments_received_for_full_charge_period": true},
       "expected": {"charge_percentage": "100", "hicbc": "1406.00"},
       "derivation": ["20000 divided by 200 produces the capped 100%", "The non-whole benefit charge is rounded down to 1406 whole pounds"]
     },
     {
       "id": "RW3-HICBC-006", "family": "hicbc_liability", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 1, "weeks_entitled": 52},
+      "inputs": {"adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 1, "weeks_entitled": 52, "taxpayer_is_higher_ani_partner": true},
       "expected": {"annual_child_benefit": "2337.40", "charge_percentage": "50", "hicbc": "1168.00"},
       "derivation": ["27.05 plus 17.90 is 44.95 a week", "44.95 for 52 weeks is 2337.40", "50% is 1168.70 and the charge rounds down to 1168 whole pounds"]
     },
     {
       "id": "RW3-HICBC-007", "family": "hicbc_liability", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 0, "weeks_entitled": 26},
+      "inputs": {"adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 0, "weeks_entitled": 26, "taxpayer_is_higher_ani_partner": true},
       "expected": {"child_benefit_for_entitled_weeks": "703.30", "charge_percentage": "50", "hicbc": "351.00"},
       "derivation": ["27.05 for 26 entitled weeks is 703.30", "50% is 351.65 and the charge rounds down to 351 whole pounds"]
     },
     {
       "id": "RW3-HICBC-008", "family": "hicbc_pension_ani", "status": "independent_validation",
-      "inputs": {"income_before_ras_pension": "70000", "gross_ras_pension": "10000", "annual_child_benefit": "1406.60"},
+      "inputs": {"income_before_ras_pension": "70000", "gross_ras_pension": "10000", "annual_child_benefit": "1406.60", "taxpayer_is_higher_ani_partner": true, "payments_received_for_full_charge_period": true},
       "expected": {"adjusted_net_income": "60000.00", "charge_percentage": "0", "hicbc": "0.00"},
       "derivation": ["Gross relief-at-source pension contributions reduce adjusted net income", "70000 less 10000 is the 60000 threshold, at which no charge applies"]
     },
     {
       "id": "RW3-HICBC-009", "family": "hicbc_lower_boundary", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "59999", "annual_child_benefit": "1406.60"},
+      "inputs": {"adjusted_net_income": "59999", "annual_child_benefit": "1406.60", "taxpayer_is_higher_ani_partner": true, "payments_received_for_full_charge_period": true},
       "expected": {"charge_percentage": "0", "hicbc": "0.00"},
       "derivation": ["Adjusted net income is below the 60000 threshold"]
     },
     {
       "id": "RW3-HICBC-010", "family": "hicbc_lower_boundary", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "60000", "annual_child_benefit": "1406.60"},
+      "inputs": {"adjusted_net_income": "60000", "annual_child_benefit": "1406.60", "taxpayer_is_higher_ani_partner": true, "payments_received_for_full_charge_period": true},
       "expected": {"charge_percentage": "0", "hicbc": "0.00"},
       "derivation": ["The charge begins only when adjusted net income is over 60000"]
     },
     {
       "id": "RW3-HICBC-011", "family": "hicbc_lower_boundary", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "60001", "annual_child_benefit": "1406.60"},
+      "inputs": {"adjusted_net_income": "60001", "annual_child_benefit": "1406.60", "taxpayer_is_higher_ani_partner": true, "payments_received_for_full_charge_period": true},
       "expected": {"charge_percentage": "0", "hicbc": "0.00"},
       "derivation": ["One pound over the threshold is less than one complete 200 step", "The statutory percentage rounds down to zero"]
     },
     {
       "id": "RW3-HICBC-012", "family": "hicbc_upper_boundary", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "79800", "annual_child_benefit": "1406.60"},
+      "inputs": {"adjusted_net_income": "79800", "annual_child_benefit": "1406.60", "taxpayer_is_higher_ani_partner": true, "payments_received_for_full_charge_period": true},
       "expected": {"charge_percentage": "99", "hicbc": "1391.00"},
       "derivation": ["19800 over the lower threshold is 99 complete 200 steps", "The relevant total benefit 1406.60 is first rounded down to 1406", "99% of 1406 is 1391.94 and the calculated charge rounds down to 1391"]
     },
     {
       "id": "RW3-HICBC-013", "family": "hicbc_upper_boundary", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "80001", "annual_child_benefit": "1406.60"},
+      "inputs": {"adjusted_net_income": "80001", "annual_child_benefit": "1406.60", "taxpayer_is_higher_ani_partner": true, "payments_received_for_full_charge_period": true},
       "expected": {"charge_percentage": "100", "hicbc": "1406.00"},
       "derivation": ["The charge is capped at 100% from 80000", "The final charge rounds down to 1406 whole pounds"]
     },
     {
       "id": "RW3-HICBC-014", "family": "hicbc_partner_responsibility", "status": "independent_validation",
-      "inputs": {"person_adjusted_net_income": "70000", "partner_adjusted_net_income": "75000", "annual_child_benefit_received_by_person": "1406.60"},
+      "inputs": {"person_adjusted_net_income": "70000", "partner_adjusted_net_income": "75000", "annual_child_benefit_received_by_person": "1406.60", "payments_received_for_full_charge_period": true},
       "expected": {"liable_person": "partner", "person_hicbc": "0.00", "household_charge_percentage": "75", "household_hicbc": "1054.00"},
       "derivation": ["Where both partners exceed the threshold, the partner with the higher adjusted net income is liable", "75000 is 15000 over the threshold, giving 75%", "75% of 1406.60 is 1054.95 and the charge rounds down to 1054"]
     },
     {
       "id": "RW3-HICBC-015", "family": "hicbc_payment_opt_out", "status": "independent_validation",
-      "inputs": {"adjusted_net_income": "75000", "child_benefit_entitlement_retained": true, "child_benefit_payments_received": "0"},
+      "inputs": {"adjusted_net_income": "75000", "child_benefit_entitlement_retained": true, "child_benefit_payments_received": "0", "taxpayer_is_higher_ani_partner": true},
       "expected": {"hicbc": "0.00", "calculation_status": "no_child_benefit_payments_to_charge"},
       "derivation": ["The claimant has opted not to receive Child Benefit payments", "No charge is due on payments that were not received, while entitlement may be retained"]
     },

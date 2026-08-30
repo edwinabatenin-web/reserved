@@ -90,9 +90,12 @@ decision:
 - a linked partner's precise ANI, income band, bonus, relative salary or
   calculated personal tax must never be disclosed or implied to the first user;
 - unknown partner or Child Benefit facts must not be treated as zero;
-- where the two partners have equal ANI there is no statutory "higher-income"
-  person, so responsibility must fail safe as ambiguous rather than inventing a
-  tie-break.
+- where the two partners have equal ANI, ITEPA 2003 s.681B places the charge on
+  the Child Benefit claimant: condition A (s.681B(2)) is met for the claimant
+  when no partner has a higher ANI, and condition B (s.681B(3)) requires the
+  non-claimant's ANI to exceed the claimant's.  The claimant identity must
+  therefore be recorded; an unknown claimant fails safe as insufficient facts
+  rather than inventing a tie-break.
 
 The manual partner estimate is third-party personal data. It requires
 authenticated owner scoping on every read and write, no cross-user access,
@@ -598,3 +601,98 @@ calculation, reserve recommendation, payment safety, privacy or security;
 conceals missing mandatory assurance coverage; or allows an artefact to pass
 without executing the complete required release gate. A green test suite alone
 is not evidence of launch readiness.
+
+## Resolved: Self Assessment Payments on Account coverage (20 August 2026)
+
+Reserved must account for Payments on Account when explaining and helping fund
+the forthcoming Self Assessment cash requirements of supported sole-trader and
+other Self Assessment users. An annual tax-liability estimate alone is not a
+complete reserve or payment-timing proposition where a balancing payment and a
+first payment on account may fall due together on 31 January and a second
+payment on account may fall due on 31 July.
+
+The capability must remain distinct from the underlying annual tax calculation
+and must:
+
+- determine whether Payments on Account apply using the rules and tax year
+  relevant to the customer, including the applicable fixed-amount and
+  tax-deducted-at-source tests;
+- calculate the relevant amount and instalments from appropriate prior-year
+  Self Assessment evidence, without treating a current-year forecast as an
+  HMRC-issued amount;
+- distinguish the balancing payment, first and second payments on account,
+  payments already made, HMRC-recorded charges or credits, and any remaining
+  estimated funding requirement;
+- preserve the applicable tax year, due date, source, effective date,
+  retrieval date, completeness and uncertainty of each amount;
+- exclude amounts that do not enter the statutory Payments on Account basis and
+  avoid double counting liabilities or deductions;
+- support a clearly qualified local estimate or manual fallback when a complete
+  HMRC account position is unavailable, while never presenting that estimate as
+  a confirmed HMRC bill;
+- handle claims to reduce Payments on Account as a separate customer/HMRC act,
+  explain that under-reduction may lead to interest, and never recommend a
+  reduction from inadequate evidence; and
+- fail safely when prior-year liability, tax deducted at source, payment
+  history or account evidence is missing, stale, conflicting or incomplete.
+
+This is a required workstream before Reserved can claim that its supported
+sole-trader/Self Assessment reserve guidance and payment schedule cover the
+customer's forthcoming Self Assessment cash requirements. It does not expand
+v1 into Self Assessment filing, HMRC account alteration, autonomous payment or
+professional tax advice. Implementation, independently derived fixtures,
+purpose-specific uncertainty handling, HMRC/manual evidence reconciliation and
+customer testing remain outstanding.
+
+## Resolved: October geography (30 August 2026)
+
+The October scope is England, Wales and Northern Ireland only. Scottish Income
+Tax and the wider Scottish position remain outside the October calculation,
+reserve recommendation and launch claims, consistent with the scope decisions
+of 12 and 15 August 2026. The Republic of Ireland/Ireland and other non-UK
+jurisdictions are outside v1 and are deferred to a later workstream; they must
+not be treated as supported October geography merely because foreign property,
+foreign income or SEPA-ready payment rails are modelled, or because
+Ireland-related code or fixtures are present in the repository.
+
+## Resolved: Blind Person's Allowance is in October scope (30 August 2026)
+
+Blind Person's Allowance is included in the October scope. For ordinary
+supported cases, Reserved may rely on the user's factual confirmation of:
+
+- whether they are entitled to Blind Person's Allowance for the relevant tax
+  year; and
+- whether any Blind Person's Allowance has been transferred to them from, or
+  transferred by them to, a spouse or civil partner, including the relevant
+  amount where applicable.
+
+Reserved should then apply the correct tax-year allowance to the user's annual
+tax position.
+
+Reserved does not determine or advise on the user's underlying medical or
+registration eligibility for Blind Person's Allowance. Where the user cannot
+provide the information needed to establish their usable allowance, or the
+evidence is materially contradictory, Reserved should treat the position as
+incomplete and fail closed rather than assume zero or full entitlement.
+
+## Resolved: Simplified Tax Health Check status (30 August 2026)
+
+The Simplified Tax Health Check is an existing bounded public/demo tool and is
+not an outstanding October scope decision.
+
+Its current purpose is to provide an indicative tax/reserve view and highlight
+relevant MTD applicability using simplified rules. It must remain clearly
+distinguished from the Reserved production tax engine and must not introduce
+independent production tax logic.
+
+The current bounded tool may remain in use for launch-related demonstrations
+and customer/partner engagement.
+
+Any future enhancement—such as deeper integration with the production
+annual/cash-position contracts, additional tax components, or
+comparative/percentile features—is a later product-improvement decision and is
+not required to establish the October production scope unless separately
+approved.
+
+Do not reopen whether the Tax Health Check should exist as part of the October
+scope reconciliation.

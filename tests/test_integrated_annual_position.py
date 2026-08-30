@@ -92,7 +92,12 @@ def test_residential_finance_costs_are_recorded_as_an_unsupported_limitation():
     [("60199", "0.00"), ("60200", "14.00"), ("79999", "1391.00"), ("80000", "1406.00")],
 )
 def test_hicbc_uses_complete_200_steps_and_whole_pound_charge(ani, expected):
-    result = calculate_annual_position({"adjusted_net_income": ani, "annual_child_benefit": "1406.60"})
+    result = calculate_annual_position({
+        "adjusted_net_income": ani,
+        "annual_child_benefit": "1406.60",
+        "taxpayer_is_higher_ani_partner": True,
+        "payments_received_for_full_charge_period": True,
+    })
     assert result.hicbc == Decimal(expected)
 
 
@@ -102,6 +107,7 @@ def test_hicbc_calculates_only_with_sufficient_payment_and_responsibility_facts(
             "person_adjusted_net_income": "70000",
             "partner_adjusted_net_income": "75000",
             "annual_child_benefit_received_by_person": "1406.60",
+            "payments_received_for_full_charge_period": True,
         }
     )
     assert household.hicbc == Decimal("0")
@@ -118,7 +124,13 @@ def test_hicbc_calculates_only_with_sufficient_payment_and_responsibility_facts(
 
 def test_hicbc_ani_can_be_derived_from_explicit_pre_pension_income():
     result = calculate_annual_position(
-        {"income_before_ras_pension": "70000", "gross_ras_pension": "10000", "annual_child_benefit": "1406.60"}
+        {
+            "income_before_ras_pension": "70000",
+            "gross_ras_pension": "10000",
+            "annual_child_benefit": "1406.60",
+            "taxpayer_is_higher_ani_partner": True,
+            "payments_received_for_full_charge_period": True,
+        }
     )
     assert result.hicbc_charge_percentage == 0
     assert result.hicbc == Decimal("0.00")
@@ -167,14 +179,14 @@ def test_remaining_approved_annual_income_literals(case_id, facts, expected):
 @pytest.mark.parametrize(
     "case_id,facts,benefit,percentage,charge",
     [
-        ("RW3-HICBC-001", {"adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 0, "weeks_entitled": 52}, "1406.60", 50, "703.00"),
-        ("RW3-HICBC-006", {"adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 1, "weeks_entitled": 52}, "2337.40", 50, "1168.00"),
-        ("RW3-HICBC-007", {"adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 0, "weeks_entitled": 26}, "703.30", 50, "351.00"),
-        ("RW3-HICBC-009", {"adjusted_net_income": "59999", "annual_child_benefit": "1406.60"}, "1406.60", 0, "0.00"),
-        ("RW3-HICBC-010", {"adjusted_net_income": "60000", "annual_child_benefit": "1406.60"}, "1406.60", 0, "0.00"),
-        ("RW3-HICBC-011", {"adjusted_net_income": "60001", "annual_child_benefit": "1406.60"}, "1406.60", 0, "0.00"),
-        ("RW3-HICBC-012", {"adjusted_net_income": "79800", "annual_child_benefit": "1406.60"}, "1406.60", 99, "1391.00"),
-        ("RW3-HICBC-013", {"adjusted_net_income": "80001", "annual_child_benefit": "1406.60"}, "1406.60", 100, "1406.00"),
+        ("RW3-HICBC-001", {"taxpayer_is_higher_ani_partner": True, "adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 0, "weeks_entitled": 52}, "1406.60", 50, "703.00"),
+        ("RW3-HICBC-006", {"taxpayer_is_higher_ani_partner": True, "adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 1, "weeks_entitled": 52}, "2337.40", 50, "1168.00"),
+        ("RW3-HICBC-007", {"taxpayer_is_higher_ani_partner": True, "adjusted_net_income": "70000", "eldest_or_only_children": 1, "additional_children": 0, "weeks_entitled": 26}, "703.30", 50, "351.00"),
+        ("RW3-HICBC-009", {"taxpayer_is_higher_ani_partner": True, "adjusted_net_income": "59999", "annual_child_benefit": "1406.60", "payments_received_for_full_charge_period": True}, "1406.60", 0, "0.00"),
+        ("RW3-HICBC-010", {"taxpayer_is_higher_ani_partner": True, "adjusted_net_income": "60000", "annual_child_benefit": "1406.60", "payments_received_for_full_charge_period": True}, "1406.60", 0, "0.00"),
+        ("RW3-HICBC-011", {"taxpayer_is_higher_ani_partner": True, "adjusted_net_income": "60001", "annual_child_benefit": "1406.60", "payments_received_for_full_charge_period": True}, "1406.60", 0, "0.00"),
+        ("RW3-HICBC-012", {"taxpayer_is_higher_ani_partner": True, "adjusted_net_income": "79800", "annual_child_benefit": "1406.60", "payments_received_for_full_charge_period": True}, "1406.60", 99, "1391.00"),
+        ("RW3-HICBC-013", {"taxpayer_is_higher_ani_partner": True, "adjusted_net_income": "80001", "annual_child_benefit": "1406.60", "payments_received_for_full_charge_period": True}, "1406.60", 100, "1406.00"),
         ("RW3-HICBC-016", {"adjusted_net_income": "80200", "annual_child_benefit": "1406.60", "taxpayer_is_higher_ani_partner": True, "payments_received_for_full_charge_period": True}, "1406.60", 100, "1406.00"),
     ],
 )
@@ -187,13 +199,19 @@ def test_remaining_approved_hicbc_literals(case_id, facts, benefit, percentage, 
 
 def test_approved_hicbc_pension_and_payment_opt_out_literals():
     pension = calculate_annual_position(
-        {"income_before_ras_pension": "70000", "gross_ras_pension": "10000", "annual_child_benefit": "1406.60"}
+        {
+            "income_before_ras_pension": "70000",
+            "gross_ras_pension": "10000",
+            "annual_child_benefit": "1406.60",
+            "taxpayer_is_higher_ani_partner": True,
+            "payments_received_for_full_charge_period": True,
+        }
     )
     assert pension.adjusted_net_income == Decimal("60000.00")
     assert pension.hicbc == Decimal("0.00")
 
     opted_out = calculate_annual_position(
-        {"adjusted_net_income": "75000", "child_benefit_entitlement_retained": True, "child_benefit_payments_received": "0"}
+        {"adjusted_net_income": "75000", "child_benefit_entitlement_retained": True, "child_benefit_payments_received": "0", "has_relevant_partner": False}
     )
     assert opted_out.hicbc == Decimal("0.00")
     assert "no_child_benefit_payments_to_charge" in opted_out.limitations
@@ -252,6 +270,7 @@ def test_hicbc_ambiguous_responsibility_withholds_total_and_charge():
         "adjusted_net_income": "70000",
         "annual_child_benefit": "1406.60",
         "taxpayer_is_higher_ani_partner": False,
+        "payments_received_for_full_charge_period": True,
     })
     assert result.hicbc is None
     assert result.total_liability is None

@@ -23,7 +23,7 @@ Updated 13 August 2026. The order below is mandatory for tax-engine work.
 | 16 | Security and privacy | In progress as a non-overlapping parallel stream |
 | 17 | Accessibility and UX | In progress as a non-overlapping parallel stream |
 | 18 | API specification and technical documentation | In progress as a non-overlapping parallel stream |
-| 19 | Full regression and sandbox verification | 995-test local suite green; target-environment and sandbox journeys externally blocked/outstanding |
+| 19 | Full regression and sandbox verification | Local suite green at record time (historical 995-test count, now superseded); target-environment and sandbox journeys externally blocked/outstanding |
 | 20 | Final launch gate and handover | Ongoing records; final decision outstanding |
 
 Historical readiness-gate reasoning is recorded in `docs/CLAUDE_AUDIT_GATE.md`.

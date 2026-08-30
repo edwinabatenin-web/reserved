@@ -177,6 +177,19 @@ def _as_enum(enum_cls, value):
         return None
 
 
+def _normalise_currency_code(value):
+    """Return a well-formed 3-letter uppercase currency code, else ``None``.
+
+    Used for the independently established business base currency: the gate
+    must never infer base currency from a document, so a missing or malformed
+    value fails closed.
+    """
+    text = (value or "").strip()
+    if len(text) == 3 and text.isascii() and text.isalpha() and text.isupper():
+        return text
+    return None
+
+
 def _cash_candidate(raw_record, observation):
     raw_on = _as_date(raw_record.get("provider_cash_on"))
     raw_amt = _as_amount(raw_record.get("provider_cash_amt"))
@@ -807,6 +820,7 @@ def build_canonical_tax_input(
     allowability: AllowabilityDecision | None = None,
     ownership_adjustment: Decimal | None = None,
     policy_version: str,
+    business_base_currency: str | None = None,
 ) -> CanonicalAccountingTaxInput:
     """Produce the only approved synthetic accounting-to-tax input.
 
@@ -816,6 +830,12 @@ def build_canonical_tax_input(
     cross-business/cross-event decisions. Classification is derived from the
     document type, never from the amount sign, and expense documents require a
     decided allowability decision.
+
+    ``business_base_currency`` is the independently established, validated
+    business base currency (for example ``AccountingBusiness.currency``). The
+    gate compares the document currency against it rather than inferring base
+    currency from the document itself, so a foreign-currency document with no
+    validated conversion evidence fails closed.
     """
     if recognition_decision.outcome not in (
         RecognitionDecisionOutcome.CASH,
@@ -850,8 +870,18 @@ def build_canonical_tax_input(
         raise CanonicalQuarantineError("unsupported document type for canonical tax input")
     if document.economic_direction is EconomicDirection.UNKNOWN:
         raise CanonicalQuarantineError("unknown economic direction blocks income/expense interpretation")
+    base_currency = _normalise_currency_code(business_base_currency)
+    if base_currency is None:
+        raise CanonicalQuarantineError("business base currency is not established")
     if document.observed_fx is not None and document.fx is None:
         raise CanonicalQuarantineError("foreign-currency record lacks a validated conversion")
+    if document.fx is not None:
+        if document.fx.base_currency != base_currency:
+            raise CanonicalQuarantineError("validated conversion base currency does not match the business base currency")
+        if document.fx.original_currency != document.currency:
+            raise CanonicalQuarantineError("validated conversion original currency does not match the document currency")
+    elif document.currency != base_currency:
+        raise CanonicalQuarantineError("foreign-currency document lacks a validated conversion")
     if document.document_type is DocumentType.BILL:
         if allowability is None:
             raise CanonicalQuarantineError("expense document requires an allowability decision")
@@ -869,7 +899,7 @@ def build_canonical_tax_input(
         recognised_date=recognition_decision.recognised_date,
         classification=classification,
         currency=document.currency,
-        base_currency=document.fx.base_currency if document.fx else document.currency,
+        base_currency=base_currency,
         evidence_observation_ids=recognition_decision.supporting_observation_ids,
         recognition_decision_id=recognition_decision.decision_id,
         allowability_decision_id=allowability.decision_id if allowability else None,

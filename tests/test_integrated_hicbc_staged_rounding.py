@@ -24,6 +24,8 @@ def test_relevant_benefit_is_floored_before_percentage_and_final_charge(
     result = calculate_annual_position({
         "adjusted_net_income": ani,
         "annual_child_benefit": benefit,
+        "taxpayer_is_higher_ani_partner": True,
+        "payments_received_for_full_charge_period": True,
     })
     assert result.hicbc_charge_percentage == percentage
     assert result.hicbc == Decimal(charge)

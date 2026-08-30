@@ -55,6 +55,7 @@ def _user(clerk_id: str, income: float) -> int:
         "income_estimate": income,
         "pension_contribution": 0.0,
         "display_name": clerk_id,
+        "tax_year": TAX_YEAR,
     })
     return uid
 
@@ -183,7 +184,7 @@ def test_manual_and_linked_conflict_yields_range_not_silent_selection(app):
     db.save_hicbc_estimate(a, {
         "tax_year": TAX_YEAR,
         "receives_child_benefit": 1,
-        "child_benefit_children": 1,
+        "child_benefit_children": 1, "child_benefit_weeks_entitled": 52,
         "has_relevant_partner": 1,
         "representation": "point",
         "partner_ani_point": "50000",
@@ -216,7 +217,7 @@ def test_linked_only_evidence_is_used_when_no_manual_estimate(app):
     db.save_hicbc_estimate(a, {
         "tax_year": TAX_YEAR,
         "receives_child_benefit": 1,
-        "child_benefit_children": 1,
+        "child_benefit_children": 1, "child_benefit_weeks_entitled": 52,
     })
 
     built = build_responsibility(a, TAX_YEAR)
@@ -235,7 +236,7 @@ def test_revoked_link_removes_linked_evidence(app):
     db.save_hicbc_estimate(a, {
         "tax_year": TAX_YEAR,
         "receives_child_benefit": 1,
-        "child_benefit_children": 1,
+        "child_benefit_children": 1, "child_benefit_weeks_entitled": 52,
         "has_relevant_partner": 1,
         "representation": "point",
         "partner_ani_point": "50000",
@@ -266,3 +267,15 @@ def test_deletion_hooks_remove_hicbc_rows(tmp_db):
     assert removed >= 2  # link + invitation(s)
     assert db.get_active_hicbc_link(a, TAX_YEAR) is None
     assert db.get_active_hicbc_link(b, TAX_YEAR) is None
+
+
+# ── Linked journey containment (inert until the full mutual-consent journey) ──
+
+def test_no_web_route_records_link_consent():
+    # The linked-account HICBC journey must remain inert: mutual consent requires
+    # each participant to affirmatively record a consent notice, but no customer
+    # web route currently records one.  This keeps linked evidence fail-closed
+    # (``_linked_partner_evidence`` returns None without mutual consent) rather
+    # than silently activating linked responsibility.
+    src = (ROOT / "reserved" / "web" / "hicbc.py").read_text(encoding="utf-8")
+    assert "record_hicbc_link_consent" not in src

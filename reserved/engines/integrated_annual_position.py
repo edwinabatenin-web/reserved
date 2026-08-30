@@ -147,18 +147,64 @@ def _class_4(profit: Decimal, cfg: dict) -> Decimal:
     return _money(main * rules["main_rate"] + upper * rules["upper_rate"])
 
 
+def _tri_bool(value: Any, name: str) -> bool | None:
+    """Parse a tri-state boolean fact (True/False/None), failing closed on malformed."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return value == 1
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("1", "true", "yes", "y"):
+            return True
+        if text in ("0", "false", "no", "n"):
+            return False
+    raise ValueError(f"{name} must be a boolean (true/false) or null")
+
+
+def _weeks(value: Any) -> int:
+    """Parse a whole-number entitlement-weeks fact in the inclusive range 0..53."""
+    if isinstance(value, bool):
+        raise ValueError("weeks_entitled must be a whole number, not boolean")
+    text = str(value).strip()
+    if "." in text:
+        raise ValueError("weeks_entitled must be a whole number from 0 to 53")
+    try:
+        weeks = int(text)
+    except (ValueError, TypeError):
+        raise ValueError("weeks_entitled must be a whole number from 0 to 53") from None
+    if not 0 <= weeks <= 53:
+        raise ValueError("weeks_entitled must be between 0 and 53")
+    return weeks
+
+
 def _child_benefit(facts: dict, cfg: dict) -> tuple[Decimal | None, str | None]:
+    # ``child_benefit_payments_received`` records the actual payments received for
+    # the charge period (zero when the claimant opted not to receive payments);
+    # its amount is already period-bound and needs no separate weeks derivation.
     if "child_benefit_payments_received" in facts:
         return _decimal(facts["child_benefit_payments_received"], "child_benefit_payments_received"), None
     for key in ("annual_child_benefit", "annual_child_benefit_received_by_person"):
         if key in facts:
+            # An explicit annual amount may be used without deriving weeks only
+            # when the supplied facts establish it is the relevant amount for the
+            # whole charge period; a theoretical full-year award must not be
+            # relabelled as actual relevant payments.
+            if facts.get("payments_received_for_full_charge_period") is not True:
+                return None, "hicbc_facts_incomplete"
             return _decimal(facts[key], key), None
     if "eldest_or_only_children" in facts or "additional_children" in facts:
         eldest = int(facts.get("eldest_or_only_children", 0))
         additional = int(facts.get("additional_children", 0))
-        weeks = int(facts.get("weeks_entitled", 52))
-        if eldest not in (0, 1) or additional < 0 or not 0 <= weeks <= 53:
-            raise ValueError("Child Benefit child counts or entitled weeks are invalid")
+        if eldest not in (0, 1) or additional < 0:
+            raise ValueError("Child Benefit child counts are invalid")
+        if "weeks_entitled" not in facts:
+            # Omitted entitlement weeks remain unknown; they must never silently
+            # become a 52-week full-year amount.
+            return None, "hicbc_facts_incomplete"
+        weeks = _weeks(facts["weeks_entitled"])
         weekly = eldest * cfg["CHILD_BENEFIT"]["eldest_weekly"] + additional * cfg["CHILD_BENEFIT"]["additional_weekly"]
         return _money(weekly * weeks), None
     if facts.get("child_benefit_applicable") is True:
@@ -352,22 +398,92 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
             )
         person_ani = _decimal(facts.get("person_adjusted_net_income", explicit_ani if explicit_ani is not None else ani), "adjusted_net_income")
         partner_raw = facts.get("partner_adjusted_net_income")
-        responsibility_ambiguous = facts.get("taxpayer_is_higher_ani_partner") is False and partner_raw is None
-        if partner_raw is not None and _decimal(partner_raw, "partner_adjusted_net_income") == person_ani:
-            responsibility_ambiguous = True
-        if responsibility_ambiguous:
+        has_relevant_partner = _tri_bool(facts.get("has_relevant_partner"), "has_relevant_partner")
+        taxpayer_is_higher = _tri_bool(facts.get("taxpayer_is_higher_ani_partner"), "taxpayer_is_higher_ani_partner")
+
+        # Claimant identity breaks an equal-ANI tie only (ITEPA 2003 s.681B); it
+        # never establishes the absence of a higher-ANI partner.
+        claimant_raw = facts.get("child_benefit_claimant")
+        if claimant_raw is not None:
+            claimant = str(claimant_raw).strip().lower()
+            if claimant not in ("person", "partner"):
+                raise ValueError(f"Unknown child_benefit_claimant: {claimant_raw!r}")
+        elif "annual_child_benefit_received_by_person" in facts:
+            claimant = "person"
+        else:
+            claimant = None
+
+        # Reconcile the supplied responsibility facts for consistency.  A partner
+        # ANI or a positive higher-ANI declaration implies a relevant partner; a
+        # contradictory "no partner" fact must not be silently preferred.
+        contradictory = False
+        if partner_raw is not None:
+            if has_relevant_partner is False:
+                contradictory = True
+            else:
+                has_relevant_partner = True
+        if taxpayer_is_higher is True:
+            if has_relevant_partner is False:
+                contradictory = True
+            else:
+                has_relevant_partner = True
+        if claimant == "partner" and has_relevant_partner is False:
+            contradictory = True
+
+        if contradictory:
             unsupported.append("hicbc")
             limitations.append("hicbc_responsibility_facts_ambiguous")
-        elif partner_raw is not None and _decimal(partner_raw, "partner_adjusted_net_income") > person_ani:
+        elif partner_raw is not None:
             partner_ani = _decimal(partner_raw, "partner_adjusted_net_income")
-            hicbc_percentage, household_hicbc = _hicbc(partner_ani, benefit, cfg)
-            liable_person = "partner"
-            limitations.append("hicbc_liability_belongs_to_higher_ani_partner")
-            hicbc = ZERO
-        else:
+            if taxpayer_is_higher is True and partner_ani > person_ani:
+                # Declares the user is the higher-ANI partner, but the supplied
+                # partner ANI is higher: contradictory responsibility facts.
+                unsupported.append("hicbc")
+                limitations.append("hicbc_responsibility_facts_ambiguous")
+            elif taxpayer_is_higher is False and partner_ani < person_ani:
+                # Declares the user is not the higher-ANI partner, but the
+                # supplied partner ANI is lower: contradictory responsibility facts.
+                unsupported.append("hicbc")
+                limitations.append("hicbc_responsibility_facts_ambiguous")
+            elif partner_ani > person_ani:
+                hicbc_percentage, household_hicbc = _hicbc(partner_ani, benefit, cfg)
+                liable_person = "partner"
+                limitations.append("hicbc_liability_belongs_to_higher_ani_partner")
+                hicbc = ZERO
+            elif partner_ani < person_ani:
+                hicbc_percentage, hicbc = _hicbc(person_ani, benefit, cfg)
+                household_hicbc = hicbc
+                liable_person = "person"
+            elif claimant == "person":
+                # Equal ANI, person is claimant: condition A (s.681B(2)) is met.
+                hicbc_percentage, hicbc = _hicbc(person_ani, benefit, cfg)
+                household_hicbc = hicbc
+                liable_person = "person"
+            elif claimant == "partner":
+                # Equal ANI, partner is claimant: condition B (s.681B(3)) is not met.
+                hicbc_percentage, household_hicbc = _hicbc(partner_ani, benefit, cfg)
+                liable_person = "partner"
+                limitations.append("hicbc_liability_belongs_to_child_benefit_claimant")
+                hicbc = ZERO
+            else:
+                # Equal ANI and claimant unknown: do not invent a tie-break.
+                unsupported.append("hicbc")
+                limitations.append("hicbc_responsibility_facts_ambiguous")
+        elif has_relevant_partner is False:
+            # Explicit absence of a relevant partner for the charge period.
             hicbc_percentage, hicbc = _hicbc(person_ani, benefit, cfg)
             household_hicbc = hicbc
             liable_person = "person"
+        elif taxpayer_is_higher is True:
+            # Explicit responsibility fact: the user is the higher-ANI partner.
+            hicbc_percentage, hicbc = _hicbc(person_ani, benefit, cfg)
+            household_hicbc = hicbc
+            liable_person = "person"
+        else:
+            # Unknown partner status, a negative higher-ANI signal, or missing
+            # partner ANI: never default to personal liability.
+            unsupported.append("hicbc")
+            limitations.append("hicbc_responsibility_facts_ambiguous")
 
         if (
             benefit == ZERO

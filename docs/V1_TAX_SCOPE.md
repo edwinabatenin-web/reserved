@@ -18,6 +18,7 @@ Status: founder-confirmed 12 August 2026; HICBC scope amended 17 August 2026.
 ## Explicitly outside v1
 
 - Scottish Income Tax (post-v1 Reserved West workstream)
+- the Republic of Ireland/Ireland and all other non-UK jurisdictions
 - Capital Gains Tax
 - submission of full MTD returns
 

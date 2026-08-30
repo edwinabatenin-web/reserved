@@ -4,9 +4,9 @@
 {% block content %}
 <section class="page-heading">
     <div>
-        <p class="eyebrow">Post-v1 preview</p>
+        <p class="eyebrow">Preview</p>
         <h1>High Income Child Benefit Charge</h1>
-        <p>This is a limited post-v1 preview. It is separate from your main tax estimate, your amount to put aside and any payment or filing guidance.</p>
+        <p>This is a limited preview. It is separate from your main tax estimate, your amount to put aside and any payment or filing guidance.</p>
     </div>
 </section>
 
@@ -18,7 +18,11 @@
     {% elif view.possible_charge_low is not none and view.possible_charge_high is not none %}
         <p><strong>Possible charge that may apply to you:</strong> between £{{ view.possible_charge_low }} and £{{ view.possible_charge_high }}.</p>
     {% endif %}
+    {% if user_ani is not none %}
     <p>Your projected adjusted net income: £{{ '%.2f'|format(user_ani) }} (for {{ tax_year }}).</p>
+    {% else %}
+    <p>Your projected adjusted net income is not yet available for {{ tax_year }}.</p>
+    {% endif %}
     {% if household_change %}
         <p class="hicbc-household-change">Your household tax position has changed.</p>
     {% endif %}
@@ -46,15 +50,19 @@
 
         <fieldset>
             <legend>Child Benefit</legend>
-            <label>Do you receive Child Benefit?
-                <select name="receives_child_benefit">
-                    <option value="" {% if not row or row.receives_child_benefit is none %}selected{% endif %}>I'm not sure</option>
-                    <option value="yes" {% if row and row.receives_child_benefit == 1 %}selected{% endif %}>Yes</option>
-                    <option value="no" {% if row and row.receives_child_benefit == 0 %}selected{% endif %}>No</option>
+            <label>Who receives Child Benefit for the household?
+                <select name="child_benefit_claimant">
+                    <option value="" {% if not row or not row.child_benefit_claimant %}selected{% endif %}>I'm not sure</option>
+                    <option value="person" {% if row and row.child_benefit_claimant == 'person' %}selected{% endif %}>You</option>
+                    <option value="partner" {% if row and row.child_benefit_claimant == 'partner' %}selected{% endif %}>Your partner</option>
+                    <option value="none" {% if row and row.child_benefit_claimant == 'none' %}selected{% endif %}>No one</option>
                 </select>
             </label>
-            <label>Number of children you receive Child Benefit for
+            <label>Number of children Child Benefit is received for
                 <input name="child_benefit_children" type="number" min="0" value="{{ row.child_benefit_children if row else 0 }}">
+            </label>
+            <label>Weeks of Child Benefit entitlement in the tax year (leave blank if unsure)
+                <input name="child_benefit_weeks_entitled" type="number" min="0" max="53" value="{{ row.child_benefit_weeks_entitled if row and row.child_benefit_weeks_entitled is not none else '' }}">
             </label>
             <label>Annual Child Benefit total (optional — leave blank to use standard rates)
                 <input name="child_benefit_annual" type="number" min="0" step="0.01" value="{{ row.child_benefit_annual if row else '' }}">
@@ -68,6 +76,13 @@
                     <option value="" {% if not row or row.has_relevant_partner is none %}selected{% endif %}>I'm not sure</option>
                     <option value="yes" {% if row and row.has_relevant_partner == 1 %}selected{% endif %}>Yes</option>
                     <option value="no" {% if row and row.has_relevant_partner == 0 %}selected{% endif %}>No</option>
+                </select>
+            </label>
+            <label>Was your answer about having a partner true for the whole {{ tax_year }} tax year?
+                <select name="relationship_covers_full_year">
+                    <option value="" {% if not row or row.partner_status_period_semantics != 'status_answer_full_year' or row.relationship_covers_full_year is none %}selected{% endif %}>I'm not sure</option>
+                    <option value="yes" {% if row and row.partner_status_period_semantics == 'status_answer_full_year' and row.relationship_covers_full_year == 1 %}selected{% endif %}>Yes, for the whole tax year</option>
+                    <option value="no" {% if row and row.partner_status_period_semantics == 'status_answer_full_year' and row.relationship_covers_full_year == 0 %}selected{% endif %}>No, it changed during the tax year</option>
                 </select>
             </label>
             <label>Partner income estimate type

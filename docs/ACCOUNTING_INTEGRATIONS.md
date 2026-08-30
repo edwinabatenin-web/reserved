@@ -125,7 +125,11 @@ marked where they remain historical/unresolved rather than rewriting history.
 - **C8 incomplete FX**: `FxProvenance` stays strictly complete/consistent;
   `FxObservation` separately preserves only the FX facts actually observed.
   A foreign-currency record without a validated conversion is never treated as
-  native currency and is barred from tax use.
+  native currency and is barred from tax use. The tax-input gate requires an
+  independently established business base currency; it never infers that fact
+  from the document currency. Missing or malformed base-currency evidence, a
+  foreign document with no validated conversion, or a conversion targeting a
+  different base currency fails closed.
 - **C9 identity**: `connected_organisation_id` (authorised connection/grant
   context) and `business_id` (provider business/tenant/realm) are defined
   centrally; cross-connection, cross-business, cross-tenant and cross-resource

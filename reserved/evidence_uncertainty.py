@@ -104,10 +104,11 @@ class EstimateEvidenceItem:
         )
         if not all(required):
             raise ValueError("Evidence identity, scope, dates and selection reason are required")
-        try:
-            datetime.fromisoformat(self.observed_at.replace("Z", "+00:00"))
-        except ValueError:
-            raise ValueError("Evidence observed_at must be ISO-8601") from None
+        if self.observed_at != "unknown":
+            try:
+                datetime.fromisoformat(self.observed_at.replace("Z", "+00:00"))
+            except ValueError:
+                raise ValueError("Evidence observed_at must be ISO-8601 or 'unknown'") from None
 
 
 @dataclass(frozen=True)
