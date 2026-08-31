@@ -1,11 +1,12 @@
 # W1 annual-tax completeness — supporting completion map
 
 Status: supporting cross-workstream map, not authoritative W1 state.
-Evidence cut-off: 31 August 2026.
+Evidence cut-off: 1 September 2026.
 
 This map applies the rolling completion-map rule to the W1 boundary on which
-W2-S6 depends. It was derived read-only from the clean W1 worktree at commit
-`066ed358f9dc231f3c424c7fc01123fce0bdee6b`. It does not edit W1, alter
+W2-S6 depends. It was initially derived read-only from commit `066ed358...` and
+reconciled after the independently reviewed W1-S4 correction at clean W1
+checkpoint `413ee1312ba4ec8cf42912a9411f55b69a0a1d3e`. It does not alter
 Founder Decisions, widen tax scope, reconcile the Founder Control Plane, or
 declare any customer or launch purpose assured.
 
@@ -24,16 +25,16 @@ W1 has exactly five implementation slices:
 | W1-S1 | Integrated annual Income Tax/Class 4/HICBC calculation for the explicitly supported internal scope, with unsupported cases withheld rather than treated as zero | Complete at the current W1 checkpoint for bounded internal use; not customer-purpose assured |
 | W1-S2 | Annual student-loan/PGL reconciliation and typed internal composition with the annual tax result | Complete at the current W1 checkpoint for bounded internal use; the current composition deliberately does not aggregate money |
 | W1-S3 | Fail-closed Blind Person's Allowance integration and compatibility corrections | Complete and independently post-commit verified at `066ed358f9dc231f3c424c7fc01123fce0bdee6b` |
-| W1-S4 | Launch-supported-scope closure: every v1 input combination is either calculated under an independently supported rule or deterministically withheld with an explicit unsupported/uncertain reason | Remaining |
+| W1-S4 | Launch-supported-scope closure: every v1 input combination is either calculated under an independently supported rule or deterministically withheld with an explicit unsupported/uncertain reason | Complete and independently reviewed at `413ee1312ba4ec8cf42912a9411f55b69a0a1d3e`; two material property fail-close gaps were corrected |
 | W1-S5 | Cash-ready annual-position contract: expose the complete supported annual liability components and separately classified student-loan/PGL amount for W2-S6, with purpose, dates, ruleset, evidence and prohibitions preserved | Remaining; serial after W1-S4 |
 
 No W1-S6 implementation slice is currently justified. Customer presentation,
 privacy, provider connectivity and integrated release assurance are terminal
 gates or other workstream responsibilities, not additional W1 product slices.
 
-## Remaining slices
+## Closure record and remaining slice
 
-### W1-S4 — launch-supported-scope closure
+### W1-S4 — launch-supported-scope closure (complete)
 
 Reconcile the current engine against the existing v1 scope without silently
 turning an unsupported tax treatment into zero. In particular:
@@ -51,9 +52,10 @@ require a reviewed launch-supported subset and deterministic exclusion of any
 case that cannot safely produce a complete position. Scottish tax, Capital
 Gains Tax, full MTD filing and non-UK jurisdiction rules remain outside v1.
 
-This slice should be one bounded scope-closure package, not one package per tax
-edge case. Split it only if an independently evidenced rule implementation is
-materially larger than the fail-close/customer-eligibility boundary.
+Independent review found and the focused package corrected two material gaps:
+incomplete joint-property fact pairs and unsupported foreign-property losses.
+The exact two-file correction is independently reviewed and post-checkpoint
+verified at `413ee131...`; no additional tax-rule tranche was created.
 
 ### W1-S5 — cash-ready annual-position contract
 
@@ -80,8 +82,7 @@ responsibilities.
 
 | Item | Dependency | May proceed now? | Collision control |
 |---|---|---|---|
-| W1-S4 evidence/fixture inventory | Existing Founder scope and current W1 contracts | Yes | Read-only inventory first; enumerate exact engine, contract and regression consumers before editing |
-| W1-S4 implementation | Independent rule evidence or an explicit fail-close eligibility boundary | Yes, in a W1-rooted worktree | Do not mix HICBC privacy/customer activation or provider work into the package |
+| W1-S4 evidence, correction and review | Existing Founder scope and current W1 contracts | Complete | Exact two-file correction; HICBC privacy/customer activation remained outside the package |
 | W1-S5 fixtures and field mapping | Current W1 composition plus W2 S6 preparation | Yes | Fixture preparation may run in parallel; do not freeze the adapter before W1-S4 |
 | W1-S5 implementation | Stable W1-S4 supported-family boundary | No, serial after W1-S4 | Add a narrow purpose-specific contract; do not rewrite W2 S1-S5 contracts |
 | HICBC customer activation | Privacy, retention, legal, security and customer-evidence gates | Parallel external gate | HICBC arithmetic may remain in W1; activation belongs to the HICBC/privacy workstreams |
@@ -117,9 +118,9 @@ W1 is complete only when all of the following are true:
 10. A fresh independent post-checkpoint review confirms the supported scope,
     fail-close behaviour and W2-facing contract.
 
-Current bounded position: W1-S1 through W1-S3 are complete as implementation
-slices; W1-S4 and W1-S5 remain. This is 3 of 5 declared implementation slices
-(60%). Terminal-gate progress must be reported separately and must not be
+Current bounded position: W1-S1 through W1-S4 are complete as implementation
+slices; only W1-S5 remains. This is 4 of 5 declared implementation slices
+(80%). Terminal-gate progress must be reported separately and must not be
 inferred from the slice percentage or used as a launch-readiness claim.
 
 ## Out of scope
@@ -131,17 +132,14 @@ sophistication. New support for those areas requires its own authorised scope.
 
 ## Effort and next executable package
 
-- W1-S4: roughly 1–3 active days, depending on whether existing evidence
-  supports bounded rule arithmetic or confirms fail-close eligibility only.
 - W1-S5: roughly 0.5–1.5 active days after W1-S4 stabilises.
 - independent review and compatibility regression: roughly 0.5–1 active day,
   partially parallel with W2-S6 fixture review.
-- likely critical path to W2-S6 entry: roughly 2–5 working days, excluding
+- likely remaining critical path to W2-S6 entry: roughly 1–3 working days, excluding
   external HICBC/privacy/customer-evidence elapsed time.
 
-Next package: in the W1-rooted task, perform a short read-only W1-S4 pre-flight
-that enumerates the exact launch-supported cases, unsupported cases, evidence
-sources, intended files and mechanical test consumers. Then implement the
-smallest coherent scope-closure diff and obtain independent review. W2-S6
-fixtures may continue in parallel, but final integration remains gated on the
-reviewed W1-S5 contract.
+Next package: implement W1-S5 in the W1-rooted task as one narrow,
+purpose-specific cash-ready annual contract and focused tests, using the field
+mapping and double-count invariants already prepared for W2-S6. W2-S6 fixtures
+may continue in parallel, but final integration remains gated on the reviewed
+W1-S5 contract.

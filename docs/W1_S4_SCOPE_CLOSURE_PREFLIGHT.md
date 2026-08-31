@@ -1,6 +1,6 @@
 # W1-S4 launch-supported-scope closure — read-only pre-flight
 
-Status: package preparation only; no W1 product file was changed.
+Status: completed with one focused, independently reviewed correction.
 Source: clean W1 checkpoint
 `066ed358f9dc231f3c424c7fc01123fce0bdee6b` on
 `feature/w1-bpa`, inspected 31 August 2026.
@@ -127,3 +127,28 @@ support Scottish tax, CGT, full filing, treaty logic or other new scope.
 
 Otherwise, S4 assurance and S5 implementation are already-authorised
 engineering steps and should continue without Founder intervention.
+
+## Completed outcome — 1 September 2026
+
+Fresh independent review found two material fail-close defects not covered by
+the original 203 tests: incomplete joint-property fact pairs could silently
+default the ownership share to zero, and a negative foreign-property result
+could offset general income despite foreign-loss treatment being unsupported.
+
+The correction changed exactly:
+
+- `reserved/engines/integrated_annual_position.py`;
+- `tests/test_integrated_annual_position.py`.
+
+Independent re-review found no remaining issue. Post-checkpoint evidence at
+`413ee1312ba4ec8cf42912a9411f55b69a0a1d3e` is:
+
+- 206 direct-consumer tests passed;
+- 1,675 broader tests passed plus 7 subtests;
+- one expected assurance-metadata freshness failure because production source
+  legitimately advanced;
+- clean worktree and successful Git integrity check.
+
+W1-S4 is therefore closed for bounded internal scope assurance. This does not
+establish customer or launch readiness. W1-S5 is the sole remaining W1
+implementation slice before W2-S6 can cross its entry gate.
