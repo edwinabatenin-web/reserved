@@ -8,12 +8,14 @@ INTERNAL_MODULE_MARKERS = (
     "integrated_annual_position",
     "annual_loan_reconciliation",
     "annual_position_composition",
+    "cash_ready_annual_position",
     "internal_snapshot",
     "internal_hicbc_scenario",
     "annual_loan_wp7u",
     "calculate_annual_position",
     "reconcile_annual_student_loans",
     "compose_internal_annual_position",
+    "compose_cash_ready_annual_position",
     "encode_internal_snapshot",
     "decode_internal_snapshot",
     "compare_hicbc_scenario",
@@ -21,6 +23,7 @@ INTERNAL_MODULE_MARKERS = (
     "AnnualPositionResult",
     "AnnualLoanReconciliation",
     "InternalAnnualComposition",
+    "CashReadyAnnualPosition",
     "InternalHicbcScenario",
 )
 
