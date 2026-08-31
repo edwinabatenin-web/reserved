@@ -51,6 +51,18 @@ def test_uk_property_loss_is_carried_forward_not_set_against_employment():
     assert result.non_savings_tax == Decimal("3486.00")
 
 
+@pytest.mark.parametrize(
+    "facts",
+    [
+        {"employment_income": "30000", "joint_property_total_profit": "10000"},
+        {"employment_income": "30000", "taxpayer_share_percentage": "50"},
+    ],
+)
+def test_joint_property_total_and_ownership_share_must_be_supplied_together(facts):
+    with pytest.raises(ValueError, match="must be supplied together"):
+        calculate_annual_position(facts)
+
+
 def test_foreign_property_is_pre_credit_and_fails_closed_on_residence_or_ftcr():
     complete = calculate_annual_position(
         {
@@ -74,6 +86,24 @@ def test_foreign_property_is_pre_credit_and_fails_closed_on_residence_or_ftcr():
     unknown = calculate_annual_position({"uk_resident": None, "foreign_property_profit": "10000"})
     assert unknown.total_liability is None
     assert "residence_facts_incomplete" in unknown.limitations
+
+
+def test_foreign_property_loss_never_offsets_general_income():
+    result = calculate_annual_position(
+        {
+            "uk_resident": True,
+            "employment_income": "30000",
+            "foreign_property_gross_receipts": "4000",
+            "foreign_property_allowable_expenses": "14000",
+        }
+    )
+
+    assert result.foreign_property_profit == Decimal("-10000.00")
+    assert result.non_savings_tax == Decimal("3486.00")
+    assert result.total_liability is None
+    assert result.calculation_status == "unsupported_rule"
+    assert result.unsupported_families == ("foreign_property_loss_treatment",)
+    assert "foreign_property_loss_relief_not_supported" in result.limitations
 
 
 def test_residential_finance_costs_are_recorded_as_an_unsupported_limitation():

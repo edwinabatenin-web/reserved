@@ -288,15 +288,21 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
     if tax_year != "2026/27":
         raise ValueError("The integrated annual-position tranche supports 2026/27 only")
     cfg = get_config(tax_year)
+    joint_total_present = "joint_property_total_profit" in facts
+    joint_share_present = "taxpayer_share_percentage" in facts
     property_modes = sum((
         "uk_property_results" in facts,
         "uk_property_receipts" in facts or "uk_property_allowable_expenses" in facts,
-        "joint_property_total_profit" in facts or "taxpayer_share_percentage" in facts,
+        joint_total_present,
         "rental_income" in facts or "non_finance_allowable_expenses" in facts,
         "uk_property_profit" in facts,
     ))
     if property_modes > 1:
         raise ValueError("UK property must use exactly one input representation")
+    if joint_total_present != joint_share_present:
+        raise ValueError(
+            "joint_property_total_profit and taxpayer_share_percentage must be supplied together"
+        )
     if ("foreign_property_profit" in facts) and (
         "foreign_property_gross_receipts" in facts or "foreign_property_allowable_expenses" in facts
     ):
@@ -385,7 +391,11 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
         )
     else:
         foreign_profit = _decimal(facts.get("foreign_property_profit"), "foreign_property_profit")
-    if foreign_profit and facts.get("uk_resident") is not True:
+    if foreign_profit < ZERO:
+        unsupported.append("foreign_property_loss_treatment")
+        limitations.append("foreign_property_loss_relief_not_supported")
+        foreign_included = ZERO
+    elif foreign_profit and facts.get("uk_resident") is not True:
         status = "residence_facts_incomplete" if facts.get("uk_resident") is None else "outside_supported_uk_resident_case"
         unsupported.append("foreign_property_residence")
         limitations.append(status)
@@ -565,7 +575,9 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
     if complete:
         status = "calculated"
     elif any(family in unsupported for family in (
-        "foreign_tax_credit_relief", "residential_finance_cost_reduction"
+        "foreign_tax_credit_relief",
+        "foreign_property_loss_treatment",
+        "residential_finance_cost_reduction",
     )) or "outside_supported_uk_resident_case" in limitations:
         status = "unsupported_rule"
     else:
