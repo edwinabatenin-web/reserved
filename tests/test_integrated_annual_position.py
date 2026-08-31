@@ -53,7 +53,13 @@ def test_uk_property_loss_is_carried_forward_not_set_against_employment():
 
 def test_foreign_property_is_pre_credit_and_fails_closed_on_residence_or_ftcr():
     complete = calculate_annual_position(
-        {"uk_resident": True, "employment_income": "30000", "foreign_property_profit": "10000", "foreign_tax_paid": "0"}
+        {
+            "uk_resident": True, "employment_income": "30000",
+            "foreign_property_profit": "10000", "foreign_tax_paid": "0",
+            "blind_persons_allowance_entitled": False,
+            "blind_persons_allowance_transferred_in": "0",
+            "blind_persons_allowance_transferred_out": "0",
+        }
     )
     assert complete.income_tax_before_limitations == Decimal("5486.00")
     assert complete.total_liability == Decimal("5486.00")
@@ -137,8 +143,13 @@ def test_hicbc_ani_can_be_derived_from_explicit_pre_pension_income():
 
 
 def test_boundary_never_claims_paye_reconciliation_or_student_loan_support():
-    result = calculate_annual_position({"employment_income": "30000"})
-    assert result.contract_version == "reserved-estimate-envelope/1.0-internal"
+    result = calculate_annual_position({
+        "employment_income": "30000",
+        "blind_persons_allowance_entitled": False,
+        "blind_persons_allowance_transferred_in": "0",
+        "blind_persons_allowance_transferred_out": "0",
+    })
+    assert result.contract_version == "reserved-estimate-envelope/1.1-internal"
     assert result.total_liability == Decimal("3486.00")
     assert "paye_reconciliation_not_performed" in result.limitations
     assert "student_loan_not_calculated" in result.limitations

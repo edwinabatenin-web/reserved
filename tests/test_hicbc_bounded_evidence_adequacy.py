@@ -73,6 +73,9 @@ def test_explicit_no_partner_for_period_gives_valid_personal_calculation():
         "annual_child_benefit": "1406.60",
         "has_relevant_partner": False,
         "payments_received_for_full_charge_period": True,
+        "blind_persons_allowance_entitled": False,
+        "blind_persons_allowance_transferred_in": "0",
+        "blind_persons_allowance_transferred_out": "0",
     })
     assert result.hicbc == Decimal("703.00")
     assert result.hicbc_liable_person == "person"

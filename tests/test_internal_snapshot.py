@@ -15,7 +15,12 @@ from reserved.engines.internal_snapshot import decode_internal_snapshot, encode_
 
 
 def results():
-    annual = calculate_annual_position({"employment_income": "30000"})
+    annual = calculate_annual_position({
+        "employment_income": "30000",
+        "blind_persons_allowance_entitled": False,
+        "blind_persons_allowance_transferred_in": "0",
+        "blind_persons_allowance_transferred_out": "0",
+    })
     loan = reconcile_annual_student_loans(
         AnnualLoanIncomeBasis("103000", ("E-BASIS",), True, True, (
             LoanBasisEvidence("E-BASIS", "synthetic", "synthetic://basis", "person-a", date(2027, 4, 5), "2026/27", True),

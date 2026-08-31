@@ -16,13 +16,19 @@ Sources
   - HMRC Rates and thresholds for employers 2025/26 (published April 2025)
   - Student Loans Company threshold notices 2025/26
 
+Blind Person's Allowance
+  - GOV.UK, Blind Person's Allowance — What you'll get (2026/27 £3,250; 2025/26 £3,130)
+  - The Income Tax (Indexation of Blind Person's Allowance and Married Couple's
+    Allowance) Order 2026 (SI 2026/38) sets the statutory 2026/27 amount to £3,250.
+
 Notes on frozen bands
 ---------------------
 Income tax bands (PA £12,570; BRL £50,270; ART £125,140) and Class 4 NI bands
 (LPL £12,570; UPL £50,270) were frozen by the Finance Act 2022 through 2028.
-They are identical across both supported tax years.  The only year-on-year
-differences are the student-loan repayment thresholds, which are uprated
-annually by RPI/CPI as published by the Student Loans Company.
+They are identical across both supported tax years.  The year-on-year
+differences are the student-loan repayment thresholds (uprated annually by
+RPI/CPI as published by the Student Loans Company) and the Blind Person's
+Allowance (uprated by statutory indexation order).
 """
 from decimal import Decimal
 
@@ -34,6 +40,7 @@ RULES_VERSION = "uk-2026-27-v4"
 
 PERSONAL_ALLOWANCE            = Decimal("12570")
 PERSONAL_ALLOWANCE_TAPER_START = Decimal("100000")
+BLIND_PERSONS_ALLOWANCE       = Decimal("3250")
 BASIC_RATE_LIMIT              = Decimal("50270")
 BASIC_RATE_BAND               = Decimal("37700")
 ADDITIONAL_RATE_THRESHOLD     = Decimal("125140")
@@ -123,6 +130,7 @@ CONFIGS: dict = {
         **_FROZEN_IT_BANDS,
         "tax_year":      "2025/26",
         "rules_version": "uk-2025-26-v2",
+        "BLIND_PERSONS_ALLOWANCE": Decimal("3130"),
         "DIVIDEND_ALLOWANCE": Decimal("500"),
         "DIVIDEND_TAX_RATES": {
             "basic": Decimal("0.0875"),
@@ -154,6 +162,7 @@ CONFIGS: dict = {
         **_FROZEN_IT_BANDS,
         "tax_year":      "2026/27",
         "rules_version": "uk-2026-27-v4",
+        "BLIND_PERSONS_ALLOWANCE": BLIND_PERSONS_ALLOWANCE,
         "DIVIDEND_ALLOWANCE": DIVIDEND_ALLOWANCE,
         "DIVIDEND_TAX_RATES": DIVIDEND_TAX_RATES,
         "CHILD_BENEFIT": CHILD_BENEFIT,

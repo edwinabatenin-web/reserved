@@ -57,6 +57,12 @@ class AnnualPositionResult:
     ``income_tax_before_limitations`` remains useful for review when a named
     downstream limitation (currently FTCR or residential finance costs) is
     unresolved.
+
+    ``personal_allowance`` is the tapered ordinary Personal Allowance only.
+    ``blind_persons_allowance`` is the separately established usable Blind
+    Person's Allowance (``None`` when the required BPA fact group is absent or
+    incomplete; a non-negative amount otherwise) and is never folded into
+    ``personal_allowance``.
     """
 
     contract_version: str
@@ -65,6 +71,7 @@ class AnnualPositionResult:
     calculation_status: str
     adjusted_net_income: Decimal
     personal_allowance: Decimal
+    blind_persons_allowance: Decimal | None
     non_savings_tax: Decimal
     savings_tax: Decimal
     dividend_tax: Decimal
@@ -92,6 +99,52 @@ def _personal_allowance(ani: Decimal, cfg: dict) -> Decimal:
         return cfg["PERSONAL_ALLOWANCE"]
     reduction = (ani - cfg["PERSONAL_ALLOWANCE_TAPER_START"]) / Decimal("2")
     return max(ZERO, cfg["PERSONAL_ALLOWANCE"] - reduction)
+
+
+def _blind_persons_allowance(facts: dict, cfg: dict) -> tuple[Decimal | None, bool]:
+    """Derive usable Blind Person's Allowance from explicit, user-supplied facts.
+
+    Returns ``(usable, incomplete)``.  The BPA fact group is the entitlement
+    fact plus both transfer directions; a wholly absent or partially supplied
+    group is ``incomplete`` (the caller must then withhold the complete annual
+    position rather than assume zero or full entitlement).  When all three
+    members are present the determination is all-or-nothing: malformed or
+    materially contradictory values raise ``ValueError`` so the caller fails
+    closed.
+    """
+    bpa_keys = (
+        "blind_persons_allowance_entitled",
+        "blind_persons_allowance_transferred_in",
+        "blind_persons_allowance_transferred_out",
+    )
+    if not all(key in facts and facts[key] is not None for key in bpa_keys):
+        return None, True
+
+    entitled = _tri_bool(facts[bpa_keys[0]], bpa_keys[0])
+    transferred_in = _decimal(facts[bpa_keys[1]], bpa_keys[1])
+    transferred_out = _decimal(facts[bpa_keys[2]], bpa_keys[2])
+    full = cfg["BLIND_PERSONS_ALLOWANCE"]
+
+    if transferred_out > ZERO and not entitled:
+        raise ValueError(
+            "Blind Person's Allowance cannot be transferred out without own entitlement"
+        )
+    if transferred_in > ZERO and transferred_out > ZERO:
+        raise ValueError(
+            "Blind Person's Allowance cannot be both transferred in and transferred out"
+        )
+    if transferred_in > full or transferred_out > full:
+        raise ValueError(
+            "Blind Person's Allowance transfer amount exceeds the statutory allowance"
+        )
+
+    own = full if entitled else ZERO
+    usable = own + transferred_in - transferred_out
+    if usable < ZERO:
+        raise ValueError(
+            "Blind Person's Allowance facts produce an impossible negative usable allowance"
+        )
+    return usable, False
 
 
 def _ordinary_tax(
@@ -346,7 +399,11 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
     gross_non_savings = employment + trade + property_profit + foreign_included
     gross_total = gross_non_savings + savings + dividends
     ani = max(ZERO, gross_total - pension)
-    allowance = _personal_allowance(ani, cfg)
+    personal_allowance = _personal_allowance(ani, cfg)
+    blind_persons_allowance, bpa_incomplete = _blind_persons_allowance(facts, cfg)
+    if bpa_incomplete:
+        limitations.append("blind_persons_allowance_facts_incomplete")
+    allowance = personal_allowance + (blind_persons_allowance if blind_persons_allowance is not None else ZERO)
     pa_left = allowance
     taxable_ns = max(ZERO, gross_non_savings - pa_left)
     pa_left = max(ZERO, pa_left - gross_non_savings)
@@ -503,7 +560,7 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
             _decimal(facts["income_before_ras_pension"], "income_before_ras_pension") - pension,
         )
 
-    complete = not unsupported
+    complete = (not unsupported) and (not bpa_incomplete)
     total = _money(income_tax + class_4 + (hicbc or ZERO)) if complete else None
     if complete:
         status = "calculated"
@@ -517,12 +574,15 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
     if benefit is not None and "hicbc" not in unsupported:
         included.append("hicbc")
     return AnnualPositionResult(
-        contract_version="reserved-estimate-envelope/1.0-internal",
+        contract_version="reserved-estimate-envelope/1.1-internal",
         tax_year=tax_year,
         ruleset_version=cfg["rules_version"],
         calculation_status=status,
         adjusted_net_income=_money(reported_ani),
-        personal_allowance=_money(allowance),
+        personal_allowance=_money(personal_allowance),
+        blind_persons_allowance=(
+            _money(blind_persons_allowance) if blind_persons_allowance is not None else None
+        ),
         non_savings_tax=non_savings_tax,
         savings_tax=savings_tax,
         dividend_tax=dividend_tax,

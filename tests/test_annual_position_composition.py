@@ -44,7 +44,12 @@ def loans(*, evidence=True):
 
 def test_complete_components_are_linked_without_combining_money():
     result = compose_internal_annual_position(
-        calculate_annual_position({"employment_income": "30000"}),
+        calculate_annual_position({
+            "employment_income": "30000",
+            "blind_persons_allowance_entitled": False,
+            "blind_persons_allowance_transferred_in": "0",
+            "blind_persons_allowance_transferred_out": "0",
+        }),
         loans(),
         annual_tax_reference="annual-position:synthetic-1",
         student_loan_reference="loan-reconciliation:synthetic-1",
@@ -179,7 +184,12 @@ def test_material_uncertainty_effects_and_exact_prohibitions_survive_composition
         as_of=date(2027, 4, 5), declared_employment_ids=("job-a",),
     )
     result = compose_internal_annual_position(
-        calculate_annual_position({"employment_income": "30000"}), stale,
+        calculate_annual_position({
+            "employment_income": "30000",
+            "blind_persons_allowance_entitled": False,
+            "blind_persons_allowance_transferred_in": "0",
+            "blind_persons_allowance_transferred_out": "0",
+        }), stale,
         annual_tax_reference="annual-position:stale",
         student_loan_reference="loan-reconciliation:stale",
     )

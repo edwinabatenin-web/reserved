@@ -199,7 +199,7 @@ def _validate_semantics(result: Any) -> None:
     if isinstance(result, AnnualPositionResult):
         if result.tax_year != "2026/27":
             raise ValueError("Unsupported annual-position tax year")
-        if result.contract_version != "reserved-estimate-envelope/1.0-internal":
+        if result.contract_version != "reserved-estimate-envelope/1.1-internal":
             raise ValueError("Unsupported annual-position producer contract version")
         if result.ruleset_version != _SUPPORTED_RULESET:
             raise ValueError("Unsupported annual-position ruleset version")
