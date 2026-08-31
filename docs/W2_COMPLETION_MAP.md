@@ -29,10 +29,12 @@ prevent double counting and retain the distinction between annual tax
 liability, tax already deducted or paid, HMRC-recorded cash obligations, PoA,
 and remaining funding requirement.
 
-S6 must wait for the supported W1 annual-position scope and contract to be
-stabilised. W2 must not invent a competing annual-liability model while it
-waits. Contract fixtures and collision analysis may proceed in parallel, but
-the final integration must consume the agreed W1 boundary.
+The supported W1 annual-position scope and cash-ready contract are now stable,
+independently reviewed and post-checkpoint verified at
+`51b2e023a23c22dfbe61a6e607d81ab399d475b7`. S6 may proceed once that exact W1
+checkpoint and the reviewed W2 S1-S5 line are assembled on one authorised local
+integration branch. W2 must not copy the shape or invent a competing
+annual-liability model.
 
 No S7 implementation slice is currently justified. Customer testing,
 integrated assurance and Control Plane reconciliation are completion gates, not
@@ -44,7 +46,7 @@ new product slices.
 |---|---|---|---|---|
 | S5 | None; it consumes already-derived obligations | S1–S3 | None for the pure component | Complete at its independently reviewed local checkpoint |
 | S6 contract fixtures | Uses the current W1 shape provisionally | S1–S5 | None | May proceed read-only/in fixtures while W1 stabilises |
-| S6 final integration | Stable supported W1 annual-position contract | S1–S5 | None | Serial after the W1 boundary is agreed |
+| S6 final integration | Exact W1 checkpoint `51b2e02...` | S1–S5 | Local branch-integration authority | Ready after the reviewed histories are assembled; no formula/design blocker remains |
 | Provider/HMRC journeys | None for W2 arithmetic | S2/S3 evidence contracts | Provider access and target evidence | Parallel, owned by provider workstreams |
 | UX/customer testing | Stable W2 statuses and limitations | S1–S6 as relevant | Representative users/test environment | Prepare in parallel; final evidence follows S6 |
 | Integrated assurance | Stable exact W1/W2 checkpoints | All slices | Independent reviewer and release environment | Prepare in parallel; execute after S6 |
@@ -106,6 +108,6 @@ not move their implementation into W2.
   dependency is available; provider and customer evidence may extend launch
   elapsed time without extending W2 implementation.
 
-Immediate action: prepare exact S6 contract fixtures and collision analysis
-without changing W1 or freezing the adapter. Do not begin final S6 integration
-until the W1 annual-position boundary is explicitly stable.
+Immediate action: assemble the exact reviewed W1 and W2 histories on one
+authorised local integration line, reconcile the prepared fixtures against the
+SHA-256-bound W1 contract, and implement the single remaining S6 adapter.

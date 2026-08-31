@@ -1,7 +1,7 @@
 # W2-S6 annual-to-cash contract preparation
 
-Status: preparation only; the final adapter is not yet authorised to freeze.
-Evidence cut-off: 31 August 2026.
+Status: entry contract pinned; local branch integration remains required.
+Evidence cut-off: 1 September 2026.
 
 ## Purpose
 
@@ -10,7 +10,13 @@ annual-position boundary to the existing W2 PoA, balancing, account,
 cash-obligation and funding-position contracts without creating a second annual
 tax model.
 
-The current W1 `InternalAnnualComposition` deliberately links annual tax and
+W1 now supplies `reserved-cash-ready-annual-position/1.0` at exact reviewed
+checkpoint `51b2e023a23c22dfbe61a6e607d81ab399d475b7`. The contract binds annual
+tax and loan/no-loan inputs to exact SHA-256 content identities, classifies
+student-loan/PGL outside the PoA basis and prohibits using a current forecast as
+an HMRC-issued PoA basis.
+
+The earlier W1 `InternalAnnualComposition` deliberately links annual tax and
 student-loan results without aggregating them. It explicitly prohibits customer
 balance, reserve, filing and payment use. S6 must not bypass that boundary or
 turn the current linked composition into a cash amount before W1 declares the
@@ -18,7 +24,7 @@ relevant component set stable and suitable for this purpose.
 
 ## Entry gate for implementation
 
-Do not implement the final adapter until all of the following are pinned:
+The following entry conditions are now pinned by W1-S5:
 
 1. exact W1 checkpoint and tree;
 2. supported annual-position contract and ruleset version;
@@ -114,7 +120,8 @@ Control Plane state remain outside S6.
 
 ## Prepared next action
 
-When W1 declares its boundary stable, bind the exact W1 checkpoint, reconcile
-this provisional mapping against the final contract, approve independent fixture
-expectations, and implement S6 as the single remaining W2 slice. Until then,
-continue other workstreams rather than weakening this entry gate.
+Assemble exact W1 checkpoint `51b2e02...` with the reviewed W2 S1-S5 history on
+one authorised local integration line. Reconcile this mapping against the
+actual imported contract, retain the upstream content identities as evidence,
+approve independent fixture expectations, and implement S6 as the single
+remaining W2 slice. No further W1 product design is required.

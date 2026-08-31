@@ -26,7 +26,7 @@ W1 has exactly five implementation slices:
 | W1-S2 | Annual student-loan/PGL reconciliation and typed internal composition with the annual tax result | Complete at the current W1 checkpoint for bounded internal use; the current composition deliberately does not aggregate money |
 | W1-S3 | Fail-closed Blind Person's Allowance integration and compatibility corrections | Complete and independently post-commit verified at `066ed358f9dc231f3c424c7fc01123fce0bdee6b` |
 | W1-S4 | Launch-supported-scope closure: every v1 input combination is either calculated under an independently supported rule or deterministically withheld with an explicit unsupported/uncertain reason | Complete and independently reviewed at `413ee1312ba4ec8cf42912a9411f55b69a0a1d3e`; two material property fail-close gaps were corrected |
-| W1-S5 | Cash-ready annual-position contract: expose the complete supported annual liability components and separately classified student-loan/PGL amount for W2-S6, with purpose, dates, ruleset, evidence and prohibitions preserved | Remaining; serial after W1-S4 |
+| W1-S5 | Cash-ready annual-position contract: expose the complete supported annual liability components and separately classified student-loan/PGL amount for W2-S6, with purpose, dates, ruleset, evidence and prohibitions preserved | Complete, independently reviewed and post-checkpoint verified at `51b2e023a23c22dfbe61a6e607d81ab399d475b7` |
 
 No W1-S6 implementation slice is currently justified. Customer presentation,
 privacy, provider connectivity and integrated release assurance are terminal
@@ -57,7 +57,7 @@ incomplete joint-property fact pairs and unsupported foreign-property losses.
 The exact two-file correction is independently reviewed and post-checkpoint
 verified at `413ee131...`; no additional tax-rule tranche was created.
 
-### W1-S5 — cash-ready annual-position contract
+### W1-S5 — cash-ready annual-position contract (complete)
 
 Replace the present non-aggregating, non-customer internal link with a separate
 purpose-specific contract suitable for W2-S6. The contract must:
@@ -74,7 +74,13 @@ purpose-specific contract suitable for W2-S6. The contract must:
 - remove a reserve/cash-use prohibition only for the explicitly reviewed
   internal W2-S6 purpose, never by implication.
 
-W1-S5 must not implement PoA, balancing payments, account reconciliation,
+The completed contract uses exact SHA-256 content identities recorded by
+independently reviewed upstream checkpoints. A changed tax, loan or no-loan
+object cannot reuse the trusted identity. It supports Plan 2, Plan 2 + PGL and
+explicit complete no-loan evidence, while exposing no PoA basis or payment
+authority.
+
+W1-S5 does not implement PoA, balancing payments, account reconciliation,
 reserve arithmetic, UI, filing or payment. Those remain W2 or other-workstream
 responsibilities.
 
@@ -83,8 +89,7 @@ responsibilities.
 | Item | Dependency | May proceed now? | Collision control |
 |---|---|---|---|
 | W1-S4 evidence, correction and review | Existing Founder scope and current W1 contracts | Complete | Exact two-file correction; HICBC privacy/customer activation remained outside the package |
-| W1-S5 fixtures and field mapping | Current W1 composition plus W2 S6 preparation | Yes | Fixture preparation may run in parallel; do not freeze the adapter before W1-S4 |
-| W1-S5 implementation | Stable W1-S4 supported-family boundary | No, serial after W1-S4 | Add a narrow purpose-specific contract; do not rewrite W2 S1-S5 contracts |
+| W1-S5 contract and fixtures | Stable W1-S4 supported-family boundary | Complete at `51b2e02...` | Narrow purpose-specific contract; no rewrite of W2 S1-S5 contracts |
 | HICBC customer activation | Privacy, retention, legal, security and customer-evidence gates | Parallel external gate | HICBC arithmetic may remain in W1; activation belongs to the HICBC/privacy workstreams |
 | W2-S6 | Stable reviewed W1-S5 contract | Fixtures now; implementation later | W2 consumes the W1 contract and must not invent a second annual tax model |
 | UX and integrated assurance | Stable W1/W2 statuses and exact checkpoints | Prepare in parallel | Presentation evidence cannot upgrade engineering status by narrative |
@@ -118,9 +123,12 @@ W1 is complete only when all of the following are true:
 10. A fresh independent post-checkpoint review confirms the supported scope,
     fail-close behaviour and W2-facing contract.
 
-Current bounded position: W1-S1 through W1-S4 are complete as implementation
-slices; only W1-S5 remains. This is 4 of 5 declared implementation slices
-(80%). Terminal-gate progress must be reported separately and must not be
+Current bounded position: W1-S1 through W1-S5 are complete as implementation
+slices. This is 5 of 5 declared implementation slices (100%). The exact W1-S5
+checkpoint passed 224 focused/adjacent tests and the broader suite passed 1,693
+tests plus 7 subtests, with only the expected canonical-metadata freshness
+failure after legitimate source advancement. Terminal-gate and launch status
+must still be reported separately and must not be
 inferred from the slice percentage or used as a launch-readiness claim.
 
 ## Out of scope
@@ -132,14 +140,13 @@ sophistication. New support for those areas requires its own authorised scope.
 
 ## Effort and next executable package
 
-- W1-S5: roughly 0.5–1.5 active days after W1-S4 stabilises.
-- independent review and compatibility regression: roughly 0.5–1 active day,
-  partially parallel with W2-S6 fixture review.
-- likely remaining critical path to W2-S6 entry: roughly 1–3 working days, excluding
-  external HICBC/privacy/customer-evidence elapsed time.
+- W1 implementation remainder: none at the declared denominator.
+- W2-S6 local integration and review: roughly 0.5–1.5 active days once the
+  reviewed W1 and W2 feature histories are assembled on one authorised local
+  integration line.
 
-Next package: implement W1-S5 in the W1-rooted task as one narrow,
-purpose-specific cash-ready annual contract and focused tests, using the field
-mapping and double-count invariants already prepared for W2-S6. W2-S6 fixtures
-may continue in parallel, but final integration remains gated on the reviewed
-W1-S5 contract.
+Next package: assemble the exact reviewed W1 checkpoint `51b2e02...` with the
+current W2 S1-S5 line under explicit branch-integration authority, then
+implement W2-S6 against the pinned cash-ready contract and its already-prepared
+double-count fixtures. Do not substitute copied or narrative field shapes for
+the exact contract identity.
