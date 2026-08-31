@@ -13,32 +13,13 @@ readiness.
 | S2 | Fail-closed reconciliation of explicit Self Assessment charges, credits and allocations | `11bc8620241f16bc3acb15e4c2f62579057eebe8` | Implemented, independently reviewed and regression-tested as a bounded component |
 | S3 | Exact comparison of local PoA/balancing expectations with explicit HMRC account charges | `c661b1abbfe25b3a4049fc3810dcf053d9bb0f93` | Implemented, independently reviewed and regression-tested as a bounded component |
 | S4 | Customer-initiated claim-to-reduce guardrails, without recommending an amount or submitting a claim | `c08369307c161e1bcd939960cbf1a62d34d281f1` | Implemented, independently reviewed and regression-tested as a bounded component |
+| S5 | Dated funding requirements and evidence-qualified reserve gap/exact/surplus composition | `69fb31576ec730ad49b8da4f0ebb3f5ed135ec98` | Implemented, independently reviewed and regression-tested as a bounded component |
 
 These checkpoints are not, by themselves, evidence of final W1 integration,
 customer validation, provider readiness, Control Plane reconciliation, or
 launch readiness.
 
 ## Remaining implementation slices
-
-### S5 — dated funding requirement and reserve-position composition
-
-Own one pure, provider-neutral component that consumes the already-reconciled
-S3 cash obligations plus explicit customer-recorded set-aside evidence and
-produces:
-
-- dated remaining funding requirements;
-- total amount required by the relevant dates;
-- an explicit reserve gap, exact match, or surplus;
-- preserved source, effective date, retrieval date, completeness and
-  uncertainty;
-- a qualified local/manual result when HMRC confirmation is unavailable;
-- fail-closed results for stale, missing, conflicting, duplicated or
-  inapplicable evidence.
-
-It must not label a surplus as available cash, recommend a transfer, initiate or
-allocate money, calculate interest or penalties, contact a provider, persist
-customer data, or render a UI. It can proceed immediately and must reuse S1–S3
-contracts rather than modify them.
 
 ### S6 — final annual-to-cash integration contract
 
@@ -61,7 +42,7 @@ new product slices.
 
 | Item | W1 dependency | W2 dependency | External dependency | Sequencing |
 |---|---|---|---|---|
-| S5 | None; it consumes already-derived obligations | S1–S3 | None for the pure component | Proceed now; may run alongside W1, providers, UX and assurance |
+| S5 | None; it consumes already-derived obligations | S1–S3 | None for the pure component | Complete at its independently reviewed local checkpoint |
 | S6 contract fixtures | Uses the current W1 shape provisionally | S1–S5 | None | May proceed read-only/in fixtures while W1 stabilises |
 | S6 final integration | Stable supported W1 annual-position contract | S1–S5 | None | Serial after the W1 boundary is agreed |
 | Provider/HMRC journeys | None for W2 arithmetic | S2/S3 evidence contracts | Provider access and target evidence | Parallel, owned by provider workstreams |
@@ -102,11 +83,11 @@ W2 is complete only when all of the following are true:
     HMRC bill, payment timing, set-aside gap and claim-to-reduce limitations are
     not misleading.
 
-Current gate position: items 1–5, 9 and 10 are satisfied at bounded-component
-level; items 6–8 remain implementation/integration work; items 11–12 remain
-final assurance evidence. This is 4 of 6 declared implementation slices
-complete (67%) and 7 of 12 terminal checks satisfied at their present required
-level (58%). The percentages are denominators, not launch-readiness claims.
+Current gate position: items 1–6, 9 and 10 are satisfied at bounded-component
+level; items 7–8 remain final integration work; items 11–12 remain final
+assurance evidence. This is 5 of 6 declared implementation slices complete
+(83%) and 8 of 12 terminal checks satisfied at their present required level
+(67%). The percentages are denominators, not launch-readiness claims.
 
 ## Out of scope
 
@@ -118,7 +99,6 @@ not move their implementation into W2.
 
 ## Effort and immediate action
 
-- S5: approximately 0.5–1 active day; no external critical-path dependency.
 - S6: approximately 0.5–1.5 active days after the W1 contract stabilises.
 - final integrated review/tests: approximately 0.5–1 active day and may be
   prepared in parallel.
@@ -126,7 +106,6 @@ not move their implementation into W2.
   dependency is available; provider and customer evidence may extend launch
   elapsed time without extending W2 implementation.
 
-Immediate action: implement S5 as one bounded, independently testable component
-using the existing S1–S3 contracts. Do not begin final S6 integration until the
-W1 annual-position boundary is explicitly stable.
-
+Immediate action: prepare exact S6 contract fixtures and collision analysis
+without changing W1 or freezing the adapter. Do not begin final S6 integration
+until the W1 annual-position boundary is explicitly stable.
