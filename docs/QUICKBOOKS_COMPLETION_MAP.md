@@ -56,3 +56,13 @@ page and Invoice CDC response mechanics while keeping canonical-ingestion
 fitness, query snapshot stability, continuous CDC, and historical completeness
 unverified. It adds no transport, credential, persistence, activation, or
 launch authority.
+
+The UK VAT contract-evidence boundary is recorded in
+`docs/QUICKBOOKS_QS5_UK_VAT_CONTRACT_EVIDENCE.md`. Its disposition is:
+
+```
+Current official evidence supports the tax-field presence used by the existing conservative Q-S5A representation, but does not prove universal UK emission, exact v75 field history, or broader UK VAT semantics. Intuit's worked override example contains a percentage/arithmetic contradiction that Q-S5A correctly rejects. QBO-01 and all activation gates remain open.
+```
+
+This narrows nothing about Q-S5A and does not implement, integrate, launch, or
+activate QuickBooks or VAT expansion. Q-S2, Q-S3, and Q-S6 remain open.
