@@ -4,6 +4,19 @@
 **Decision:** do not implement or enable an HMRC HTTP adapter from the evidence
 currently stored in this repository
 
+**Evidence update, 1 September 2026:**
+`HMRC_PAYE_API_CONTRACT_EVIDENCE.md` now captures the current generic HMRC OAuth
+contract and Individual Employment 1.2 service boundary. The dynamically
+rendered endpoint specification still did not expose a reviewable endpoint,
+scope or schema contract, so the decision above remains unchanged. The update
+also records that Individual PAYE Test Support **2.1 beta**, last updated
+21 August 2026, is now the latest listed sandbox version; no test-support
+endpoint or fixture is inferred from that overview. The older 2.0/2.1 status
+statements in `EXTERNAL_DEPENDENCIES.md` and
+`docs/HMRC_PAYE_RECONCILIATION.md` are retained historical 13 August records,
+not current package instructions, and must be reconciled before any later HMRC
+package.
+
 ## Outcome
 
 The repository establishes that three subscribed, user-restricted APIs can
@@ -34,7 +47,7 @@ response parser has been added.
 | Token storage | Interface and atomic rotation contract only | Blocked pending approved encrypted store and external key custody |
 | HMRC adapter/routes | None | Correctly absent |
 | PAYE interpretation | Local evidence reconciliation with provenance, conflicts and no unconditional HMRC precedence | Available after a separate adapter produces reviewed normalised evidence |
-| Sandbox fixtures | Current official read-API pages direct Individual Employment 1.2, Individual Income 1.2 and Individual Tax 1.1 to the **Individual PAYE Test Support API**. Its technical service identifier is `paye-des-stub`; the current sandbox version is **2.0 beta** | Use the named product/version only after confirming it is subscribed to the Reserved sandbox application; do not substitute Self Assessment Test Support (MTD) |
+| Sandbox fixtures | Current official read-API pages direct Individual Employment 1.2, Individual Income 1.2 and Individual Tax 1.1 to the **Individual PAYE Test Support API**. Its technical service identifier is `paye-des-stub`; the latest listed sandbox version is now **2.1 beta** | Use the named product/version only after confirming it is subscribed to the Reserved sandbox application and its exact endpoint contract is reviewed; do not substitute Self Assessment Test Support (MTD) |
 | Fraud-prevention headers | Requirement and Test API process recorded | Exact connection-method header set and applicability must be captured before any relevant call |
 
 ## Minimal first synthetic read journey
@@ -114,16 +127,15 @@ Repeat the endpoint evidence above, plus:
 
 The product/version ambiguity is resolved by current official HMRC pages:
 
-- **Individual PAYE Test Support API 2.0 beta** is the relevant sandbox
+- **Individual PAYE Test Support API 2.1 beta** is now the latest relevant sandbox
   companion for Individual Employment 1.2, Individual Income 1.2 and Individual
   Tax 1.1. Each read-API page expressly says its stateful sandbox data can be
   set up with Individual PAYE Test Support. The technical documentation service
   identifier remains `paye-des-stub`; it is not a separate “DES stub” product
   that should be selected instead.
-- Version 2.0 beta is available in Sandbox. Version 1.0 beta also remains listed
-  in Sandbox, but it is not the current version to target for new evidence
-  capture. A later 2.1 alpha listing, where exposed by the documentation index,
-  is marked not applicable rather than Sandbox and must not be targeted.
+- Versions 2.1, 2.0 and 1.0 beta are listed in Sandbox. The 2.1 overview is dated
+  21 August 2026. Its dynamically rendered endpoint contract must still be
+  captured before choosing it for a fixture implementation.
 - **Self Assessment Test Support (MTD) 1.0 beta** is a different sandbox-only
   API. Its stated purpose is deleting stateful test data supplied by developers
   for MTD Self Assessment APIs. It does not create PAYE data and is not the test
@@ -131,7 +143,7 @@ The product/version ambiguity is resolved by current official HMRC pages:
 
 Official sources:
 
-- [Individual PAYE Test Support 2.0](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/paye-des-stub/2.0)
+- [Individual PAYE Test Support 2.1](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/paye-des-stub/2.1)
 - [Individual Employment 1.2](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-employment/1.2)
 - [Individual Income 1.2](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-income/1.2)
 - [Individual Tax 1.1](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-tax/1.1)
@@ -141,7 +153,7 @@ Official sources:
 ## Sequenced implementation boundary after evidence capture
 
 1. Confirm the Reserved sandbox application is subscribed to Individual PAYE
-   Test Support 2.0 beta; create no fixture until its exact endpoint/payload
+   Test Support 2.1 beta; create no fixture until its exact endpoint/payload
    contract is reviewed. Retain Self Assessment Test Support (MTD) 1.0 only for
    cleanup of developer-supplied stateful MTD data where the MTD journey uses it.
 2. Approve the encrypted token-store/key-custody design and implement its
@@ -192,7 +204,7 @@ provenance.
 - [Individual Employment 1.2](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-employment/1.2)
 - [Individual Income 1.2](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-income/1.2)
 - [Individual Tax 1.1](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-tax/1.1)
-- [Individual PAYE Test Support 2.0](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/paye-des-stub/2.0)
+- [Individual PAYE Test Support 2.1](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/paye-des-stub/2.1)
 - [Self Assessment Test Support (MTD) 1.0](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/mtd-sa-test-support-api/1.0)
 - [HMRC reference guide](https://developer.service.hmrc.gov.uk/api-documentation/docs/reference-guide)
 - [HMRC development practices](https://developer.service.hmrc.gov.uk/api-documentation/docs/development-practices)
