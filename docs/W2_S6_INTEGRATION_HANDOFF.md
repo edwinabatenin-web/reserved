@@ -1,6 +1,6 @@
 # W2-S6 exact integration handoff
 
-Status: ready for an authorised local integration line.
+Status: fulfilled on the authorised local integration line.
 Evidence cut-off: 1 September 2026.
 
 ## Reviewed inputs
@@ -66,3 +66,15 @@ independently derived.
 Stop for a genuine Founder gate if local branch integration is not authorised
 or if assembly reveals a material contract conflict. Do not work around that
 gate by duplicating source files.
+
+## Fulfilment
+
+The reviewed W1 changes assembled cleanly with the W2 S1-S5 history on local
+branch `integration/w1-w2-s6`. The final S6 adapter was independently reviewed,
+corrected only within its three-file scope and checkpointed at
+`485b76696eacd0e9793414f983fb236f6cd7b11c`. Its exact post-checkpoint tree is
+`7c9ebc0921a1c33b8b2c330983e9e0dcedc68e25`.
+
+All eight required behaviours are covered by the independently reviewed
+fixture/adversarial suite. The local branch remains unmerged and unpushed; this
+handoff does not establish customer, provider, release or launch readiness.

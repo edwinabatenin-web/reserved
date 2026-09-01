@@ -1,6 +1,6 @@
 # W2-S6 annual-to-cash contract preparation
 
-Status: entry contract pinned; local branch integration remains required.
+Status: implemented and independently verified on the dedicated local integration line.
 Evidence cut-off: 1 September 2026.
 
 ## Purpose
@@ -118,10 +118,30 @@ explicit file list and independent review.
 Provider adapters, UI, persistence, payments, filing, production activation and
 Control Plane state remain outside S6.
 
-## Prepared next action
+## Original prepared action (completed)
 
 Assemble exact W1 checkpoint `51b2e02...` with the reviewed W2 S1-S5 history on
 one authorised local integration line. Reconcile this mapping against the
 actual imported contract, retain the upstream content identities as evidence,
 approve independent fixture expectations, and implement S6 as the single
 remaining W2 slice. No further W1 product design is required.
+
+## Completion record
+
+The prepared action was completed without a contract conflict. The exact W1
+S4/S5 changes were assembled on local branch `integration/w1-w2-s6`; S6 was
+implemented at `485b76696eacd0e9793414f983fb236f6cd7b11c` with parent
+`247dfe912178d8d6ef40ac92ddc59e73c567ac7a` and tree
+`7c9ebc0921a1c33b8b2c330983e9e0dcedc68e25`.
+
+The implementation binds complete W1 annual content, each balance channel and
+its source evidence identities, prior-year evidence and payment content. It
+reconstructs typed evidence at the trust boundary, rejects first-year prior
+PoA, mismatched periods, forged/sub-penny content and duplicated evidence, and
+feeds only validated results into the existing S1, S3 and S5 contracts.
+
+Fresh independent review closed all identified corrections and reported no
+remaining findings. Post-checkpoint integrated regression passed 1,920 tests;
+the sole expected failure is the canonical-metadata freshness gate following
+legitimate source advancement. No main-branch merge, push, release, deployment,
+production access, filing or payment action occurred.

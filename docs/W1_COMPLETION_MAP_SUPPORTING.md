@@ -91,7 +91,7 @@ responsibilities.
 | W1-S4 evidence, correction and review | Existing Founder scope and current W1 contracts | Complete | Exact two-file correction; HICBC privacy/customer activation remained outside the package |
 | W1-S5 contract and fixtures | Stable W1-S4 supported-family boundary | Complete at `51b2e02...` | Narrow purpose-specific contract; no rewrite of W2 S1-S5 contracts |
 | HICBC customer activation | Privacy, retention, legal, security and customer-evidence gates | Parallel external gate | HICBC arithmetic may remain in W1; activation belongs to the HICBC/privacy workstreams |
-| W2-S6 | Stable reviewed W1-S5 contract | Fixtures now; implementation later | W2 consumes the W1 contract and must not invent a second annual tax model |
+| W2-S6 | Stable reviewed W1-S5 contract | Complete locally at W2 checkpoint `485b766...` | W2 consumes the exact W1 contract and did not invent a second annual tax model |
 | UX and integrated assurance | Stable W1/W2 statuses and exact checkpoints | Prepare in parallel | Presentation evidence cannot upgrade engineering status by narrative |
 
 Potential shared-file consumers must be enumerated before each submission,
@@ -141,12 +141,10 @@ sophistication. New support for those areas requires its own authorised scope.
 ## Effort and next executable package
 
 - W1 implementation remainder: none at the declared denominator.
-- W2-S6 local integration and review: roughly 0.5–1.5 active days once the
-  reviewed W1 and W2 feature histories are assembled on one authorised local
-  integration line.
+- W2-S6 local integration and review: complete at local W2 checkpoint
+  `485b766...`; the exact W1 content identity and separate cash evidence
+  channels were retained.
 
-Next package: assemble the exact reviewed W1 checkpoint `51b2e02...` with the
-current W2 S1-S5 line under explicit branch-integration authority, then
-implement W2-S6 against the pinned cash-ready contract and its already-prepared
-double-count fixtures. Do not substitute copied or narrative field shapes for
-the exact contract identity.
+Next gate: refresh integrated assurance metadata against the new source
+checkpoint and complete the separately owned customer-language/UX evidence.
+The local integration line remains unmerged and unpushed.
