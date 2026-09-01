@@ -1,0 +1,17 @@
+<section aria-labelledby="w2-cash-heading">
+  <h2 id="w2-cash-heading">Self Assessment cash obligations</h2>
+  <div role="status" aria-live="polite" data-tone="{{ model.status_tone }}">
+    <h3>{{ model.status_heading }}</h3>
+    <p>{{ model.status_message }}</p>
+  </div>
+  <p><strong>{{ model.evidence_label }}</strong></p>
+  {% if model.safe_to_present %}
+    {% if model.annual_liability %}<h3>Annual calculation</h3><p>{{ model.annual_liability.label }}: {{ model.annual_liability.amount }}</p>{% endif %}
+    <h3>Dated cash obligations</h3>
+    <ul>{% for item in model.obligations %}<li>{{ item.label }}: {{ item.amount }}, due {{ item.due_date }}</li>{% endfor %}</ul>
+    {% if model.account_adjustments %}<h3>Amounts already accounted for</h3><ul>{% for item in model.account_adjustments %}<li>{{ item.label }}: {{ item.amount }}</li>{% endfor %}</ul>{% endif %}
+    <h3>{{ model.funding_heading }}</h3><p>{{ model.funding_message }}</p>
+    {% if model.claim_to_reduce_heading %}<h3>{{ model.claim_to_reduce_heading }}</h3><p>{{ model.claim_to_reduce_message }}</p><p role="note"><strong>Warning:</strong> {{ model.claim_to_reduce_warning }}</p>{% endif %}
+  {% endif %}
+  <p role="note">{{ model.no_payment_authority }}</p>
+</section>
