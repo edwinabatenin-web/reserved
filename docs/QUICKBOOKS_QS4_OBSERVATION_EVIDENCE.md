@@ -70,6 +70,17 @@ digest of the accepted source graph. The digest encoding distinguishes null,
 boolean, integer, `Decimal` (including scale), string, array, and object types;
 object ordering does not affect identity.
 
+`source_digest` remains solely the raw-source digest. A separate deterministic
+`observation_attestation` binds the observation kind and schema, raw-source
+digest, exact user, realm, opaque credential reference, and retrieval timestamp
+normalized to UTC. The exact observer computes and immutably carries it for
+independent recomputation; this is an integrity checksum, not a secret,
+signature, custody mechanism, persistence service, or proof against a party
+able to replace both data and digest.
+Retrieval timestamps accept only an exact built-in fixed-offset `timezone`;
+timezone subclasses are rejected before hooks can run, and accepted values are
+stored as exact UTC datetimes.
+
 Presence and explicit null sets are retained separately. Source inputs are an
 exact JSON-like graph boundary: only built-in `dict` objects and built-in `list`
 arrays are accepted at every level; tuples, arbitrary mappings, subclasses, and
@@ -86,6 +97,8 @@ container, 4,096 characters per string, and 2,000,000 aggregate source bytes.
 Byte-like material is unsupported and rejected after a bounded length check.
 Invoice and payment lines, and each payment line's links, have the stricter
 750-entry provider-evidence cap.
+Q-S5A applies the same bounds to the complete retained wrapper graph before
+reconstruction, rejects cycles and aliases, and reconstructs iteratively.
 
 Money conversion accepts exact integers, `Decimal` values, and plain decimal
 strings. It rejects booleans, floats, exponent notation in strings, non-finite
@@ -98,7 +111,9 @@ All contract failures use bounded rule descriptions and never interpolate raw
 source values. Adversarial coverage includes malformed containers and keys,
 identity substitution, missing identity, empty/oversized lines, unknown line
 categories, mutable aliases, absent/null distinctions, type-preserving digest
-identity, hostile decimals, dates/timestamps, Unicode surrogates, all resource
+identity, stable attestation across mapping order and distinct attestation
+across retrieval/binding/source changes, hostile decimals, dates/timestamps,
+Unicode surrogates, all resource
 bounds, repr/error disclosure, import capability, unchanged disabled-provider
 behaviour, and absence of canonical/tax/payment/launch decisions.
 

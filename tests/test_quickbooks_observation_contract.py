@@ -1,7 +1,7 @@
 """Adversarial tests for the pure QuickBooks Q-S4 observation boundary."""
 
 from dataclasses import FrozenInstanceError
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
 from decimal import Decimal
 import ast
 from collections.abc import Mapping
@@ -204,6 +204,86 @@ def test_digest_is_deterministic_order_independent_and_type_preserving():
         invoice(future={"a": Decimal("1.00"), "b": "1.0"}), **identity()).source_digest
     assert observe_invoice(first, **identity()).source_digest != observe_invoice(
         invoice(future={"a": "1.0", "b": "1.0"}), **identity()).source_digest
+
+
+def test_attestation_is_order_stable_and_binds_retrieval_identity_and_source():
+    raw = invoice(future={"a": Decimal("1.0"), "b": "one"})
+    reordered = dict(reversed(list(raw.items())))
+    first = observe_invoice(raw, **identity())
+    second = observe_invoice(reordered, **identity())
+    assert first.observation_attestation == second.observation_attestation
+    assert first.source_digest == second.source_digest
+    variants = [
+        observe_invoice(raw, **identity(retrieved_at=NOW.replace(hour=11))),
+        observe_invoice(raw, **identity(
+            binding=RealmBinding("user-2", "realm-1", "opaque-reference-1"),
+            user_id="user-2")),
+        observe_invoice(invoice(future={"a": Decimal("1.0"), "b": "two"}),
+                        **identity()),
+    ]
+    assert all(item.observation_attestation != first.observation_attestation
+               for item in variants)
+
+
+class HostileTimezone(tzinfo):
+    def __init__(self):
+        self.calls = {name: 0 for name in (
+            "utcoffset", "dst", "tzname", "fromutc", "eq", "repr")}
+
+    def _called(self, name):
+        self.calls[name] += 1
+        raise RuntimeError("private-timezone-text")
+
+    def utcoffset(self, value): return self._called("utcoffset")
+    def dst(self, value): return self._called("dst")
+    def tzname(self, value): return self._called("tzname")
+    def fromutc(self, value): return self._called("fromutc")
+    def __eq__(self, other): return self._called("eq")
+    def __repr__(self): return self._called("repr")
+
+
+def test_hostile_retrieval_timezone_is_rejected_without_invoking_hooks():
+    hostile = HostileTimezone()
+    when = datetime(2026, 9, 1, 10, 0, tzinfo=hostile)
+    with pytest.raises(QuickBooksObservationError) as caught:
+        observe_invoice(invoice(), **identity(retrieved_at=when))
+    assert all(count == 0 for count in hostile.calls.values())
+    assert str(caught.value) == (
+        "QuickBooks observation contract: retrieved_at must use a fixed-offset timezone")
+
+
+def test_exact_fixed_offset_retrieval_time_normalizes_to_stable_utc_attestation():
+    fixed = datetime(2026, 9, 1, 11, 0,
+                     tzinfo=timezone(timedelta(hours=1)))
+    utc = observe_invoice(invoice(), **identity())
+    offset = observe_invoice(invoice(), **identity(retrieved_at=fixed))
+    assert offset.retrieved_at == NOW
+    assert offset.retrieved_at.tzinfo is timezone.utc
+    assert offset.observation_attestation == utc.observation_attestation
+
+
+class HostileBindingEquality:
+    def __init__(self):
+        self.invoked = False
+
+    def __eq__(self, other):
+        self.invoked = True
+        raise RuntimeError("private-binding-text")
+
+
+@pytest.mark.parametrize("field", [
+    "user_id", "realm_id", "credential_reference",
+])
+def test_hostile_realm_binding_field_is_rejected_without_equality(field):
+    binding = RealmBinding("user-1", "realm-1", "opaque-reference-1")
+    hostile = HostileBindingEquality()
+    object.__setattr__(binding, field, hostile)
+    with pytest.raises(QuickBooksObservationError) as caught:
+        observe_invoice(invoice(), **identity(binding=binding))
+    assert hostile.invoked is False
+    assert str(caught.value) == (
+        "QuickBooks observation contract: realm binding identity is invalid")
+    assert "private-binding-text" not in str(caught.value)
 
 
 @pytest.mark.parametrize("bad", [True, 1.2, Decimal("NaN"), Decimal("Infinity"),

@@ -7,11 +7,10 @@ logging, canonical accounting, tax, payment, or provider-enablement capability.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 import re
-from types import MappingProxyType
 from typing import Any, Iterator, Mapping, Sequence
 
 from .quickbooks_oauth_contract import RealmBinding
@@ -53,13 +52,16 @@ class FrozenEvidence(Mapping[str, Any]):
     __slots__ = ("__values",)
 
     def __init__(self, values: Mapping[str, Any]) -> None:
-        self.__values = MappingProxyType(dict(values))
+        self.__values = tuple(dict(values).items())
 
     def __getitem__(self, key: str) -> Any:
-        return self.__values[key]
+        for stored_key, value in self.__values:
+            if stored_key == key:
+                return value
+        raise KeyError(key)
 
     def __iter__(self):
-        return iter(self.__values)
+        return (key for key, _ in self.__values)
 
     def __len__(self) -> int:
         return len(self.__values)
@@ -230,9 +232,15 @@ def _timestamp(value: Any, field: str) -> datetime:
 
 
 def _retrieval_time(value: Any) -> datetime:
-    if type(value) is not datetime or value.tzinfo is None or value.utcoffset() is None:
+    if type(value) is not datetime:
         raise _fail("retrieved_at must be an aware datetime")
-    return value
+    zone = object.__getattribute__(value, "tzinfo")
+    # datetime methods dispatch to tzinfo hooks.  Admit only the exact built-in
+    # fixed-offset implementation before invoking any of them, then retain one
+    # canonical UTC representation for replay and attestation.
+    if type(zone) is not timezone:
+        raise _fail("retrieved_at must use a fixed-offset timezone")
+    return value.astimezone(timezone.utc)
 
 
 def _freeze(value: Any) -> Any:
@@ -241,6 +249,89 @@ def _freeze(value: Any) -> Any:
     if type(value) is list:
         return FrozenEvidenceSequence([_freeze(item) for item in value])
     return value
+
+
+def _thaw_retained_evidence(root: Any) -> Any:
+    """Validate and iteratively reconstruct an exact retained evidence graph."""
+    stack = [(root, 0)]
+    containers: list[Any] = []
+    seen: set[int] = set()
+    nodes = byte_count = 0
+    while stack:
+        value, depth = stack.pop()
+        nodes += 1
+        if nodes > _MAX_NODES:
+            raise _fail("retained evidence exceeds the node bound")
+        if depth > _MAX_DEPTH:
+            raise _fail("retained evidence exceeds the depth bound")
+        value_type = type(value)
+        if value is None or value_type is bool:
+            byte_count += 1
+        elif value_type is str:
+            byte_count += len(_safe_string(value, "retained evidence string"))
+        elif value_type is int:
+            if abs(value) > _MAX_ABS_DECIMAL:
+                raise _fail("retained evidence contains an excessive integer")
+            byte_count += len(str(value))
+        elif value_type is Decimal:
+            _bounded_decimal(value, "retained evidence decimal", accept_string=False)
+            byte_count += len(str(value))
+        elif value_type is FrozenEvidence:
+            identity = id(value)
+            if identity in seen:
+                raise _fail("retained evidence contains a cycle or alias")
+            seen.add(identity)
+            values = object.__getattribute__(value, "_FrozenEvidence__values")
+            if (type(values) is not tuple
+                    or any(type(item) is not tuple or len(item) != 2
+                           for item in values)):
+                raise _fail("retained evidence container storage is invalid")
+            items = values
+            if len(items) > _MAX_WIDTH:
+                raise _fail("retained evidence exceeds the container-width bound")
+            containers.append(value)
+            for key, item in items:
+                if type(key) is not str:
+                    raise _fail("retained evidence keys must be strings")
+                byte_count += len(_safe_string(key, "retained evidence key"))
+                stack.append((item, depth + 1))
+        elif value_type is FrozenEvidenceSequence:
+            identity = id(value)
+            if identity in seen:
+                raise _fail("retained evidence contains a cycle or alias")
+            seen.add(identity)
+            values = object.__getattribute__(value, "_FrozenEvidenceSequence__values")
+            if type(values) is not tuple:
+                raise _fail("retained evidence container storage is invalid")
+            if len(values) > _MAX_WIDTH:
+                raise _fail("retained evidence exceeds the container-width bound")
+            containers.append(value)
+            stack.extend((item, depth + 1) for item in values)
+        elif value_type in (bytes, bytearray, memoryview):
+            raise _fail("retained evidence contains unsupported byte material")
+        else:
+            raise _fail("retained evidence contains an unsupported value type")
+        if byte_count > _MAX_BYTES:
+            raise _fail("retained evidence exceeds the payload-size bound")
+
+    rebuilt: dict[int, Any] = {}
+    for value in reversed(containers):
+        if type(value) is FrozenEvidence:
+            values = object.__getattribute__(value, "_FrozenEvidence__values")
+            rebuilt[id(value)] = {
+                key: rebuilt[id(item)] if type(item) in
+                (FrozenEvidence, FrozenEvidenceSequence) else item
+                for key, item in values
+            }
+        else:
+            values = object.__getattribute__(value, "_FrozenEvidenceSequence__values")
+            rebuilt[id(value)] = [
+                rebuilt[id(item)] if type(item) in
+                (FrozenEvidence, FrozenEvidenceSequence) else item
+                for item in values
+            ]
+    return rebuilt[id(root)] if type(root) in (
+        FrozenEvidence, FrozenEvidenceSequence) else root
 
 
 def _digest(value: Any) -> str:
@@ -277,6 +368,29 @@ def _digest(value: Any) -> str:
     return output.hexdigest()
 
 
+def observation_attestation(kind: str, source_digest: str, user_id: str,
+                            realm_id: str, credential_reference: str,
+                            retrieved_at: datetime) -> str:
+    """Deterministically bind raw evidence to its Q-S4 retrieval identity."""
+    if kind not in {"CompanyInfoObservation", "InvoiceObservation",
+                    "PaymentObservation"}:
+        raise _fail("observation attestation kind is invalid")
+    if (type(source_digest) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", source_digest) is None):
+        raise _fail("observation attestation source digest is invalid")
+    user = _text(user_id, "user_id")
+    realm = _text(realm_id, "realm_id")
+    credential = _text(credential_reference, "credential_reference")
+    when = _retrieval_time(retrieved_at).astimezone(timezone.utc)
+    material = {
+        "schema": "quickbooks-qbo-qs4-observation-attestation-v1",
+        "kind": kind, "source_digest": source_digest, "user_id": user,
+        "realm_id": realm, "credential_reference": credential,
+        "retrieved_at": when.isoformat(timespec="microseconds"),
+    }
+    return _digest(material)
+
+
 def _presence(source: Mapping[str, Any]) -> tuple[frozenset[str], frozenset[str]]:
     return frozenset(source), frozenset(key for key, value in source.items() if value is None)
 
@@ -297,8 +411,18 @@ def _identity(binding: Any, user_id: Any, realm_id: Any,
     credential = _text(credential_reference, "credential_reference")
     if type(binding) is not RealmBinding:
         raise _fail("binding must be a Q-S1 RealmBinding")
-    if (binding.user_id != user or binding.realm_id != realm
-            or binding.credential_reference != credential):
+    bound_user = object.__getattribute__(binding, "user_id")
+    bound_realm = object.__getattribute__(binding, "realm_id")
+    bound_credential = object.__getattribute__(binding, "credential_reference")
+    if any(type(value) is not str
+           for value in (bound_user, bound_realm, bound_credential)):
+        raise _fail("realm binding identity is invalid")
+    bound_user = _text(bound_user, "binding.user_id")
+    bound_realm = _text(bound_realm, "binding.realm_id")
+    bound_credential = _text(
+        bound_credential, "binding.credential_reference")
+    if (bound_user != user or bound_realm != realm
+            or bound_credential != credential):
         raise _fail("realm binding identity does not match")
     return user, realm, credential
 
@@ -312,6 +436,7 @@ class CompanyInfoObservation:
     sync_token: str
     retrieved_at: datetime
     source_digest: str
+    observation_attestation: str
     company_name: str
     legal_name: str | None
     country: str | None
@@ -346,6 +471,7 @@ class InvoiceObservation:
     sync_token: str
     retrieved_at: datetime
     source_digest: str
+    observation_attestation: str
     lines: tuple[InvoiceLineObservation, ...]
     customer_reference_value: str
     transaction_date: date | None
@@ -396,6 +522,7 @@ class PaymentObservation:
     sync_token: str
     retrieved_at: datetime
     source_digest: str
+    observation_attestation: str
     lines: tuple[PaymentLineObservation, ...]
     customer_reference_value: str
     transaction_date: date | None
@@ -428,8 +555,11 @@ def observe_company_info(source: Any, *, binding: RealmBinding, user_id: str,
     fiscal = None if obj.get("FiscalYearStartMonth") is None else _text(obj["FiscalYearStartMonth"], "FiscalYearStartMonth", 20)
     started = None if obj.get("CompanyStartDate") is None else _day(obj["CompanyStartDate"], "CompanyStartDate")
     present, nulls = _presence(obj)
+    digest = _digest(obj)
+    attestation = observation_attestation(
+        "CompanyInfoObservation", digest, user, realm, credential, when)
     return CompanyInfoObservation(user, realm, credential, entity_id, sync, when,
-        _digest(obj), company_name, legal, country, fiscal, started, present,
+        digest, attestation, company_name, legal, country, fiscal, started, present,
         nulls, _freeze(obj))
 
 
@@ -472,8 +602,11 @@ def observe_invoice(source: Any, *, binding: RealmBinding, user_id: str,
             raise _fail("GlobalTaxCalculation is not documented")
     _metadata_timestamps(obj)
     present, nulls = _presence(obj)
+    digest = _digest(obj)
+    attestation = observation_attestation(
+        "InvoiceObservation", digest, user, realm, credential, when)
     return InvoiceObservation(user, realm, credential, entity_id, sync, when,
-        _digest(obj), tuple(lines), customer_value, transaction_date, due_date,
+        digest, attestation, tuple(lines), customer_value, transaction_date, due_date,
         total, balance, "CurrencyRef" in obj, tax, "TxnTaxDetail" in obj,
         present, nulls, _freeze(obj))
 
@@ -536,8 +669,11 @@ def observe_payment(source: Any, *, binding: RealmBinding, user_id: str,
                  else _nonnegative_decimal(obj["UnappliedAmt"], "UnappliedAmt"))
     _metadata_timestamps(obj)
     present, nulls = _presence(obj)
+    digest = _digest(obj)
+    attestation = observation_attestation(
+        "PaymentObservation", digest, user, realm, credential, when)
     return PaymentObservation(
-        user, realm, credential, entity_id, sync, when, _digest(obj),
+        user, realm, credential, entity_id, sync, when, digest, attestation,
         tuple(lines), customer_value, transaction_date, total, unapplied,
         "CurrencyRef" in obj, obj.get("CurrencyRef") is None and "CurrencyRef" in obj,
         present, nulls, _freeze(obj))
