@@ -6,6 +6,7 @@ integration, independent review, or launch readiness.
 | Boundary | S1 implemented | Independently reviewed | Integrated | Launch-ready | Remaining owner/dependency |
 |---|---:|---:|---:|---:|---|
 | S1 structured capture/minimisation boundary | Yes | Yes | No | No | Integration, privacy/security controls, usability and launch assurance remain |
+| S2A extraction-confirmation contract (pure, network-inert) | No | No | No | No | Independent review; then document-processing integration plus privacy/security controls |
 | Upload, extraction, customer confirmation, and secure raw-document deletion | No | No | No | No | Document-processing integration plus privacy/security controls |
 | Customer journey, persistence, replacement/deletion actions, structured retention, account deletion, and backups | No | No | No | No | Product, data, privacy, legal, and platform implementation |
 | Independently reviewed usability of the payslip/manual journey | No | No | No | No | Representative journey implementation and independent usability evidence |
@@ -30,3 +31,20 @@ Supersession is an immutable reference from a new capture to an earlier
 evidence ID. Nothing is mutated or deleted. Secure original-document deletion,
 structured-data retention, customer deletion, account deletion, and backup
 behaviour remain later integration/privacy gates.
+
+## S2A boundary
+
+S2A is a pure, dependency-free, network-inert extraction-confirmation contract.
+It accepts a typed payslip extraction candidate and exactly one explicit
+accept-or-correct decision per customer-confirmable field, then returns an
+immutable, redacted result carrying the S1-compatible `PayeEvidenceCapture`
+(source `SOURCE_DOCUMENT`, document type `PAYSLIP`, normalised completeness
+`PARTIAL`), exact candidate/confirmation digests, the confirmation ID, and the
+fixed `secure_deletion_required` disposition.
+
+It never reads, writes, uploads, persists, logs, or deletes anything, and it
+never claims the raw document was deleted. P45 and P60 fail closed. Upload,
+OCR/extraction, confirmation UI, persistence, retention/deletion execution,
+and launch assurance remain later integration/privacy gates. This boundary is
+an uncommitted candidate awaiting independent review; it is not integrated and
+not launch-ready.
