@@ -1,0 +1,117 @@
+{
+  "fixture_version": "w2-customer-language-research-cases/1.0",
+  "synthetic": true,
+  "production_use": false,
+  "cases": [
+    {
+      "id": "hmrc-exact-gap",
+      "moderator_label": "HMRC-confirmed obligations with a set-aside gap",
+      "status": "ready",
+      "evidence": "hmrc_confirmed_exact",
+      "annual_liability": "7200.00",
+      "obligations": [
+        {"kind": "balancing_payment", "amount": "2400.00", "due_date": "2027-01-31"},
+        {"kind": "first_payment_on_account", "amount": "1800.00", "due_date": "2027-01-31"},
+        {"kind": "second_payment_on_account", "amount": "1800.00", "due_date": "2027-07-31"}
+      ],
+      "adjustments": [
+        {"kind": "prior_payments_on_account", "amount": "1200.00"}
+      ],
+      "funding": "gap",
+      "funding_amount": "900.00",
+      "claim_to_reduce": null
+    },
+    {
+      "id": "local-estimate-exact",
+      "moderator_label": "Qualified local estimate with exact set-aside coverage",
+      "status": "ready",
+      "evidence": "qualified_local_estimate",
+      "annual_liability": "4850.00",
+      "obligations": [
+        {"kind": "balancing_payment", "amount": "850.00", "due_date": "2027-01-31"},
+        {"kind": "first_payment_on_account", "amount": "2000.00", "due_date": "2027-01-31"},
+        {"kind": "second_payment_on_account", "amount": "2000.00", "due_date": "2027-07-31"}
+      ],
+      "adjustments": [],
+      "funding": "exact",
+      "funding_amount": null,
+      "claim_to_reduce": null
+    },
+    {
+      "id": "hmrc-surplus",
+      "moderator_label": "HMRC-confirmed obligations with a set-aside surplus",
+      "status": "ready",
+      "evidence": "hmrc_confirmed_exact",
+      "annual_liability": "3600.00",
+      "obligations": [
+        {"kind": "balancing_payment", "amount": "1200.00", "due_date": "2027-01-31"}
+      ],
+      "adjustments": [
+        {"kind": "payments_made", "amount": "400.00"},
+        {"kind": "credit_or_refund", "amount": "125.00"}
+      ],
+      "funding": "surplus",
+      "funding_amount": "650.00",
+      "claim_to_reduce": null
+    },
+    {
+      "id": "claim-review-ready",
+      "moderator_label": "Prepared claim to reduce awaiting customer action",
+      "status": "ready",
+      "evidence": "qualified_local_estimate",
+      "annual_liability": "5100.00",
+      "obligations": [
+        {"kind": "first_payment_on_account", "amount": "1275.00", "due_date": "2027-01-31"},
+        {"kind": "second_payment_on_account", "amount": "1275.00", "due_date": "2027-07-31"}
+      ],
+      "adjustments": [],
+      "funding": "gap",
+      "funding_amount": "300.00",
+      "claim_to_reduce": "review_ready"
+    },
+    {
+      "id": "claim-customer-confirmation",
+      "moderator_label": "Claim to reduce requiring customer confirmation",
+      "status": "ready",
+      "evidence": "qualified_local_estimate",
+      "annual_liability": "6200.00",
+      "obligations": [
+        {"kind": "first_payment_on_account", "amount": "1550.00", "due_date": "2027-01-31"},
+        {"kind": "second_payment_on_account", "amount": "1550.00", "due_date": "2027-07-31"}
+      ],
+      "adjustments": [],
+      "funding": "exact",
+      "funding_amount": null,
+      "claim_to_reduce": "customer_confirmation_required"
+    },
+    {
+      "id": "claim-no-reduction",
+      "moderator_label": "No claim to reduce shown",
+      "status": "ready",
+      "evidence": "hmrc_confirmed_exact",
+      "annual_liability": "4400.00",
+      "obligations": [
+        {"kind": "first_payment_on_account", "amount": "1100.00", "due_date": "2027-01-31"},
+        {"kind": "second_payment_on_account", "amount": "1100.00", "due_date": "2027-07-31"}
+      ],
+      "adjustments": [],
+      "funding": "exact",
+      "funding_amount": null,
+      "claim_to_reduce": "no_reduction"
+    },
+    {
+      "id": "review-required-suppression",
+      "moderator_label": "Review required with unsafe amounts suppressed",
+      "status": "review_required",
+      "evidence": null,
+      "annual_liability": "9999.99",
+      "obligations": [
+        {"kind": "balancing_payment", "amount": "3333.33", "due_date": "2027-01-31"}
+      ],
+      "adjustments": [],
+      "funding": null,
+      "funding_amount": null,
+      "claim_to_reduce": "review_required"
+    }
+  ]
+}
