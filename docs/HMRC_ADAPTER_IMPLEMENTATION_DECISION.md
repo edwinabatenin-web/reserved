@@ -20,6 +20,22 @@ statements in `EXTERNAL_DEPENDENCIES.md` and
 not current package instructions, and must be reconciled before any later HMRC
 package.
 
+**Literal contract package, 1 September 2026:**
+A separate, tightly bounded package now adds a network-inert literal contract
+for only the documented GET operation
+`/individual-employment/sa/{utr}/annual-summary/{taxYear}`. This is **not** an
+HTTP adapter and does **not** change this decision. The new module
+`reserved/providers/hmrc_individual_employment_contract.py` builds a frozen,
+redacted `IndividualEmploymentRequestIntent` that is deliberately not, and
+cannot become, a sendable `ProviderRequest`; it validates responses with
+fail-closed, non-echoing error observations and creates no `PayeEvidence`,
+canonical accounting evidence, annual tax inputs, cash-obligation inputs or
+customer-presentation data. Completeness remains `UNVERIFIED`.
+`ProviderSpec("hmrc")` stays `implementation_enabled=False`, and no credential,
+token, transport, configurable production origin, route, persistence or
+provider-enablement surface is added. The contract is documented in
+`docs/HMRC_INDIVIDUAL_EMPLOYMENT_1_2_CONTRACT_EVIDENCE.md`.
+
 ## Outcome
 
 The repository establishes that three user-restricted APIs, subject to the
