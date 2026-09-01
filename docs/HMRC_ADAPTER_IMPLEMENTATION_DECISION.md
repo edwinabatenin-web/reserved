@@ -6,9 +6,12 @@ currently stored in this repository
 
 **Evidence update, 1 September 2026:**
 `HMRC_PAYE_API_CONTRACT_EVIDENCE.md` now captures the current generic HMRC OAuth
-contract and Individual Employment 1.2 service boundary. The dynamically
-rendered endpoint specification still did not expose a reviewable endpoint,
-scope or schema contract, so the decision above remains unchanged. The update
+contract and Individual Employment 1.2 service boundary.
+`HMRC_INDIVIDUAL_EMPLOYMENT_1_2_ENDPOINT_EVIDENCE.md` now records the official
+resolved OpenAPI method/path, parameters, scope, media version, minimum success
+schema and endpoint errors. No byte-for-byte OpenAPI export or checksum was
+retained, and the decision not to implement or enable an HTTP adapter remains
+unchanged pending independent review and separate package authority. The update
 also records that Individual PAYE Test Support **2.1 beta**, last updated
 21 August 2026, is now the latest listed sandbox version; no test-support
 endpoint or fixture is inferred from that overview. The older 2.0/2.1 status
@@ -19,19 +22,22 @@ package.
 
 ## Outcome
 
-The repository establishes that three subscribed, user-restricted APIs can
+The repository establishes that three user-restricted APIs, subject to the
+appropriate unresolved application subscription and access approval, can
 support Reserved's PAYE evidence journey:
 
 - Individual Employment 1.2 — employment records and employer identifiers;
 - Individual Income 1.2 — employment income held for the tax year;
 - Individual Tax 1.1 — tax deducted and relevant refunds/set-offs.
 
-It does **not** retain the endpoint-level contracts required to implement those
-calls safely. Existing documents link to the official API pages and summarise
-capabilities, environments and limitations, but do not record exact paths,
-path/query parameters, OAuth scopes, `Accept` media types, required headers,
-response schemas, endpoint-specific error codes or sandbox test scenarios.
-Those details must not be reconstructed from memory or inferred from API names.
+It now retains the endpoint-level contract for only the first Individual
+Employment 1.2 read: exact method/path, path parameters, OAuth scope, `Accept`
+media type, minimum success schema and endpoint errors. It does **not** retain
+equivalent contracts for Individual Income or Individual Tax, exact PAYE Test
+Support fixtures, endpoint-specific rate/retry or fraud-header rules, approved
+credential custody, or sandbox execution evidence. Those details must not be
+reconstructed from memory or inferred from API names or generic platform
+examples.
 
 Accordingly, `ProviderSpec("hmrc")` remains
 `implementation_enabled=False`. No network code, route, provider endpoint or
@@ -56,7 +62,7 @@ The proposed first journey is deliberately narrow:
 
 1. Create/use one HMRC individual **sandbox test user** only.
 2. Complete one user-restricted browser authorisation using Reserved's registered
-   sandbox callback and the minimum scopes required for Individual Employment.
+   sandbox callback and the captured `read:individual-employment` scope.
 3. Retrieve that test user's employment records for one supported tax year.
 4. Normalise only the stable employment identity/provenance fields confirmed by
    the current official response schema; do not calculate or display liability.
@@ -72,8 +78,10 @@ Individual Tax should be added only after the employment-identity mapping is
 reviewed. This ordering is an architectural inference from Reserved's evidence
 model, not an HMRC-mandated API sequence.
 
-The journey is **selected but not implementation-ready**. Even the first read
-must wait for the official endpoint evidence below.
+The journey is **selected but not execution-ready**. The first read's literal
+endpoint contract is now captured, but independent source review, separate
+implementation authority, application subscription, approved credential
+custody, exact test-support fixtures and sandbox controls remain gates.
 
 ## Exact official evidence still required
 
@@ -84,8 +92,8 @@ NINOs or test-user credentials.
 ### HMRC authorization platform
 
 - sandbox authorization endpoint and token endpoint;
-- required authorization parameters and exact scope string for Individual
-  Employment 1.2;
+- required authorization parameters, using the endpoint-documented
+  `read:individual-employment` scope;
 - redirect URI matching rules, state handling and user-denial callback fields;
 - authorization-code lifetime/single-use rules;
 - token request authentication/body, token response schema, access/refresh
@@ -96,14 +104,16 @@ NINOs or test-user credentials.
 
 ### Individual Employment 1.2
 
-- exact sandbox base origin, path and HTTP method for the chosen read;
-- all required path/query parameters, including tax-year format and taxpayer
-  identifier requirements;
-- exact `Accept` media type/version header and any other mandatory headers;
-- required OAuth scope;
-- success schema and which fields are stable identifiers versus display text;
-- documented empty/no-data representation;
-- endpoint-specific 4xx/5xx codes and retry guidance;
+- the exact sandbox base origin, GET path, UTR/tax-year path requirements,
+  `Accept` value, OAuth scope, minimum success schema and 400/401/404 errors are
+  now captured in `HMRC_INDIVIDUAL_EMPLOYMENT_1_2_ENDPOINT_EVIDENCE.md`;
+- independently compare that literal capture with the current official
+  resolved OpenAPI document before encoding it;
+- decide canonical identity/display semantics only in a separately reviewed
+  adapter package; employer name ordering and optional fields are not invented;
+- preserve HTTP 404 as unavailable data rather than an inferred authoritative
+  empty employment history;
+- retain endpoint-specific rate limits and retry timing as unresolved;
 - available sandbox/test-support scenarios and any stateful setup dependency;
 - fraud-prevention-header applicability for Reserved's connection method.
 
@@ -145,6 +155,7 @@ Official sources:
 
 - [Individual PAYE Test Support 2.1](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/paye-des-stub/2.1)
 - [Individual Employment 1.2](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-employment/1.2)
+- [Individual Employment 1.2 resolved OpenAPI specification](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-employment/1.2/oas/resolved)
 - [Individual Income 1.2](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-income/1.2)
 - [Individual Tax 1.1](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-tax/1.1)
 - [Self Assessment Test Support (MTD) 1.0](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/mtd-sa-test-support-api/1.0)

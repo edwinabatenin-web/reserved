@@ -5,11 +5,13 @@ adapter implementation remains blocked**.
 
 This record captures only current public HMRC Developer Hub material for the
 first proposed PAYE read. No HMRC API was called, no account was used, and no
-credential, test user, NINO, sandbox fixture or production data was accessed.
-The endpoint specification is dynamically rendered and did not expose
-reviewable endpoint-level content through the available text capture. Missing
-facts below therefore remain unresolved rather than being reconstructed from
-API names, examples elsewhere, source code or memory.
+credential, test user, taxpayer identifier, sandbox fixture or production data
+was accessed. A later bounded capture on the same observation date resolved the
+official OpenAPI document and is recorded in
+`HMRC_INDIVIDUAL_EMPLOYMENT_1_2_ENDPOINT_EVIDENCE.md`. That record closes only
+the literal endpoint facts it identifies; missing provider, custody and
+activation facts remain unresolved rather than being reconstructed from API
+names, examples elsewhere, source code or memory.
 
 ## Evidence hierarchy and sources
 
@@ -17,6 +19,7 @@ Only these official pages were used, each accessed on 1 September 2026:
 
 - [Individual Employment API 1.2 overview](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-employment/1.2)
 - [Individual Employment API 1.2 endpoint specification page](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-employment/1.2/oas/page)
+- [Individual Employment API 1.2 resolved OpenAPI specification](https://developer.service.hmrc.gov.uk/api-documentation/docs/api/service/individual-employment/1.2/oas/resolved)
 - [User-restricted endpoint authorisation](https://developer.service.hmrc.gov.uk/api-documentation/docs/authorisation/user-restricted-endpoints)
 - [HMRC Developer Hub tutorials](https://developer.service.hmrc.gov.uk/api-documentation/docs/tutorials)
 - [HMRC API reference guide](https://developer.service.hmrc.gov.uk/api-documentation/docs/reference-guide)
@@ -89,36 +92,27 @@ The current overview establishes:
   Individual PAYE Test Support API.
 
 These facts support selection of one employment-history read as the first
-provider journey. They do **not** establish the endpoint path, required scope,
-request identifiers or response object contract.
+provider journey. The endpoint path, scope, request parameters, minimum response
+contract and endpoint errors are now separately evidenced in
+`HMRC_INDIVIDUAL_EMPLOYMENT_1_2_ENDPOINT_EVIDENCE.md`.
 
-## Endpoint facts that remain unresolved
+## Endpoint facts captured and gates that remain
 
-The endpoint specification page was located but its endpoint-level content was
-not available in a reviewable text representation. The following therefore
-remain hard implementation blockers:
+The official resolved OpenAPI document was readable through the Developer Hub
+on 1 September 2026. The separate endpoint record captures the exact
+`GET /individual-employment/sa/{utr}/annual-summary/{taxYear}` contract,
+10-digit SA UTR, tax-year format, `application/vnd.hmrc.1.2+json` media version,
+`read:individual-employment` scope, minimum 200 schema and documented 400, 401
+and 404 errors. No byte-for-byte local OpenAPI export or checksum was retained,
+so the record says so explicitly rather than inventing one.
 
-- exact HTTP method and path;
-- exact placement, spelling, format and validation rules for NINO, tax year and
-  any other path/query parameters;
-- exact OAuth scope for the selected read. The generic OAuth page contains an
-  example token response with `read:employment`, but a generic example is not
-  endpoint authority;
-- exact `Accept` media type. The generic versioning rule suggests the pattern
-  `application/vnd.hmrc.[version]+json`, but this record does not derive an
-  Individual Employment literal from that pattern;
-- any other mandatory request or correlation headers;
-- the full success schema, field types, cardinalities, identifiers, optionality,
-  nullability, empty/no-data representation and forward-compatible extension
-  rules;
-- endpoint-specific error codes, meanings and retry/non-retry behaviour;
-- exact rate-limit or pagination behaviour, if any;
-- the endpoint's exact fraud-prevention-header applicability;
-- the exact Individual PAYE Test Support fixture endpoint and payload needed to
-  create the smallest one-employment, one-tax-year test state.
-
+That evidence does **not** establish endpoint-specific rate limits, pagination,
+retry timing or fraud-prevention-header applicability. It also does not prove
+application subscription, credential custody, the exact PAYE Test Support 2.1
+fixture contract, sandbox behaviour, canonical mapping or activation authority.
 No parser, request builder, source schema or provider-specific transport may be
-implemented until those facts are captured and independently reviewed.
+implemented until this evidence is independently reviewed and a separate
+bounded package is authorised.
 
 ## Generic platform error and data facts
 
@@ -174,21 +168,21 @@ unresolved and must be confirmed before any call; no header set is inferred.
 | OAuth Authorization Code, callback, exchange and refresh lifecycle above | Documented generic HMRC platform fact | Reusable only after endpoint-specific origin/scope review and approved custody |
 | Individual Employment 1.2 purpose, version, environments and high-level information categories | Documented service fact | Supports the selected first read, not a wire contract |
 | Employment identity before income/tax amounts | Reserved implementation sequencing inference | Preserve as proposed ordering; do not represent it as HMRC-mandated |
-| `read:employment` as the exact endpoint scope | Unresolved | Do not encode from the generic OAuth example |
-| Individual Employment endpoint, request and response schema | Unresolved | Hard blocker for request builder, parser and adapter |
+| `read:individual-employment` as the exact endpoint scope | Documented endpoint fact | Eligible for a later literal network-inert contract only after independent review |
+| Individual Employment method, path, parameters, minimum response schema and endpoint errors | Documented endpoint facts in the resolved 1.2 OpenAPI specification | Evidence gap closed; implementation and execution remain separately gated |
 | Individual PAYE Test Support 2.1 beta as latest listed sandbox version | Documented current service fact | Re-review exact fixture contract and application subscription before use |
 | Fraud-prevention headers for the selected read | Unresolved | No sandbox or production call until applicability and exact headers are reviewed |
 
 ## Terminal decision
 
-This evidence package advances the generic OAuth and service-selection
-prerequisites, corrects the current test-support version, and identifies the
-remaining exact gaps. It does not make the HMRC adapter implementation-ready.
+This evidence package, together with the separately recorded resolved OpenAPI
+capture, establishes the generic OAuth boundary and the first endpoint's exact
+method/path, parameters, scope, media version, minimum schema and errors. It
+does not make an HTTP adapter or provider journey implementation-ready.
 
-The next safe package is a fresh, reviewable capture of the Individual
-Employment 1.2 endpoint specification (including exact scope, request, schema,
-endpoint errors and test fixture). Only after that capture and separate
-authority may a network-inert HMRC request/response contract be proposed.
-Encrypted credential custody, application subscription, synthetic sandbox
-identity/data, provider calls, activation and production access remain later
-independent gates.
+After fresh independent source review and separate authority, a network-inert
+literal request/response contract for only Individual Employment 1.2 may be
+proposed. Endpoint-specific fraud-header and rate-limit facts, exact PAYE Test
+Support fixtures, encrypted credential custody, application subscription,
+synthetic sandbox identity/data, provider calls, activation and production
+access remain later independent gates.
