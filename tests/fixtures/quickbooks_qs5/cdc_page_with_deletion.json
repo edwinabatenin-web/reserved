@@ -1,0 +1,25 @@
+{
+  "synthetic": true,
+  "minorversion": 75,
+  "CDCResponse": [{
+    "QueryResponse": [{
+      "Invoice": [
+        {
+          "Id": "synthetic-invoice-live-002",
+          "SyncToken": "3",
+          "CustomerRef": {"value": "synthetic-customer-003"},
+          "CurrencyRef": {"value": "GBP"},
+          "Line": [{"Id": "1", "DetailType": "SalesItemLineDetail", "Amount": 25.00, "SalesItemLineDetail": {"ItemRef": {"value": "synthetic-item-002"}}}],
+          "TotalAmt": 25.00,
+          "Balance": 25.00,
+          "MetaData": {"LastUpdatedTime": "2026-09-01T08:00:00Z"}
+        },
+        {
+          "Id": "synthetic-invoice-deleted-003",
+          "status": "Deleted",
+          "MetaData": {"LastUpdatedTime": "2026-09-01T08:01:00Z"}
+        }
+      ]
+    }]
+  }]
+}

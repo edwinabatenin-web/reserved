@@ -1,0 +1,34 @@
+{
+  "synthetic": true,
+  "minorversion": 75,
+  "InvoiceQueryResponse": {
+    "startPosition": 1,
+    "maxResults": 1,
+    "totalCount": 1,
+    "Invoice": [{
+      "Id": "synthetic-invoice-001",
+      "SyncToken": "1",
+      "CustomerRef": {"value": "synthetic-customer-001"},
+      "CurrencyRef": {"value": "GBP"},
+      "GlobalTaxCalculation": "TaxExcluded",
+      "Line": [{"Id": "1", "DetailType": "SalesItemLineDetail", "Amount": 120.00, "SalesItemLineDetail": {"ItemRef": {"value": "synthetic-item-001"}}}],
+      "TotalAmt": 120.00,
+      "Balance": 70.00,
+      "LinkedTxn": [{"TxnId": "synthetic-payment-001", "TxnType": "Payment"}]
+    }]
+  },
+  "PaymentQueryResponse": {
+    "startPosition": 1,
+    "maxResults": 1,
+    "totalCount": 1,
+    "Payment": [{
+      "Id": "synthetic-payment-001",
+      "SyncToken": "0",
+      "CustomerRef": {"value": "synthetic-customer-001"},
+      "CurrencyRef": {"value": "GBP"},
+      "TotalAmt": 80.00,
+      "UnappliedAmt": 30.00,
+      "Line": [{"Amount": 50.00, "LinkedTxn": [{"TxnId": "synthetic-invoice-001", "TxnType": "Invoice"}]}]
+    }]
+  }
+}

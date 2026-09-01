@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "minorversion": 75,
+  "Payment": {
+    "Id": "synthetic-payment-unapplied-001",
+    "SyncToken": "0",
+    "CustomerRef": {"value": "synthetic-customer-002"},
+    "TotalAmt": 42.50,
+    "UnappliedAmt": 42.50,
+    "Line": []
+  }
+}
