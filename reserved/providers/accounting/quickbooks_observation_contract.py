@@ -363,6 +363,54 @@ class InvoiceObservation:
         return "InvoiceObservation([REDACTED])"
 
 
+@dataclass(frozen=True, repr=False)
+class PaymentLinkObservation:
+    transaction_id: str | None
+    transaction_type: str | None
+    present_fields: frozenset[str]
+    null_fields: frozenset[str]
+    source_evidence: Mapping[str, Any]
+
+    def __repr__(self) -> str:
+        return "PaymentLinkObservation([REDACTED])"
+
+
+@dataclass(frozen=True, repr=False)
+class PaymentLineObservation:
+    amount: Decimal | None
+    links: tuple[PaymentLinkObservation, ...]
+    present_fields: frozenset[str]
+    null_fields: frozenset[str]
+    source_evidence: Mapping[str, Any]
+
+    def __repr__(self) -> str:
+        return "PaymentLineObservation([REDACTED])"
+
+
+@dataclass(frozen=True, repr=False)
+class PaymentObservation:
+    user_id: str
+    realm_id: str
+    credential_reference: str
+    entity_id: str
+    sync_token: str
+    retrieved_at: datetime
+    source_digest: str
+    lines: tuple[PaymentLineObservation, ...]
+    customer_reference_value: str
+    transaction_date: date | None
+    total_amount: Decimal | None
+    unapplied_amount: Decimal | None
+    currency_ref_present: bool
+    currency_ref_null: bool
+    present_fields: frozenset[str]
+    null_fields: frozenset[str]
+    source_evidence: Mapping[str, Any]
+
+    def __repr__(self) -> str:
+        return "PaymentObservation([REDACTED])"
+
+
 def observe_company_info(source: Any, *, binding: RealmBinding, user_id: str,
                          realm_id: str, credential_reference: str,
                          retrieved_at: datetime) -> CompanyInfoObservation:
@@ -427,4 +475,69 @@ def observe_invoice(source: Any, *, binding: RealmBinding, user_id: str,
     return InvoiceObservation(user, realm, credential, entity_id, sync, when,
         _digest(obj), tuple(lines), customer_value, transaction_date, due_date,
         total, balance, "CurrencyRef" in obj, tax, "TxnTaxDetail" in obj,
+        present, nulls, _freeze(obj))
+
+
+def _nonnegative_decimal(value: Any, field: str) -> Decimal:
+    result = _bounded_decimal(value, field)
+    if result < 0:
+        raise _fail(f"{field} must be nonnegative")
+    return result
+
+
+def observe_payment(source: Any, *, binding: RealmBinding, user_id: str,
+                    realm_id: str, credential_reference: str,
+                    retrieved_at: datetime) -> PaymentObservation:
+    """Observe an already-retrieved Payment without interpreting settlement."""
+    _preflight(source)
+    obj = _object(source, "Payment")
+    user, realm, credential = _identity(
+        binding, user_id, realm_id, credential_reference)
+    entity_id = _text(obj.get("Id"), "Id")
+    sync = _text(obj.get("SyncToken"), "SyncToken")
+    when = _retrieval_time(retrieved_at)
+    customer = _object(obj.get("CustomerRef"), "CustomerRef")
+    customer_value = _text(customer.get("value"), "CustomerRef.value")
+
+    lines: list[PaymentLineObservation] = []
+    if "Line" in obj:
+        raw_lines = obj["Line"]
+        if type(raw_lines) is not list or len(raw_lines) > _MAX_LINES:
+            raise _fail("Line must be a list of at most 750 entries")
+        for raw in raw_lines:
+            line = _object(raw, "Line entry")
+            amount = None
+            if "Amount" in line and line["Amount"] is not None:
+                amount = _nonnegative_decimal(line["Amount"], "Line.Amount")
+            links: list[PaymentLinkObservation] = []
+            if "LinkedTxn" in line:
+                raw_links = line["LinkedTxn"]
+                if type(raw_links) is not list or len(raw_links) > _MAX_LINES:
+                    raise _fail("Line.LinkedTxn must be a list of at most 750 entries")
+                for raw_link in raw_links:
+                    link = _object(raw_link, "Line.LinkedTxn entry")
+                    transaction_id = (_text(link["TxnId"], "LinkedTxn.TxnId")
+                                      if "TxnId" in link else None)
+                    transaction_type = (_text(link["TxnType"], "LinkedTxn.TxnType", 64)
+                                        if "TxnType" in link else None)
+                    link_present, link_nulls = _presence(link)
+                    links.append(PaymentLinkObservation(
+                        transaction_id, transaction_type, link_present,
+                        link_nulls, _freeze(link)))
+            line_present, line_nulls = _presence(line)
+            lines.append(PaymentLineObservation(
+                amount, tuple(links), line_present, line_nulls, _freeze(line)))
+
+    transaction_date = (None if obj.get("TxnDate") is None
+                        else _day(obj["TxnDate"], "TxnDate"))
+    total = (None if obj.get("TotalAmt") is None
+             else _nonnegative_decimal(obj["TotalAmt"], "TotalAmt"))
+    unapplied = (None if obj.get("UnappliedAmt") is None
+                 else _nonnegative_decimal(obj["UnappliedAmt"], "UnappliedAmt"))
+    _metadata_timestamps(obj)
+    present, nulls = _presence(obj)
+    return PaymentObservation(
+        user, realm, credential, entity_id, sync, when, _digest(obj),
+        tuple(lines), customer_value, transaction_date, total, unapplied,
+        "CurrencyRef" in obj, obj.get("CurrencyRef") is None and "CurrencyRef" in obj,
         present, nulls, _freeze(obj))

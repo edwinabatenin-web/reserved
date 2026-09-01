@@ -7,7 +7,8 @@ normalisation, sandbox evidence, activation, or a launch decision.
 ## Scope and authority
 
 The owning reviewer supplied observations from the rendered official Intuit
-Developer `Invoice` and `CompanyInfo` reference pages on 1 September 2026. This
+Developer `Invoice` and `CompanyInfo` reference pages on 1 September 2026 and
+the separately retained pre-Q-S5 `Payment` facts. This
 candidate did not browse those pages or add provider semantics beyond the
 reviewer-supplied facts. The implementation is confined to
 `reserved/providers/accounting/quickbooks_observation_contract.py`; its focused
@@ -43,7 +44,19 @@ tax presence, `GlobalTaxCalculation`, and complete bounded source evidence are
 recorded. `GlobalTaxCalculation` is closed to `TaxExcluded`, `TaxInclusive`,
 and `NotApplicable`.
 
+`Payment` requires exact non-blank `Id`, `SyncToken`, and
+`CustomerRef.value`. It retains optional `TxnDate`, exact nonnegative bounded
+`TotalAmt` and `UnappliedAmt`, explicit `CurrencyRef` presence/null state, and
+the complete bounded raw graph. A supplied `Line` must be an ordered built-in
+list of zero to 750 plain objects; absence is also retained. Each optional line
+`Amount` is an exact nonnegative bounded decimal. A supplied `LinkedTxn` must
+be an ordered built-in list of zero to 750 plain objects. Present `TxnId` and
+`TxnType` members must be bounded non-blank strings, while absent members and
+all additive link/line evidence remain intact. No link type is classified as
+supported or unsupported at this boundary.
+
 The values do not derive invoice status, paid status, payment matching,
+allocation, settlement,
 liability, tax treatment, ownership, accounting recognition, canonical
 documents, launch readiness, or activation. In particular, observed `Balance`
 and `TotalAmt` remain provider fields, and absent `TxnDate` is not replaced with
@@ -64,13 +77,15 @@ unsupported objects fail before traversal. The complete source graph and every
 line are recursively copied into immutable redacted mapping and sequence
 wrappers, so later caller mutation cannot change an observation and every
 reachable retained container repr is non-disclosing. The typed observation
-`lines` remain a tuple of redacted `InvoiceLineObservation` values.
+`lines` remain tuples of redacted invoice or payment line observations, and
+payment links remain tuples of redacted link observations.
 
 Before sorting, freezing, or digesting, an iterative preflight validates every
 mapping key and enforces maximum depth 24, 50,000 total nodes, width 2,000 per
 container, 4,096 characters per string, and 2,000,000 aggregate source bytes.
 Byte-like material is unsupported and rejected after a bounded length check.
-Invoice lines have the stricter 750-entry provider-evidence cap.
+Invoice and payment lines, and each payment line's links, have the stricter
+750-entry provider-evidence cap.
 
 Money conversion accepts exact integers, `Decimal` values, and plain decimal
 strings. It rejects booleans, floats, exponent notation in strings, non-finite
@@ -95,7 +110,8 @@ environment/configuration, logging, persistence, route, callback, query,
 provider enablement, or canonical mapping capability. The existing disabled
 `QuickBooksProvider` placeholder and shared provider contracts are unchanged.
 
-Independent review and checkpointing remain required for Q-S4. Q-S2 HTTP and
+The Payment extension is an uncommitted prerequisite candidate requiring
+independent review and checkpointing. Q-S2 HTTP and
 secret custody, Q-S3 callback/route lifecycle, Q-S5 canonical normalisation and
 sync semantics, and Q-S6 sandbox, operational, privacy/security, enablement,
 and launch evidence all remain separate open gates.

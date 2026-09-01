@@ -13,7 +13,8 @@ from reserved.providers.accounting.quickbooks import QuickBooksProvider
 from reserved.providers.accounting.quickbooks_oauth_contract import RealmBinding
 from reserved.providers.accounting.quickbooks_observation_contract import (
     CompanyInfoObservation, GLOBAL_TAX_CALCULATIONS, LINE_DETAIL_TYPES,
-    QuickBooksObservationError, observe_company_info, observe_invoice,
+    PaymentObservation, QuickBooksObservationError, observe_company_info,
+    observe_invoice, observe_payment,
 )
 
 
@@ -56,6 +57,34 @@ def invoice(**changes):
         "CurrencyRef": None, "GlobalTaxCalculation": "TaxExcluded",
         "TxnTaxDetail": {"TotalTax": Decimal("0")}, "LinkedTxn": [],
         "MetaData": {"LastUpdatedTime": "2026-09-01T09:59:00+00:00"},
+        "future": {"preserved": True},
+    }
+    result.update(changes)
+    return result
+
+
+def payment_link(**changes):
+    result = {"TxnId": "invoice-1", "TxnType": "Invoice",
+              "future": {"retained": True}}
+    result.update(changes)
+    return result
+
+
+def payment_line(**changes):
+    result = {"Amount": Decimal("12.3400"),
+              "LinkedTxn": [payment_link()], "future": ["evidence"]}
+    result.update(changes)
+    return result
+
+
+def payment(**changes):
+    result = {
+        "Id": "payment-1", "SyncToken": "8",
+        "CustomerRef": {"value": "customer-1", "name": "Private customer"},
+        "TxnDate": "2026-08-31", "TotalAmt": Decimal("12.3400"),
+        "UnappliedAmt": Decimal("0.00"), "CurrencyRef": {"value": "GBP"},
+        "Line": [payment_line()],
+        "MetaData": {"LastUpdatedTime": "2026-09-01T09:59:00Z"},
         "future": {"preserved": True},
     }
     result.update(changes)
@@ -320,3 +349,162 @@ def test_disabled_provider_placeholder_is_unchanged_in_behaviour():
         provider.authorisation_url("user", "https://example.invalid/callback")
     with pytest.raises(NotImplementedError, match="not enabled"):
         provider.list_invoices("opaque")
+
+
+def test_applied_payment_is_bound_frozen_and_observational():
+    source = payment()
+    observed = observe_payment(source, **identity())
+    assert isinstance(observed, PaymentObservation)
+    assert observed.entity_id == "payment-1" and observed.sync_token == "8"
+    assert observed.customer_reference_value == "customer-1"
+    assert observed.transaction_date.isoformat() == "2026-08-31"
+    assert observed.total_amount == Decimal("12.3400")
+    assert observed.unapplied_amount == Decimal("0.00")
+    assert observed.lines[0].amount == Decimal("12.3400")
+    assert observed.lines[0].links[0].transaction_id == "invoice-1"
+    assert observed.lines[0].links[0].transaction_type == "Invoice"
+    source["Line"][0]["Amount"] = Decimal("999")
+    source["Line"][0]["LinkedTxn"][0]["TxnId"] = "mutated"
+    assert observed.source_evidence["Line"][0]["Amount"] == Decimal("12.3400")
+    assert observed.lines[0].links[0].transaction_id == "invoice-1"
+    with pytest.raises(FrozenInstanceError):
+        observed.entity_id = "mutated"
+
+
+def test_unapplied_payment_preserves_empty_lines_and_absent_date_currency():
+    raw = payment(Line=[], UnappliedAmt="12.34")
+    raw.pop("TxnDate")
+    raw.pop("CurrencyRef")
+    observed = observe_payment(raw, **identity())
+    assert observed.lines == () and observed.transaction_date is None
+    assert not observed.currency_ref_present and not observed.currency_ref_null
+    assert "TxnDate" not in observed.present_fields
+    assert observed.unapplied_amount == Decimal("12.34")
+
+
+def test_payment_retains_ordered_multiple_lines_and_links_without_decisions():
+    raw = payment(Line=[
+        payment_line(Amount="2.00", LinkedTxn=[
+            payment_link(TxnId="invoice-2"),
+            payment_link(TxnId="credit-1", TxnType="CreditMemo")]),
+        payment_line(Amount="10.34", LinkedTxn=[]),
+    ])
+    observed = observe_payment(raw, **identity())
+    assert [line.amount for line in observed.lines] == [Decimal("2.00"), Decimal("10.34")]
+    assert [link.transaction_id for link in observed.lines[0].links] == ["invoice-2", "credit-1"]
+    assert observed.lines[1].links == ()
+    forbidden = {"allocation", "allocated", "settled", "paid", "canonical",
+                 "supported", "reconciled", "launch_ready"}
+    assert forbidden.isdisjoint(observed.__dataclass_fields__)
+
+
+def test_payment_absence_and_explicit_null_are_distinct():
+    absent = payment(); absent.pop("TxnDate"); absent.pop("CurrencyRef")
+    null = payment(TxnDate=None, CurrencyRef=None)
+    a = observe_payment(absent, **identity())
+    n = observe_payment(null, **identity())
+    assert "TxnDate" not in a.present_fields and "TxnDate" not in a.null_fields
+    assert "TxnDate" in n.present_fields and "TxnDate" in n.null_fields
+    assert not a.currency_ref_present and not a.currency_ref_null
+    assert n.currency_ref_present and n.currency_ref_null
+    assert a.source_digest != n.source_digest
+
+
+def test_payment_digest_preserves_type_scale_order_and_revision_identity():
+    first = payment(future={"a": Decimal("1.0"), "b": "1.0"})
+    reordered_object = dict(reversed(list(first.items())))
+    assert observe_payment(first, **identity()).source_digest == observe_payment(
+        reordered_object, **identity()).source_digest
+    assert observe_payment(first, **identity()).source_digest != observe_payment(
+        payment(future={"a": Decimal("1.00"), "b": "1.0"}), **identity()).source_digest
+    assert observe_payment(first, **identity()).source_digest != observe_payment(
+        payment(future={"a": "1.0", "b": "1.0"}), **identity()).source_digest
+    assert observe_payment(first, **identity()).source_digest != observe_payment(
+        payment(Line=list(reversed(first["Line"])) + [payment_line(Amount="0")]),
+        **identity()).source_digest
+    assert observe_payment(payment(SyncToken="9"), **identity()).sync_token == "9"
+
+
+@pytest.mark.parametrize("field", ["Id", "SyncToken"])
+@pytest.mark.parametrize("bad", [None, "", "  "])
+def test_payment_required_identity_is_nonblank(field, bad):
+    with pytest.raises(QuickBooksObservationError):
+        observe_payment(payment(**{field: bad}), **identity())
+
+
+@pytest.mark.parametrize("bad", [None, {}, {"value": None}, {"value": " "}])
+def test_payment_customer_reference_is_required(bad):
+    with pytest.raises(QuickBooksObservationError):
+        observe_payment(payment(CustomerRef=bad), **identity())
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("Line", None), ("Line", {}), ("Line", [payment_line()] * 751),
+])
+def test_payment_line_type_and_bounds_fail(field, bad):
+    with pytest.raises(QuickBooksObservationError):
+        observe_payment(payment(**{field: bad}), **identity())
+
+
+@pytest.mark.parametrize("bad", [None, {}, [payment_link()] * 751])
+def test_payment_link_type_and_bounds_fail(bad):
+    with pytest.raises(QuickBooksObservationError):
+        observe_payment(payment(Line=[payment_line(LinkedTxn=bad)]), **identity())
+
+
+@pytest.mark.parametrize("raw_line", [None, [], DictSubclass()])
+def test_payment_line_entries_must_be_plain_objects(raw_line):
+    with pytest.raises(QuickBooksObservationError):
+        observe_payment(payment(Line=[raw_line]), **identity())
+
+
+@pytest.mark.parametrize("raw_link", [None, [], DictSubclass()])
+def test_payment_link_entries_must_be_plain_objects(raw_link):
+    with pytest.raises(QuickBooksObservationError):
+        observe_payment(payment(Line=[payment_line(LinkedTxn=[raw_link])]), **identity())
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("TxnId", None), ("TxnId", ""), ("TxnId", "  "),
+    ("TxnType", None), ("TxnType", ""), ("TxnType", "  "),
+])
+def test_present_payment_link_identifiers_are_bounded_nonblank(field, bad):
+    with pytest.raises(QuickBooksObservationError):
+        observe_payment(payment(Line=[payment_line(
+            LinkedTxn=[payment_link(**{field: bad})])]), **identity())
+
+
+@pytest.mark.parametrize("field", ["TotalAmt", "UnappliedAmt"])
+@pytest.mark.parametrize("bad", [True, 1.2, Decimal("NaN"), Decimal("Infinity"),
+    Decimal("1e100"), Decimal("0.0000000000001"), "1e2", "NaN",
+    "1000000000000000001", Decimal("-0.01")])
+def test_payment_money_is_exact_bounded_and_nonnegative(field, bad):
+    with pytest.raises(QuickBooksObservationError):
+        observe_payment(payment(**{field: bad}), **identity())
+
+
+@pytest.mark.parametrize("bad", [True, 1.2, "1e2", Decimal("-0.01")])
+def test_payment_line_amount_is_exact_and_nonnegative(bad):
+    with pytest.raises(QuickBooksObservationError):
+        observe_payment(payment(Line=[payment_line(Amount=bad)]), **identity())
+
+
+def test_payment_rejects_bad_dates_timestamps_graphs_binding_and_disclosure():
+    secret = "sensitive-customer@example.invalid"
+    cases = [
+        (payment(TxnDate="2026-02-29"), identity()),
+        (payment(MetaData={"CreateTime": "2026-01-01"}), identity()),
+        (payment(future=DictSubclass()), identity()),
+        (payment(future=b"private"), identity()),
+        (payment(future={1: secret}), identity()),
+        (payment(), identity(realm_id=secret)),
+    ]
+    for raw, bound_identity in cases:
+        with pytest.raises(QuickBooksObservationError) as caught:
+            observe_payment(raw, **bound_identity)
+        assert secret not in str(caught.value) and secret not in repr(caught.value)
+    observed = observe_payment(payment(CustomerRef={"value": secret}), **identity())
+    assert secret not in repr(observed)
+    assert secret not in repr(observed.lines[0])
+    assert secret not in repr(observed.lines[0].links[0])
+    assert secret not in repr(observed.source_evidence)
