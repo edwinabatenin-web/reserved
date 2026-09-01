@@ -73,16 +73,17 @@ W2 is complete only when all of the following are true:
     HMRC bill, payment timing, set-aside gap and claim-to-reduce limitations are
     not misleading.
 
-Current gate position: items 1–10 are satisfied at bounded internal-engineering
-level. Item 11 is partially satisfied: the exact S6 diff passed fresh independent
-review, 320/320 relevant tests, Git integrity checks and a post-checkpoint run
-in which 1,920/1,921 integrated tests passed; the one expected failure says
-canonical assurance metadata is stale after legitimate production-source
-advancement. Item 12, customer-language/UX evidence, remains open. This is 6 of
-6 declared implementation slices complete (100%) and 10 of 12 terminal checks
-fully satisfied (83%). These percentages are denominators, not launch-readiness
-claims, and the local integration branch has not been merged, pushed, released
-or deployed.
+Current gate position: items 1–11 are satisfied at bounded internal-engineering
+level. The exact S6 diff passed fresh independent review, 320/320 relevant tests
+and Git integrity checks. The deterministic canonical gate then passed 1,921
+production tests, 13 artefact tests, 19 production/artefact parity tests, the
+mandatory RW3 gate and 138 assurance tests. Its separately reviewed metadata is
+checkpointed at `654307174e282bc6a30b04cf0e78e3466fee5c5d` and retains
+`not_ready` with all 16 blockers. Item 12, customer-language/UX evidence,
+remains open. This is 6 of 6 declared implementation slices complete (100%)
+and 11 of 12 terminal checks fully satisfied (92%). These percentages are
+denominators, not launch-readiness claims, and the local integration branch has
+not been merged, pushed, released or deployed.
 
 ## Out of scope
 
@@ -95,11 +96,11 @@ not move their implementation into W2.
 ## Effort and immediate action
 
 - W2 implementation remainder: none at the six-slice denominator.
-- terminal engineering assurance remainder: refresh canonical assurance
-  metadata against the new exact source checkpoint and rerun its freshness gate.
-- external completion remainder: customer-language/UX evidence, provider and
-  launch assurance under their owning workstreams.
+- terminal W2 remainder: customer-language/UX evidence under its owning
+  workstream.
+- provider and wider launch assurance remain separate programme dependencies,
+  not additional W2 implementation slices.
 
-Immediate action: keep this local integration line unmerged while the refreshed
-assurance and UX gates are completed; reconcile the bounded evidence into the
-Founder Control Plane without upgrading launch readiness by implication.
+Immediate action: keep this local integration line unmerged while the UX gate
+is completed; reconcile the bounded evidence into the Founder Control Plane
+without upgrading launch readiness by implication.

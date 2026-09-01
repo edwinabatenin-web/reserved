@@ -145,6 +145,7 @@ sophistication. New support for those areas requires its own authorised scope.
   `485b766...`; the exact W1 content identity and separate cash evidence
   channels were retained.
 
-Next gate: refresh integrated assurance metadata against the new source
-checkpoint and complete the separately owned customer-language/UX evidence.
-The local integration line remains unmerged and unpushed.
+The integrated assurance metadata was refreshed and independently verified at
+`6543071...`. The remaining W2 terminal gate is the separately owned
+customer-language/UX evidence. The local integration line remains unmerged and
+unpushed.

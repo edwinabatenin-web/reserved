@@ -141,7 +141,9 @@ PoA, mismatched periods, forged/sub-penny content and duplicated evidence, and
 feeds only validated results into the existing S1, S3 and S5 contracts.
 
 Fresh independent review closed all identified corrections and reported no
-remaining findings. Post-checkpoint integrated regression passed 1,920 tests;
-the sole expected failure is the canonical-metadata freshness gate following
-legitimate source advancement. No main-branch merge, push, release, deployment,
-production access, filing or payment action occurred.
+remaining findings. The subsequent deterministic canonical gate passed 1,921
+production tests, 13 artefact tests, 19 parity tests, the mandatory RW3 gate and
+138 assurance tests. The generated metadata was separately independently
+verified and checkpointed at `654307174e282bc6a30b04cf0e78e3466fee5c5d`;
+launch remains `not_ready` with 16 blockers. No main-branch merge, push,
+release, deployment, production access, filing or payment action occurred.
