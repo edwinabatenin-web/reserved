@@ -1,0 +1,32 @@
+# HMRC/PAYE fallback completion map
+
+This map separates delivery states. Completion of an earlier row does not imply
+integration, independent review, or launch readiness.
+
+| Boundary | S1 implemented | Independently reviewed | Integrated | Launch-ready | Remaining owner/dependency |
+|---|---:|---:|---:|---:|---|
+| S1 structured capture/minimisation boundary | Yes | Yes | No | No | Integration, privacy/security controls, usability and launch assurance remain |
+| Upload, extraction, customer confirmation, and secure raw-document deletion | No | No | No | No | Document-processing integration plus privacy/security controls |
+| Customer journey, persistence, replacement/deletion actions, structured retention, account deletion, and backups | No | No | No | No | Product, data, privacy, legal, and platform implementation |
+| Independently reviewed usability of the payslip/manual journey | No | No | No | No | Representative journey implementation and independent usability evidence |
+| HMRC source contract, adapter, production-access facts, and sandbox work | No | No | No | No | Exact externally gated API contract, access, credentials, eligibility, and sandbox validation |
+| Integrated E2E, privacy, security, operations, and launch enablement | No | No | No | No | All preceding boundaries plus the applicable launch-assurance gates |
+
+## S1 boundary
+
+S1 is a pure, dependency-free typed value and normaliser. It validates only
+customer-confirmed structured facts, maps document/manual provenance into the
+existing `PayeEvidence` contract, and performs no I/O. It does not establish a
+source order, calculate PAYE, forecast deductions or liability, infer refunds,
+persist data, process documents, or activate a customer capability.
+
+Every S1 item is marked `PARTIAL`. Founder-approved minimum completeness rules
+for each document/source type remain validation-pending; S1 therefore does not
+claim `COMPLETE_FOR_REPRESENTATION`. `PARTIAL` is both truthful and usable by
+the unchanged reconciliation engine, whose existing uncertainty semantics
+remain authoritative.
+
+Supersession is an immutable reference from a new capture to an earlier
+evidence ID. Nothing is mutated or deleted. Secure original-document deletion,
+structured-data retention, customer deletion, account deletion, and backup
+behaviour remain later integration/privacy gates.
