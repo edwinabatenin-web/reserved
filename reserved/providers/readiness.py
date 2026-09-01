@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from typing import Mapping
+from unicodedata import category
 from urllib.parse import urlparse
 
 
@@ -56,6 +57,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
 )
 
 _SAFE_ENVIRONMENTS = frozenset({"sandbox", "test", "development"})
+_HEXADECIMAL_DIGITS = frozenset("0123456789abcdefABCDEF")
 
 
 def _present(environment: Mapping[str, str], name: str) -> bool:
@@ -63,6 +65,31 @@ def _present(environment: Mapping[str, str], name: str) -> bool:
 
 
 def _callback_is_safe(value: str) -> bool:
+    # Validate the raw value before urllib can discard CR, LF or TAB.  A raw
+    # fragment marker is rejected explicitly so that a trailing, empty
+    # fragment cannot be confused with no fragment at all.
+    if "#" in value or "\\" in value or any(
+        char.isspace() or category(char).startswith("C")
+        for char in value
+    ):
+        return False
+
+    index = 0
+    while index < len(value):
+        if value[index] != "%":
+            index += 1
+            continue
+        if (
+            index + 2 >= len(value)
+            or value[index + 1] not in _HEXADECIMAL_DIGITS
+            or value[index + 2] not in _HEXADECIMAL_DIGITS
+        ):
+            return False
+        encoded_byte = int(value[index + 1:index + 3], 16)
+        if encoded_byte <= 0x1F or encoded_byte == 0x7F:
+            return False
+        index += 3
+
     try:
         parsed = urlparse(value)
     except ValueError:
@@ -72,8 +99,14 @@ def _callback_is_safe(value: str) -> bool:
         username = parsed.username
         password = parsed.password
         hostname = parsed.hostname
-        parsed.port  # validate port syntax; raises ValueError when invalid
+        port = parsed.port  # validate port syntax; raises ValueError when invalid
     except ValueError:
+        return False
+
+    if parsed.netloc.endswith(":") or "%" in parsed.netloc:
+        return False
+
+    if port is not None and not 1 <= port <= 65535:
         return False
 
     if username is not None or password is not None:
@@ -108,8 +141,8 @@ def assess_provider(spec: ProviderSpec, environment: Mapping[str, str]) -> Readi
         )
 
     if spec.callback_variable:
-        callback = environment.get(spec.callback_variable, "").strip()
-        if not callback:
+        callback = environment.get(spec.callback_variable, "")
+        if not callback.strip():
             return ReadinessResult(spec.name, ReadinessState.INCOMPLETE, environment_name,
                                    (spec.callback_variable,),
                                    ("Registered OAuth callback URI is required.",))
