@@ -18,7 +18,7 @@ passed independent review.
 | Q-S2 | HTTP and secret-custody boundary for exchange, refresh, revocation, rotation persistence, and failure handling | Unimplemented |
 | Q-S3 | Authenticated callback integration, one-time state lifecycle, realm ownership checks, reconnect/disconnect behaviour, and protected routes | Unimplemented |
 | Q-S4 | Evidence-backed, network-inert QuickBooks CompanyInfo and Invoice observation contract, without canonical interpretation; uncommitted Payment/attestation prerequisite candidate | CompanyInfo/Invoice independently reviewed, checkpointed, and integrated at `e293656ced558ff1d0bb8cc04203995fcaf5e355`; compatible observation attestation and Payment extension awaiting independent review |
-| Q-S5 | Provider-to-canonical invoice/payment adapter with provenance, pagination/incremental-sync semantics, tax decisions, and adversarial fixtures | Narrow Q-S5A single-line tax-exclusive invoice and single-allocation Payment adapter candidate implemented locally with complete Q-S4 replay/attestation and linked-result integrity checks; uncommitted and awaiting independent review. General ingestion, pagination/incremental sync, and activation remain unimplemented |
+| Q-S5 | Provider-to-canonical invoice/payment adapter with provenance, pagination/incremental-sync semantics, tax decisions, and adversarial fixtures | Narrow Q-S5A single-line tax-exclusive invoice and single-allocation Payment adapter is locally checkpointed. Q-S5B bounded query/Invoice-CDC mechanics and honest completeness-classification candidate is implemented locally and awaiting independent review; snapshot isolation, continuous CDC, general ingestion, and activation remain unimplemented |
 | Q-S6 | End-to-end sandbox evidence, operational monitoring/recovery, privacy/security review, independent assurance, deliberate enablement, and launch decision | Unimplemented |
 
 “Implemented” means code exists in its bounded slice. “Independently reviewed”
@@ -49,3 +49,10 @@ The narrow Q-S5A candidate and its fact/inference boundary are recorded in
 single-line tax-exclusive Invoice and single-Invoice-link Payment shape. It
 does not close QBO-01 UK VAT optionality, query/CDC completeness, Q-S2/Q-S3,
 broader Q-S5 ingestion, or any Q-S6 activation gate.
+
+The bounded Q-S5B candidate is recorded in
+`docs/QUICKBOOKS_QS5_SYNC_EVIDENCE.md`. It validates already-retrieved query
+page and Invoice CDC response mechanics while keeping canonical-ingestion
+fitness, query snapshot stability, continuous CDC, and historical completeness
+unverified. It adds no transport, credential, persistence, activation, or
+launch authority.
