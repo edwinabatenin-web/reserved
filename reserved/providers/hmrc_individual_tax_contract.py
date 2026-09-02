@@ -14,7 +14,10 @@ Authority observed 2026-09-01. See
 ``docs/HMRC_INDIVIDUAL_TAX_1_1_ENDPOINT_EVIDENCE.md`` for the endpoint facts and
 ``docs/HMRC_INDIVIDUAL_TAX_1_1_CONTRACT_EVIDENCE.md`` for the implementation
 decisions recorded for this contract. The raw UTR is validated and discarded;
-the raw response payload and error ``message`` are never retained.
+the raw response payload and error ``message`` are never retained. Every
+success/error observation is bound to the exact validated, UTR-free request
+intent so its request-derived tax year cannot be supplied, forged or replaced
+independently.
 
 State Pension lump-sum reference ``267/LS500`` is a literal provider fact only:
 this module attaches no special downstream tax or identity behaviour to it.
@@ -24,7 +27,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass, field
 from decimal import Decimal
 from types import MappingProxyType
 
@@ -32,12 +35,17 @@ from types import MappingProxyType
 
 HMRC_INDIVIDUAL_TAX_API_VERSION = "1.1"
 HMRC_INDIVIDUAL_TAX_HTTP_METHOD = "GET"
+HMRC_INDIVIDUAL_TAX_SANDBOX_ORIGIN = "https://test-api.service.hmrc.gov.uk"
 HMRC_INDIVIDUAL_TAX_PATH_TEMPLATE = (
     "/individual-tax/sa/{utr}/annual-summary/{taxYear}"
 )
 HMRC_INDIVIDUAL_TAX_ACCEPT = "application/vnd.hmrc.1.1+json"
 HMRC_INDIVIDUAL_TAX_SCOPE = "read:individual-tax"
 HMRC_INDIVIDUAL_TAX_JSON_CONTENT_TYPE = "application/json"
+
+# Marker substituted for the raw UTR in every retained/redacted path form so no
+# recoverable UTR survives construction, copy, pickle, repr, equality or hash.
+UTR_REDACTION_MARKER = "[UTR-REDACTED]"
 
 # The exact documented status/code pairings. The outer mapping is read-only and
 # every nested code set is a frozenset: mutation attempts at either level leave
@@ -260,57 +268,88 @@ def _require_unknown_names(value: object, context: str) -> frozenset[str]:
 # --- Request intent ----------------------------------------------------------
 
 
+@dataclass(frozen=True, repr=False, slots=True, kw_only=True)
 class IndividualTaxRequestIntent:
     """Frozen, UTR-free intent for the documented annual-summary read.
 
-    The only construction boundary accepts ``utr`` and ``tax_year``; the raw UTR
-    is validated as exactly ten ASCII digits and immediately discarded. The only
-    retained field is the validated, non-sensitive ``tax_year``. The intent is
-    not, does not inherit from, and does not convert by default into a generic
-    sendable request. No method, URL, authorization, header, body, path
-    template, Accept value or scope is retained on the instance, so no sendable
-    URL/header/body state or raw/recoverable UTR can leak through ordinary,
-    private, name-mangled, serialized, copied, equality/hash, representation or
-    conversion state.
+    ``utr`` is a construction-only value: it is validated as exactly ten ASCII
+    digits and immediately discarded. ``tax_year`` is the only request-derived
+    identity retained. Method, sandbox origin, path template, Accept value,
+    scope and the UTR-redacted path are derived internally from documented
+    constants and can never be supplied, forged or replaced through the public
+    constructor, ``dataclasses.replace``, copy, deepcopy or pickle. The class is
+    slotted and frozen: it carries no instance ``__dict__``, exposes no sendable
+    URL/header/body or credential state, and cannot be reassembled with an
+    arbitrary retained field.
     """
 
-    __slots__ = ("__tax_year",)
+    utr: InitVar[str]
+    tax_year: str
+    method: str = field(init=False, default=HMRC_INDIVIDUAL_TAX_HTTP_METHOD)
+    sandbox_origin: str = field(init=False, default=HMRC_INDIVIDUAL_TAX_SANDBOX_ORIGIN)
+    path_template: str = field(init=False, default=HMRC_INDIVIDUAL_TAX_PATH_TEMPLATE)
+    accept: str = field(init=False, default=HMRC_INDIVIDUAL_TAX_ACCEPT)
+    scope: str = field(init=False, default=HMRC_INDIVIDUAL_TAX_SCOPE)
+    redacted_path: str = field(init=False, default="")
+    _tax_year_binding: str = field(init=False, repr=False, compare=False, default="")
 
-    def __init__(self, *, utr: str, tax_year: str) -> None:
+    def __post_init__(self, utr: str) -> None:
         # Fail closed on a malformed UTR, then discard it. The intent keeps only
-        # the validated, non-sensitive tax year and no UTR-bearing state.
+        # the validated tax year plus the constant-derived request descriptors,
+        # and a UTR-redacted path derived from the tax year alone.
         _require_ascii_utr(utr)
-        validated_tax_year = _require_tax_year(tax_year)
-        object.__setattr__(
-            self, "_IndividualTaxRequestIntent__tax_year", validated_tax_year
-        )
-
-    @property
-    def tax_year(self) -> str:
-        return object.__getattribute__(
-            self, "_IndividualTaxRequestIntent__tax_year"
-        )
-
-    def __setattr__(self, name: str, value: object) -> None:
-        raise AttributeError("IndividualTaxRequestIntent is immutable")
-
-    def __delattr__(self, name: str) -> None:
-        raise AttributeError("IndividualTaxRequestIntent is immutable")
+        tax_year = _require_tax_year(self.tax_year)
+        object.__setattr__(self, "tax_year", tax_year)
+        object.__setattr__(self, "method", HMRC_INDIVIDUAL_TAX_HTTP_METHOD)
+        object.__setattr__(self, "sandbox_origin", HMRC_INDIVIDUAL_TAX_SANDBOX_ORIGIN)
+        object.__setattr__(self, "path_template", HMRC_INDIVIDUAL_TAX_PATH_TEMPLATE)
+        object.__setattr__(self, "accept", HMRC_INDIVIDUAL_TAX_ACCEPT)
+        object.__setattr__(self, "scope", HMRC_INDIVIDUAL_TAX_SCOPE)
+        object.__setattr__(self, "redacted_path", _redacted_path_for(tax_year))
+        object.__setattr__(self, "_tax_year_binding", tax_year)
 
     def __repr__(self) -> str:
-        return "IndividualTaxRequestIntent([REDACTED])"
+        return (
+            "IndividualTaxRequestIntent(method='GET', sandbox_origin="
+            f"{self.sandbox_origin!r}, path_template={self.path_template!r}, "
+            f"accept={self.accept!r}, scope={self.scope!r}, "
+            f"tax_year={self.tax_year!r}, redacted_path={self.redacted_path!r})"
+        )
 
     def __copy__(self) -> "IndividualTaxRequestIntent":
-        # Deeply immutable: sharing the instance is a fully coherent copy.
+        # Deeply immutable: sharing the instance is a fully coherent copy, but
+        # only after re-validating the complete retained state so a forged,
+        # missing or stale field cannot be preserved.
+        _require_exact_request_intent(self)
         return self
 
     def __deepcopy__(self, memo: dict) -> "IndividualTaxRequestIntent":
+        _require_exact_request_intent(self)
         return self
 
     def __reduce__(self):
         # Reconstruct through the validated tax-year-only rebuild boundary so a
-        # forged pickle cannot inject an unvalidated retained field.
+        # forged pickle cannot inject an unvalidated retained field. Validate
+        # the complete retained state first: a forged/missing/stale descriptor
+        # must raise rather than be silently normalised into a valid request.
+        _require_exact_request_intent(self)
         return (_rebuild_individual_tax_request_intent, (self.tax_year,))
+
+
+def _immutable_request_setattr(self: object, name: str, value: object) -> None:
+    raise AttributeError("IndividualTaxRequestIntent is immutable")
+
+
+def _immutable_request_delattr(self: object, name: str) -> None:
+    raise AttributeError("IndividualTaxRequestIntent is immutable")
+
+
+# The frozen+slotted dataclass generates a ``__setattr__`` whose non-field
+# branch raises ``TypeError`` on some CPython versions. Replace both accessors
+# with constant, fail-closed ``AttributeError`` versions so every mutation
+# attempt (field, non-field or deletion) fails closed identically.
+IndividualTaxRequestIntent.__setattr__ = _immutable_request_setattr  # type: ignore[method-assign]
+IndividualTaxRequestIntent.__delattr__ = _immutable_request_delattr  # type: ignore[method-assign]
 
 
 def _require_ascii_utr(utr: object) -> None:
@@ -329,6 +368,14 @@ def _require_tax_year(tax_year: object) -> str:
     return tax_year
 
 
+def _redacted_path_for(tax_year: str) -> str:
+    """Derive the UTR-redacted path from the validated tax year alone."""
+    return (
+        HMRC_INDIVIDUAL_TAX_PATH_TEMPLATE.replace("{utr}", UTR_REDACTION_MARKER)
+        .replace("{taxYear}", tax_year)
+    )
+
+
 def build_individual_tax_request(
     *, utr: str, tax_year: str
 ) -> IndividualTaxRequestIntent:
@@ -336,12 +383,69 @@ def build_individual_tax_request(
 
     This is a thin, keyword-only convenience over the single validated
     construction boundary: the raw UTR is validated as exactly ten ASCII digits
-    and discarded. Only the validated, non-sensitive tax year is retained.
+    and discarded. Only the validated tax year and the constant-derived request
+    descriptors (with a UTR-redacted path) are retained.
     """
     return IndividualTaxRequestIntent(utr=utr, tax_year=tax_year)
 
 
+def _observation_field(observation: object, name: str) -> object:
+    """Return a retained observation field or fail closed if it is missing."""
+    try:
+        return object.__getattribute__(observation, name)
+    except AttributeError:
+        raise _fail(f"observation {name} must be present")
+
+
+def _require_observation_request_binding(
+    observation: object,
+) -> IndividualTaxRequestIntent:
+    """Require and revalidate the retained, UTR-free provenance binding."""
+    return _require_exact_request_intent(
+        _observation_field(observation, "_request_binding")
+    )
+
+
+def _require_observation_tax_year(
+    observation: object,
+    request: IndividualTaxRequestIntent,
+) -> str:
+    """Require the retained ``tax_year`` to be coherent with the request."""
+    tax_year = _observation_field(observation, "tax_year")
+    if type(tax_year) is not str or tax_year != request.tax_year:
+        raise _fail(
+            "observation tax year is not coherent with the producing request"
+        )
+    return tax_year
+
+
+def _require_exact_instance_state(
+    observation: object, expected: frozenset[str]
+) -> None:
+    """Require the observation to carry exactly its declared instance fields.
+
+    ``object.__setattr__`` can inject undeclared instance attributes into a
+    frozen, non-slotted dataclass. Before any copy, deepcopy or reduction the
+    instance ``__dict__`` is therefore compared against the exact declared key
+    set, so injected extra state fails closed instead of being preserved or
+    silently ignored.
+    """
+    try:
+        actual = set(observation.__dict__)
+    except AttributeError:
+        raise _fail("observation instance state must be inspectable")
+    if actual != expected:
+        raise _fail("observation carries undeclared instance state")
+
+
 # --- Observations ------------------------------------------------------------
+
+
+_EMPLOYMENT_ITEM_STATE_KEYS = frozenset({
+    "employer_paye_reference",
+    "tax_taken_off_pay",
+    "unknown_names",
+})
 
 
 @dataclass(frozen=True, repr=False)
@@ -353,6 +457,12 @@ class EmploymentItemObservation:
     unknown_names: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
+        self._validate_state()
+
+    def _validate_state(self) -> None:
+        if type(self) is not EmploymentItemObservation:
+            raise _fail("employment item must be an exact observation")
+        _require_exact_instance_state(self, _EMPLOYMENT_ITEM_STATE_KEYS)
         _require_employer_paye_reference(self.employer_paye_reference)
         _parse_number(self.tax_taken_off_pay, "taxTakenOffPay")
         _require_unknown_names(self.unknown_names, "employment item")
@@ -361,17 +471,29 @@ class EmploymentItemObservation:
         return "EmploymentItemObservation([REDACTED])"
 
     def __copy__(self) -> "EmploymentItemObservation":
+        self._validate_state()
         return self
 
     def __deepcopy__(self, memo: dict) -> "EmploymentItemObservation":
+        self._validate_state()
         return self
 
     def __reduce__(self):
+        self._validate_state()
         return (_rebuild_employment_item, (
             self.employer_paye_reference,
             self.tax_taken_off_pay,
             self.unknown_names,
         ))
+
+
+_PENSIONS_BENEFITS_STATE_KEYS = frozenset({
+    "other_pensions_and_retirement_annuities",
+    "incapacity_benefit",
+    "present_fields",
+    "absent_fields",
+    "unknown_names",
+})
 
 
 @dataclass(frozen=True, repr=False)
@@ -389,6 +511,12 @@ class PensionsBenefitsObservation:
     unknown_names: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
+        self._validate_state()
+
+    def _validate_state(self) -> None:
+        if type(self) is not PensionsBenefitsObservation:
+            raise _fail("benefits value must be an exact observation")
+        _require_exact_instance_state(self, _PENSIONS_BENEFITS_STATE_KEYS)
         present = self.present_fields
         absent = self.absent_fields
         if type(present) is not frozenset:
@@ -415,12 +543,15 @@ class PensionsBenefitsObservation:
         return "PensionsBenefitsObservation([REDACTED])"
 
     def __copy__(self) -> "PensionsBenefitsObservation":
+        self._validate_state()
         return self
 
     def __deepcopy__(self, memo: dict) -> "PensionsBenefitsObservation":
+        self._validate_state()
         return self
 
     def __reduce__(self):
+        self._validate_state()
         return (_rebuild_pensions_benefits, (
             self.other_pensions_and_retirement_annuities,
             self.incapacity_benefit,
@@ -428,6 +559,14 @@ class PensionsBenefitsObservation:
             self.absent_fields,
             self.unknown_names,
         ))
+
+
+_REFUNDS_STATE_KEYS = frozenset({
+    "tax_refunded_or_set_off",
+    "present_fields",
+    "absent_fields",
+    "unknown_names",
+})
 
 
 @dataclass(frozen=True, repr=False)
@@ -446,6 +585,12 @@ class RefundsObservation:
     unknown_names: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
+        self._validate_state()
+
+    def _validate_state(self) -> None:
+        if type(self) is not RefundsObservation:
+            raise _fail("refunds value must be an exact observation")
+        _require_exact_instance_state(self, _REFUNDS_STATE_KEYS)
         present = self.present_fields
         absent = self.absent_fields
         if type(present) is not frozenset:
@@ -468,12 +613,15 @@ class RefundsObservation:
         return "RefundsObservation([REDACTED])"
 
     def __copy__(self) -> "RefundsObservation":
+        self._validate_state()
         return self
 
     def __deepcopy__(self, memo: dict) -> "RefundsObservation":
+        self._validate_state()
         return self
 
     def __reduce__(self):
+        self._validate_state()
         return (_rebuild_refunds, (
             self.tax_refunded_or_set_off,
             self.present_fields,
@@ -482,21 +630,68 @@ class RefundsObservation:
         ))
 
 
-@dataclass(frozen=True, repr=False)
+_ANNUAL_SUMMARY_STATE_KEYS = frozenset({
+    "employments",
+    "pensions_benefits",
+    "refunds",
+    "request",
+    "tax_year",
+    "unknown_names",
+    "completeness",
+    "_request_binding",
+})
+
+
+@dataclass(frozen=True, repr=False, init=False)
 class IndividualTaxAnnualSummaryObservation:
     """Validated facts from a documented HTTP 200 annual-summary response.
 
     Completeness is always ``UNVERIFIED``; an empty ``employments`` list is
-    shape-valid but never evidence of zero tax deducted.
+    shape-valid but never evidence of zero tax deducted. The exact validated,
+    UTR-free request intent is retained, the public ``tax_year`` and the private
+    ``_request_binding`` are derived from that request (never supplied), and the
+    request identity is non-replaceable, so no ``dataclasses.replace``,
+    constructor, copy, deepcopy or pickle path can substitute request identity
+    while retaining response facts.
     """
 
     employments: tuple[EmploymentItemObservation, ...]
     pensions_benefits: PensionsBenefitsObservation
     refunds: RefundsObservation
+    request: IndividualTaxRequestIntent = field(init=False)
+    tax_year: str = field(init=False, compare=False)
     unknown_names: frozenset[str] = frozenset()
     completeness: str = HMRC_INDIVIDUAL_TAX_COMPLETENESS
+    _request_binding: IndividualTaxRequestIntent = field(
+        init=False, repr=False, compare=False
+    )
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        employments: tuple[EmploymentItemObservation, ...],
+        pensions_benefits: PensionsBenefitsObservation,
+        refunds: RefundsObservation,
+        request: IndividualTaxRequestIntent,
+        unknown_names: frozenset[str] = frozenset(),
+        completeness: str = HMRC_INDIVIDUAL_TAX_COMPLETENESS,
+    ) -> None:
+        request = _require_exact_request_intent(request)
+        object.__setattr__(self, "employments", employments)
+        object.__setattr__(self, "pensions_benefits", pensions_benefits)
+        object.__setattr__(self, "refunds", refunds)
+        object.__setattr__(self, "request", request)
+        object.__setattr__(self, "tax_year", request.tax_year)
+        object.__setattr__(self, "unknown_names", unknown_names)
+        object.__setattr__(self, "completeness", completeness)
+        object.__setattr__(
+            self,
+            "_request_binding",
+            _rebuild_individual_tax_request_intent(request.tax_year),
+        )
+        self._validate_state()
+
+    def _validate_facts(self) -> None:
         if type(self.employments) is not tuple:
             raise _fail("employments must be an exact built-in tuple")
         if len(self.employments) > _RESERVED_MAX_EMPLOYMENTS:
@@ -504,46 +699,106 @@ class IndividualTaxAnnualSummaryObservation:
         for item in self.employments:
             if type(item) is not EmploymentItemObservation:
                 raise _fail("employments must contain exact employment observations")
+            item._validate_state()
         if type(self.pensions_benefits) is not PensionsBenefitsObservation:
             raise _fail("pensions_benefits must be an exact PensionsBenefitsObservation")
+        self.pensions_benefits._validate_state()
         if type(self.refunds) is not RefundsObservation:
             raise _fail("refunds must be an exact RefundsObservation")
+        self.refunds._validate_state()
         if type(self.completeness) is not str or self.completeness != HMRC_INDIVIDUAL_TAX_COMPLETENESS:
             raise _fail("completeness must be the exact documented UNVERIFIED value")
         _require_unknown_names(self.unknown_names, "annual-summary observation")
+
+    def _validate_state(self) -> None:
+        request = _require_exact_request_intent(_observation_field(self, "request"))
+        binding = _require_observation_request_binding(self)
+        if request != binding:
+            raise _fail(
+                "observation request is not coherent with its producing binding"
+            )
+        _require_observation_tax_year(self, request)
+        _require_exact_instance_state(self, _ANNUAL_SUMMARY_STATE_KEYS)
+        self._validate_facts()
 
     def __repr__(self) -> str:
         return "IndividualTaxAnnualSummaryObservation([REDACTED])"
 
     def __copy__(self) -> "IndividualTaxAnnualSummaryObservation":
+        self._validate_state()
         return self
 
     def __deepcopy__(self, memo: dict) -> "IndividualTaxAnnualSummaryObservation":
+        self._validate_state()
         return self
 
     def __reduce__(self):
+        self._validate_state()
         return (_rebuild_annual_summary, (
             self.employments,
             self.pensions_benefits,
             self.refunds,
+            self.request,
             self.unknown_names,
             self.completeness,
+            self._request_binding,
         ))
 
 
-@dataclass(frozen=True, repr=False)
+_ERROR_STATE_KEYS = frozenset({
+    "status_code",
+    "code",
+    "request",
+    "tax_year",
+    "unknown_names",
+    "_request_binding",
+})
+
+
+@dataclass(frozen=True, repr=False, init=False)
 class IndividualTaxErrorObservation:
     """Validated facts from a documented HTTP 400/401/404 error response.
 
     The error ``message`` is validated as a string and then discarded; only the
-    documented ``code`` and ``status_code`` are retained.
+    documented ``code`` and ``status_code`` are retained. The exact validated,
+    UTR-free request intent is retained, the public ``tax_year`` and the private
+    ``_request_binding`` are derived from that request (never supplied), and the
+    request identity is non-replaceable, so no ``dataclasses.replace``,
+    constructor, copy, deepcopy or pickle path can substitute request identity
+    while retaining response facts.
     """
 
     status_code: int
     code: str
+    request: IndividualTaxRequestIntent = field(init=False)
+    tax_year: str = field(init=False, compare=False)
     unknown_names: frozenset[str] = frozenset()
+    _request_binding: IndividualTaxRequestIntent = field(
+        init=False, repr=False, compare=False
+    )
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        status_code: int,
+        code: str,
+        request: IndividualTaxRequestIntent,
+        unknown_names: frozenset[str] = frozenset(),
+    ) -> None:
+        request = _require_exact_request_intent(request)
+        object.__setattr__(self, "status_code", status_code)
+        object.__setattr__(self, "code", code)
+        object.__setattr__(self, "request", request)
+        object.__setattr__(self, "tax_year", request.tax_year)
+        object.__setattr__(self, "unknown_names", unknown_names)
+        object.__setattr__(
+            self,
+            "_request_binding",
+            _rebuild_individual_tax_request_intent(request.tax_year),
+        )
+        self._validate_state()
+
+    def _validate_facts(self) -> None:
         if type(self.status_code) is not int:
             raise _fail("status_code must be an exact built-in integer")
         if self.status_code not in HMRC_INDIVIDUAL_TAX_ERROR_STATUS_CODES:
@@ -554,6 +809,17 @@ class IndividualTaxErrorObservation:
             raise _fail("error code does not match the documented status")
         _require_unknown_names(self.unknown_names, "error body")
 
+    def _validate_state(self) -> None:
+        request = _require_exact_request_intent(_observation_field(self, "request"))
+        binding = _require_observation_request_binding(self)
+        if request != binding:
+            raise _fail(
+                "observation request is not coherent with its producing binding"
+            )
+        _require_observation_tax_year(self, request)
+        _require_exact_instance_state(self, _ERROR_STATE_KEYS)
+        self._validate_facts()
+
     def __repr__(self) -> str:
         return (
             f"IndividualTaxErrorObservation(status_code={self.status_code}, "
@@ -561,16 +827,21 @@ class IndividualTaxErrorObservation:
         )
 
     def __copy__(self) -> "IndividualTaxErrorObservation":
+        self._validate_state()
         return self
 
     def __deepcopy__(self, memo: dict) -> "IndividualTaxErrorObservation":
+        self._validate_state()
         return self
 
     def __reduce__(self):
+        self._validate_state()
         return (_rebuild_error, (
             self.status_code,
             self.code,
+            self.request,
             self.unknown_names,
+            self._request_binding,
         ))
 
 
@@ -651,7 +922,9 @@ def _parse_refunds(value: object) -> RefundsObservation:
     )
 
 
-def _parse_annual_summary(payload: dict) -> IndividualTaxAnnualSummaryObservation:
+def _parse_annual_summary(
+    request: IndividualTaxRequestIntent, payload: dict
+) -> IndividualTaxAnnualSummaryObservation:
     obj = _require_object(payload, "annual-summary response")
     unknown_names = _classify_object_members(obj, _TOP_LEVEL_NAMES, "top-level object")
 
@@ -676,12 +949,15 @@ def _parse_annual_summary(payload: dict) -> IndividualTaxAnnualSummaryObservatio
         employments=employments,
         pensions_benefits=benefits,
         refunds=refunds,
+        request=request,
         unknown_names=unknown_names,
         completeness=HMRC_INDIVIDUAL_TAX_COMPLETENESS,
     )
 
 
-def _parse_error(status_code: int, payload: dict) -> IndividualTaxErrorObservation:
+def _parse_error(
+    request: IndividualTaxRequestIntent, status_code: int, payload: dict
+) -> IndividualTaxErrorObservation:
     obj = _require_object(payload, "error body")
     unknown_names = _classify_object_members(obj, _ERROR_NAMES, "error body")
 
@@ -702,13 +978,57 @@ def _parse_error(status_code: int, payload: dict) -> IndividualTaxErrorObservati
     return IndividualTaxErrorObservation(
         status_code=status_code,
         code=code,
+        request=request,
         unknown_names=unknown_names,
     )
 
 
-def _require_request_intent(request: object) -> None:
+def _require_exact_request_intent(request: object) -> IndividualTaxRequestIntent:
+    """Require the exact intent and revalidate its full retained state.
+
+    Construction history is deliberately not trusted: every retained field is
+    re-read and checked against the documented constant or the validated tax
+    year so a forged, missing or additionally-shaped intent fails closed here,
+    before any hostile response input is touched.
+    """
     if type(request) is not IndividualTaxRequestIntent:
         raise _fail("request must be an exact IndividualTaxRequestIntent")
+
+    tax_year = _require_request_field_string(request, "tax_year")
+    method = _require_request_field_string(request, "method")
+    sandbox_origin = _require_request_field_string(request, "sandbox_origin")
+    path_template = _require_request_field_string(request, "path_template")
+    accept = _require_request_field_string(request, "accept")
+    scope = _require_request_field_string(request, "scope")
+    redacted_path = _require_request_field_string(request, "redacted_path")
+    tax_year_binding = _require_request_field_string(request, "_tax_year_binding")
+
+    _require_tax_year(tax_year)
+    if method != HMRC_INDIVIDUAL_TAX_HTTP_METHOD:
+        raise _fail("request method is not the documented value")
+    if sandbox_origin != HMRC_INDIVIDUAL_TAX_SANDBOX_ORIGIN:
+        raise _fail("request sandbox origin is not the documented value")
+    if path_template != HMRC_INDIVIDUAL_TAX_PATH_TEMPLATE:
+        raise _fail("request path template is not the documented value")
+    if accept != HMRC_INDIVIDUAL_TAX_ACCEPT:
+        raise _fail("request Accept value is not the documented value")
+    if scope != HMRC_INDIVIDUAL_TAX_SCOPE:
+        raise _fail("request scope is not the documented value")
+    if redacted_path != _redacted_path_for(tax_year):
+        raise _fail("request redacted path is not coherent with the tax year")
+    if tax_year_binding != tax_year:
+        raise _fail("request tax year is not coherent with its original binding")
+    return request
+
+
+def _require_request_field_string(request: IndividualTaxRequestIntent, name: str) -> str:
+    try:
+        value = object.__getattribute__(request, name)
+    except AttributeError:
+        raise _fail(f"request {name} must be present")
+    if type(value) is not str:
+        raise _fail(f"request {name} must be an exact built-in string")
+    return value
 
 
 def observe_individual_tax_response(
@@ -724,7 +1044,7 @@ def observe_individual_tax_response(
     404 error shapes are accepted. HTTP 404 is retained as unavailable
     evidence, never as an authoritative empty or zero-tax record.
     """
-    _require_request_intent(request)
+    request = _require_exact_request_intent(request)
     if type(status_code) is not int or isinstance(status_code, bool):
         raise _fail("status_code must be an exact built-in integer")
     if type(content_type) is not str:
@@ -733,12 +1053,16 @@ def observe_individual_tax_response(
     if status_code == 200:
         if content_type != HMRC_INDIVIDUAL_TAX_JSON_CONTENT_TYPE:
             raise _fail("HTTP 200 requires exact application/json")
-        return _parse_annual_summary(_require_object(payload, "response payload"))
+        return _parse_annual_summary(
+            request, _require_object(payload, "response payload")
+        )
 
     if status_code in (400, 401, 404):
         if content_type != HMRC_INDIVIDUAL_TAX_JSON_CONTENT_TYPE:
             raise _fail("documented error statuses require exact application/json")
-        return _parse_error(status_code, _require_object(payload, "error payload"))
+        return _parse_error(
+            request, status_code, _require_object(payload, "error payload")
+        )
 
     raise _fail("undocumented HTTP status is not accepted")
 
@@ -747,12 +1071,22 @@ def observe_individual_tax_response(
 
 
 def _rebuild_individual_tax_request_intent(tax_year: str) -> IndividualTaxRequestIntent:
-    """Reconstruct the intent from its only retained field, re-validating."""
+    """Reconstruct the intent from its only variable retained field.
+
+    The constant-derived descriptors are recomputed from documented constants
+    and the validated tax year, so a forged pickle cannot inject an unvalidated
+    retained field or an incoherent redacted path.
+    """
     intent = object.__new__(IndividualTaxRequestIntent)
     validated = _require_tax_year(tax_year)
-    object.__setattr__(
-        intent, "_IndividualTaxRequestIntent__tax_year", validated
-    )
+    object.__setattr__(intent, "tax_year", validated)
+    object.__setattr__(intent, "method", HMRC_INDIVIDUAL_TAX_HTTP_METHOD)
+    object.__setattr__(intent, "sandbox_origin", HMRC_INDIVIDUAL_TAX_SANDBOX_ORIGIN)
+    object.__setattr__(intent, "path_template", HMRC_INDIVIDUAL_TAX_PATH_TEMPLATE)
+    object.__setattr__(intent, "accept", HMRC_INDIVIDUAL_TAX_ACCEPT)
+    object.__setattr__(intent, "scope", HMRC_INDIVIDUAL_TAX_SCOPE)
+    object.__setattr__(intent, "redacted_path", _redacted_path_for(validated))
+    object.__setattr__(intent, "_tax_year_binding", validated)
     return intent
 
 
@@ -802,13 +1136,22 @@ def _rebuild_annual_summary(
     employments: tuple[EmploymentItemObservation, ...],
     pensions_benefits: PensionsBenefitsObservation,
     refunds: RefundsObservation,
+    request: IndividualTaxRequestIntent,
     unknown_names: frozenset[str],
     completeness: str,
+    binding: IndividualTaxRequestIntent,
 ) -> IndividualTaxAnnualSummaryObservation:
+    request = _require_exact_request_intent(request)
+    _require_exact_request_intent(binding)
+    if request != binding:
+        raise _fail(
+            "observation request is not coherent with its producing binding"
+        )
     return IndividualTaxAnnualSummaryObservation(
         employments=employments,
         pensions_benefits=pensions_benefits,
         refunds=refunds,
+        request=request,
         unknown_names=unknown_names,
         completeness=completeness,
     )
@@ -817,10 +1160,19 @@ def _rebuild_annual_summary(
 def _rebuild_error(
     status_code: int,
     code: str,
+    request: IndividualTaxRequestIntent,
     unknown_names: frozenset[str],
+    binding: IndividualTaxRequestIntent,
 ) -> IndividualTaxErrorObservation:
+    request = _require_exact_request_intent(request)
+    _require_exact_request_intent(binding)
+    if request != binding:
+        raise _fail(
+            "observation request is not coherent with its producing binding"
+        )
     return IndividualTaxErrorObservation(
         status_code=status_code,
         code=code,
+        request=request,
         unknown_names=unknown_names,
     )

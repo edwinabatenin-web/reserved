@@ -24,7 +24,9 @@ from reserved.providers.hmrc_individual_tax_contract import (
     HMRC_INDIVIDUAL_TAX_HTTP_METHOD,
     HMRC_INDIVIDUAL_TAX_JSON_CONTENT_TYPE,
     HMRC_INDIVIDUAL_TAX_PATH_TEMPLATE,
+    HMRC_INDIVIDUAL_TAX_SANDBOX_ORIGIN,
     HMRC_INDIVIDUAL_TAX_SCOPE,
+    UTR_REDACTION_MARKER,
     EmploymentItemObservation,
     HMRCIndividualTaxContractError,
     IndividualTaxAnnualSummaryObservation,
@@ -59,6 +61,15 @@ def _success_payload(**overrides):
     }
     payload.update(overrides)
     return payload
+
+
+def _error_payload(status_code, code=None):
+    default_code = {
+        400: "SA_UTR_INVALID",
+        401: "UNAUTHORIZED",
+        404: "NOT_FOUND",
+    }[status_code]
+    return {"code": code or default_code, "message": "detail"}
 
 
 _MISSING = object()
@@ -140,19 +151,42 @@ def test_request_intent_construction_and_exact_redaction():
     request = _request()
     assert type(request) is IndividualTaxRequestIntent
     assert request.tax_year == "2023-24"
-    assert repr(request) == "IndividualTaxRequestIntent([REDACTED])"
+    assert request.method == HMRC_INDIVIDUAL_TAX_HTTP_METHOD
+    assert request.sandbox_origin == HMRC_INDIVIDUAL_TAX_SANDBOX_ORIGIN
+    assert request.path_template == HMRC_INDIVIDUAL_TAX_PATH_TEMPLATE
+    assert request.accept == HMRC_INDIVIDUAL_TAX_ACCEPT
+    assert request.scope == HMRC_INDIVIDUAL_TAX_SCOPE
+    assert request.redacted_path == (
+        "/individual-tax/sa/[UTR-REDACTED]/annual-summary/2023-24"
+    )
+    assert UTR_REDACTION_MARKER == "[UTR-REDACTED]"
+    assert UTR_REDACTION_MARKER in request.redacted_path
+    assert UTR not in request.redacted_path
+    assert repr(request) == (
+        "IndividualTaxRequestIntent(method='GET', "
+        "sandbox_origin='https://test-api.service.hmrc.gov.uk', "
+        "path_template='/individual-tax/sa/{utr}/annual-summary/{taxYear}', "
+        "accept='application/vnd.hmrc.1.1+json', "
+        "scope='read:individual-tax', tax_year='2023-24', "
+        "redacted_path='/individual-tax/sa/[UTR-REDACTED]/annual-summary/2023-24')"
+    )
 
 
 def test_request_intent_exposes_no_sendable_or_credential_surface():
     request = _request()
     for absent in (
         "utr", "url", "headers", "body", "authorization", "token", "credential",
-        "transport", "client", "method", "path", "path_template", "accept",
-        "scope", "sandbox_origin", "redacted_path",
+        "transport", "client", "path",
     ):
         assert not hasattr(request, absent)
     assert not issubclass(IndividualTaxRequestIntent, ProviderRequest)
     assert not isinstance(request, ProviderRequest)
+    assert not hasattr(request, "__dict__")
+    assert request.method == HMRC_INDIVIDUAL_TAX_HTTP_METHOD
+    assert request.sandbox_origin == HMRC_INDIVIDUAL_TAX_SANDBOX_ORIGIN
+    assert request.path_template == HMRC_INDIVIDUAL_TAX_PATH_TEMPLATE
+    assert request.accept == HMRC_INDIVIDUAL_TAX_ACCEPT
+    assert request.scope == HMRC_INDIVIDUAL_TAX_SCOPE
 
 
 def test_raw_utr_is_discarded_from_every_retained_state():
@@ -185,11 +219,33 @@ def test_request_intent_is_frozen_against_field_injection():
 
 
 def test_request_intent_replace_cannot_forge_retained_state():
-    # The intent is not a dataclass, so dataclasses.replace cannot re-enter it.
+    # replace() cannot re-enter the object without the validated UTR boundary,
+    # and every derived (init=False) field is rejected as a replacement target.
+    request = _request()
     with pytest.raises(TypeError):
-        replace(_request())
+        replace(request)
     with pytest.raises(TypeError):
-        replace(_request(), tax_year="2024-25")
+        replace(request, tax_year="2024-25")
+    with pytest.raises(TypeError):
+        replace(request, redacted_path="/individual-tax/sa/[UTR-REDACTED]/annual-summary/2024-25")
+    with pytest.raises(TypeError):
+        replace(request, method="POST")
+    with pytest.raises(TypeError):
+        replace(request, scope="read:other")
+    with pytest.raises(TypeError):
+        replace(request, utr="1111111111", _tax_year_binding="2024-25")
+    # The only accepted re-entry is through the validated UTR/tax-year boundary,
+    # which discards the UTR and recomputes the redacted path internally.
+    same_year = replace(request, utr="1111111111")
+    assert same_year.tax_year == request.tax_year
+    assert same_year.redacted_path == request.redacted_path
+    assert "1111111111" not in same_year.redacted_path
+    other_year = replace(request, utr="1111111111", tax_year="2024-25")
+    assert other_year.tax_year == "2024-25"
+    assert other_year.redacted_path == (
+        "/individual-tax/sa/[UTR-REDACTED]/annual-summary/2024-25"
+    )
+    assert other_year != request
 
 
 def test_request_intent_constructor_rejects_derived_field_injection():
@@ -199,6 +255,8 @@ def test_request_intent_constructor_rejects_derived_field_injection():
         {"scope": "read:other"},
         {"path_template": "/other/{utr}/{taxYear}"},
         {"sandbox_origin": "https://evil.example"},
+        {"redacted_path": "/individual-tax/sa/0123456789/annual-summary/2023-24"},
+        {"_tax_year_binding": "2024-25"},
         {"url": "https://evil.example"},
         {"headers": {"Authorization": "Bearer x"}},
         {"body": b"x"},
@@ -230,8 +288,183 @@ def test_request_intent_rebuild_rejects_invalid_tax_year():
         _rebuild_individual_tax_request_intent(1234)
 
 
+def test_different_utrs_same_year_are_observationally_indistinguishable():
+    a = _request(utr="0123456789", tax_year=TAX_YEAR)
+    b = _request(utr="9999999999", tax_year=TAX_YEAR)
+    assert a == b
+    assert hash(a) == hash(b)
+    assert repr(a) == repr(b)
+    assert pickle.dumps(a) == pickle.dumps(b)
+
+
+def test_request_intent_rebuild_and_pickle_preserve_coherent_binding():
+    request = _request(tax_year="2023-24")
+    rebuilt = _rebuild_individual_tax_request_intent("2023-24")
+    assert rebuilt == request
+    assert rebuilt.redacted_path == request.redacted_path
+    restored = pickle.loads(pickle.dumps(request))
+    assert restored == request
+    assert restored.tax_year == request.tax_year
+    assert restored.redacted_path == request.redacted_path
+    assert UTR not in restored.redacted_path
+
+
+_RETAINED_REQUEST_FIELDS = (
+    ("method", "POST"),
+    ("sandbox_origin", "https://evil.example"),
+    ("path_template", "/other/{utr}/{taxYear}"),
+    ("accept", "text/plain"),
+    ("scope", "read:other"),
+    ("tax_year", "2024-25"),
+    ("redacted_path", "/individual-tax/sa/[UTR-REDACTED]/annual-summary/2024-25"),
+    ("_tax_year_binding", "2024-25"),
+)
+
+
+def test_request_copy_deepcopy_pickle_reject_each_forged_retained_field():
+    # A request whose retained descriptors are forged via object.__setattr__
+    # must fail closed on every preservation path, not be silently rehabilitated.
+    for field, forged in _RETAINED_REQUEST_FIELDS:
+        request = _request()
+        object.__setattr__(request, field, forged)
+        with pytest.raises(HMRCIndividualTaxContractError):
+            copy.copy(request)
+        with pytest.raises(HMRCIndividualTaxContractError):
+            copy.deepcopy(request)
+        with pytest.raises(HMRCIndividualTaxContractError):
+            pickle.dumps(request)
+
+
+def test_request_copy_deepcopy_pickle_reject_each_missing_retained_field():
+    # A retained field that is removed entirely must raise on copy/deepcopy/
+    # pickle rather than be normalised back into a valid request.
+    for field, _ in _RETAINED_REQUEST_FIELDS:
+        request = _request()
+        object.__delattr__(request, field)
+        with pytest.raises(HMRCIndividualTaxContractError):
+            copy.copy(request)
+        with pytest.raises(HMRCIndividualTaxContractError):
+            copy.deepcopy(request)
+        with pytest.raises(HMRCIndividualTaxContractError):
+            pickle.dumps(request)
+
+
+def test_request_copy_deepcopy_pickle_reject_non_string_retained_field():
+    # Malformed (non-string) retained values must also fail closed everywhere.
+    for field, forged in (
+        ("tax_year", ["2023-24"]),
+        ("method", 123),
+        ("redacted_path", object()),
+        ("scope", None),
+    ):
+        request = _request()
+        object.__setattr__(request, field, forged)
+        with pytest.raises(HMRCIndividualTaxContractError):
+            copy.copy(request)
+        with pytest.raises(HMRCIndividualTaxContractError):
+            copy.deepcopy(request)
+        with pytest.raises(HMRCIndividualTaxContractError):
+            pickle.dumps(request)
+
+
+def test_unmodified_request_retains_copy_deepcopy_pickle_behavior():
+    # Valid control: an untouched request keeps its supported copy/deepcopy/
+    # pickle behaviour and never leaks the raw UTR.
+    request = _request()
+    assert copy.copy(request) is request
+    assert copy.deepcopy(request) is request
+    restored = pickle.loads(pickle.dumps(request))
+    assert restored == request
+    assert restored.tax_year == request.tax_year == TAX_YEAR
+    assert restored.redacted_path == request.redacted_path
+    assert UTR not in pickle.dumps(request).decode("ascii", "ignore")
+
+
+def test_request_coordinated_year_and_redacted_path_relabel_is_rejected():
+    request = _request(tax_year="2023-24")
+    object.__setattr__(request, "tax_year", "2024-25")
+    object.__setattr__(
+        request,
+        "redacted_path",
+        "/individual-tax/sa/[UTR-REDACTED]/annual-summary/2024-25",
+    )
+    with pytest.raises(HMRCIndividualTaxContractError):
+        copy.copy(request)
+    with pytest.raises(HMRCIndividualTaxContractError):
+        copy.deepcopy(request)
+    with pytest.raises(HMRCIndividualTaxContractError):
+        pickle.dumps(request)
+    with pytest.raises(HMRCIndividualTaxContractError):
+        observe_individual_tax_response(
+            request,
+            status_code=200,
+            content_type="application/json",
+            payload=_success_payload(),
+        )
+
+
+def test_observe_revalidates_full_request_retained_state():
+    # A forged intent whose retained descriptors no longer match the documented
+    # constants or its own tax year must fail closed before the payload is read.
+    for field, forged in (
+        ("method", "POST"),
+        ("sandbox_origin", "https://evil.example"),
+        ("path_template", "/other/{utr}/{taxYear}"),
+        ("accept", "text/plain"),
+        ("scope", "read:other"),
+        ("tax_year", "2024-25"),
+        ("redacted_path", "/individual-tax/sa/[UTR-REDACTED]/annual-summary/2024-25"),
+    ):
+        request = _request()
+        object.__setattr__(request, field, forged)
+        with pytest.raises(HMRCIndividualTaxContractError):
+            observe_individual_tax_response(
+                request,
+                status_code=200,
+                content_type="application/json",
+                payload=_success_payload(),
+            )
+
+
+def test_observe_rejects_missing_or_non_string_request_field():
+    for field, forged in (
+        ("tax_year", ["2023-24"]),
+        ("method", 123),
+        ("redacted_path", object()),
+        ("scope", None),
+    ):
+        request = _request()
+        object.__setattr__(request, field, forged)
+        with pytest.raises(HMRCIndividualTaxContractError):
+            observe_individual_tax_response(
+                request,
+                status_code=200,
+                content_type="application/json",
+                payload=_success_payload(),
+            )
+
+    request = _request()
+    object.__delattr__(request, "tax_year")
+    with pytest.raises(HMRCIndividualTaxContractError):
+        observe_individual_tax_response(
+            request,
+            status_code=200,
+            content_type="application/json",
+            payload=_success_payload(),
+        )
+
+
 def test_observe_requires_exact_request_intent_instance():
-    for bad_request in (None, {}, "request", object()):
+    class _Lookalike:
+        method = HMRC_INDIVIDUAL_TAX_HTTP_METHOD
+        sandbox_origin = HMRC_INDIVIDUAL_TAX_SANDBOX_ORIGIN
+        path_template = HMRC_INDIVIDUAL_TAX_PATH_TEMPLATE
+        accept = HMRC_INDIVIDUAL_TAX_ACCEPT
+        scope = HMRC_INDIVIDUAL_TAX_SCOPE
+        tax_year = TAX_YEAR
+        redacted_path = "/individual-tax/sa/[UTR-REDACTED]/annual-summary/2023-24"
+
+    for bad_request in (None, {}, "request", object(), _Lookalike()):
         with pytest.raises(HMRCIndividualTaxContractError):
             observe_individual_tax_response(
                 bad_request,
@@ -862,11 +1095,14 @@ def _annual_obs():
         employments=(_employment_item_obs(),),
         pensions_benefits=_benefits_obs(),
         refunds=_refunds_obs(),
+        request=_request(),
     )
 
 
 def _error_obs(status_code=404, code="NOT_FOUND"):
-    return IndividualTaxErrorObservation(status_code=status_code, code=code)
+    return IndividualTaxErrorObservation(
+        status_code=status_code, code=code, request=_request(),
+    )
 
 
 def test_observations_are_frozen_and_redacted():
@@ -891,7 +1127,8 @@ def test_observations_are_frozen_and_redacted():
 def test_observations_do_not_retain_raw_mappings_or_unknown_values():
     obs = _annual_obs()
     assert set(vars(obs)) == {
-        "employments", "pensions_benefits", "refunds", "unknown_names", "completeness",
+        "employments", "pensions_benefits", "refunds", "request", "tax_year",
+        "unknown_names", "completeness", "_request_binding",
     }
     assert set(vars(obs.employments[0])) == {
         "employer_paye_reference", "tax_taken_off_pay", "unknown_names",
@@ -903,7 +1140,9 @@ def test_observations_do_not_retain_raw_mappings_or_unknown_values():
     assert set(vars(obs.refunds)) == {
         "tax_refunded_or_set_off", "present_fields", "absent_fields", "unknown_names",
     }
-    assert set(vars(_error_obs())) == {"status_code", "code", "unknown_names"}
+    assert set(vars(_error_obs())) == {
+        "status_code", "code", "request", "tax_year", "unknown_names", "_request_binding",
+    }
     for container in (obs, obs.pensions_benefits, obs.refunds, obs.employments[0], _error_obs()):
         for value in vars(container).values():
             assert not isinstance(value, (dict, list, set))
@@ -960,44 +1199,57 @@ def test_refunds_direct_constructor_enforces_coherence():
 
 
 def test_annual_summary_direct_constructor_enforces_coherence():
+    request = _request()
     with pytest.raises(HMRCIndividualTaxContractError):
         IndividualTaxAnnualSummaryObservation(
             employments=[_employment_item_obs()],
             pensions_benefits=_benefits_obs(),
             refunds=_refunds_obs(),
+            request=request,
         )
     with pytest.raises(HMRCIndividualTaxContractError):
         IndividualTaxAnnualSummaryObservation(
             employments=(object(),), pensions_benefits=_benefits_obs(), refunds=_refunds_obs(),
+            request=request,
         )
     with pytest.raises(HMRCIndividualTaxContractError):
         IndividualTaxAnnualSummaryObservation(
             employments=(), pensions_benefits=object(), refunds=_refunds_obs(),
+            request=request,
         )
     with pytest.raises(HMRCIndividualTaxContractError):
         IndividualTaxAnnualSummaryObservation(
             employments=(), pensions_benefits=_benefits_obs(), refunds=object(),
+            request=request,
         )
     with pytest.raises(HMRCIndividualTaxContractError):
         IndividualTaxAnnualSummaryObservation(
             employments=(), pensions_benefits=_benefits_obs(), refunds=_refunds_obs(),
-            completeness="VERIFIED",
+            request=request, completeness="VERIFIED",
+        )
+    with pytest.raises(HMRCIndividualTaxContractError):
+        IndividualTaxAnnualSummaryObservation(
+            employments=(), pensions_benefits=_benefits_obs(), refunds=_refunds_obs(),
+            request=object(),
         )
 
 
 def test_error_direct_constructor_enforces_pairing_and_types():
+    request = _request()
     for bad_status in (True, 200, "404", 404.0):
         with pytest.raises(HMRCIndividualTaxContractError):
-            IndividualTaxErrorObservation(status_code=bad_status, code="NOT_FOUND")
+            IndividualTaxErrorObservation(status_code=bad_status, code="NOT_FOUND", request=request)
     with pytest.raises(HMRCIndividualTaxContractError):
-        IndividualTaxErrorObservation(status_code=404, code=404)
+        IndividualTaxErrorObservation(status_code=404, code=404, request=request)
     with pytest.raises(HMRCIndividualTaxContractError):
-        IndividualTaxErrorObservation(status_code=400, code="NOT_FOUND")
+        IndividualTaxErrorObservation(status_code=400, code="NOT_FOUND", request=request)
     with pytest.raises(HMRCIndividualTaxContractError):
-        IndividualTaxErrorObservation(status_code=404, code="NOT_FOUND", unknown_names=["x"])
+        IndividualTaxErrorObservation(status_code=404, code="NOT_FOUND", request=request, unknown_names=["x"])
+    with pytest.raises(HMRCIndividualTaxContractError):
+        IndividualTaxErrorObservation(status_code=404, code="NOT_FOUND", request=object())
 
 
-def test_dataclasses_replace_cannot_create_incoherent_observation():
+def test_incoherent_observation_state_is_rejected():
     with pytest.raises(HMRCIndividualTaxContractError):
         replace(_employment_item_obs(), unknown_names=["x"])
     with pytest.raises(HMRCIndividualTaxContractError):
@@ -1007,13 +1259,28 @@ def test_dataclasses_replace_cannot_create_incoherent_observation():
     with pytest.raises(HMRCIndividualTaxContractError):
         replace(_refunds_obs(), tax_refunded_or_set_off=None)
     with pytest.raises(HMRCIndividualTaxContractError):
-        replace(_annual_obs(), completeness="VERIFIED")
+        IndividualTaxAnnualSummaryObservation(
+            employments=(_employment_item_obs(),),
+            pensions_benefits=_benefits_obs(),
+            refunds=_refunds_obs(),
+            request=_request(),
+            completeness="VERIFIED",
+        )
     with pytest.raises(HMRCIndividualTaxContractError):
-        replace(_annual_obs(), employments=[_employment_item_obs()])
+        IndividualTaxAnnualSummaryObservation(
+            employments=[_employment_item_obs()],
+            pensions_benefits=_benefits_obs(),
+            refunds=_refunds_obs(),
+            request=_request(),
+        )
     with pytest.raises(HMRCIndividualTaxContractError):
-        replace(_error_obs(), code="SA_UTR_INVALID")
+        IndividualTaxErrorObservation(
+            status_code=404, code="SA_UTR_INVALID", request=_request(),
+        )
     with pytest.raises(HMRCIndividualTaxContractError):
-        replace(_error_obs(), status_code=200)
+        IndividualTaxErrorObservation(
+            status_code=200, code="NOT_FOUND", request=_request(),
+        )
 
 
 def test_observation_copy_deepcopy_return_immutable_instance():
@@ -1038,6 +1305,179 @@ def test_observation_pickle_preserves_coherence_and_exact_type():
             candidate.employments = ()
 
 
+def test_observation_retains_request_derived_tax_year():
+    request = _request(utr=UTR, tax_year=TAX_YEAR)
+    annual = observe_individual_tax_response(
+        request, status_code=200, content_type="application/json",
+        payload=_success_payload(),
+    )
+    assert annual.request is request
+    assert annual._request_binding is not request
+    assert annual._request_binding == request
+    assert annual.tax_year == TAX_YEAR
+    assert annual.request.tax_year == TAX_YEAR
+    assert annual.request.redacted_path == "/individual-tax/sa/[UTR-REDACTED]/annual-summary/2023-24"
+
+    for status_code, code in ((400, "SA_UTR_INVALID"), (401, "UNAUTHORIZED"), (404, "NOT_FOUND")):
+        error = observe_individual_tax_response(
+            request, status_code=status_code, content_type="application/json",
+            payload=_error_payload(status_code, code),
+        )
+        assert error.request is request
+        assert error._request_binding is not request
+        assert error._request_binding == request
+        assert error.tax_year == TAX_YEAR
+        assert error.request.tax_year == TAX_YEAR
+
+
+def test_same_payload_different_years_differs_by_annual_identity():
+    first = observe_individual_tax_response(
+        _request(tax_year="2023-24"), status_code=200,
+        content_type="application/json", payload=_success_payload(),
+    )
+    second = observe_individual_tax_response(
+        _request(tax_year="2024-25"), status_code=200,
+        content_type="application/json", payload=_success_payload(),
+    )
+    assert first != second
+    assert first.tax_year == "2023-24"
+    assert second.tax_year == "2024-25"
+    assert first.request != second.request
+
+    e1 = observe_individual_tax_response(
+        _request(tax_year="2023-24"), status_code=400,
+        content_type="application/json", payload=_error_payload(400),
+    )
+    e2 = observe_individual_tax_response(
+        _request(tax_year="2024-25"), status_code=400,
+        content_type="application/json", payload=_error_payload(400),
+    )
+    assert e1 != e2
+    assert e1.tax_year == "2023-24"
+    assert e2.tax_year == "2024-25"
+
+
+def test_observation_utr_absent_from_all_retained_state():
+    request = _request(utr=UTR, tax_year=TAX_YEAR)
+    annual = observe_individual_tax_response(
+        request, status_code=200, content_type="application/json",
+        payload=_success_payload(),
+    )
+    error = observe_individual_tax_response(
+        request, status_code=404, content_type="application/json",
+        payload=_error_payload(404),
+    )
+    for obs in (annual, error):
+        assert UTR not in repr(obs)
+        assert UTR not in str(obs)
+        assert UTR not in repr(obs.request)
+        assert UTR not in pickle.dumps(obs).decode("ascii", "ignore")
+        assert UTR not in str(vars(obs))
+    # Error text never echoes the discarded UTR.
+    assert UTR not in str(HMRCIndividualTaxContractError("x"))
+
+
+def test_observation_copy_deepcopy_pickle_preserve_coherent_binding():
+    annual = observe_individual_tax_response(
+        _request(tax_year="2023-24"), status_code=200,
+        content_type="application/json", payload=_success_payload(),
+    )
+    for clone in (copy.copy(annual), copy.deepcopy(annual), pickle.loads(pickle.dumps(annual))):
+        assert clone == annual
+        assert clone.tax_year == annual.tax_year == "2023-24"
+        assert clone.request == annual.request
+        assert clone.request.tax_year == annual.request.tax_year
+        assert clone.request.redacted_path == annual.request.redacted_path
+        assert clone.request.method == HMRC_INDIVIDUAL_TAX_HTTP_METHOD
+
+
+def test_observation_replace_cannot_relabel_request_provenance():
+    # Success observations must stay bound to their producing request/tax year:
+    # the producing request is non-init, so dataclasses.replace cannot name it
+    # and any request substitution fails closed.
+    first = _request(tax_year="2023-24")
+    other = _request(tax_year="2024-25")
+
+    annual = observe_individual_tax_response(
+        first, status_code=200, content_type="application/json",
+        payload=_success_payload(),
+    )
+    with pytest.raises(TypeError):
+        replace(annual, request=other)
+
+    for status_code, code in ((400, "SA_UTR_INVALID"), (401, "UNAUTHORIZED"), (404, "NOT_FOUND")):
+        error = observe_individual_tax_response(
+            first, status_code=status_code, content_type="application/json",
+            payload=_error_payload(status_code, code),
+        )
+        with pytest.raises(TypeError):
+            replace(error, request=other)
+
+
+def test_observation_tax_year_is_non_suppliable_derived_field():
+    # The public tax_year is genuinely derived and non-init: dataclasses.replace
+    # cannot supply it at all (TypeError), so it can never be relabelled away
+    # from the producing request's year.
+    request = _request(tax_year="2023-24")
+    annual = observe_individual_tax_response(
+        request, status_code=200, content_type="application/json",
+        payload=_success_payload(),
+    )
+    error = observe_individual_tax_response(
+        request, status_code=404, content_type="application/json",
+        payload=_error_payload(404),
+    )
+    assert "tax_year" not in IndividualTaxAnnualSummaryObservation.__init__.__code__.co_varnames
+    assert "tax_year" not in IndividualTaxErrorObservation.__init__.__code__.co_varnames
+    with pytest.raises(TypeError):
+        replace(annual, tax_year="2024-25")
+    with pytest.raises(TypeError):
+        replace(error, tax_year="2024-25")
+    with pytest.raises(TypeError):
+        IndividualTaxAnnualSummaryObservation(
+            employments=(), pensions_benefits=_benefits_obs(), refunds=_refunds_obs(),
+            request=request, tax_year="2024-25",
+        )
+    with pytest.raises(TypeError):
+        IndividualTaxErrorObservation(
+            status_code=404, code="NOT_FOUND", request=request, tax_year="2024-25",
+        )
+
+
+def test_observation_request_identity_is_non_replaceable():
+    # The producing request is part of the observation's immutable provenance:
+    # even a same-tax-year request cannot be substituted through replace().
+    request = _request(tax_year="2023-24")
+    same_year = _request(tax_year="2023-24")
+    annual = observe_individual_tax_response(
+        request, status_code=200, content_type="application/json",
+        payload=_success_payload(),
+    )
+    error = observe_individual_tax_response(
+        request, status_code=404, content_type="application/json",
+        payload=_error_payload(404),
+    )
+    with pytest.raises(TypeError):
+        replace(annual, request=same_year)
+    with pytest.raises(TypeError):
+        replace(error, request=same_year)
+
+    # A fresh observation from a same-year request remains coherent and
+    # observationally indistinguishable from the original.
+    same_year_annual = observe_individual_tax_response(
+        same_year, status_code=200, content_type="application/json",
+        payload=_success_payload(),
+    )
+    same_year_error = observe_individual_tax_response(
+        same_year, status_code=404, content_type="application/json",
+        payload=_error_payload(404),
+    )
+    assert same_year_annual == annual
+    assert same_year_annual.tax_year == "2023-24"
+    assert same_year_error == error
+    assert same_year_error.tax_year == "2023-24"
+
+
 def test_pickle_uses_validated_rebuild_boundaries():
     assert _annual_obs().__reduce__()[0] is _rebuild_annual_summary
     assert _employment_item_obs().__reduce__()[0] is _rebuild_employment_item
@@ -1047,6 +1487,8 @@ def test_pickle_uses_validated_rebuild_boundaries():
 
 
 def test_observation_rebuild_boundaries_reject_invalid_state():
+    request = _request()
+    other = _request(tax_year="2024-25")
     with pytest.raises(HMRCIndividualTaxContractError):
         _rebuild_employment_item("267/LS500", 1.5, frozenset())
     with pytest.raises(HMRCIndividualTaxContractError):
@@ -1054,9 +1496,284 @@ def test_observation_rebuild_boundaries_reject_invalid_state():
     with pytest.raises(HMRCIndividualTaxContractError):
         _rebuild_refunds(None, frozenset({"taxRefundedOrSetOff"}), frozenset(), frozenset())
     with pytest.raises(HMRCIndividualTaxContractError):
-        _rebuild_annual_summary((), object(), object(), frozenset(), "UNVERIFIED")
+        _rebuild_annual_summary((), object(), object(), request, frozenset(), "UNVERIFIED", request)
     with pytest.raises(HMRCIndividualTaxContractError):
-        _rebuild_error(200, "NOT_FOUND", frozenset())
+        _rebuild_error(200, "NOT_FOUND", request, frozenset(), request)
+    with pytest.raises(HMRCIndividualTaxContractError):
+        _rebuild_annual_summary((), _benefits_obs(), _refunds_obs(), object(), frozenset(), "UNVERIFIED", request)
+    with pytest.raises(HMRCIndividualTaxContractError):
+        _rebuild_error(404, "NOT_FOUND", object(), frozenset(), request)
+    # A rebuilder must reject a request that does not match the carried binding.
+    with pytest.raises(HMRCIndividualTaxContractError):
+        _rebuild_annual_summary((), _benefits_obs(), _refunds_obs(), other, frozenset(), "UNVERIFIED", request)
+    with pytest.raises(HMRCIndividualTaxContractError):
+        _rebuild_error(404, "NOT_FOUND", other, frozenset(), request)
+    with pytest.raises(HMRCIndividualTaxContractError):
+        _rebuild_annual_summary((), _benefits_obs(), _refunds_obs(), request, frozenset(), "UNVERIFIED", object())
+    with pytest.raises(HMRCIndividualTaxContractError):
+        _rebuild_error(404, "NOT_FOUND", request, frozenset(), object())
+
+
+def test_observation_replace_coordinated_request_and_tax_year_is_rejected():
+    # The documented coordinated relabel attack supplies both request and
+    # tax_year together. tax_year is now non-init, so dataclasses.replace fails
+    # closed with TypeError before it can re-bind any retained response facts.
+    first = _request(tax_year="2023-24")
+    other = _request(tax_year="2024-25")
+
+    annual = observe_individual_tax_response(
+        first, status_code=200, content_type="application/json",
+        payload=_success_payload(),
+    )
+    with pytest.raises(TypeError):
+        replace(annual, request=other, tax_year="2024-25")
+
+    for status_code, code in (
+        (400, "SA_UTR_INVALID"),
+        (400, "TAX_YEAR_INVALID"),
+        (401, "UNAUTHORIZED"),
+        (404, "NOT_FOUND"),
+    ):
+        error = observe_individual_tax_response(
+            first, status_code=status_code, content_type="application/json",
+            payload=_error_payload(status_code, code),
+        )
+        with pytest.raises(TypeError):
+            replace(error, request=other, tax_year="2024-25")
+
+
+def test_observation_replace_request_and_binding_coordinated_is_rejected():
+    # The remaining coordinated relabel path names the private provenance binding
+    # alongside the producing request. _request_binding is non-init, so even a
+    # coordinated request+binding replacement fails closed with TypeError rather
+    # than re-binding retained response facts to a different request/year.
+    first = _request(tax_year="2023-24")
+    other = _request(tax_year="2024-25")
+
+    annual = observe_individual_tax_response(
+        first, status_code=200, content_type="application/json",
+        payload=_success_payload(),
+    )
+    with pytest.raises(TypeError):
+        replace(annual, request=other, _request_binding=other)
+    with pytest.raises(TypeError):
+        replace(annual, _request_binding=other)
+
+    for status_code, code in (
+        (400, "SA_UTR_INVALID"),
+        (400, "TAX_YEAR_INVALID"),
+        (401, "UNAUTHORIZED"),
+        (404, "NOT_FOUND"),
+    ):
+        error = observe_individual_tax_response(
+            first, status_code=status_code, content_type="application/json",
+            payload=_error_payload(status_code, code),
+        )
+        with pytest.raises(TypeError):
+            replace(error, request=other, _request_binding=other)
+        with pytest.raises(TypeError):
+            replace(error, _request_binding=other)
+
+
+def test_rebuilders_reject_mismatched_request_and_binding_every_pairing():
+    # A rebuilder must validate the original carried binding against the supplied
+    # request rather than deriving a fresh binding from replacement state. A
+    # mismatched request/binding pair must raise for success and every documented
+    # error pairing.
+    request = _request(tax_year="2023-24")
+    other = _request(tax_year="2024-25")
+
+    with pytest.raises(HMRCIndividualTaxContractError):
+        _rebuild_annual_summary(
+            (_employment_item_obs(),), _benefits_obs(), _refunds_obs(),
+            other, frozenset(), "UNVERIFIED", request,
+        )
+
+    for status_code, code in (
+        (400, "SA_UTR_INVALID"),
+        (400, "TAX_YEAR_INVALID"),
+        (401, "UNAUTHORIZED"),
+        (404, "NOT_FOUND"),
+    ):
+        with pytest.raises(HMRCIndividualTaxContractError):
+            _rebuild_error(status_code, code, other, frozenset(), request)
+
+
+def _assert_reconstruction_rejects(obs):
+    with pytest.raises(HMRCIndividualTaxContractError):
+        copy.copy(obs)
+    with pytest.raises(HMRCIndividualTaxContractError):
+        copy.deepcopy(obs)
+    with pytest.raises(HMRCIndividualTaxContractError):
+        pickle.dumps(obs)
+    with pytest.raises(HMRCIndividualTaxContractError):
+        obs.__reduce__()
+
+
+def _annual_with_facts():
+    return observe_individual_tax_response(
+        _request(tax_year="2023-24"), status_code=200,
+        content_type="application/json",
+        payload=_success_payload(employments=[
+            {"employerPayeReference": "267/LS500", "taxTakenOffPay": Decimal("1.00")},
+        ]),
+    )
+
+
+def _error_with_facts(status_code, code):
+    return observe_individual_tax_response(
+        _request(tax_year="2023-24"), status_code=status_code,
+        content_type="application/json", payload=_error_payload(status_code, code),
+    )
+
+
+def _corruption_mutators():
+    def alter_nested_request_year(obs):
+        # Request's retained year is forged while its redacted path stays stale:
+        # the nested request is now internally incoherent.
+        object.__setattr__(obs.request, "tax_year", "2024-25")
+
+    def coordinated_request_relabel(obs):
+        # Request's year and redacted path are both forged into a coherent
+        # different-year request that no longer matches the original binding.
+        object.__setattr__(obs.request, "tax_year", "2024-25")
+        object.__setattr__(
+            obs.request, "redacted_path",
+            "/individual-tax/sa/[UTR-REDACTED]/annual-summary/2024-25",
+        )
+
+    def coordinated_request_and_observation_relabel(obs):
+        # This is the complete attack missed by the previous candidate: forge
+        # both coherent public request fields and the derived observation year.
+        # The independently reconstructed private binding must remain 2023-24.
+        object.__setattr__(obs.request, "tax_year", "2024-25")
+        object.__setattr__(
+            obs.request, "redacted_path",
+            "/individual-tax/sa/[UTR-REDACTED]/annual-summary/2024-25",
+        )
+        object.__setattr__(obs, "tax_year", "2024-25")
+
+    def alter_observation_year(obs):
+        object.__setattr__(obs, "tax_year", "2024-25")
+
+    def missing_observation_year(obs):
+        object.__delattr__(obs, "tax_year")
+
+    def missing_binding(obs):
+        object.__delattr__(obs, "_request_binding")
+
+    def substituted_binding(obs):
+        object.__setattr__(obs, "_request_binding", _request(tax_year="2024-25"))
+
+    def missing_nested_request_field(obs):
+        object.__delattr__(obs.request, "redacted_path")
+
+    return [
+        alter_nested_request_year,
+        coordinated_request_relabel,
+        coordinated_request_and_observation_relabel,
+        alter_observation_year,
+        missing_observation_year,
+        missing_binding,
+        substituted_binding,
+        missing_nested_request_field,
+    ]
+
+
+def test_observation_copy_deepcopy_pickle_reject_corrupted_state():
+    factories = [
+        _annual_with_facts,
+        lambda: _error_with_facts(400, "SA_UTR_INVALID"),
+        lambda: _error_with_facts(400, "TAX_YEAR_INVALID"),
+        lambda: _error_with_facts(401, "UNAUTHORIZED"),
+        lambda: _error_with_facts(404, "NOT_FOUND"),
+    ]
+    for mutator in _corruption_mutators():
+        for obs_factory in factories:
+            obs = obs_factory()
+            mutator(obs)
+            _assert_reconstruction_rejects(obs)
+
+
+def test_observation_copy_deepcopy_pickle_valid_control():
+    for obs in (
+        _annual_with_facts(),
+        _error_with_facts(400, "SA_UTR_INVALID"),
+        _error_with_facts(400, "TAX_YEAR_INVALID"),
+        _error_with_facts(401, "UNAUTHORIZED"),
+        _error_with_facts(404, "NOT_FOUND"),
+    ):
+        assert copy.copy(obs) is obs
+        assert copy.deepcopy(obs) is obs
+        assert pickle.loads(pickle.dumps(obs)) == obs
+
+
+def _nested_observation_cases():
+    return (
+        (_employment_item_obs(), "employer_paye_reference"),
+        (_benefits_obs(), "present_fields"),
+        (_refunds_obs(), "present_fields"),
+    )
+
+
+def test_nested_observations_reject_undeclared_or_missing_state_directly():
+    for nested, _ in _nested_observation_cases():
+        object.__setattr__(nested, "undeclared_state", "must-not-survive")
+        _assert_reconstruction_rejects(nested)
+
+    for nested, required_field in _nested_observation_cases():
+        object.__delattr__(nested, required_field)
+        _assert_reconstruction_rejects(nested)
+
+
+def test_outer_observation_rejects_undeclared_or_missing_nested_state():
+    for nested_name, nested_index, required_field in (
+        ("employments", 0, "tax_taken_off_pay"),
+        ("pensions_benefits", None, "present_fields"),
+        ("refunds", None, "present_fields"),
+    ):
+        annual = _annual_with_facts()
+        nested = getattr(annual, nested_name)
+        if nested_index is not None:
+            nested = nested[nested_index]
+        object.__setattr__(nested, "undeclared_state", "must-not-survive")
+        _assert_reconstruction_rejects(annual)
+
+        annual = _annual_with_facts()
+        nested = getattr(annual, nested_name)
+        if nested_index is not None:
+            nested = nested[nested_index]
+        object.__delattr__(nested, required_field)
+        _assert_reconstruction_rejects(annual)
+
+
+def test_nested_observation_subclasses_fail_closed():
+    class EmploymentSubclass(EmploymentItemObservation):
+        pass
+
+    class BenefitsSubclass(PensionsBenefitsObservation):
+        pass
+
+    class RefundsSubclass(RefundsObservation):
+        pass
+
+    with pytest.raises(HMRCIndividualTaxContractError):
+        EmploymentSubclass(
+            employer_paye_reference="123/AB456",
+            tax_taken_off_pay=Decimal("1.00"),
+        )
+    with pytest.raises(HMRCIndividualTaxContractError):
+        BenefitsSubclass(
+            present_fields=frozenset(),
+            absent_fields=frozenset({
+                "otherPensionsAndRetirementAnnuities", "incapacityBenefit",
+            }),
+        )
+    with pytest.raises(HMRCIndividualTaxContractError):
+        RefundsSubclass(
+            present_fields=frozenset(),
+            absent_fields=frozenset({"taxRefundedOrSetOff"}),
+        )
 
 
 # --- No conversion into tax-engine / cash / customer evidence -----------------
