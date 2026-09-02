@@ -4,7 +4,7 @@ import ast
 import copy
 import pickle
 from collections import OrderedDict
-from dataclasses import replace
+from dataclasses import fields, replace
 from decimal import Decimal
 from enum import IntEnum
 from fractions import Fraction
@@ -148,9 +148,9 @@ def test_raw_utr_is_discarded_from_every_retained_state():
     for snapshot in snapshots:
         assert UTR not in snapshot
 
-    pickled = pickle.dumps(request)
-    assert UTR.encode("ascii") not in pickled
-    assert UTR not in repr(pickle.loads(pickled))
+    serialized = pickle.dumps(request)
+    assert UTR.encode("ascii") not in serialized
+    assert pickle.loads(serialized) == request
 
     # Equality and hash depend only on the UTR-free fields.
     assert _request(utr="1111111111") == _request(utr="2222222222")
@@ -234,13 +234,12 @@ def test_different_utrs_same_tax_year_leave_identical_retained_state():
         assert b"2222222222" not in snapshot
 
 
-def test_exact_observer_accepts_roundtripped_request_intent():
+def test_exact_observer_accepts_validated_request_copies():
     request = _request()
     candidates = (
         request,
         copy.copy(request),
         copy.deepcopy(request),
-        pickle.loads(pickle.dumps(request)),
     )
     for candidate in candidates:
         obs = observe_individual_income_response(
@@ -859,15 +858,28 @@ def _benefits_obs():
     )
 
 
-def _annual_obs():
-    return IndividualIncomeAnnualSummaryObservation(
-        employments=(_employment_item_obs(),),
-        pensions_benefits=_benefits_obs(),
+def _annual_obs(request=None):
+    return observe_individual_income_response(
+        request or _request(),
+        status_code=200,
+        content_type="application/json",
+        payload=_success_payload(
+            employments=[{
+                "employerPayeReference": "267/LS500",
+                "payFromEmployment": Decimal("1.00"),
+            }],
+            pensionsAnnuitiesAndOtherStateBenefits={"incapacityBenefit": 0},
+        ),
     )
 
 
-def _error_obs(status_code=404, code="NOT_FOUND"):
-    return IndividualIncomeErrorObservation(status_code=status_code, code=code)
+def _error_obs(status_code=404, code="NOT_FOUND", request=None):
+    return observe_individual_income_response(
+        request or _request(),
+        status_code=status_code,
+        content_type="application/json",
+        payload={"code": code, "message": "detail"},
+    )
 
 
 def test_employment_item_direct_constructor_rejects_mutable_or_invalid_state():
@@ -926,39 +938,52 @@ def test_benefits_direct_constructor_enforces_coherence():
         )
 
 
-def test_annual_summary_direct_constructor_enforces_coherence():
-    with pytest.raises(HMRCIndividualIncomeContractError):
+def test_annual_summary_public_constructor_is_unconditionally_unsupported():
+    request = _request()
+    for kwargs in (
+        {
+            "request": request,
+            "employments": (_employment_item_obs(),),
+            "pensions_benefits": _benefits_obs(),
+        },
+        {
+            "request": request,
+            "employments": (),
+            "pensions_benefits": _benefits_obs(),
+            "_request_binding": tuple(vars(request).values()),
+            "tax_year": TAX_YEAR,
+        },
+    ):
+        with pytest.raises(TypeError):
+            IndividualIncomeAnnualSummaryObservation(**kwargs)
+
+    with pytest.raises(TypeError):
         IndividualIncomeAnnualSummaryObservation(
+            request=request,
             employments=[_employment_item_obs()], pensions_benefits=_benefits_obs(),
         )
-    with pytest.raises(HMRCIndividualIncomeContractError):
-        IndividualIncomeAnnualSummaryObservation(
-            employments=(object(),), pensions_benefits=_benefits_obs(),
-        )
-    with pytest.raises(HMRCIndividualIncomeContractError):
-        IndividualIncomeAnnualSummaryObservation(employments=(), pensions_benefits=object())
-    with pytest.raises(HMRCIndividualIncomeContractError):
-        IndividualIncomeAnnualSummaryObservation(
-            employments=(), pensions_benefits=_benefits_obs(), completeness="VERIFIED",
-        )
-    with pytest.raises(HMRCIndividualIncomeContractError):
-        IndividualIncomeAnnualSummaryObservation(
-            employments=(), pensions_benefits=_benefits_obs(), unknown_names=["x"],
-        )
 
 
-def test_error_direct_constructor_enforces_pairing_and_types():
-    for bad_status in (True, 200, "404", 404.0):
-        with pytest.raises(HMRCIndividualIncomeContractError):
-            IndividualIncomeErrorObservation(status_code=bad_status, code="NOT_FOUND")
-    with pytest.raises(HMRCIndividualIncomeContractError):
-        IndividualIncomeErrorObservation(status_code=404, code=404)
-    with pytest.raises(HMRCIndividualIncomeContractError):
-        IndividualIncomeErrorObservation(status_code=400, code="NOT_FOUND")
-    with pytest.raises(HMRCIndividualIncomeContractError):
-        IndividualIncomeErrorObservation(
-            status_code=404, code="NOT_FOUND", unknown_names=["x"],
-        )
+def test_error_public_constructor_is_unconditionally_unsupported():
+    request = _request()
+    for status_code, code in (
+        (400, "SA_UTR_INVALID"),
+        (400, "TAX_YEAR_INVALID"),
+        (401, "UNAUTHORIZED"),
+        (404, "NOT_FOUND"),
+    ):
+        with pytest.raises(TypeError):
+            IndividualIncomeErrorObservation(
+                request=request,
+                status_code=status_code,
+                code=code,
+                _request_binding=_error_obs(
+                    status_code=status_code,
+                    code=code,
+                    request=request,
+                )._request_binding,
+                tax_year=TAX_YEAR,
+            )
 
 
 def test_dataclasses_replace_cannot_create_incoherent_observation():
@@ -970,32 +995,40 @@ def test_dataclasses_replace_cannot_create_incoherent_observation():
         replace(_benefits_obs(), present_fields=frozenset())
     with pytest.raises(HMRCIndividualIncomeContractError):
         replace(_benefits_obs(), unknown_names=["x"])
-    with pytest.raises(HMRCIndividualIncomeContractError):
-        replace(_annual_obs(), completeness="VERIFIED")
-    with pytest.raises(HMRCIndividualIncomeContractError):
-        replace(_annual_obs(), employments=[_employment_item_obs()])
-    with pytest.raises(HMRCIndividualIncomeContractError):
-        replace(_error_obs(), code="SA_UTR_INVALID")
-    with pytest.raises(HMRCIndividualIncomeContractError):
-        replace(_error_obs(), status_code=200)
+    for observation in (_annual_obs(), _error_obs()):
+        with pytest.raises((TypeError, ValueError)):
+            replace(observation)
+        for field_name, value in (
+            ("request", _request()),
+            ("tax_year", TAX_YEAR),
+            ("_request_binding", observation._request_binding),
+        ):
+            with pytest.raises((TypeError, ValueError)):
+                replace(observation, **{field_name: value})
 
 
 def test_observation_copy_deepcopy_and_pickle_preserve_coherence():
     obs = _annual_obs()
-    for candidate in (copy.copy(obs), copy.deepcopy(obs), pickle.loads(pickle.dumps(obs))):
+    serialized = pickle.dumps(obs)
+    assert UTR.encode("ascii") not in serialized
+    for candidate in (copy.copy(obs), copy.deepcopy(obs), pickle.loads(serialized)):
         assert candidate == obs
         assert hash(candidate) == hash(obs)
         assert type(candidate) is IndividualIncomeAnnualSummaryObservation
         assert type(candidate.employments) is tuple
         assert type(candidate.unknown_names) is frozenset
         assert type(candidate.pensions_benefits) is PensionsBenefitsObservation
+        assert candidate.tax_year == obs.tax_year == TAX_YEAR
         with pytest.raises(AttributeError):
             candidate.employments = ()
 
 
 def test_observations_do_not_retain_raw_mappings_or_unknown_values():
     obs = _annual_obs()
-    assert set(vars(obs)) == {"employments", "pensions_benefits", "unknown_names", "completeness"}
+    assert set(vars(obs)) == {
+        "request", "employments", "pensions_benefits", "unknown_names",
+        "completeness", "_source_context", "_request_binding", "tax_year",
+    }
     assert set(vars(obs.pensions_benefits)) == {
         "other_pensions_and_retirement_annuities", "incapacity_benefit",
         "jobseekers_allowance", "seiss_net_paid", "present_fields",
@@ -1004,7 +1037,10 @@ def test_observations_do_not_retain_raw_mappings_or_unknown_values():
     assert set(vars(obs.employments[0])) == {
         "employer_paye_reference", "pay_from_employment", "unknown_names",
     }
-    assert set(vars(_error_obs())) == {"status_code", "code", "unknown_names"}
+    assert set(vars(_error_obs())) == {
+        "request", "status_code", "code", "unknown_names", "_source_context",
+        "_request_binding", "tax_year",
+    }
     for container in (obs, obs.pensions_benefits, obs.employments[0], _error_obs()):
         for value in vars(container).values():
             assert not isinstance(value, (dict, list, set))
@@ -1038,6 +1074,530 @@ def test_observe_rejects_request_intent_subclass():
         )
 
 
+# ── Request-derived annual identity binding ─────────────────────────────────
+
+
+def test_success_and_error_observations_carry_exact_request_tax_year():
+    for tax_year in ("2023-24", "2024-25"):
+        request = _request(tax_year=tax_year)
+        success = observe_individual_income_response(
+            request,
+            status_code=200,
+            content_type="application/json",
+            payload=_success_payload(),
+        )
+        assert isinstance(success, IndividualIncomeAnnualSummaryObservation)
+        assert success.tax_year == tax_year
+
+        for status, code in (
+            (400, "SA_UTR_INVALID"),
+            (401, "UNAUTHORIZED"),
+            (404, "NOT_FOUND"),
+        ):
+            error = observe_individual_income_response(
+                request,
+                status_code=status,
+                content_type="application/json",
+                payload={"code": code, "message": "m"},
+            )
+            assert isinstance(error, IndividualIncomeErrorObservation)
+            assert error.tax_year == tax_year
+
+
+def test_annual_identity_cannot_be_injected_or_replaced_independently():
+    request = _request()
+    with pytest.raises(TypeError):
+        IndividualIncomeAnnualSummaryObservation(
+            request=request,
+            employments=(),
+            pensions_benefits=_benefits_obs(),
+            tax_year="2099-00",
+        )
+    with pytest.raises(TypeError):
+        replace(_annual_obs(), request=request, tax_year="2099-00")
+    with pytest.raises(TypeError):
+        IndividualIncomeErrorObservation(
+            request=request,
+            status_code=404,
+            code="NOT_FOUND",
+            tax_year="2099-00",
+        )
+    with pytest.raises(TypeError):
+        replace(_error_obs(), request=request, tax_year="2099-00")
+
+    # A different validated request cannot relabel already-observed facts.
+    other = _request(tax_year="2024-25")
+    with pytest.raises((TypeError, ValueError)):
+        replace(_annual_obs(), request=other)
+
+
+def test_forged_request_state_fails_closed_without_hostile_hooks():
+    # Missing internal state is rejected by shape before any value is read.
+    empty = object.__new__(IndividualIncomeRequestIntent)
+    with pytest.raises(HMRCIndividualIncomeContractError):
+        observe_individual_income_response(
+            empty,
+            status_code=200,
+            content_type="application/json",
+            payload=_success_payload(),
+        )
+
+    # Additional internal state is rejected without inspecting its value.
+    extra = _request()
+    object.__setattr__(extra, "extra", _HostileValue())
+    with pytest.raises(HMRCIndividualIncomeContractError):
+        observe_individual_income_response(
+            extra,
+            status_code=200,
+            content_type="application/json",
+            payload=_success_payload(),
+        )
+
+    # A hostile value smuggled into every known slot is type-rejected before
+    # any comparison, hash, repr, str or iteration hook is invoked.
+    forged = object.__new__(IndividualIncomeRequestIntent)
+    for name in (
+        "tax_year", "method", "sandbox_origin", "path_template",
+        "accept", "scope", "redacted_path",
+    ):
+        object.__setattr__(forged, name, _HostileValue())
+    with pytest.raises(HMRCIndividualIncomeContractError):
+        observe_individual_income_response(
+            forged,
+            status_code=200,
+            content_type="application/json",
+            payload=_success_payload(),
+        )
+
+
+def test_request_repr_never_renders_injected_utr_and_equality_hash_fail_closed():
+    for field_name in ("tax_year", "redacted_path", "raw_utr"):
+        damaged = _request()
+        object.__setattr__(damaged, field_name, UTR)
+        assert UTR not in repr(damaged)
+        assert UTR not in str(damaged)
+        with pytest.raises(HMRCIndividualIncomeContractError):
+            damaged == _request()
+        with pytest.raises(HMRCIndividualIncomeContractError):
+            hash(damaged)
+        with pytest.raises(HMRCIndividualIncomeContractError):
+            pickle.dumps(damaged)
+
+    hostile = _request()
+    object.__setattr__(hostile, "tax_year", _HostileValue())
+    assert repr(hostile) == "IndividualIncomeRequestIntent([REDACTED])"
+    with pytest.raises(HMRCIndividualIncomeContractError):
+        hostile == _request()
+    with pytest.raises(HMRCIndividualIncomeContractError):
+        hash(hostile)
+
+
+@pytest.mark.parametrize("status_code,code", (
+    (400, "SA_UTR_INVALID"),
+    (400, "TAX_YEAR_INVALID"),
+    (401, "UNAUTHORIZED"),
+    (404, "NOT_FOUND"),
+))
+def test_error_repr_never_renders_injected_utr_and_equality_hash_fail_closed(status_code, code):
+    for field_name in ("code", "tax_year", "raw_utr"):
+        damaged = _error_obs(status_code=status_code, code=code)
+        object.__setattr__(damaged, field_name, UTR)
+        assert UTR not in repr(damaged)
+        assert UTR not in str(damaged)
+        with pytest.raises(HMRCIndividualIncomeContractError):
+            damaged == _error_obs(status_code=status_code, code=code)
+        with pytest.raises(HMRCIndividualIncomeContractError):
+            hash(damaged)
+        with pytest.raises(HMRCIndividualIncomeContractError):
+            pickle.dumps(damaged)
+
+    hostile = _error_obs(status_code=status_code, code=code)
+    object.__setattr__(hostile, "code", _HostileValue())
+    assert repr(hostile) == "IndividualIncomeErrorObservation([REDACTED])"
+    with pytest.raises(HMRCIndividualIncomeContractError):
+        hostile == _error_obs(status_code=status_code, code=code)
+    with pytest.raises(HMRCIndividualIncomeContractError):
+        hash(hostile)
+
+
+def test_observations_retain_no_utr_and_match_only_by_tax_year():
+    payload = _success_payload(employments=[
+        {"employerPayeReference": "267/LS500", "payFromEmployment": Decimal("1.00")},
+    ])
+    a = observe_individual_income_response(
+        _request(utr="1111111111"),
+        status_code=200,
+        content_type="application/json",
+        payload=payload,
+    )
+    b = observe_individual_income_response(
+        _request(utr="2222222222"),
+        status_code=200,
+        content_type="application/json",
+        payload=payload,
+    )
+    assert vars(a) == vars(b)
+    assert a == b
+    assert hash(a) == hash(b)
+    for snapshot in (repr(a), str(vars(a))):
+        assert "1111111111" not in snapshot
+        assert "2222222222" not in snapshot
+    serialized = pickle.dumps(a)
+    assert b"1111111111" not in serialized
+    assert b"2222222222" not in serialized
+    assert pickle.loads(serialized) == a
+
+
+def test_error_observation_copy_deepcopy_and_pickle_preserve_coherence():
+    obs = _error_obs()
+    serialized = pickle.dumps(obs)
+    assert UTR.encode("ascii") not in serialized
+    for candidate in (copy.copy(obs), copy.deepcopy(obs), pickle.loads(serialized)):
+        assert candidate == obs
+        assert hash(candidate) == hash(obs)
+        assert type(candidate) is IndividualIncomeErrorObservation
+        assert candidate.tax_year == obs.tax_year == TAX_YEAR
+        with pytest.raises(AttributeError):
+            candidate.code = "NOT_FOUND"
+
+
+_DOCUMENTED_ERROR_PAIRINGS = (
+    (400, "SA_UTR_INVALID"),
+    (400, "TAX_YEAR_INVALID"),
+    (401, "UNAUTHORIZED"),
+    (404, "NOT_FOUND"),
+)
+
+
+def _assert_clone_and_reduce_boundaries_reject(value):
+    for operation in (
+        copy.copy,
+        copy.deepcopy,
+        pickle.dumps,
+        lambda candidate: candidate.__reduce__(),
+    ):
+        with pytest.raises(HMRCIndividualIncomeContractError):
+            operation(value)
+
+
+def test_observation_tax_year_is_derived_non_init_state():
+    for observation_type in (
+        IndividualIncomeAnnualSummaryObservation,
+        IndividualIncomeErrorObservation,
+    ):
+        observation_fields = fields(observation_type)
+        assert all(item.init is False for item in observation_fields)
+        tax_year_field = next(item for item in observation_fields if item.name == "tax_year")
+        assert tax_year_field.init is False
+        for name in ("request", "_request_binding", "tax_year"):
+            assert next(item for item in observation_fields if item.name == name).init is False
+
+
+def test_observation_replace_is_unconditionally_unsupported():
+    request = _request(tax_year="2023-24")
+    observations = [_annual_obs(request=request)]
+    observations.extend(
+        _error_obs(status_code=status_code, code=code, request=request)
+        for status_code, code in _DOCUMENTED_ERROR_PAIRINGS
+    )
+    for observation in observations:
+        for changes in (
+            {},
+            {"unknown_names": frozenset({"futureMember"})},
+            {"_source_context": observation._source_context},
+        ):
+            with pytest.raises((TypeError, ValueError)):
+                replace(observation, **changes)
+
+
+def test_source_context_cannot_be_supplied_to_public_construction():
+    annual = _annual_obs()
+    with pytest.raises(TypeError):
+        IndividualIncomeAnnualSummaryObservation(
+            employments=annual.employments,
+            pensions_benefits=annual.pensions_benefits,
+            unknown_names=annual.unknown_names,
+            completeness=annual.completeness,
+            _source_context=annual._source_context,
+        )
+
+    for status_code, code in _DOCUMENTED_ERROR_PAIRINGS:
+        error = _error_obs(status_code=status_code, code=code)
+        with pytest.raises(TypeError):
+            IndividualIncomeErrorObservation(
+                status_code=error.status_code,
+                code=error.code,
+                unknown_names=error.unknown_names,
+                _source_context=error._source_context,
+            )
+
+
+def test_public_replace_and_partial_low_level_relabel_fail_for_success_and_errors():
+    original = _request(tax_year="2023-24")
+    other = _request(tax_year="2024-25")
+    observations = [_annual_obs(request=original)]
+    observations.extend(
+        _error_obs(status_code=status_code, code=code, request=original)
+        for status_code, code in _DOCUMENTED_ERROR_PAIRINGS
+    )
+
+    for observation in observations:
+        with pytest.raises((TypeError, ValueError)):
+            replace(observation, request=other)
+        with pytest.raises((TypeError, ValueError)):
+            replace(observation, request=other, tax_year="2024-25")
+        with pytest.raises((TypeError, ValueError)):
+            replace(
+                observation,
+                request=other,
+                _request_binding=_annual_obs(request=other)._request_binding,
+                tax_year="2024-25",
+            )
+        other_observation = (
+            _annual_obs(request=other)
+            if type(observation) is IndividualIncomeAnnualSummaryObservation
+            else _error_obs(
+                status_code=observation.status_code,
+                code=observation.code,
+                request=other,
+            )
+        )
+        with pytest.raises((TypeError, ValueError)):
+            replace(observation, _source_context=other_observation._source_context)
+
+        # These three coordinated changes are still incomplete relative to the
+        # parser-established source context and therefore fail on every
+        # validating protocol surface. Arbitrary code replacing *all* mutually
+        # coherent state is outside this value object's enforceable boundary.
+        object.__setattr__(observation, "request", other)
+        object.__setattr__(
+            observation,
+            "_request_binding",
+            _annual_obs(request=other)._request_binding,
+        )
+        object.__setattr__(observation, "tax_year", "2024-25")
+        _assert_clone_and_reduce_boundaries_reject(observation)
+        with pytest.raises(HMRCIndividualIncomeContractError):
+            hash(observation)
+        peer = (
+            _annual_obs(request=other)
+            if type(observation) is IndividualIncomeAnnualSummaryObservation
+            else _error_obs(
+                status_code=observation.status_code,
+                code=observation.code,
+                request=other,
+            )
+        )
+        with pytest.raises(HMRCIndividualIncomeContractError):
+            observation == peer
+
+
+def test_partial_low_level_source_context_substitution_fails_protocol_surfaces():
+    original = _request(tax_year="2023-24")
+    other = _request(tax_year="2024-25")
+    observations = [_annual_obs(request=original)]
+    observations.extend(
+        _error_obs(status_code=status_code, code=code, request=original)
+        for status_code, code in _DOCUMENTED_ERROR_PAIRINGS
+    )
+    for observation in observations:
+        other_observation = (
+            _annual_obs(request=other)
+            if type(observation) is IndividualIncomeAnnualSummaryObservation
+            else _error_obs(
+                status_code=observation.status_code,
+                code=observation.code,
+                request=other,
+            )
+        )
+        object.__setattr__(observation, "_source_context", other_observation._source_context)
+        _assert_clone_and_reduce_boundaries_reject(observation)
+        with pytest.raises(HMRCIndividualIncomeContractError):
+            hash(observation)
+        with pytest.raises(HMRCIndividualIncomeContractError):
+            observation == other_observation
+
+
+def test_request_clone_pickle_and_reduce_reject_missing_or_forged_complete_state():
+    request_fields = (
+        "tax_year", "method", "sandbox_origin", "path_template",
+        "accept", "scope", "redacted_path",
+    )
+    for field_name in request_fields:
+        damaged = _request()
+        object.__delattr__(damaged, field_name)
+        _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    for field_name, forged_value in (
+        ("tax_year", "NOT-A-YEAR"),
+        ("tax_year", "2024-25"),
+        ("method", "POST"),
+        ("sandbox_origin", "https://evil.example"),
+        ("path_template", "/different/{utr}/{taxYear}"),
+        ("accept", "text/plain"),
+        ("scope", "read:other"),
+        ("redacted_path", "/individual-income/sa/[UTR-REDACTED]/annual-summary/2024-25"),
+    ):
+        damaged = _request()
+        object.__setattr__(damaged, field_name, forged_value)
+        _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _request()
+    object.__setattr__(damaged, "additional_state", _HostileValue())
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+
+def test_annual_clone_pickle_and_reduce_reject_missing_forged_or_nested_state():
+    for field_name in (
+        "request", "employments", "pensions_benefits", "unknown_names",
+        "completeness", "_request_binding", "tax_year",
+    ):
+        damaged = _annual_obs()
+        object.__delattr__(damaged, field_name)
+        _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _annual_obs()
+    object.__setattr__(damaged, "request", _request(tax_year="2024-25"))
+    object.__setattr__(damaged, "tax_year", "2024-25")
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _annual_obs()
+    object.__setattr__(damaged, "tax_year", "2024-25")
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _annual_obs()
+    object.__setattr__(damaged, "_request_binding", _annual_obs(
+        request=_request(tax_year="2024-25")
+    )._request_binding)
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _annual_obs()
+    object.__setattr__(damaged, "completeness", "VERIFIED")
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _annual_obs()
+    object.__setattr__(damaged, "employments", [_employment_item_obs()])
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _annual_obs()
+    object.__setattr__(damaged, "unknown_names", ["futureTopLevel"])
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _annual_obs()
+    object.__setattr__(damaged, "additional_state", _HostileValue())
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _annual_obs()
+    object.__setattr__(damaged.request, "method", "POST")
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _annual_obs()
+    object.__delattr__(damaged.employments[0], "pay_from_employment")
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _annual_obs()
+    object.__setattr__(damaged.pensions_benefits, "present_fields", frozenset())
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+
+def test_nested_observation_clone_pickle_and_reduce_reject_incomplete_state():
+    employment = _employment_item_obs()
+    object.__delattr__(employment, "pay_from_employment")
+    _assert_clone_and_reduce_boundaries_reject(employment)
+
+    employment = _employment_item_obs()
+    object.__setattr__(employment, "additional_state", _HostileValue())
+    _assert_clone_and_reduce_boundaries_reject(employment)
+
+    benefits = _benefits_obs()
+    object.__setattr__(benefits, "present_fields", frozenset())
+    _assert_clone_and_reduce_boundaries_reject(benefits)
+
+    benefits = _benefits_obs()
+    object.__delattr__(benefits, "absent_fields")
+    _assert_clone_and_reduce_boundaries_reject(benefits)
+
+
+@pytest.mark.parametrize("status_code,code", _DOCUMENTED_ERROR_PAIRINGS)
+def test_error_clone_pickle_and_reduce_reject_missing_forged_or_nested_state(status_code, code):
+    for field_name in (
+        "request", "status_code", "code", "unknown_names", "_request_binding", "tax_year",
+    ):
+        damaged = _error_obs(status_code=status_code, code=code)
+        object.__delattr__(damaged, field_name)
+        _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _error_obs(status_code=status_code, code=code)
+    object.__setattr__(damaged, "request", _request(tax_year="2024-25"))
+    object.__setattr__(damaged, "tax_year", "2024-25")
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _error_obs(status_code=status_code, code=code)
+    object.__setattr__(damaged, "tax_year", "2024-25")
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _error_obs(status_code=status_code, code=code)
+    object.__setattr__(damaged, "_request_binding", _error_obs(
+        status_code=status_code,
+        code=code,
+        request=_request(tax_year="2024-25"),
+    )._request_binding)
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _error_obs(status_code=status_code, code=code)
+    object.__setattr__(damaged, "status_code", 200)
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _error_obs(status_code=status_code, code=code)
+    object.__setattr__(damaged, "code", "NOT_A_DOCUMENTED_CODE")
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _error_obs(status_code=status_code, code=code)
+    object.__setattr__(damaged, "unknown_names", ["futureErrorMember"])
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _error_obs(status_code=status_code, code=code)
+    object.__setattr__(damaged, "additional_state", _HostileValue())
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+    damaged = _error_obs(status_code=status_code, code=code)
+    object.__setattr__(damaged.request, "redacted_path", "/forged")
+    _assert_clone_and_reduce_boundaries_reject(damaged)
+
+
+def test_valid_protocol_surfaces_cover_success_and_all_errors_without_utr():
+    observations = [_annual_obs()]
+    observations.extend(
+        _error_obs(status_code=status_code, code=code)
+        for status_code, code in _DOCUMENTED_ERROR_PAIRINGS
+    )
+    for observation in observations:
+        serialized = pickle.dumps(observation)
+        assert UTR.encode("ascii") not in serialized
+        reduced = observation.__reduce__()
+        assert UTR not in repr(reduced)
+        for candidate in (copy.copy(observation), copy.deepcopy(observation), pickle.loads(serialized)):
+            assert candidate == observation
+            assert candidate.request == observation.request
+            assert candidate._request_binding == observation._request_binding
+            assert candidate.tax_year == observation.tax_year
+
+
+def test_reduction_rebuilders_revalidate_the_canonical_utr_free_source_state():
+    request_restore, request_args = _request().__reduce__()
+    damaged_binding = list(request_args[0])
+    damaged_binding[1] = "POST"
+    with pytest.raises(HMRCIndividualIncomeContractError):
+        request_restore(tuple(damaged_binding))
+
+    for observation in (_annual_obs(), _error_obs()):
+        restore, args = observation.__reduce__()
+        damaged_binding = list(args[0])
+        damaged_binding[-1] = "/forged"
+        with pytest.raises(HMRCIndividualIncomeContractError):
+            restore(tuple(damaged_binding), *args[1:])
+
+
 # ── No cross-endpoint join / double-count / activation claims ───────────────
 
 
@@ -1047,9 +1607,11 @@ def test_no_cross_endpoint_join_or_double_count_surface():
     ]))
     assert obs.completeness == "UNVERIFIED"
     # The annual-summary observation exposes only validated known scalars,
-    # frozen containers and bounded safe unknown names.
+    # frozen containers, bounded safe unknown names and the request-derived
+    # tax year.
     assert set(vars(obs)) == {
-        "employments", "pensions_benefits", "unknown_names", "completeness",
+        "request", "employments", "pensions_benefits", "unknown_names",
+        "completeness", "_source_context", "_request_binding", "tax_year",
     }
     # No join key, identity, double-count, mapping or canonical surface.
     for container in (obs, obs.pensions_benefits, obs.employments[0]):

@@ -59,12 +59,17 @@ constructor, forged with `dataclasses.replace`, or assigned on the frozen
 instance. The redacted path is computed by replacing the UTR placeholder with
 the literal marker `[UTR-REDACTED]` and the tax year placeholder with the
 validated tax year. No UTR-bearing path or recoverable equivalent is retained
-in ordinary, private, name-mangled, serialized, copied, equality/hash,
-representation or conversion state. Two requests built from different UTRs and
-the same tax year compare equal and leave identical retained state,
-demonstrating that the UTR never enters equality, hash, pickle or copy state.
+in ordinary, private, name-mangled, copied, equality/hash, representation or
+conversion state. Request repr is unconditionally non-value-bearing, while
+custom equality and hash validate the exact complete request state before
+using any retained value. Two requests built from different UTRs and the same
+tax year compare equal and leave identical retained state. Copy and deepcopy
+validate that state and return the same immutable instance. Reduction and
+pickle validate the complete source and carry only the seven-field canonical
+UTR-free retained snapshot. Reconstruction revalidates that snapshot and does
+not manufacture, retain or serialize a UTR.
 `build_individual_income_request(*, utr, tax_year)` remains a thin keyword-only
-convenience over the same boundary.
+convenience over the validated construction boundary.
 
 ## Number boundary
 
@@ -119,10 +124,12 @@ HTTP 404 is retained as unavailable evidence, not as an authoritative empty or
 zero-income record. Undocumented statuses, media types, codes, malformed
 bodies, explicit nulls and mismatched status/code pairs fail closed.
 
-The raw response payload and the error `message` are never retained. The error
-observation keeps only `status_code` and `code`; the `message` is validated as a
-string (Reserved length bound only) and then discarded. Validation failures
-raise `HMRCIndividualIncomeContractError` with constant, non-echoing messages.
+The raw response payload and the error `message` are never retained. Among the
+provider error-body facts, the error observation keeps only `status_code` and
+`code`; it also carries the UTR-free request context and derived annual
+identity described below. The `message` is validated as a string (Reserved
+length bound only) and then discarded. Validation failures raise
+`HMRCIndividualIncomeContractError` with constant, non-echoing messages.
 
 ## Unknown names and defensive key bounds
 
@@ -151,9 +158,8 @@ closed before any value is dereferenced or iterated.
 
 ## Deep immutability of observations
 
-Every public observation class is a frozen dataclass whose `__post_init__`
-revalidates the full package invariants, so direct construction and
-`dataclasses.replace` cannot create an incoherent instance:
+The nested literal-fact observation classes remain frozen dataclasses whose
+`__post_init__` revalidates their full package invariants:
 
 - `EmploymentItemObservation` revalidates the exact built-in bounded string
   `employer_paye_reference`, the exact built-in `int`/`Decimal`
@@ -161,19 +167,102 @@ revalidates the full package invariants, so direct construction and
 - `PensionsBenefitsObservation` requires `present_fields` and `absent_fields`
   to be exact disjoint frozensets that are exhaustive over the four documented
   benefit names, and each optional numeric value to be non-`None` exactly when
-  its provider field is present;
-- `IndividualIncomeAnnualSummaryObservation` requires an exact tuple of exact
-  `EmploymentItemObservation` items, an exact `PensionsBenefitsObservation`,
-  bounded safe unknown names and the exact `UNVERIFIED` completeness value;
-- `IndividualIncomeErrorObservation` requires an exact built-in integer status,
-  an exact built-in string code on the documented status/code pairing, and
-  bounded safe unknown names.
+  its provider field is present.
 
-Mutable lists, dicts and sets, subclasses, unbounded values, invalid
-completeness, arbitrary status/code pairings and mutable nested observation
-state are rejected at construction and on `dataclasses.replace`. Copy,
-deepcopy and pickle round-trips preserve the frozen, coherent objects; raw
-mappings and unknown values are never retained.
+The top-level success and error response observations are frozen dataclasses
+created by private parser factories with an exact immutable source context.
+Every retained field is non-init. Public construction and top-level
+`dataclasses.replace`, including unchanged or apparently unrelated fact-field
+replacement, are intentionally unsupported. This preserves provenance because
+standard dataclass replacement can only carry source state through an
+`init=True` field, which callers could then substitute. The success factory
+requires an exact tuple of exact
+`EmploymentItemObservation` items, an exact `PensionsBenefitsObservation`,
+bounded safe unknown names and exact `UNVERIFIED` completeness. The error
+factory requires an exact built-in status/code on a documented pairing and
+bounded safe unknown names.
+
+No current compatibility consumer requires top-level response replacement;
+the package tests were the only consumer asserting that convenience. The
+nested literal-fact dataclasses retain their ordinary validated replacement
+semantics. Validated copy and deepcopy of top-level responses return the same
+deeply immutable object. Reduction and pickle validate complete source state
+and serialize only canonical UTR-free state. Before copy, deepcopy,
+equality, hash, reduction or pickle uses a top-level
+observation, the complete exact observation, nested request, nested literal
+observations, private parser-established source context and request-binding
+coherence are revalidated. Raw response mappings and unknown values are never
+retained.
+
+## Reserved request-binding correction
+
+This revision corrects one bounded association defect. Previously the observer
+validated a request before parsing, but its returned observations did not
+retain any request-derived annual context. The corrected object records the
+request context supplied to the offline observation boundary. It does not prove
+that a network response was produced by HMRC or by that request; authenticity,
+transport correlation and live/sandbox evidence remain outside this module.
+
+The correction retains the exact canonical UTR-free request intent, a private
+parser-established source context, an immutable tuple snapshot of all seven
+canonical retained request fields, and a derived `tax_year` on every success
+(`IndividualIncomeAnnualSummaryObservation`) and documented 400/401/404 error
+(`IndividualIncomeErrorObservation`) observation created by the parser boundary.
+The tax year is derived solely from the private source context and is never
+accepted as public constructor or replacement input:
+
+- both response classes mark every field non-init; parser factories supply a
+  separate private source context from which request, immutable
+  canonical-state snapshot and tax year are assigned and against which they
+  are validated;
+- `dataclasses.replace` cannot reconstruct either top-level response, whether
+  the caller omits or supplies source context. Incomplete or incoherent
+  low-level mutation — including substitution of request, private binding and
+  year while the parser-established source context remains unchanged, or
+  substitution of that context alone — fails validation for success and every
+  documented error pairing;
+- construction revalidates the full exact request intent — exact
+  `IndividualIncomeRequestIntent` type, exact built-in `__dict__`, exact key
+  set, exact derived constants and a redacted path coherent with the validated
+  tax year — rather than trusting the request's construction history;
+- request copy and deepcopy validate complete state before returning the same
+  immutable instance; request reduction/pickle validates before emitting a
+  UTR-free canonical reconstruction recipe;
+- observation copy and deepcopy validate their exact complete state,
+  the complete nested request, every retained nested employment/benefits
+  observation, and coherence among the original binding, retained request and
+  derived tax year before returning; observation reduction/pickle validates
+  first and emits only a UTR-free reconstruction recipe;
+- request and response repr are constant and non-value-bearing. Custom equality
+  and hash validate complete state before using retained values, so a raw UTR
+  injected by bypassing frozen assignment is neither rendered nor consumed as
+  valid state;
+- the raw UTR remains absent from ordinary retained state, equality/hash, repr,
+  copy, deepcopy and pickle. Requests built from different UTRs for the same
+  tax year remain observationally indistinguishable.
+
+### Enforceable Python threat-model boundary
+
+The value objects enforce their invariants at public construction, observation,
+copy/deepcopy, equality/hash, reduction/pickle and every
+`dataclasses.replace` route. They also detect missing, extra, malformed or
+partially/incoherently mutated retained state before those protocol surfaces
+use it.
+
+They do not claim to detect arbitrary coordinated in-process memory rewriting.
+Python code with permission to call `object.__setattr__` can replace every
+mutually coherent public and private field, including the source context, from
+another already-valid peer. At that point no independent state remains inside
+the object from which to distinguish the rewrite. Preventing such code is a
+process isolation, code-review and code-trust responsibility; it is not a
+property this immutable value object can truthfully provide. This limitation
+does not reopen any public constructor or replacement route.
+
+No employer join, source precedence, provider completeness, canonical mapping,
+PAYE evidence, tax, cash, persistence, transport, cross-endpoint join or
+activation surface is added by this correction. Only the canonical UTR-free
+request context asserted at the offline parser boundary and its derived annual
+identity are retained.
 
 ## String values: no evidenced minLength
 
@@ -209,6 +298,6 @@ The following remain unresolved and are not implemented or authorized here:
   assurance; and
 - production activation and release authority.
 
-This is a review-ready, uncommitted candidate limited to the exact three new
-paths listed below. It does not claim approval, independent assurance,
-integration, launch readiness or production/contractual authority.
+This is a review-ready, uncommitted candidate limited to the exact three
+modified paths in this package. It does not claim approval, independent
+assurance, integration, launch readiness or production/contractual authority.
