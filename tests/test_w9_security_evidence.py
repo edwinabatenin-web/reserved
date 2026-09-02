@@ -234,24 +234,50 @@ def test_explicit_non_activation_statement_is_present_in_both_documents():
 # ── Exact path boundary: the package must not modify protected files ─────────
 
 def _git_changed_paths() -> list[str]:
-    result = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "status", "--porcelain", "--untracked-files=all"],
+    """Return the immutable path set of the W9-S1A introducing commit.
+
+    A worktree status describes whichever later package happens to be under
+    review, not the historical W9-S1A package.  Bind this guard to the unique
+    commit that introduced its own test file so it remains valid after
+    cherry-picks and while unrelated candidates are uncommitted.
+    """
+    introduced = subprocess.run(
+        [
+            "git", "-C", str(REPO_ROOT), "log", "--diff-filter=A",
+            "--format=%H", "--", "tests/test_w9_security_evidence.py",
+        ],
         capture_output=True,
         text=True,
         check=True,
     )
-    paths: list[str] = []
-    for line in result.stdout.splitlines():
-        if not line.strip():
-            continue
-        # Format: "XY path" or "XY old -> new" (rename); take the last token.
-        path = line[3:].split(" -> ")[-1].strip().strip('"')
-        paths.append(path)
-    return paths
+    commits = [line.strip() for line in introduced.stdout.splitlines() if line.strip()]
+    assert len(commits) == 1, (
+        "W9-S1A package introducing commit is missing or ambiguous: "
+        f"found {len(commits)} candidates"
+    )
+    commit = commits[0]
 
+    identity = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "rev-list", "--parents", "-n", "1", commit],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert len(identity) == 2, "W9-S1A package commit must have exactly one parent"
 
-def _is_cache_or_generated(path: str) -> bool:
-    return path.startswith((".pytest_cache/", "__pycache__/", ".cache/", "instance/", ".venv/")) or path.endswith(".pyc")
+    changed = subprocess.run(
+        [
+            "git", "-C", str(REPO_ROOT), "diff-tree", "--no-commit-id",
+            "--name-only", "-r", "-z", commit,
+        ],
+        capture_output=True,
+        check=True,
+    )
+    return [
+        raw.decode("utf-8", errors="strict")
+        for raw in changed.stdout.split(b"\0")
+        if raw
+    ]
 
 
 def _is_protected(path: str) -> bool:
@@ -264,15 +290,16 @@ def _is_protected(path: str) -> bool:
 
 
 def test_package_does_not_modify_readiness_release_config_or_source_files():
-    changed = [p for p in _git_changed_paths() if not _is_cache_or_generated(p)]
-    unexpected = [p for p in changed if p not in ALLOWED_NEW_PATHS]
-    assert not unexpected, (
-        "W9-S1A package modified unexpected files (readiness/release/config/"
-        f"credential/persistence/adapter/route/template): {unexpected}"
+    changed = set(_git_changed_paths())
+    missing = sorted(ALLOWED_NEW_PATHS - changed)
+    unexpected = sorted(changed - ALLOWED_NEW_PATHS)
+    assert not missing and not unexpected, (
+        "W9-S1A package path boundary mismatch: "
+        f"missing={missing}, unexpected={unexpected}"
     )
 
 
 def test_package_does_not_touch_protected_files():
-    changed = [p for p in _git_changed_paths() if not _is_cache_or_generated(p)]
+    changed = _git_changed_paths()
     protected = [p for p in changed if _is_protected(p)]
     assert not protected, f"W9-S1A package touched protected files: {protected}"
