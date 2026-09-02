@@ -538,11 +538,11 @@ def test_geography_and_jurisdiction_references_are_recorded_honestly():
     assert "territory" not in reviewed_fields
 
 
-def test_no_enforced_jurisdiction_admission_gate_is_evidenced():
-    # Directly exercise the open facts mapping. Every unsupported Scottish
-    # geography spelling is silently ignored and produces the same actionable
-    # calculation as the baseline. This is evidence of an unresolved launch
-    # blocker, not evidence that unsupported geography fails closed.
+def test_unsupported_scottish_geography_fails_closed_at_annual_entry_point():
+    # W8-S3 closes the previously evidenced silent-ignore gap. Each unsupported
+    # Scottish geography spelling must now be rejected at the annual-position
+    # entry point rather than producing the same actionable result as a facts
+    # mapping with no geography evidence.
     facts = {"employment_income": "30000", **BPA}
     baseline = calculate_annual_position(facts)
     assert baseline.calculation_status == "calculated"
@@ -554,8 +554,8 @@ def test_no_enforced_jurisdiction_admission_gate_is_evidenced():
         ("territory", "Scotland"),
         ("tax_regime", "Scottish"),
     ):
-        result = calculate_annual_position({**facts, field: value})
-        assert result == baseline, f"{field} is not enforced by the annual entry point"
+        with pytest.raises(ValueError, match="Unsupported geography"):
+            calculate_annual_position({**facts, field: value})
 
 
 # ── 7. W8 completion-map invariants (test-enforced, conservative) ─────────────

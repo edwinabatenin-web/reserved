@@ -17,6 +17,60 @@ from .tax_config import get_config
 PENNY = Decimal("0.01")
 ZERO = Decimal("0")
 
+# Geography admission is bounded to the authoritative October nations. Each
+# alias is recognised independently; absence (including a None value) carries
+# no geography fact and is never treated as positive launch evidence.
+_GEOGRAPHY_ALIASES = (
+    "jurisdiction",
+    "country",
+    "country_code",
+    "territory",
+    "tax_regime",
+)
+
+# Canonical supported-nation vocabulary. Accepted spellings/codes are kept
+# deliberately small: the nation name plus its ISO 3166-2 GB subdivision code.
+# Umbrella labels such as "UK", "GB" or "United Kingdom" are not evidence of a
+# supported nation and are rejected (fail closed) rather than inferred.
+_GEOGRAPHY_NATION_ALIASES = {
+    "england": "england",
+    "gb-eng": "england",
+    "wales": "wales",
+    "gb-wls": "wales",
+    "northern ireland": "northern_ireland",
+    "gb-nir": "northern_ireland",
+}
+
+
+def _normalise_geography(raw: Any) -> str:
+    """Return the canonical supported-nation key for one geography fact.
+
+    Fails closed on any non-string, empty/whitespace string or unknown value.
+    The exception message never embeds the rejected value.
+    """
+    if not isinstance(raw, str):
+        raise ValueError("Unsupported geography for the annual tax position")
+    text = " ".join(raw.split()).lower()
+    nation = _GEOGRAPHY_NATION_ALIASES.get(text)
+    if nation is None:
+        raise ValueError("Unsupported geography for the annual tax position")
+    return nation
+
+
+def _enforce_geography_admission(facts: dict[str, Any]) -> None:
+    """Validate supplied geography facts before any tax arithmetic.
+
+    All supplied geography facts must resolve to the same supported nation;
+    any unsupported, malformed or contradictory combination fails closed.
+    """
+    nations = [
+        _normalise_geography(facts[alias])
+        for alias in _GEOGRAPHY_ALIASES
+        if facts.get(alias) is not None
+    ]
+    if len(set(nations)) > 1:
+        raise ValueError("Conflicting geography facts for the annual tax position")
+
 
 def _decimal(value: Any, name: str, *, default: str = "0") -> Decimal:
     if value is None:
@@ -287,6 +341,7 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
     """
     if tax_year != "2026/27":
         raise ValueError("The integrated annual-position tranche supports 2026/27 only")
+    _enforce_geography_admission(facts)
     cfg = get_config(tax_year)
     joint_total_present = "joint_property_total_profit" in facts
     joint_share_present = "taxpayer_share_percentage" in facts
