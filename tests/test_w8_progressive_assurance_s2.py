@@ -2,17 +2,17 @@
 
 This module is self-contained: it imports production/public contracts directly
 and does not import fixtures or helpers from any other test module.  It proves
-coexistence and fail-closed behaviour on the existing integrated lineage; it
-does not fabricate a provider-to-tax handoff, a presentation/persistence
-handoff, or a geography-admission handoff, and it records those absences as
-non-passing gates instead of asserting they pass.
+coexistence and fail-closed behaviour on the existing integrated lineage. The
+provider-to-tax handoff is asserted to be confined to its exact named boundary
+rather than fabricated or globally absent; the presentation/persistence and
+geography-admission handoffs remain recorded as absent non-passing gates.
 """
 
 from __future__ import annotations
 
 import ast
 import re
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -456,12 +456,57 @@ def test_october_launch_candidate_is_truthfully_not_ready():
             "mtd_indication"} <= blockers
 
 
-def test_provider_to_tax_handoff_is_absent():
-    # The production tax engine must not consume the canonical accounting tax
-    # input; the accounting package remains a synthetic, provider-neutral boundary.
-    engine_imports = _imported_names(_root() / "reserved" / "engines")
-    assert "CanonicalAccountingTaxInput" not in engine_imports
-    assert not any(name.startswith("reserved.providers.accounting") for name in engine_imports)
+def test_provider_to_tax_handoff_is_confined_to_named_boundary():
+    # The handoff is no longer asserted absent. It may exist, but only at the
+    # exact authorised file; every accounting-contract import outside the
+    # provider package must occur solely in that named boundary.
+    root = _root()
+    permitted = root / "reserved" / "engines" / "accounting_tax_handoff.py"
+    accounting_pkg = root / "reserved" / "providers" / "accounting"
+    accounting_symbols = {
+        "SourceObservation", "SemanticAdapterResult",
+        "CanonicalAccountingTaxInput", "AccountingEntry",
+        "normalise_document", "AccountingInvoice",
+    }
+    consumers = []
+    invalid_handoff_imports = []
+    for path in (root / "reserved").rglob("*.py"):
+        if accounting_pkg in path.parents:
+            continue
+        try:
+            facts = _import_facts_in_file(path)
+        except ValueError as exc:
+            pytest.fail(f"cannot safely inspect {path.relative_to(root)}: {exc}")
+        accounting_facts = tuple(
+            fact for fact in facts
+            if _w8_fact_touches_accounting(fact, accounting_symbols)
+        )
+        if accounting_facts:
+            consumers.append(path)
+            if path == permitted:
+                if path.is_symlink() or path.resolve(strict=True) != permitted.resolve(strict=True):
+                    invalid_handoff_imports.append("consumer path is not exact/resolved/regular")
+                for fact in accounting_facts:
+                    if not (
+                        fact.kind == "from"
+                        and fact.level == 0
+                        and fact.module == "reserved.providers.accounting.contracts"
+                        and fact.symbol in {
+                            "CanonicalAccountingTaxInput", "SourceObservation"
+                        }
+                        and fact.alias is None
+                    ):
+                        invalid_handoff_imports.append(repr(fact))
+    assert set(consumers) <= {permitted}, (
+        "accounting contracts may be consumed only by "
+        "reserved/engines/accounting_tax_handoff.py; found "
+        f"{[p.relative_to(root) for p in consumers]}"
+    )
+    assert invalid_handoff_imports == [], (
+        "the named handoff may use only explicit unaliased from-imports of "
+        "CanonicalAccountingTaxInput and SourceObservation from the exact "
+        f"contracts module; found {invalid_handoff_imports}"
+    )
 
 
 def test_presentation_and_persistence_handoffs_are_absent():
@@ -644,21 +689,116 @@ def _root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def _imported_names(package: Path) -> set[str]:
-    names: set[str] = set()
-    for path in package.rglob("*.py"):
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (SyntaxError, UnicodeDecodeError):
+@dataclass(frozen=True)
+class _W8ImportFact:
+    kind: str
+    module: str | None
+    symbol: str | None = None
+    alias: str | None = None
+    level: int = 0
+
+
+def _import_facts_in_file(path: Path) -> tuple[_W8ImportFact, ...]:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("path is not a resolved regular file")
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        path.resolve(strict=True).relative_to(_root().resolve(strict=True))
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError) as exc:
+        raise ValueError(f"import inspection failed: {exc}") from exc
+    facts: list[_W8ImportFact] = []
+    import_module_names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                facts.append(_W8ImportFact("import", alias.name, alias=alias.asname))
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                facts.append(_W8ImportFact(
+                    "from", node.module, alias.name, alias.asname, node.level
+                ))
+                if node.level == 0 and (
+                    (node.module == "importlib" and alias.name == "import_module")
+                    or (node.module == "builtins" and alias.name == "__import__")
+                ):
+                    import_module_names.add(alias.asname or alias.name)
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                names.update(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                if node.module:
-                    names.add(node.module)
-                names.update(alias.name for alias in node.names)
-    return names
+        value = node.value
+        is_loader = (
+            isinstance(value, ast.Name)
+            and value.id in ({"__import__"} | import_module_names)
+        ) or (
+            isinstance(value, ast.Attribute)
+            and value.attr in {"import_module", "__import__"}
+        ) or (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id == "getattr"
+            and len(value.args) >= 2
+            and isinstance(value.args[1], ast.Constant)
+            and value.args[1].value in {"import_module", "__import__"}
+        )
+        if not is_loader:
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+        import_module_names.update(
+            target.id for target in targets if isinstance(target, ast.Name)
+        )
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        is_dynamic = (
+            isinstance(node.func, ast.Name)
+            and node.func.id in ({"__import__"} | import_module_names)
+        ) or (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"import_module", "__import__"}
+        ) or (
+            isinstance(node.func, ast.Call)
+            and isinstance(node.func.func, ast.Name)
+            and node.func.func.id == "getattr"
+            and len(node.func.args) >= 2
+            and isinstance(node.func.args[1], ast.Constant)
+            and node.func.args[1].value in {"import_module", "__import__"}
+        )
+        if is_dynamic:
+            target = None
+            if node.args and isinstance(node.args[0], ast.Constant) \
+                    and isinstance(node.args[0].value, str):
+                target = node.args[0].value
+            facts.append(_W8ImportFact("dynamic", target))
+    return tuple(facts)
+
+
+def _w8_fact_touches_accounting(fact, protected_symbols):
+    module_is_accounting = fact.module == "reserved.providers.accounting" or (
+        fact.module is not None
+        and fact.module.startswith("reserved.providers.accounting.")
+    )
+    if fact.kind == "dynamic":
+        return fact.module is None or fact.module.startswith(".") or module_is_accounting
+    qualified_from_target = (
+        f"{fact.module}.{fact.symbol}"
+        if fact.kind == "from" and fact.module and fact.symbol
+        else None
+    )
+    qualified_is_accounting = qualified_from_target == "reserved.providers.accounting" or (
+        qualified_from_target is not None
+        and qualified_from_target.startswith("reserved.providers.accounting.")
+    )
+    relative_accounting_target = fact.level > 0 and (
+        "accounting" in (fact.module or "").split(".")
+        or fact.symbol == "accounting"
+        or fact.symbol in protected_symbols
+    )
+    return (
+        module_is_accounting
+        or qualified_is_accounting
+        or relative_accounting_target
+        or fact.symbol in protected_symbols
+    )
 
 
 def _freeagent_company(**overrides):
