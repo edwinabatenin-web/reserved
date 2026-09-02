@@ -16,8 +16,9 @@ to stop engineering and map the whole programme at once.
 Apply this next to the workstream approaching deep execution: remaining W1,
 then each provider/HMRC/Yapily tranche, HICBC integration if still required,
 UX/user testing, privacy/security/operations, and integrated E2E/release
-assurance. Subscription/billing belongs in the sequence only if authoritative
-scope confirms it is launch-critical.
+assurance. Under Founder Decision `FD-W10-001`, the minimum subscription and
+billing capability for the paid launch model is launch-critical and requires a
+finite W10 completion map before deep execution.
 
 ## Minimum map
 

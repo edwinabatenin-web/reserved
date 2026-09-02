@@ -51,8 +51,12 @@ without the customer's explicit approval and bank authentication, and Reserved
 does not hold customer funds. Sweeping VRP and other automatic transfers are
 post-v1. Implementation remains conditional on acceptable Yapily commercials,
 exact consent and status handling, same-owner destination controls, security
-review and launch assurance. Consumer pricing assumption is £29/month
-including VAT.
+review and launch assurance. Founder Decision `FD-W10-001` (2 September 2026)
+now establishes a paid October subscription model with initial customer pricing
+assumptions of £29 monthly, £156 for six months and £288 for one year, with
+special discounts and offers supported. Those prices may be changed by a later
+Founder Decision; VAT/tax presentation and other subordinate billing policies
+are not settled by that decision.
 
 ## 3. Current handover position
 

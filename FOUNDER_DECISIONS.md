@@ -696,3 +696,24 @@ approved.
 
 Do not reopen whether the Tax Health Check should exist as part of the October
 scope reconciliation.
+
+## FD-W10-001 — Resolved: paid subscription launch model and initial pricing (2 September 2026)
+
+Reserved is a paid subscription product at the October launch. The initial
+customer pricing assumptions are **£29 per month**, **£156 for six months** and
+**£288 for one year**. These are launch and commercial assumptions, not
+permanently fixed prices. A later Founder Decision may change them.
+
+Reserved must support the ability to run special discounts and offers. This
+decision brings the minimum W10 billing and commercial plumbing needed to sell,
+grant and administer access under this paid-subscription model into the October
+launch scope. It does not authorise unrelated commerce, marketplace, reseller
+or broader product scope.
+
+This decision does not select a billing provider or settle subordinate billing
+policy. Provider choice (unless already established by another authoritative
+record), renewal behaviour, cancellation timing, failed-payment and grace
+handling, entitlement start and end, refunds, VAT or other tax presentation,
+promotion and discount mechanics, and partner-offer handling must remain
+explicit implementation policies or unresolved decisions as appropriate. They
+must not be represented as Founder decisions without further authority.
