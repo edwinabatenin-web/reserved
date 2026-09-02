@@ -719,3 +719,35 @@ beyond the settled VAT-inclusive customer prices, promotion and discount
 mechanics, and partner-offer handling must remain explicit implementation
 policies or unresolved decisions as appropriate. They must not be represented
 as Founder decisions without further authority.
+
+## FD-OA-001 — Resolved: routine bounded engineering authority (2 September 2026)
+
+During the active Reserved build, an already-authorised OA agent may carry out
+routine engineering and orchestration without a further Founder approval when
+the action remains strictly within the exact workspace, package, repository,
+path and role authority already granted to it. This standing authority covers:
+
+- reading, creating and editing files only within the package's authorised
+  paths;
+- running ordinary bounded local tests and verification;
+- inspecting diffs, identities and repository state; and
+- routing bounded review, re-review, correction, clarification, completion and
+  reconciliation messages between already-authorised OA tasks.
+
+Its purpose is to prevent routine delivery from pausing for a Founder decision
+when no substantive Founder judgement is involved. A handoff or routine action
+does not transfer or enlarge authority. Existing package ownership,
+allowed/protected paths, immutable source and candidate identities, collision
+checks, reviewer read-only rules, independent-review requirements,
+checkpoint/integration authority and fail-closed controls remain in force.
+
+This decision does not override or satisfy ChatGPT, Codex, Auto-review,
+sandbox, filesystem, application, MCP or other tool-level permission prompts.
+Those controls must not be weakened or bypassed. It does not authorise a new
+private-workspace or payload-transmission boundary; credential or secret
+access; production, customer or provider access; payments or payment authority;
+new or changed product scope; another consequential Founder Decision; a
+destructive or irreversible action; merge, push or deployment; release or
+go-live; weakening independent review or fail-close behaviour; or any other
+authority expansion. Those existing Founder and security gates remain
+unchanged.
