@@ -1,0 +1,826 @@
+"""W8 S2 progressive-integration assurance over already-integrated contracts.
+
+This module is self-contained: it imports production/public contracts directly
+and does not import fixtures or helpers from any other test module.  It proves
+coexistence and fail-closed behaviour on the existing integrated lineage; it
+does not fabricate a provider-to-tax handoff, a presentation/persistence
+handoff, or a geography-admission handoff, and it records those absences as
+non-passing gates instead of asserting they pass.
+"""
+
+from __future__ import annotations
+
+import ast
+import re
+from dataclasses import fields
+from datetime import date, datetime, timezone
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+
+from reserved.engines import cash_funding_position as funding
+from reserved.engines import cash_obligation_reconciliation as obligations
+from reserved.engines import payments_on_account as poa
+from reserved.engines import sa_account_reconciliation as account
+from reserved.engines.annual_to_cash_integration import (
+    AnnualToCashStatus,
+    balance_item_identity,
+    cash_ready_annual_position_identity,
+    compose_annual_to_cash_position,
+    payment_made_identity,
+    prior_year_evidence_identity,
+)
+from reserved.engines.cash_ready_annual_position import (
+    NoStudentLoanEvidence,
+    annual_position_identity,
+    compose_cash_ready_annual_position,
+    student_loan_position_identity,
+)
+from reserved.engines.hicbc_integration import (
+    INFORMATIONAL,
+    PAYMENT,
+    PERSONALISED_ESTIMATE,
+    RESERVE_GUIDANCE,
+    integrate_hicbc,
+)
+from reserved.engines.hicbc_partner import (
+    ANI_COMPONENT_WHOLE,
+    CLAIMANT_PERSON,
+    PartnerEvidence,
+    determine_hicbc_responsibility,
+)
+from reserved.engines.integrated_annual_position import calculate_annual_position
+from reserved.engines.mtd_readiness import (
+    IncomeKind,
+    IncomeSource,
+    MtdStatus,
+    assess_mtd_readiness,
+)
+from reserved.providers.accounting.contracts import (
+    AccountingBusiness,
+    AccountingProviderName,
+    SemanticAdapterResult,
+    SourceObservation,
+)
+from reserved.providers.accounting.freeagent_invoice_contract import (
+    COMPANY_DOCUMENTED_FIELDS,
+    FreeAgentCompanyRecord,
+    FreeAgentInvoiceRecord,
+    parse_company,
+    parse_invoice_list,
+)
+from reserved.providers.accounting.normalisation import (
+    CanonicalQuarantineError,
+    classify_observation_relation,
+)
+from reserved.providers.accounting.quickbooks_invoice_payment_adapter import (
+    InvoiceAdapterResult,
+    adapt_invoice,
+)
+from reserved.providers.accounting.quickbooks_oauth_contract import RealmBinding
+from reserved.providers.accounting.quickbooks_observation_contract import (
+    CompanyInfoObservation,
+    InvoiceObservation,
+    observe_company_info,
+    observe_invoice,
+)
+from reserved.providers.accounting.xero_invoice_contract import (
+    XeroInvoice,
+    XeroInvoiceMapping,
+    map_detailed_invoice_response,
+)
+from reserved_west import release_gate as rg
+
+AS_OF = date(2027, 4, 5)
+RETRIEVED_AT = datetime(2026, 8, 3, 10, 0, 0, tzinfo=timezone.utc)
+
+# A complete, explicitly closed Blind Person's Allowance fact group so the
+# annual position is not needlessly treated as fact-incomplete.
+BPA = {
+    "blind_persons_allowance_entitled": False,
+    "blind_persons_allowance_transferred_in": "0",
+    "blind_persons_allowance_transferred_out": "0",
+}
+
+
+# ── Annual-to-cash construction helpers (production contracts only) ─────────
+
+def mixed_annual_position():
+    """A mixed, fully supported annual income feeding W1 -> cash-ready W2."""
+    annual_tax = calculate_annual_position({
+        "employment_income": "30000",
+        "sole_trade_profit": "15000",
+        "savings_interest": "2000",
+        "dividends": "3000",
+        **BPA,
+    })
+    assert annual_tax.calculation_status == "calculated"
+    assert set(annual_tax.included_families) == {"income_tax", "class_4_ni"}
+    no_loans = NoStudentLoanEvidence(
+        "annual-no-loan", "2026/27", "uk-2026-27-v4", AS_OF,
+        "person-a", "synthetic", "synthetic:no-loan", True,
+    )
+    return compose_cash_ready_annual_position(
+        annual_tax,
+        no_loans,
+        annual_tax_reference=annual_position_identity(annual_tax),
+        student_loan_reference=student_loan_position_identity(no_loans),
+        as_of=AS_OF,
+    )
+
+
+def prior_year(*, amount="1200.00", effective=AS_OF, retrieved=AS_OF,
+               uncertainty=()):
+    return poa.PriorYearEvidence(
+        tax_year="2026/27",
+        source=poa.SourceKind.HMRC_ISSUED,
+        effective_date=effective,
+        retrieval_date=retrieved,
+        completeness=poa.Completeness.COMPLETE_FOR_PURPOSE,
+        income_tax=Decimal(amount),
+        hicbc=Decimal("0.00"),
+        class_4_nic=Decimal("0.00"),
+        tax_deducted_at_source=Decimal("0.00"),
+        uncertainty=uncertainty,
+    )
+
+
+def balance_item(amount, source=poa.SourceKind.HMRC_ISSUED, retrieved=AS_OF):
+    return poa.BalanceItem(
+        Decimal(amount), source, poa.Completeness.COMPLETE_FOR_PURPOSE, retrieved
+    )
+
+
+def payment(amount="100.00", *, reference="cash:payment-1"):
+    return poa.PaymentMade(
+        poa.PaymentKind.BALANCING_PAYMENT,
+        Decimal(amount),
+        poa.SourceKind.HMRC_ISSUED,
+        AS_OF,
+        AS_OF,
+        reference=reference,
+    )
+
+
+def _observed_account(assessed, balancing, *, hmrc=True, mismatch=False):
+    source = account.EvidenceSource.HMRC_ONLINE if hmrc else account.EvidenceSource.MANUAL
+    charges = []
+    for instalment in assessed.instalments:
+        kind = {
+            "payment_on_account_1": account.ChargeKind.PAYMENT_ON_ACCOUNT_1,
+            "payment_on_account_2": account.ChargeKind.PAYMENT_ON_ACCOUNT_2,
+        }[instalment.label]
+        amount = instalment.amount + (Decimal("1.00") if mismatch and not charges else Decimal("0"))
+        charges.append(account.AccountCharge(
+            f"charge-{instalment.label}", kind, assessed.poa_tax_year, amount,
+            instalment.due_date, AS_OF, AS_OF, source,
+            account.Completeness.COMPLETE_FOR_PURPOSE, f"account:{instalment.label}",
+        ))
+    if balancing.status is poa.BalanceStatus.REMAINING_BALANCE and balancing.remaining_balance:
+        charges.append(account.AccountCharge(
+            "charge-balancing", account.ChargeKind.BALANCING_PAYMENT,
+            balancing.tax_year, balancing.remaining_balance, balancing.due_date,
+            AS_OF, AS_OF, source, account.Completeness.COMPLETE_FOR_PURPOSE,
+            "account:balancing",
+        ))
+    credits = ()
+    if not charges:
+        credits = (account.AccountCredit(
+            "credit-evidence", account.CreditKind.HMRC_CREDIT, Decimal("1.00"),
+            AS_OF, AS_OF, source, account.Completeness.COMPLETE_FOR_PURPOSE,
+            "account:credit-evidence",
+        ),)
+    return account.reconcile_sa_account(
+        charges, credits, (), as_of=AS_OF,
+        coverage=account.Completeness.COMPLETE_FOR_PURPOSE,
+    )
+
+
+def _set_aside_for(assessed, balancing, amount=None):
+    expected = obligations.reconcile_cash_obligations(
+        account_reconciliation=_observed_account(assessed, balancing),
+        poa_assessment=assessed,
+        balancing_position=balancing,
+    ).expected_obligations
+    total = sum((item.amount for item in expected), Decimal("0.00"))
+    selected = total if amount is None else Decimal(amount)
+    allocations = []
+    remaining = selected
+    for index, item in enumerate(expected):
+        allocated = min(item.amount, remaining)
+        if allocated:
+            allocations.append(funding.SetAsideAllocation(
+                f"set-aside-allocation-{index}", item.obligation_id, allocated
+            ))
+        remaining -= allocated
+    return funding.SetAsideEvidence(
+        "set-aside-evidence", selected, AS_OF, AS_OF,
+        funding.SetAsideSource.CUSTOMER_RECORDED,
+        funding.EvidenceCompleteness.COMPLETE_FOR_PURPOSE,
+        "set-aside:source", tuple(allocations), (),
+    )
+
+
+def compose(annual=None, *, prior=None, deductions=None, prior_poa=None,
+            payments=(), hmrc=True, mismatch=False, set_aside="exact",
+            annual_reference=None, deductions_evidence_ids=("cash:deductions-credits",),
+            prior_poa_evidence_ids=("cash:prior-poa",)):
+    annual = annual if annual is not None else mixed_annual_position()
+    prior = prior if prior is not None else prior_year()
+    deductions = deductions if deductions is not None else balance_item("0.00")
+    prior_poa = prior_poa if prior_poa is not None else balance_item("0.00")
+    assessed = poa.assess_payments_on_account(
+        preceding_year_status=poa.PrecedingYearStatus.ESTABLISHED,
+        prior_year=prior,
+        as_of=AS_OF,
+    )
+    balancing = poa.compose_balancing_position(
+        tax_year=annual.tax_year,
+        final_liability=poa.BalanceItem(
+            annual.final_self_assessment_liability,
+            poa.SourceKind.LOCAL_ESTIMATE,
+            poa.Completeness.COMPLETE_FOR_PURPOSE,
+            AS_OF,
+        ),
+        deductions_credits=deductions,
+        prior_poa=prior_poa,
+        payments_made=payments,
+        as_of=AS_OF,
+    )
+    account_result = _observed_account(assessed, balancing, hmrc=hmrc, mismatch=mismatch)
+    evidence = None if set_aside is None else _set_aside_for(
+        assessed, balancing, None if set_aside == "exact" else set_aside
+    )
+    return compose_annual_to_cash_position(
+        annual_position=annual,
+        annual_position_reference=annual_reference or cash_ready_annual_position_identity(annual),
+        preceding_year_status=poa.PrecedingYearStatus.ESTABLISHED,
+        prior_year_evidence=prior,
+        prior_year_reference=prior_year_evidence_identity(prior),
+        deductions_credits=deductions,
+        deductions_credits_reference=balance_item_identity(
+            deductions, channel="deductions-credits", evidence_ids=deductions_evidence_ids
+        ),
+        deductions_credits_evidence_ids=deductions_evidence_ids,
+        prior_poa=prior_poa,
+        prior_poa_reference=balance_item_identity(
+            prior_poa, channel="prior-poa", evidence_ids=prior_poa_evidence_ids
+        ),
+        prior_poa_evidence_ids=prior_poa_evidence_ids,
+        payments_made=payments,
+        payment_content_references=tuple(payment_made_identity(item) for item in payments),
+        account_reconciliation=account_result,
+        set_aside_evidence=evidence,
+        as_of=AS_OF,
+    )
+
+
+# ── 1. Mixed supported annual income feeds annual-to-cash composition ────────
+
+def test_mixed_supported_income_composes_annual_to_cash():
+    result = compose()
+    assert result.status is AnnualToCashStatus.QUALIFIED_LOCAL_RESULT
+    assert result.final_self_assessment_liability is not None
+    assert result.poa_assessment.status is poa.PoAStatus.APPLICABLE
+    assert len(result.poa_assessment.instalments) == 2
+    assert result.obligation_reconciliation.status is obligations.CashObligationStatus.ALIGNED
+    assert result.funding_position.status is funding.FundingComputationStatus.CALCULATED
+    assert result.funding_position.balance is funding.FundingBalance.EXACT
+    # Annual tax and Class 4 remain distinct and both contributed to the total.
+    assert result.considered_annual_position.annual_tax_families == ("income_tax", "class_4_ni")
+    assert result.considered_annual_position.final_self_assessment_liability > Decimal("0")
+
+
+# ── 2. Missing, stale and conflicting evidence fails closed ──────────────────
+
+def test_missing_set_aside_evidence_suppresses_funding_point_result():
+    result = compose(set_aside=None)
+    assert result.status is AnnualToCashStatus.UNRESOLVED
+    assert result.final_self_assessment_liability is None
+    assert result.funding_position.status is funding.FundingComputationStatus.INSUFFICIENT_FACTS
+
+
+def test_stale_prior_year_evidence_fails_closed():
+    from datetime import timedelta
+
+    stale = compose(prior=prior_year(
+        effective=AS_OF - timedelta(days=60),
+        retrieved=AS_OF - timedelta(days=46),
+    ))
+    assert stale.status is AnnualToCashStatus.UNRESOLVED
+    assert stale.poa_assessment.status is poa.PoAStatus.STALE_REQUIRES_REVIEW
+    assert stale.final_self_assessment_liability is None
+
+
+def test_conflicting_prior_year_evidence_fails_closed():
+    conflicting = compose(prior=prior_year(uncertainty=("conflicting",)))
+    assert conflicting.status is AnnualToCashStatus.UNRESOLVED
+    assert conflicting.poa_assessment.status is poa.PoAStatus.CONFLICT_REQUIRES_REVIEW
+    assert conflicting.final_self_assessment_liability is None
+
+
+def test_account_discrepancy_requires_review_and_suppresses_final_point_result():
+    result = compose(mismatch=True)
+    assert result.status is AnnualToCashStatus.REVIEW_REQUIRED
+    assert result.final_self_assessment_liability is None
+    assert result.obligation_reconciliation.discrepancies
+
+
+# ── 3. Duplicate / source-substitution / double-count protections ────────────
+
+def test_duplicate_payment_identity_fails_closed_before_arithmetic():
+    duplicate = payment("100.00")
+    result = compose(payments=(duplicate, duplicate))
+    assert result.status is AnnualToCashStatus.UNRESOLVED
+    assert "evidence_identity_reused_across_cash_channels" in result.limitations
+
+
+def test_reused_source_identity_across_cash_channels_fails_closed():
+    result = compose(deductions_evidence_ids=("account:balancing",))
+    assert result.status is AnnualToCashStatus.UNRESOLVED
+    assert "evidence_identity_reused_in_account_channel" in result.limitations
+
+
+def test_cross_provider_source_substitution_is_rejected():
+    first = _xero_mapping().observation
+    second = _quickbooks_mapping().observation
+    with pytest.raises(CanonicalQuarantineError, match="source identities"):
+        classify_observation_relation(first, second)
+
+
+def test_cross_business_source_substitution_is_rejected():
+    first = _xero_mapping(tenant_id="business-1").observation
+    second = _xero_mapping(tenant_id="business-2").observation
+    with pytest.raises(CanonicalQuarantineError, match="source identities"):
+        classify_observation_relation(first, second)
+
+
+# ── 4. HICBC and MTD uncertainty / fail-close boundaries ─────────────────────
+
+def test_hicbc_ambiguous_result_is_excluded_from_actionable_purposes():
+    result = _hicbc_result(user_ani=70000, partner=_evidence(low="65000", high="75000"))
+    assert result.responsibility_status == "ambiguous"
+    for purpose in (PERSONALISED_ESTIMATE, RESERVE_GUIDANCE, PAYMENT):
+        contribution = integrate_hicbc(result, purpose)
+        assert not contribution.included
+        assert not contribution.actionable
+        assert contribution.charge is None
+
+
+def test_hicbc_payment_is_never_actionable_even_when_determinate():
+    result = _hicbc_result(user_ani=70000, partner=_evidence(point="50000"))
+    info = integrate_hicbc(result, INFORMATIONAL)
+    assert info.included and info.charge == Decimal("703.00")
+    payment_contribution = integrate_hicbc(result, PAYMENT)
+    assert payment_contribution.included is False
+    assert payment_contribution.actionable is False
+    assert "not independently approved" in payment_contribution.reason
+
+
+def test_mtd_over_threshold_with_unknown_eligibility_fails_closed():
+    result = assess_mtd_readiness(
+        [IncomeSource("trade", IncomeKind.SOLE_TRADE, "51000")],
+        assessment_tax_year="2024-25",
+    )
+    assert result.status is MtdStatus.MTD_DATA_INCOMPLETE
+    assert result.eligibility_complete is False
+
+
+def test_mtd_incomplete_source_fails_closed_over_threshold():
+    result = assess_mtd_readiness(
+        [IncomeSource("trade", IncomeKind.SOLE_TRADE, "51000", complete=False)],
+        assessment_tax_year="2024-25",
+    )
+    assert result.status is MtdStatus.MTD_DATA_INCOMPLETE
+    assert result.data_complete is False
+
+
+# ── 5. Actual reviewed provider contract/type coexistence ────────────────────
+
+def test_reviewed_freeagent_xero_and_quickbooks_public_contracts_coexist():
+    # Exercise the provider-specific public contracts in one process. FreeAgent
+    # currently stops at its reviewed invoice record; Xero reaches its reviewed
+    # invoice mapping; QuickBooks reaches its observation and canonical adapter.
+    # The assertions preserve those unequal boundaries rather than inventing a
+    # common semantic capability.
+    freeagent = _freeagent_invoice_records()[0]
+    xero = _xero_mapping()
+    quickbooks_source = _quickbooks_observation()
+    quickbooks = adapt_invoice(
+        quickbooks_source,
+        binding=_quickbooks_binding(),
+        import_run_id="run-1",
+    )
+
+    assert isinstance(freeagent, FreeAgentInvoiceRecord)
+    assert freeagent.url == "https://api.freeagent.com/v2/invoices/1"
+    assert isinstance(xero, XeroInvoiceMapping)
+    assert isinstance(xero.invoice, XeroInvoice)
+    assert isinstance(xero.observation, SourceObservation)
+    assert isinstance(xero.adapter_result, SemanticAdapterResult)
+    assert xero.observation.provenance.identity.provider is AccountingProviderName.XERO
+    assert isinstance(quickbooks_source, InvoiceObservation)
+    assert isinstance(quickbooks, InvoiceAdapterResult)
+    assert isinstance(quickbooks.observation, SourceObservation)
+    assert isinstance(quickbooks.semantic_result, SemanticAdapterResult)
+    assert quickbooks.document.provenance.identity.provider is AccountingProviderName.QUICKBOOKS
+    assert xero.invoice.invoice_id == quickbooks.source_observation.entity_id == "invoice-1"
+    assert type(freeagent) is not type(xero.invoice)
+    assert type(xero) is not type(quickbooks)
+
+
+def test_transport_provider_activation_remains_non_passing():
+    # Reviewed provider data contracts coexist, but the transport-facing
+    # provider classes remain disabled. This test does not infer credentials,
+    # network support or equal adapter depth from the contract evidence above.
+    from reserved.providers.accounting.freeagent import FreeAgentProvider
+    from reserved.providers.accounting.quickbooks import QuickBooksProvider
+    from reserved.providers.accounting.xero import XeroProvider
+
+    for provider_cls in (FreeAgentProvider, XeroProvider, QuickBooksProvider):
+        instance = provider_cls()
+        with pytest.raises(NotImplementedError):
+            instance.list_invoices("credential-reference")
+        with pytest.raises(NotImplementedError):
+            instance.authorisation_url("user-1", "https://example.test/callback")
+
+
+# ── 6. Absent handoffs are expressed as non-passing gates ────────────────────
+
+def test_october_launch_candidate_is_truthfully_not_ready():
+    octo = rg.october_launch_candidate()
+    assert octo["status"] == "not_ready"
+    blockers = {b["id"] for b in octo["blocking_components"]}
+    assert {"freeagent_integration", "xero_integration", "quickbooks_integration",
+            "mtd_indication"} <= blockers
+
+
+def test_provider_to_tax_handoff_is_absent():
+    # The production tax engine must not consume the canonical accounting tax
+    # input; the accounting package remains a synthetic, provider-neutral boundary.
+    engine_imports = _imported_names(_root() / "reserved" / "engines")
+    assert "CanonicalAccountingTaxInput" not in engine_imports
+    assert not any(name.startswith("reserved.providers.accounting") for name in engine_imports)
+
+
+def test_presentation_and_persistence_handoffs_are_absent():
+    internal_markers = (
+        "integrated_annual_position", "annual_to_cash_integration",
+        "compose_annual_to_cash_position", "AnnualToCashPosition",
+        "CashReadyAnnualPosition",
+    )
+    layers = (
+        _root() / "reserved" / "web",
+        _root() / "reserved" / "services",
+        _root() / "reserved" / "api",
+        _root() / "reserved" / "database.py",
+        _root() / "reserved" / "models",
+    )
+    violations = []
+    for layer in layers:
+        paths = (layer,) if layer.is_file() else tuple(layer.rglob("*.py"))
+        for path in paths:
+            text = path.read_text(errors="ignore")
+            for marker in internal_markers:
+                if marker in text:
+                    violations.append(f"{path.relative_to(_root())} contains {marker}")
+    assert violations == [], "internal annual components leaked into customer/persistence layers"
+
+
+def test_geography_and_jurisdiction_references_are_recorded_honestly():
+    # Validate actual public structures, including their limitations. The
+    # FreeAgent wire contract recognises country but its public record does not
+    # retain it; QuickBooks retains Country, and the canonical business type
+    # exposes country_code. None of these facts is an annual-tax admission gate.
+    income_tax = (_root() / "reserved" / "engines" / "income_tax.py").read_text()
+    optimise = (_root() / "reserved" / "engines" / "optimise.py").read_text()
+    routes = (_root() / "reserved" / "web" / "routes.py").read_text()
+
+    assert "Scottish income tax" in income_tax
+    assert "Scottish income tax" in optimise
+    assert "Scottish Income Tax" in routes
+    assert "England, Wales and Northern Ireland" in routes
+    freeagent = parse_company(_freeagent_company(country="Scotland"))
+    assert isinstance(freeagent, FreeAgentCompanyRecord)
+    assert "country" in COMPANY_DOCUMENTED_FIELDS
+    assert "country" not in {item.name for item in fields(FreeAgentCompanyRecord)}
+
+    binding = _quickbooks_binding()
+    quickbooks = observe_company_info(
+        {
+            "Id": "company-1",
+            "SyncToken": "1",
+            "CompanyName": "Synthetic Company",
+            "Country": "Scotland",
+        },
+        binding=binding,
+        user_id=binding.user_id,
+        realm_id=binding.realm_id,
+        credential_reference=binding.credential_reference,
+        retrieved_at=RETRIEVED_AT,
+    )
+    business = AccountingBusiness(
+        AccountingProviderName.QUICKBOOKS,
+        "realm-1",
+        "Synthetic Company",
+        "GBP",
+        country_code="GB-SCT",
+    )
+    assert isinstance(quickbooks, CompanyInfoObservation)
+    assert quickbooks.country == "Scotland"
+    assert business.country_code == "GB-SCT"
+    reviewed_fields = {
+        item.name
+        for contract in (FreeAgentCompanyRecord, CompanyInfoObservation, AccountingBusiness)
+        for item in fields(contract)
+    }
+    assert "territory" not in reviewed_fields
+
+
+def test_no_enforced_jurisdiction_admission_gate_is_evidenced():
+    # Directly exercise the open facts mapping. Every unsupported Scottish
+    # geography spelling is silently ignored and produces the same actionable
+    # calculation as the baseline. This is evidence of an unresolved launch
+    # blocker, not evidence that unsupported geography fails closed.
+    facts = {"employment_income": "30000", **BPA}
+    baseline = calculate_annual_position(facts)
+    assert baseline.calculation_status == "calculated"
+    assert baseline.total_liability == Decimal("3486.00")
+    for field, value in (
+        ("jurisdiction", "Scotland"),
+        ("country", "Scotland"),
+        ("country_code", "GB-SCT"),
+        ("territory", "Scotland"),
+        ("tax_regime", "Scottish"),
+    ):
+        result = calculate_annual_position({**facts, field: value})
+        assert result == baseline, f"{field} is not enforced by the annual entry point"
+
+
+# ── 7. W8 completion-map invariants (test-enforced, conservative) ─────────────
+
+def _w8_map_text() -> str:
+    return (_root() / "docs" / "W8_COMPLETION_MAP.md").read_text()
+
+
+def _w8_map_section(heading: str) -> str:
+    text = _w8_map_text()
+    marker = f"## {heading}"
+    start = text.index(marker)
+    after = text[start + len(marker):]
+    next_heading = after.find("\n## ")
+    return after if next_heading == -1 else after[:next_heading]
+
+
+def test_w8_map_declares_stable_denominator_and_numbered_slices():
+    text = _w8_map_text()
+    match = re.search(r"denominator\s*=\s*(\d+)", text)
+    assert match, "W8 map must declare a numeric delivery denominator"
+    denominator = int(match.group(1))
+
+    section = _w8_map_section("W8 delivery slices")
+    numbers = [int(n) for n in re.findall(r"^\|\s*(\d+)\s*\|", section, flags=re.MULTILINE)]
+    assert numbers, "W8 delivery slices must be a numbered table"
+    assert numbers == list(range(1, denominator + 1)), (
+        f"numbered slices {numbers} must be exactly 1..{denominator}"
+    )
+
+
+def test_w8_map_each_delivery_slice_has_single_planned_state():
+    section = _w8_map_section("W8 delivery slices")
+    states = re.findall(r"^\|\s*\d+\s*\|.*\|\s*([a-z_]+)\s*\|\s*$", section, flags=re.MULTILINE)
+    assert states, "each delivery-slice row must expose exactly one state cell"
+    assert all(state == "planned" for state in states), (
+        f"every undelivered W8 slice must remain planned; found {set(states)}"
+    )
+
+
+def test_w8_map_separates_achieved_boundaries_from_delivery_slices():
+    text = _w8_map_text()
+    assert text.index("## Achieved evidence boundaries") < text.index("## W8 delivery slices"), (
+        "achieved evidence boundaries must be listed separately, before delivery slices"
+    )
+    section = _w8_map_section("Achieved evidence boundaries")
+    states = re.findall(r"^\|.*\|\s*([a-z_]+)\s*\|\s*$", section, flags=re.MULTILINE)
+    assert states, "each achieved-boundary row must expose exactly one state cell"
+    assert set(states) <= {"component_implemented", "synthetic_coexistence_evidence"}, (
+        f"achieved-boundary states must stay within the declared vocabulary; found {set(states)}"
+    )
+
+
+def test_w8_terminal_gate_is_distinct_from_s2_package_gate():
+    text = _w8_map_text()
+    assert "## Overall W8 terminal completion gate" in text
+    assert "## W8-S2 package acceptance gate" in text
+    terminal = _w8_map_section("Overall W8 terminal completion gate")
+    package = _w8_map_section("W8-S2 package acceptance gate")
+    assert terminal.strip() != package.strip(), (
+        "the W8 terminal gate and the W8-S2 package gate must be distinct sections"
+    )
+    assert "not passed" in terminal.lower()
+    for required in (
+        "target-runtime", "privacy", "security", "release", "Founder",
+        "geography", "provider",
+    ):
+        assert required.lower() in terminal.lower()
+    for required_section in (
+        "Dependencies and authority",
+        "Sequencing, parallelism and collision rules",
+        "Effort and critical path",
+        "Immediate next action",
+    ):
+        assert f"## {required_section}" in text
+    for assurance_state in (
+        "planned", "implemented", "locally_verified", "independently_reviewed",
+        "integrated", "launch_evidence_complete", "launch_ready",
+    ):
+        assert f"`{assurance_state}`" in text
+
+
+# ── Local helpers (production contracts only) ────────────────────────────────
+
+def _root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _imported_names(package: Path) -> set[str]:
+    names: set[str] = set()
+    for path in package.rglob("*.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    names.add(node.module)
+                names.update(alias.name for alias in node.names)
+    return names
+
+
+def _freeagent_company(**overrides):
+    company = {
+        "type": "UkLimitedCompany",
+        "currency": "GBP",
+        "id": "company-1",
+        "name": "Synthetic Company",
+        "url": "https://api.freeagent.com/v2/company",
+    }
+    company.update(overrides)
+    return {"company": company}
+
+
+def _freeagent_invoice_records():
+    return parse_invoice_list({
+        "invoices": [{
+            "url": "https://api.freeagent.com/v2/invoices/1",
+            "contact": "https://api.freeagent.com/v2/contacts/2",
+            "dated_on": "2026-08-31",
+            "due_on": "2026-09-30",
+            "payment_terms_in_days": 30,
+            "currency": "GBP",
+            "status": "Open",
+            "reference": "INV-001",
+            "net_value": "100.00",
+            "sales_tax_value": "20.00",
+            "total_value": "120.00",
+            "paid_value": "0.00",
+            "due_value": "120.00",
+        }],
+    })
+
+
+def _xero_mapping(*, tenant_id="tenant-1"):
+    line = {
+        "LineItemID": "line-1",
+        "Description": "Synthetic reviewed work",
+        "Quantity": Decimal("2"),
+        "UnitAmount": Decimal("50.0000"),
+        "AccountCode": "200",
+        "TaxType": "OUTPUT",
+        "TaxAmount": Decimal("20.00"),
+        "LineAmount": Decimal("100.00"),
+        "Tracking": [],
+    }
+    invoice = {
+        "InvoiceID": "invoice-1",
+        "InvoiceNumber": "INV-001",
+        "Type": "ACCREC",
+        "Contact": {"ContactID": "contact-1", "Name": "Synthetic Contact"},
+        "Date": "2026-08-31",
+        "DueDate": "2026-09-30",
+        "Status": "AUTHORISED",
+        "LineAmountTypes": "Exclusive",
+        "LineItems": [line],
+        "SubTotal": Decimal("100.00"),
+        "TotalTax": Decimal("20.00"),
+        "Total": Decimal("120.00"),
+        "CurrencyCode": "GBP",
+    }
+    return map_detailed_invoice_response(
+        {"Invoices": [invoice]},
+        user_id="user-1",
+        connected_organisation_id="connection-1",
+        tenant_id=tenant_id,
+        import_run_id="run-1",
+        retrieved_at=RETRIEVED_AT,
+    )
+
+
+def _quickbooks_binding():
+    return RealmBinding("user-1", "realm-1", "opaque-reference-1")
+
+
+def _quickbooks_invoice_raw():
+    return {
+        "Id": "invoice-1",
+        "SyncToken": "7",
+        "CustomerRef": {"value": "customer-1"},
+        "TxnDate": "2026-08-10",
+        "DueDate": "2026-09-10",
+        "CurrencyRef": {"value": "GBP"},
+        "GlobalTaxCalculation": "TaxExcluded",
+        "Line": [
+            {
+                "Id": "line-1",
+                "DetailType": "SalesItemLineDetail",
+                "Amount": Decimal("100.00"),
+                "SalesItemLineDetail": {
+                    "ItemRef": {"value": "item-1"},
+                    "TaxCodeRef": {"value": "TAX"},
+                },
+            },
+            {
+                "Id": "subtotal-1",
+                "DetailType": "SubTotalLineDetail",
+                "Amount": Decimal("100.00"),
+                "SubTotalLineDetail": {},
+            },
+        ],
+        "TxnTaxDetail": {
+            "TotalTax": Decimal("20.00"),
+            "TaxLine": [{
+                "Amount": Decimal("20.00"),
+                "DetailType": "TaxLineDetail",
+                "TaxLineDetail": {
+                    "TaxRateRef": {"value": "rate-20"},
+                    "PercentBased": True,
+                    "TaxPercent": Decimal("20"),
+                    "NetAmountTaxable": Decimal("100.00"),
+                },
+            }],
+        },
+        "TotalAmt": Decimal("120.00"),
+        "Balance": Decimal("120.00"),
+        "EmailStatus": "EmailSent",
+    }
+
+
+def _quickbooks_observation():
+    binding = _quickbooks_binding()
+    return observe_invoice(
+        _quickbooks_invoice_raw(),
+        binding=binding,
+        user_id=binding.user_id,
+        realm_id=binding.realm_id,
+        credential_reference=binding.credential_reference,
+        retrieved_at=RETRIEVED_AT,
+    )
+
+
+def _quickbooks_mapping():
+    return adapt_invoice(
+        _quickbooks_observation(),
+        binding=_quickbooks_binding(),
+        import_run_id="run-1",
+    )
+
+
+def _evidence(point=None, low=None, high=None, *, completeness="complete_for_purpose",
+              recency="current"):
+    common = dict(
+        evidence_id="e1", source_kind="manual", source_reference="ref",
+        subject_reference="partner", tax_year="2026/27",
+        effective_period="2026/27", observed_at="2026-08-17T10:00:00+00:00",
+        confirmed_at=None, completeness=completeness, recency_state=recency,
+        consent_state="not_required", ani_components=(ANI_COMPONENT_WHOLE,),
+    )
+    if point is not None:
+        return PartnerEvidence(representation="point", point=Decimal(point),
+                               low=None, high=None, **common)
+    return PartnerEvidence(representation="range", point=None, low=Decimal(low),
+                           high=Decimal(high), **common)
+
+
+def _hicbc_result(user_ani, partner):
+    return determine_hicbc_responsibility(
+        user_ani=user_ani,
+        child_benefit_amount=Decimal("1406.60"),
+        has_relevant_partner=True,
+        claimant=CLAIMANT_PERSON,
+        partner_evidence=partner,
+        tax_year="2026/27",
+    )
