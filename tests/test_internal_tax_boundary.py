@@ -38,6 +38,19 @@ def test_internal_annual_components_are_not_imported_by_customer_layers():
         ROOT / "reserved" / "templates",
         ROOT / "reserved" / "static",
     )
+    authorised_handoff = (
+        ROOT / "reserved" / "services" / "w8_annual_cash_customer_handoff.py"
+    )
+    authorised_markers = {
+        "cash_ready_annual_position",
+        "annual_to_cash_integration",
+        "AnnualToCashPosition",
+    }
+    assert (
+        authorised_handoff.is_file()
+        and not authorised_handoff.is_symlink()
+        and authorised_handoff.resolve(strict=True) == authorised_handoff
+    )
     violations = []
     for root in customer_roots:
         for path in root.rglob("*"):
@@ -46,6 +59,8 @@ def test_internal_annual_components_are_not_imported_by_customer_layers():
             text = path.read_text(errors="ignore")
             for marker in INTERNAL_MODULE_MARKERS:
                 if marker in text:
+                    if path == authorised_handoff and marker in authorised_markers:
+                        continue
                     violations.append(f"{path.relative_to(ROOT)} contains {marker}")
     assert not violations, (
         "Internal annual components require separate persistence/API/customer "

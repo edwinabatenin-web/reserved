@@ -509,7 +509,7 @@ def test_provider_to_tax_handoff_is_confined_to_named_boundary():
     )
 
 
-def test_presentation_and_persistence_handoffs_are_absent():
+def test_exact_annual_cash_presentation_handoff_is_the_only_customer_consumer():
     internal_markers = (
         "integrated_annual_position", "annual_to_cash_integration",
         "compose_annual_to_cash_position", "AnnualToCashPosition",
@@ -522,15 +522,23 @@ def test_presentation_and_persistence_handoffs_are_absent():
         _root() / "reserved" / "database.py",
         _root() / "reserved" / "models",
     )
-    violations = []
+    root = _root()
+    permitted = root / "reserved" / "services" / "w8_annual_cash_customer_handoff.py"
+    assert permitted.is_file() and not permitted.is_symlink()
+    assert permitted.resolve(strict=True) == permitted
+    consumers = {}
     for layer in layers:
         paths = (layer,) if layer.is_file() else tuple(layer.rglob("*.py"))
         for path in paths:
             text = path.read_text(errors="ignore")
             for marker in internal_markers:
                 if marker in text:
-                    violations.append(f"{path.relative_to(_root())} contains {marker}")
-    assert violations == [], "internal annual components leaked into customer/persistence layers"
+                    consumers.setdefault(path, set()).add(marker)
+    assert set(consumers) == {permitted}, (
+        "internal annual components may be consumed only by the exact W8-S2C "
+        f"handoff; found {[(path.relative_to(root), sorted(markers)) for path, markers in consumers.items()]}"
+    )
+    assert consumers[permitted] == {"annual_to_cash_integration", "AnnualToCashPosition"}
 
 
 def test_geography_and_jurisdiction_references_are_recorded_honestly():
