@@ -3,7 +3,8 @@
 The handoff accepts only a live value issued by the reviewed annual-to-cash
 producer.  It copies customer-safe facts into the existing W2/W8 presentation
 contracts; it does not calculate tax, persist data, call a provider, or grant
-payment authority.
+payment authority.  Geography is read only from that producer and cannot be
+supplied or changed by the handoff caller.
 """
 from __future__ import annotations
 
@@ -54,6 +55,8 @@ def _make_handoff():
     raw = object.__getattribute__
     decimal_type = Decimal
     date_type = date
+    exact_type = type
+    supported_nations = frozenset({"England", "Wales", "Northern Ireland"})
 
     annual_type = AnnualToCashPosition
     provenance_type = AnnualToCashInputProvenance
@@ -92,7 +95,7 @@ def _make_handoff():
 
     def money(value: object) -> bool:
         return (
-            type(value) is decimal_type
+            exact_type(value) is decimal_type
             and value.is_finite()
             and value >= zero
             and value == value.quantize(penny)
@@ -122,7 +125,7 @@ def _make_handoff():
         if set_aside is not None:
             refs.extend((raw(set_aside, "evidence_id"), raw(set_aside, "source_reference")))
             refs.extend(raw(item, "allocation_id") for item in raw(set_aside, "allocations"))
-        if not refs or any(type(item) is not str for item in refs):
+        if not refs or any(exact_type(item) is not str for item in refs):
             raise ValueError("annual/cash source identities are invalid")
         # A single source record may support several distinct HMRC charges.
         # The public W8 contract requires unique references, so preserve the
@@ -141,29 +144,32 @@ def _make_handoff():
     def project(
         value: AnnualToCashPosition,
         *,
-        nation: str,
         user_id: str,
         business_id: str,
         evidence_references: tuple[str, ...],
     ) -> W8CustomerResult | None:
         """Return a customer-safe result, or ``None`` for any unsafe position.
 
-        Geography and ownership failures remain categorical ``ValueError``
-        results from the already-reviewed public-result boundary.  No input
-        values are included in failure text.
+        Ownership failures remain categorical ``ValueError`` results from the
+        already-reviewed public-result boundary. Geography is producer-bound;
+        malformed or absent geography fails closed as ``None``. No input value
+        is included in failure text.
         """
 
         try:
-            if type(value) is not annual_type:
+            if exact_type(value) is not annual_type:
                 raise ValueError("annual/cash position is unsupported")
             issued_identity = identity_reader(value)
             provenance = provenance_reader(value)
-            if type(issued_identity) is not str or type(provenance) is not provenance_type:
+            if exact_type(issued_identity) is not str or exact_type(provenance) is not provenance_type:
                 raise ValueError("annual/cash producer evidence is unsupported")
             tax_year = raw(value, "tax_year")
+            nation = raw(value, "nation")
+            if exact_type(nation) is not str or nation not in supported_nations:
+                raise ValueError("annual/cash geography is unsupported")
 
             status = raw(value, "status")
-            if type(status) is not annual_status_type:
+            if exact_type(status) is not annual_status_type:
                 raise ValueError("annual/cash status is unsupported")
             if status is review_required or status is unresolved:
                 return None
@@ -185,8 +191,8 @@ def _make_handoff():
                 value, provenance
             )
             if (
-                type(evidence_references) is not tuple
-                or any(type(item) is not str for item in evidence_references)
+                exact_type(evidence_references) is not tuple
+                or any(exact_type(item) is not str for item in evidence_references)
                 or evidence_references != expected_refs
             ):
                 raise ValueError("source or evidence identities do not match")
@@ -195,7 +201,7 @@ def _make_handoff():
             for item in raw(reconciliation, "expected_obligations"):
                 amount = raw(item, "amount")
                 due_on = raw(item, "due_date")
-                if not money(amount) or type(due_on) is not date_type:
+                if not money(amount) or exact_type(due_on) is not date_type:
                     raise ValueError("annual/cash obligation is invalid")
                 obligation_facts.append(
                     obligation_fact(obligation_kind(raw(item, "kind")), amount, due_on)

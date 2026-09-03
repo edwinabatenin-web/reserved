@@ -34,6 +34,8 @@ from reserved.services.w8_customer_result import (
     compose_w8_customer_result,
     w8_customer_result_identity,
 )
+from tests.test_annual_to_cash_integration import annual_position, compose
+from tests.test_w8_annual_cash_customer_handoff import project
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_SOURCE = (ROOT / "reserved" / "api" / "w8_customer_result.py").read_text()
@@ -42,6 +44,20 @@ USER_ID = "user-england-001"
 BUSINESS_ID = "business-england-001"
 PAYLOAD_REFUSED = "customer API payload refused"
 _DIGEST_SHAPE = re.compile(r"^w8-customer-result:sha256-[0-9a-f]{64}$")
+
+
+@pytest.mark.parametrize("nation", ["England", "Wales", "Northern Ireland"])
+def test_api_serialises_the_end_to_end_producer_issued_nation(nation):
+    annual_cash = compose(annual=annual_position(nation))
+    customer_result = project(annual_cash)
+    assert customer_result is not None
+    payload = json.loads(
+        w8_customer_result_payload_json(
+            customer_result, user_id="user-1", business_id="business-1"
+        )
+    )
+    assert payload["nation"] == nation
+    assert payload["tax_year"] == "2026/27"
 
 
 def _w2_input(**overrides) -> W2PresentationInput:

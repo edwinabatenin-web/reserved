@@ -125,7 +125,6 @@ def project(value, **overrides):
         else references(reference_value)
     )
     kwargs = {
-        "nation": "England",
         "user_id": "user-1",
         "business_id": "business-1",
         "evidence_references": supplied_references,
@@ -341,7 +340,6 @@ def test_hostile_subtypes_are_rejected_without_dispatching_hooks():
         object.__setattr__(hostile, name, item)
     assert compose_w8_annual_cash_customer_result(
         hostile,
-        nation="England",
         user_id="user-1",
         business_id="business-1",
         evidence_references=references(value),
@@ -351,7 +349,7 @@ def test_hostile_subtypes_are_rejected_without_dispatching_hooks():
 
 def test_public_boundary_preserves_geography_ownership_and_no_payment_controls():
     value = compose()
-    with pytest.raises(ValueError, match="unsupported geography"):
+    with pytest.raises(TypeError, match="nation"):
         project(value, nation="Scotland")
     with pytest.raises(ValueError, match="ownership"):
         project(value, user_id="bad secret token")
@@ -362,3 +360,47 @@ def test_public_boundary_preserves_geography_ownership_and_no_payment_controls()
     assert "AnnualToCashPosition" not in public
     assert "utr" not in public.lower() and "nino" not in public.lower()
     assert "secret" not in public.lower()
+
+
+@pytest.mark.parametrize("nation", ["England", "Wales", "Northern Ireland"])
+def test_public_boundary_uses_only_producer_issued_nation(nation):
+    value = compose(annual=annual_position(nation))
+    result = project(value)
+    assert result is not None
+    assert result.nation.value == nation
+
+
+def test_geography_less_internal_position_is_not_customer_actionable():
+    value = compose(annual=annual_position(None))
+    assert value.nation is None
+    assert project(value) is None
+
+
+def test_geography_mutation_and_coherent_reconstruction_fail_closed():
+    value = compose(annual=annual_position("England"))
+    reconstructed = replace(value, nation="Wales")
+    assert project(reconstructed, reference_value=value) is None
+
+    mutated = compose(annual=annual_position("England"))
+    refs = references(mutated)
+    object.__setattr__(mutated, "nation", "Wales")
+    assert project(mutated, evidence_references=refs) is None
+
+
+def test_rebound_producer_object_reader_cannot_promote_mutated_geography(monkeypatch):
+    import reserved.engines.annual_to_cash_integration as integration
+
+    value = compose(annual=annual_position("England"))
+    refs = references(value)
+    real_raw = object.__getattribute__
+
+    class ForgedObject:
+        @staticmethod
+        def __getattribute__(candidate, name):
+            if candidate is value and name == "nation":
+                return "England"
+            return real_raw(candidate, name)
+
+    object.__setattr__(value, "nation", "Wales")
+    monkeypatch.setattr(integration, "object", ForgedObject, raising=False)
+    assert project(value, evidence_references=refs) is None

@@ -1,6 +1,8 @@
+import copy
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
+import pickle
 
 import pytest
 
@@ -15,6 +17,8 @@ from reserved.engines.annual_loan_reconciliation import (
 from reserved.engines.cash_ready_annual_position import (
     NoStudentLoanEvidence,
     annual_position_identity,
+    cash_ready_annual_position_geography,
+    cash_ready_annual_position_identity,
     compose_cash_ready_annual_position,
     student_loan_position_identity,
 )
@@ -30,7 +34,9 @@ BPA = {
 
 
 def annual(**facts):
-    return calculate_annual_position({"employment_income": "30000", **BPA, **facts})
+    return calculate_annual_position(
+        {"employment_income": "30000", **BPA, "country": "England", **facts}
+    )
 
 
 def loans(plans=(2,), deductions=((LoanComponent.PLAN_2, "3000", "E-PLAN2"),)):
@@ -195,7 +201,7 @@ def test_forged_tax_and_loan_arithmetic_fail_closed():
         ),
         total_liability=original_tax.total_liability + Decimal("100.00"),
     )
-    with pytest.raises(ValueError, match="exact supplied content"):
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
         compose(tax=forged_tax, annual_tax_reference=tax_reference)
 
     original = loans()
@@ -212,9 +218,8 @@ def test_forged_tax_and_loan_arithmetic_fail_closed():
         compose(loan_position=forged_loans, student_loan_reference=loan_reference)
 
     forged_rules = replace(annual(), ruleset_version="other")
-    rules_result = compose(tax=forged_rules)
-    assert rules_result.final_self_assessment_liability is None
-    assert "annual_tax_ruleset_invalid" in rules_result.limitations
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
+        compose(tax=forged_rules)
 
 
 def test_reused_or_forged_loan_provenance_fails_closed():
@@ -311,3 +316,42 @@ def test_source_references_must_be_typed_and_immutable(annual_ref, loan_ref):
             annual_tax_reference=annual_ref or annual_position_identity(tax),
             student_loan_reference=loan_ref or student_loan_position_identity(loan_position),
         )
+
+
+def test_cash_ready_geography_is_bound_through_copy_reconstruction_and_mutation():
+    issued = compose()
+    assert issued.nation == "England"
+    assert cash_ready_annual_position_geography(issued) == "England"
+    assert cash_ready_annual_position_identity(issued).startswith(
+        "cash-ready-annual-position:sha256-"
+    )
+    for reconstructed in (
+        replace(issued),
+        copy.copy(issued),
+        copy.deepcopy(issued),
+        pickle.loads(pickle.dumps(issued)),
+    ):
+        with pytest.raises(ValueError, match="live geography-bound producer result"):
+            cash_ready_annual_position_identity(reconstructed)
+
+    mutated = compose()
+    object.__setattr__(mutated, "nation", "Wales")
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
+        cash_ready_annual_position_geography(mutated)
+
+
+def test_cash_ready_geography_capabilities_ignore_module_rebinding(monkeypatch):
+    import reserved.engines.cash_ready_annual_position as module
+
+    issued = compose()
+    captured_reader = cash_ready_annual_position_geography
+    captured_identity = cash_ready_annual_position_identity
+    forged = replace(issued)
+    monkeypatch.setattr(module, "_canonical", lambda value: "forged")
+    monkeypatch.setattr(module, "_content_digest", lambda value: "0" * 64)
+    for name in ("type", "object", "id", "str", "LoanComponent"):
+        monkeypatch.setattr(module, name, lambda *args, **kwargs: None, raising=False)
+    assert captured_reader(issued) == "England"
+    assert captured_identity(issued).startswith("cash-ready-annual-position:sha256-")
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
+        captured_identity(forged)

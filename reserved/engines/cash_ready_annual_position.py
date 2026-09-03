@@ -14,6 +14,8 @@ import hashlib
 import hmac
 import json
 import re
+import threading
+import weakref
 
 from .annual_loan_reconciliation import (
     AnnualLoanReconciliation,
@@ -21,7 +23,7 @@ from .annual_loan_reconciliation import (
     LoanBasisEvidence,
     LoanComponent,
 )
-from .integrated_annual_position import AnnualPositionResult
+from .integrated_annual_position import AnnualPositionResult, annual_position_geography
 
 
 ZERO = Decimal("0")
@@ -66,6 +68,7 @@ class CashReadyLoanComponent:
 class CashReadyAnnualPosition:
     contract_version: str
     tax_year: str
+    nation: str | None
     ruleset_version: str
     calculation_status: str
     component_set_complete: bool
@@ -108,6 +111,116 @@ def _content_digest(value: object) -> str:
         _canonical(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _make_cash_ready_issuance():
+    """Bind geography to the exact live cash-ready producer result."""
+    cash_type = CashReadyAnnualPosition
+    component_type = CashReadyLoanComponent
+    loan_component_type = LoanComponent
+    decimal_type = Decimal
+    date_type = date
+    exact_type = type
+    raw = object.__getattribute__
+    identity = id
+    tuple_type = tuple
+    string_type = str
+    integer_type = int
+    boolean_type = bool
+    stringify = str
+    dc_fields = fields
+    dumps = json.dumps
+    sha256 = hashlib.sha256
+    compare = hmac.compare_digest
+    make_ref = weakref.ref
+    lock = threading.RLock()
+    failures = (AttributeError, TypeError, ValueError, ArithmeticError)
+    error_type = ValueError
+    registry: dict[int, tuple[weakref.ReferenceType[CashReadyAnnualPosition], str]] = {}
+    failure = "cash-ready annual position is not a live geography-bound producer result"
+
+    def canonical(value: object) -> object:
+        value_type = exact_type(value)
+        if value_type in (cash_type, component_type):
+            return {
+                "type": value_type.__name__,
+                "fields": {
+                    item.name: canonical(raw(value, item.name))
+                    for item in dc_fields(value_type)
+                },
+            }
+        if value_type is decimal_type:
+            return {"decimal": stringify(value)}
+        if value_type is date_type:
+            return {"date": value.isoformat()}
+        if value_type is loan_component_type:
+            return {"enum": f"LoanComponent:{raw(value, '_value_')}"}
+        if value_type is tuple_type:
+            return [canonical(item) for item in value]
+        if value is None or value_type in (string_type, integer_type, boolean_type):
+            return value
+        raise error_type(failure)
+
+    def digest(value: CashReadyAnnualPosition) -> str:
+        try:
+            payload = dumps(
+                canonical(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+            ).encode("utf-8")
+        except failures:
+            raise error_type(failure) from None
+        return sha256(payload).hexdigest()
+
+    def issue(value: CashReadyAnnualPosition) -> CashReadyAnnualPosition:
+        try:
+            value_digest = digest(value)
+        except failures:
+            raise error_type(failure) from None
+        key = identity(value)
+
+        def cleanup(ref, *, registry=registry, key=key, lock=lock):
+            with lock:
+                current = registry.get(key)
+                if current is not None and current[0] is ref:
+                    registry.pop(key, None)
+
+        ref = make_ref(value, cleanup)
+        with lock:
+            registry[key] = (ref, value_digest)
+        return value
+
+    def geography(value: object) -> str | None:
+        if exact_type(value) is not cash_type:
+            raise error_type(failure)
+        nation = raw(value, "nation")
+        if nation is not None and (
+            exact_type(nation) is not string_type
+            or nation not in ("England", "Wales", "Northern Ireland")
+        ):
+            raise error_type(failure)
+        with lock:
+            retained = registry.get(identity(value))
+        if retained is None or retained[0]() is not value:
+            raise error_type(failure)
+        try:
+            current_digest = digest(value)
+        except failures:
+            raise error_type(failure) from None
+        if not compare(retained[1], current_digest):
+            raise error_type(failure)
+        return nation
+
+    def issued_identity(value: object) -> str:
+        geography(value)
+        return "cash-ready-annual-position:sha256-" + digest(value)
+
+    return issue, geography, issued_identity
+
+
+_issue_cash_ready_annual_position, cash_ready_annual_position_geography, \
+    cash_ready_annual_position_identity = (
+    _make_cash_ready_issuance()
+)
+del _make_cash_ready_issuance
 
 
 def annual_position_identity(value: AnnualPositionResult) -> str:
@@ -338,13 +451,15 @@ def _no_loan_position(
     return not limitations, ((evidence.evidence_id,) if not limitations else ()), tuple(limitations)
 
 
-def compose_cash_ready_annual_position(
+def _compose_cash_ready_annual_position_impl(
     annual_tax: AnnualPositionResult,
     student_loan_position: AnnualLoanReconciliation | NoStudentLoanEvidence,
     *,
     annual_tax_reference: str,
     student_loan_reference: str,
     as_of: date,
+    _geography_reader,
+    _issuer,
 ) -> CashReadyAnnualPosition:
     """Compose the one annual-liability input accepted by W2-S6.
 
@@ -355,6 +470,7 @@ def compose_cash_ready_annual_position(
     tax_ref = _bound_reference(
         annual_tax, annual_tax_reference, "annual_tax_reference", "annual-position"
     )
+    nation = _geography_reader(annual_tax)
     tax_limitations = _tax_limitations(annual_tax)
     tax_year = annual_tax.tax_year if type(annual_tax) is AnnualPositionResult else "unknown"
     ruleset = annual_tax.ruleset_version if type(annual_tax) is AnnualPositionResult else "unknown"
@@ -393,9 +509,10 @@ def compose_cash_ready_annual_position(
     )
     final_amount = annual_amount + loan_amount if complete else None
     families = annual_tax.included_families if complete else ()
-    return CashReadyAnnualPosition(
+    return _issuer(CashReadyAnnualPosition(
         contract_version="reserved-cash-ready-annual-position/1.0",
         tax_year=tax_year,
+        nation=nation,
         ruleset_version=ruleset,
         calculation_status="ready_for_w2_s6" if complete else "unresolved",
         component_set_complete=complete,
@@ -412,4 +529,45 @@ def compose_cash_ready_annual_position(
         evidence_ids=evidence_ids if complete else (),
         limitations=limitations,
         prohibited_uses=_PROHIBITED_USES,
-    )
+    ))
+
+
+def _bind_cash_ready_composer(implementation, geography_reader, issuer):
+    raw = object.__getattribute__
+    error_type = ValueError
+
+    def compose_cash_ready_annual_position(
+        annual_tax: AnnualPositionResult,
+        student_loan_position: AnnualLoanReconciliation | NoStudentLoanEvidence,
+        *,
+        annual_tax_reference: str,
+        student_loan_reference: str,
+        as_of: date,
+    ) -> CashReadyAnnualPosition:
+        admitted_nation = geography_reader(annual_tax)
+        value = implementation(
+            annual_tax,
+            student_loan_position,
+            annual_tax_reference=annual_tax_reference,
+            student_loan_reference=student_loan_reference,
+            as_of=as_of,
+            _geography_reader=geography_reader,
+            _issuer=issuer,
+        )
+        if (
+            geography_reader(annual_tax) != admitted_nation
+            or raw(value, "nation") != admitted_nation
+        ):
+            raise error_type("cash-ready geography changed during composition")
+        return value
+
+    return compose_cash_ready_annual_position
+
+
+compose_cash_ready_annual_position = _bind_cash_ready_composer(
+    _compose_cash_ready_annual_position_impl,
+    annual_position_geography,
+    _issue_cash_ready_annual_position,
+)
+del _bind_cash_ready_composer
+del _compose_cash_ready_annual_position_impl

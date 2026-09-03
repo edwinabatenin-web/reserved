@@ -33,6 +33,7 @@ from reserved.engines.annual_loan_reconciliation import (
     reconcile_annual_student_loans,
 )
 from reserved.engines.cash_ready_annual_position import (
+    CashReadyAnnualPosition,
     NoStudentLoanEvidence,
     annual_position_identity,
     compose_cash_ready_annual_position,
@@ -49,8 +50,10 @@ BPA = {
 }
 
 
-def annual_position():
-    annual_tax = calculate_annual_position({"employment_income": "30000", **BPA})
+def annual_position(nation="England"):
+    annual_tax = calculate_annual_position(
+        {"employment_income": "30000", **BPA, "country": nation}
+    )
     no_loans = NoStudentLoanEvidence(
         "annual-no-loan", "2026/27", "uk-2026-27-v4", AS_OF,
         "person-a", "synthetic", "synthetic:no-loan", True,
@@ -64,8 +67,10 @@ def annual_position():
     )
 
 
-def annual_position_with_plan_2():
-    annual_tax = calculate_annual_position({"employment_income": "103000", **BPA})
+def annual_position_with_plan_2(nation="England"):
+    annual_tax = calculate_annual_position(
+        {"employment_income": "103000", **BPA, "country": nation}
+    )
     basis = LoanBasisEvidence(
         "loan-basis", "synthetic", "synthetic:loan-basis", "person-a", AS_OF,
         "2026/27 annual basis", True,
@@ -412,7 +417,7 @@ def test_forged_or_mismatched_annual_content_identity_is_rejected():
         original,
         final_self_assessment_liability=original.final_self_assessment_liability + Decimal("1.00"),
     )
-    with pytest.raises(ValueError, match="exact supplied content"):
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
         compose(annual=forged, annual_reference=reference)
 
 
@@ -426,11 +431,8 @@ def test_unready_annual_position_suppresses_all_downstream_point_results():
         student_loan_self_assessment_amount=None,
         final_self_assessment_liability=None,
     )
-    result = compose(annual=unready)
-    assert result.status is AnnualToCashStatus.UNRESOLVED
-    assert result.poa_assessment is None
-    assert result.balancing_position is None
-    assert result.final_self_assessment_liability is None
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
+        compose(annual=unready)
 
 
 def test_hmrc_and_manual_observations_preserve_identical_arithmetic_but_qualification():
@@ -474,30 +476,26 @@ def test_missing_stale_or_conflicting_evidence_fails_closed():
 def test_recomputed_identity_cannot_make_an_invalid_annual_contract_usable():
     original = annual_position()
     invalid = replace(original, contract_version="reserved-cash-ready-annual-position/2.0")
-    result = compose(annual=invalid)
-    assert result.status is AnnualToCashStatus.UNRESOLVED
-    assert "annual_position_contract_version_invalid" in result.limitations
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
+        compose(annual=invalid)
 
     fabricated_loan = replace(
         original,
         student_loan_self_assessment_amount=Decimal("100.00"),
         final_self_assessment_liability=original.final_self_assessment_liability + Decimal("100.00"),
     )
-    fabricated_result = compose(annual=fabricated_loan)
-    assert fabricated_result.status is AnnualToCashStatus.UNRESOLVED
-    assert "annual_position_loan_components_invalid" in fabricated_result.limitations
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
+        compose(annual=fabricated_loan)
 
     with_loan = annual_position_with_plan_2()
     forged_component = replace(with_loan.loan_components[0], component="plan_2")
     forged_nested = replace(with_loan, loan_components=(forged_component,))
-    nested_result = compose(annual=forged_nested)
-    assert nested_result.status is AnnualToCashStatus.UNRESOLVED
-    assert "annual_position_loan_components_invalid" in nested_result.limitations
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
+        compose(annual=forged_nested)
 
     wrong_effective_date = replace(original, as_of=AS_OF - timedelta(days=1))
-    date_result = compose(annual=wrong_effective_date)
-    assert date_result.status is AnnualToCashStatus.UNRESOLVED
-    assert "annual_position_date_invalid" in date_result.limitations
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
+        compose(annual=wrong_effective_date)
 
 
 def test_funding_gap_and_surplus_remain_distinct_and_surplus_is_never_spendable():
@@ -777,6 +775,85 @@ def test_captured_accessor_is_not_weakened_by_module_collaborator_rebinding(monk
         captured(forged)
 
 
+def test_issuance_graph_captures_all_primitive_serialisation_dependencies(monkeypatch):
+    import reserved.engines.annual_to_cash_integration as integration
+
+    issued = compose()
+    forged = replace(issued)
+    captured_identity = annual_to_cash_position_identity
+    captured_provenance = annual_to_cash_position_provenance
+    captured_reference = integration._secure_content_reference
+    provenance = captured_provenance(issued)
+    cash_position = issued.considered_annual_position
+    expected_identity = captured_identity(issued)
+    expected_reference = captured_reference(
+        cash_position, CashReadyAnnualPosition, "test-cash-position"
+    )
+
+    replacements = {
+        "type": lambda value: object,
+        "object": object(),
+        "Decimal": object(),
+        "date": object(),
+        "str": object(),
+        "int": object(),
+        "bool": object(),
+        "id": lambda value: 0,
+        "weakref": object(),
+        "ValueError": RuntimeError,
+        "BaseException": RuntimeError,
+        "Enum": object(),
+        "fields": lambda value: (),
+        "is_dataclass": lambda value: False,
+        "isinstance": lambda *args: False,
+        "issubclass": lambda *args: False,
+        "vars": lambda value: {},
+        "frozenset": lambda values=(): frozenset(),
+        "json": object(),
+        "hashlib": object(),
+        "hmac": object(),
+        "_canonical": lambda value: "forged",
+        "_content_digest": lambda value: "0" * 64,
+        "AnnualToCashPosition": object(),
+        "AnnualToCashInputProvenance": object(),
+        "CashReadyAnnualPosition": object(),
+        "CashReadyLoanComponent": object(),
+        "AnnualToCashStatus": object(),
+        "LoanComponent": object(),
+    }
+    for name, replacement in replacements.items():
+        monkeypatch.setattr(integration, name, replacement, raising=False)
+
+    assert captured_identity(issued) == expected_identity
+    assert captured_provenance(issued) is provenance
+    assert captured_reference(
+        cash_position, CashReadyAnnualPosition, "test-cash-position"
+    ) == expected_reference
+    with pytest.raises(ValueError, match=ISSUANCE_ERROR):
+        captured_identity(forged)
+
+
+def test_rebound_object_getattribute_cannot_hide_geography_mutation(monkeypatch):
+    import reserved.engines.annual_to_cash_integration as integration
+
+    issued = compose(annual=annual_position("England"))
+    real_raw = object.__getattribute__
+
+    class ForgedObject:
+        @staticmethod
+        def __getattribute__(value, name):
+            if value is issued and name == "nation":
+                return "England"
+            return real_raw(value, name)
+
+    object.__setattr__(issued, "nation", "Wales")
+    monkeypatch.setattr(integration, "object", ForgedObject, raising=False)
+    with pytest.raises(ValueError, match=ISSUANCE_ERROR):
+        annual_to_cash_position_identity(issued)
+    with pytest.raises(ValueError, match=ISSUANCE_ERROR):
+        annual_to_cash_position_provenance(issued)
+
+
 def test_identity_errors_are_categorical_and_value_free():
     sensitive = "1234567890-sensitive"
     forged = replace(compose(), annual_position_reference=sensitive)
@@ -791,3 +868,36 @@ def test_failed_composition_issues_no_value():
     object.__setattr__(invalid, "amount", Decimal("0.001"))
     with pytest.raises(ValueError, match="exact-penny"):
         compose(deductions=invalid)
+
+
+@pytest.mark.parametrize("nation", ["England", "Wales", "Northern Ireland"])
+def test_producer_issued_geography_is_preserved_into_annual_to_cash(nation):
+    annual = annual_position(nation)
+    result = compose(annual=annual)
+    assert annual.nation == nation
+    assert result.nation == nation
+    assert result.considered_annual_position is annual
+
+
+def test_missing_geography_remains_internal_and_is_not_invented():
+    annual = annual_position(None)
+    assert annual.nation is None
+    result = compose(annual=annual)
+    assert result.nation is None
+
+
+def test_cash_ready_geography_helper_rebinding_cannot_promote_reconstruction(monkeypatch):
+    import reserved.engines.annual_to_cash_integration as integration
+
+    issued = annual_position("Wales")
+    captured_identity = cash_ready_annual_position_identity
+    forged = replace(issued, nation="England")
+    monkeypatch.setattr(
+        integration, "cash_ready_annual_position_identity", lambda value: "forged"
+    )
+    monkeypatch.setattr(
+        integration, "cash_ready_annual_position_geography", lambda value: "England"
+    )
+    assert captured_identity(issued).startswith("cash-ready-annual-position:sha256-")
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
+        compose(annual=forged)

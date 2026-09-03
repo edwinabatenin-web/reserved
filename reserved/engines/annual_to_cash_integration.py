@@ -24,7 +24,12 @@ from . import cash_obligation_reconciliation as obligations
 from . import payments_on_account as poa
 from . import sa_account_reconciliation as account
 from .annual_loan_reconciliation import LoanComponent
-from .cash_ready_annual_position import CashReadyAnnualPosition, CashReadyLoanComponent
+from .cash_ready_annual_position import (
+    CashReadyAnnualPosition,
+    CashReadyLoanComponent,
+    cash_ready_annual_position_identity,
+    cash_ready_annual_position_geography,
+)
 
 
 CONTRACT_VERSION = "reserved-annual-to-cash-integration/1.0"
@@ -48,6 +53,7 @@ class AnnualToCashPosition:
     contract_version: str
     status: AnnualToCashStatus
     tax_year: str
+    nation: str | None
     ruleset_version: str
     as_of: date
     annual_position_reference: str
@@ -120,56 +126,81 @@ def _content_digest(value: object) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _make_issuance_capability():
+def _make_issuance_capability(cash_geography_reader):
     """Create capabilities whose security-critical state has no global lookup."""
     sha256 = hashlib.sha256
     dumps = json.dumps
     compare = hmac.compare_digest
     dc_fields = fields
+    raw = object.__getattribute__
+    exact_type = type
+    instance_check = isinstance
+    subclass_check = issubclass
+    dataclass_check = is_dataclass
+    module_vars = vars
+    frozen_set = frozenset
+    decimal_type = Decimal
+    date_type = date
+    tuple_type = tuple
+    string_type = str
+    integer_type = int
+    boolean_type = bool
+    enum_type = Enum
+    stringify = str
+    identity_of = id
+    make_ref = weakref.ref
+    error_type = ValueError
+    fatal_errors = (BaseException,)
+    position_type = AnnualToCashPosition
+    provenance_type = AnnualToCashInputProvenance
+    cash_position_type = CashReadyAnnualPosition
+    cash_component_type = CashReadyLoanComponent
+    status_type = AnnualToCashStatus
+    loan_component_type = LoanComponent
     lock = threading.RLock()
     registry: dict[int, tuple[weakref.ReferenceType[AnnualToCashPosition],
                               AnnualToCashInputProvenance, str]] = {}
-    allowed_dataclasses = frozenset(
+    allowed_dataclasses = frozen_set(
         value
         for module in (poa, account, obligations, funding)
-        for value in vars(module).values()
-        if type(value) is type and is_dataclass(value)
-    ) | frozenset({
-        AnnualToCashPosition, AnnualToCashInputProvenance,
-        CashReadyAnnualPosition, CashReadyLoanComponent,
+        for value in module_vars(module).values()
+        if exact_type(value) is exact_type and dataclass_check(value)
+    ) | frozen_set({
+        position_type, provenance_type,
+        cash_position_type, cash_component_type,
     })
-    allowed_enums = frozenset(
+    allowed_enums = frozen_set(
         value
         for module in (poa, account, obligations, funding)
-        for value in vars(module).values()
-        if isinstance(value, type) and issubclass(value, Enum)
-    ) | frozenset({AnnualToCashStatus, LoanComponent})
+        for value in module_vars(module).values()
+        if instance_check(value, exact_type) and subclass_check(value, enum_type)
+    ) | frozen_set({status_type, loan_component_type})
     failure = "annual-to-cash position is not a valid live producer-issued value"
 
     def canonical(value: object) -> object:
-        value_type = type(value)
+        value_type = exact_type(value)
         if value_type in allowed_dataclasses:
             return {
                 "type": f"{value_type.__module__}.{value_type.__qualname__}",
                 "fields": {
-                    item.name: canonical(object.__getattribute__(value, item.name))
+                    item.name: canonical(raw(value, item.name))
                     for item in dc_fields(value_type)
                 },
             }
-        if value_type is Decimal:
-            return {"decimal": str(value)}
-        if value_type is date:
+        if value_type is decimal_type:
+            return {"decimal": stringify(value)}
+        if value_type is date_type:
             return {"date": value.isoformat()}
         if value_type in allowed_enums:
             return {
                 "enum": f"{value_type.__module__}.{value_type.__qualname__}",
-                "value": canonical(object.__getattribute__(value, "_value_")),
+                "value": canonical(raw(value, "_value_")),
             }
-        if value_type is tuple:
+        if value_type is tuple_type:
             return {"tuple": [canonical(item) for item in value]}
-        if value is None or value_type in (str, int, bool):
+        if value is None or value_type in (string_type, integer_type, boolean_type):
             return value
-        raise ValueError(failure)
+        raise error_type(failure)
 
     def digest(value: AnnualToCashPosition,
                provenance: AnnualToCashInputProvenance) -> str:
@@ -180,16 +211,16 @@ def _make_issuance_capability():
         return "annual-to-cash-position:sha256-" + sha256(payload).hexdigest()
 
     def issue(value: AnnualToCashPosition,
-              provenance: AnnualToCashInputProvenance) -> AnnualToCashPosition:
+        provenance: AnnualToCashInputProvenance) -> AnnualToCashPosition:
         if (
-            type(value) is not AnnualToCashPosition
-            or type(provenance) is not AnnualToCashInputProvenance
+            exact_type(value) is not position_type
+            or exact_type(provenance) is not provenance_type
         ):
-            raise ValueError(failure)
+            raise error_type(failure)
         expected = digest(value, provenance)
         if not compare(expected, digest(value, provenance)):
-            raise ValueError(failure)
-        key = id(value)
+            raise error_type(failure)
+        key = identity_of(value)
 
         def discard(reference: weakref.ReferenceType[AnnualToCashPosition],
                     *, identity: int = key) -> None:
@@ -198,26 +229,26 @@ def _make_issuance_capability():
                 if current is not None and current[0] is reference:
                     registry.pop(identity, None)
 
-        reference = weakref.ref(value, discard)
+        reference = make_ref(value, discard)
         with lock:
             registry[key] = (reference, provenance, expected)
         return value
 
     def lookup(value: object) -> tuple[AnnualToCashInputProvenance, str]:
-        if type(value) is not AnnualToCashPosition:
-            raise ValueError(failure)
+        if exact_type(value) is not position_type:
+            raise error_type(failure)
         with lock:
-            entry = registry.get(id(value))
+            entry = registry.get(identity_of(value))
             if entry is None or entry[0]() is not value:
-                raise ValueError(failure)
+                raise error_type(failure)
             provenance, expected = entry[1], entry[2]
             try:
                 current = digest(value, provenance)
                 confirmation = digest(value, provenance)
-            except BaseException:
-                raise ValueError(failure) from None
+            except fatal_errors:
+                raise error_type(failure) from None
             if not compare(current, confirmation) or not compare(current, expected):
-                raise ValueError(failure)
+                raise error_type(failure)
             return provenance, expected
 
     def identity(value: object) -> str:
@@ -226,9 +257,9 @@ def _make_issuance_capability():
     def provenance(value: object) -> AnnualToCashInputProvenance:
         return lookup(value)[0]
 
-    def content_reference(value: object, exact_type: type, namespace: str) -> str:
-        if type(value) is not exact_type:
-            raise ValueError(failure)
+    def content_reference(value: object, expected_type: type, namespace: str) -> str:
+        if exact_type(value) is not expected_type:
+            raise error_type(failure)
         payload = dumps(
             canonical(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True
         ).encode("utf-8")
@@ -255,6 +286,7 @@ def _make_issuance_capability():
             as_of: date,
             stale_after_days: int = 45,
         ) -> AnnualToCashPosition:
+            admitted_nation = cash_geography_reader(annual_position)
             value, provenance = composer(
                 annual_position=annual_position,
                 annual_position_reference=annual_position_reference,
@@ -274,6 +306,11 @@ def _make_issuance_capability():
                 as_of=as_of,
                 stale_after_days=stale_after_days,
             )
+            if (
+                cash_geography_reader(annual_position) != admitted_nation
+                or raw(value, "nation") != admitted_nation
+            ):
+                raise error_type(failure)
             return issue(value, provenance)
 
         return compose
@@ -283,14 +320,7 @@ def _make_issuance_capability():
 
 _bind_annual_to_cash_composer, annual_to_cash_position_identity, \
     annual_to_cash_position_provenance, _secure_content_reference = \
-    _make_issuance_capability()
-
-
-def cash_ready_annual_position_identity(value: CashReadyAnnualPosition) -> str:
-    """Return the identity that an independent W1 review must persist."""
-    if type(value) is not CashReadyAnnualPosition:
-        raise ValueError("annual identity requires an exact CashReadyAnnualPosition")
-    return f"cash-ready-annual-position:sha256-{_content_digest(value)}"
+    _make_issuance_capability(cash_ready_annual_position_geography)
 
 
 def prior_year_evidence_identity(value: poa.PriorYearEvidence) -> str:
@@ -448,6 +478,11 @@ def _annual_limitations(value: CashReadyAnnualPosition, *, as_of: date) -> tuple
         limitations.append("annual_position_contains_limitations")
     if value.tax_year != "2026/27" or value.ruleset_version != "uk-2026-27-v4":
         limitations.append("annual_position_period_or_ruleset_invalid")
+    if value.nation is not None and (
+        type(value.nation) is not str
+        or value.nation not in {"England", "Wales", "Northern Ireland"}
+    ):
+        limitations.append("annual_position_geography_not_admitted")
     if type(value.as_of) is not date or value.as_of != ANNUAL_PERIOD_END or value.as_of > as_of:
         limitations.append("annual_position_date_invalid")
     amounts = (
@@ -568,6 +603,7 @@ def _unresolved(
         contract_version=CONTRACT_VERSION,
         status=AnnualToCashStatus.UNRESOLVED,
         tax_year=annual_position.tax_year,
+        nation=annual_position.nation,
         ruleset_version=annual_position.ruleset_version,
         as_of=as_of,
         annual_position_reference=annual_reference,
@@ -837,6 +873,7 @@ def _compose_annual_to_cash_position(
         contract_version=CONTRACT_VERSION,
         status=status,
         tax_year=annual_position.tax_year,
+        nation=annual_position.nation,
         ruleset_version=annual_position.ruleset_version,
         as_of=as_of,
         annual_position_reference=annual_reference,

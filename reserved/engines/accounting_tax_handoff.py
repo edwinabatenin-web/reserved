@@ -24,6 +24,7 @@ from typing import Mapping
 
 from .integrated_annual_position import (
     AnnualPositionResult,
+    annual_position_geography,
     calculate_annual_position,
 )
 from reserved.providers.accounting.contracts import (
@@ -43,6 +44,7 @@ _TAX_YEAR_START = date(2026, 4, 6)
 _TAX_YEAR_END = date(2027, 4, 5)
 
 _SUPPORTED_BUSINESS_TYPES = frozenset({"trade", "uk_property", "foreign_property"})
+_SUPPORTED_NATIONS = frozenset({"England", "Wales", "Northern Ireland"})
 
 _TURNOVER = "turnover"
 _EXPENSE = "expense"
@@ -74,7 +76,6 @@ _MAX_UTC_OFFSET = timedelta(hours=24)
 # may not do yet rather than what the supplied inputs happened to contain.
 _HANDOFF_LIMITATIONS = (
     "provider_sync_completeness_unproven",
-    "w8_s3_geography_customer_admission_prohibited",
     "other_income_family_assembly_unproven",
     "customer_presentation_prohibited",
     "persistence_prohibited",
@@ -490,6 +491,7 @@ def _validate_annual_position_result(result: object) -> AnnualPositionResult:
     result = _exact_dataclass(result, AnnualPositionResult, "annual_position_result_invalid")
     try:
         _validate_annual_text_fields(result)
+        _validate_annual_geography(result.nation)
         for field_name in _ANNUAL_REQUIRED_MONEY_FIELDS:
             _derive_annual_monetary(getattr(result, field_name), "annual_position_monetary_invalid")
         for field_name in _ANNUAL_OPTIONAL_MONEY_FIELDS:
@@ -526,6 +528,13 @@ def _validate_annual_text_fields(result: AnnualPositionResult) -> None:
         elif field_name == "calculation_status":
             if value not in _ANNUAL_CALCULATION_STATUSES:
                 _reject("annual_position_field_invalid")
+
+
+def _validate_annual_geography(value: object) -> None:
+    if value is None:
+        return
+    if type(value) is not str or value not in _SUPPORTED_NATIONS:
+        _reject("annual_position_field_invalid")
 
 
 def _validate_annual_percentage(value: object) -> None:
@@ -785,6 +794,7 @@ def _validate_handoff_context(
     business_kind: str,
     turnover_total: Decimal,
     allowable_expense_total: Decimal,
+    nation: str,
 ) -> None:
     """Bind the annual result back to the exact facts this handoff derived.
 
@@ -795,6 +805,8 @@ def _validate_handoff_context(
     ``uk_resident`` fact is never supplied). Other business kinds must not
     acquire foreign-property values or markers from a forged engine return.
     """
+    if result.nation != nation:
+        _reject("annual_position_geography_mismatch")
     if business_kind == "foreign_property":
         expected_profit = _derive_foreign_property_profit(turnover_total, allowable_expense_total)
         _validate_foreign_property_context(result, expected_profit)
@@ -1190,6 +1202,7 @@ class AccountingTaxHandoffProvenance:
     connected_organisation_id: str
     provider: str
     tax_year: str
+    nation: str
     input_ids: tuple[str, ...]
     economic_event_ids: tuple[str, ...]
     observation_ids: tuple[str, ...]
@@ -1214,15 +1227,19 @@ class AccountingTaxHandoffResult:
 
 # ── Public boundary function ──────────────────────────────────────────────────
 
-def calculate_annual_position_from_accounting(
+def _calculate_annual_position_from_accounting_impl(
     *,
     tax_year: str,
+    nation: str,
     business_type: object,
     inputs: object,
     observations: object,
+    _geography_reader,
 ) -> AccountingTaxHandoffResult:
     """Derive one supported business-income fact set and calculate the position.
 
+    ``nation`` must be one exact Founder-approved customer tax nation and is
+    never inferred from an accounting provider's company address.
     ``business_type`` must be the exact ``BusinessType`` enum; ``inputs`` and
     ``observations`` must be finite non-empty built-in containers of exact
     ``CanonicalAccountingTaxInput`` and ``SourceObservation`` values. Every
@@ -1231,6 +1248,8 @@ def calculate_annual_position_from_accounting(
     """
     if type(tax_year) is not str or tax_year != _SUPPORTED_TAX_YEAR:
         _reject("tax_year_unsupported")
+    if type(nation) is not str or nation not in _SUPPORTED_NATIONS:
+        _reject("geography_invalid")
 
     # Exact BusinessType enum only; strings, subclasses and unsupported values
     # fail closed. This declaration is never inferred from provider text.
@@ -1341,13 +1360,21 @@ def calculate_annual_position_from_accounting(
         _derive_monetary(fact_value, "monetary_value_unrepresentable")
 
     try:
-        annual_position = calculate_annual_position(facts, tax_year)
+        annual_position = calculate_annual_position(
+            {**facts, "jurisdiction": nation}, tax_year
+        )
     except Exception:
         _reject("annual_position_engine_failure")
     annual_position = _validate_annual_position_result(annual_position)
     _validate_handoff_context(
-        annual_position, business_kind, turnover_total, allowable_expense_total
+        annual_position, business_kind, turnover_total, allowable_expense_total, nation
     )
+    try:
+        issued_nation = _geography_reader(annual_position)
+    except Exception:
+        _reject("annual_position_result_unissued")
+    if issued_nation != nation:
+        _reject("annual_position_geography_mismatch")
 
     emitted_facts = tuple(
         HandoffFact(name=name, value=value) for name, value in sorted(facts.items())
@@ -1404,6 +1431,7 @@ def calculate_annual_position_from_accounting(
         connected_organisation_id=connected_organisation_id,
         provider=provider,
         tax_year=tax_year,
+        nation=nation,
         input_ids=tuple(sorted(seen_input_ids)),
         economic_event_ids=tuple(sorted(seen_event_ids)),
         observation_ids=tuple(sorted(observation_set)),
@@ -1418,3 +1446,31 @@ def calculate_annual_position_from_accounting(
         contributions=contributions,
         provenance=provenance,
     )
+
+
+def _bind_accounting_tax_handoff(implementation, geography_reader):
+    def calculate_annual_position_from_accounting(
+        *,
+        tax_year: str,
+        nation: str,
+        business_type: object,
+        inputs: object,
+        observations: object,
+    ) -> AccountingTaxHandoffResult:
+        return implementation(
+            tax_year=tax_year,
+            nation=nation,
+            business_type=business_type,
+            inputs=inputs,
+            observations=observations,
+            _geography_reader=geography_reader,
+        )
+
+    return calculate_annual_position_from_accounting
+
+
+calculate_annual_position_from_accounting = _bind_accounting_tax_handoff(
+    _calculate_annual_position_from_accounting_impl, annual_position_geography
+)
+del _bind_accounting_tax_handoff
+del _calculate_annual_position_from_accounting_impl

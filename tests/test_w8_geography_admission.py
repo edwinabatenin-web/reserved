@@ -9,12 +9,16 @@ values.
 
 from __future__ import annotations
 
+import copy
+from dataclasses import replace
 from decimal import Decimal
+import pickle
 
 import pytest
 
 from reserved.engines.income_tax import estimate_incremental_liability
 from reserved.engines.integrated_annual_position import (
+    annual_position_geography,
     calculate_annual_position,
 )
 
@@ -45,6 +49,12 @@ def test_supported_geography_calculates_normally(value):
     result = calculate_annual_position({**BASE_FACTS, "country": value})
     assert result.calculation_status == "calculated"
     assert result.total_liability == Decimal("3486.00")
+    assert result.nation == {
+        "england": "England", "gb-eng": "England",
+        "wales": "Wales", "gb-wls": "Wales",
+        "northern ireland": "Northern Ireland", "gb-nir": "Northern Ireland",
+    }[value.lower()]
+    assert type(result.nation) is str
 
 
 @pytest.mark.parametrize("field", GEOGRAPHY_ALIASES)
@@ -173,13 +183,33 @@ def test_hostile_geography_fails_without_value_leakage(value):
 
 
 def test_string_subclass_is_validated_as_its_string_content():
-    assert (
-        calculate_annual_position({**BASE_FACTS, "country": _GeographyString("England")}).calculation_status
-        == "calculated"
+    result = calculate_annual_position(
+        {**BASE_FACTS, "country": _GeographyString("England")}
     )
+    assert result.calculation_status == "calculated"
+    assert result.nation == "England" and type(result.nation) is str
     with pytest.raises(ValueError) as exc:
         calculate_annual_position({**BASE_FACTS, "country": _GeographyString("Scotland")})
     assert "Scotland" not in str(exc.value)
+
+
+def test_hostile_string_subclass_cannot_rewrite_unsupported_source_text():
+    calls = []
+
+    class ScotlandAsEngland(str):
+        def split(self, *args, **kwargs):
+            calls.append("split")
+            return ["England"]
+
+        def lower(self):
+            calls.append("lower")
+            return "england"
+
+    with pytest.raises(ValueError, match="Unsupported geography"):
+        calculate_annual_position(
+            {**BASE_FACTS, "country": ScotlandAsEngland("Scotland")}
+        )
+    assert calls == []
 
 
 # ── 7. Validation happens before arithmetic / result construction ───────────
@@ -198,7 +228,7 @@ def test_missing_geography_preserves_internal_compatibility_and_claims_nothing()
     assert result.calculation_status == "calculated"
     assert result.total_liability == Decimal("3486.00")
     # Absence is not represented as a supported-jurisdiction claim.
-    assert "country" not in result.__dataclass_fields__
+    assert result.nation is None
     assert not any(
         "geography" in lim or "jurisdiction" in lim for lim in result.limitations
     )
@@ -208,6 +238,7 @@ def test_none_geography_fact_is_treated_as_absent():
     result = calculate_annual_position({**BASE_FACTS, "country": None})
     assert result.calculation_status == "calculated"
     assert result.total_liability == Decimal("3486.00")
+    assert result.nation is None
 
 
 # ── 9. Plan 4 remains a student-loan plan, not geography evidence ───────────
@@ -223,3 +254,48 @@ def test_student_loan_plan_facts_are_not_misread_as_geography():
     )
     assert result.calculation_status == "calculated"
     assert result.total_liability == Decimal("3486.00")
+
+
+# ── 10. Producer issuance binds the canonical geography ────────────────────
+
+def test_annual_geography_is_bound_to_only_the_live_producer_result():
+    issued = calculate_annual_position({**BASE_FACTS, "country": "England"})
+    assert annual_position_geography(issued) == "England"
+    for reconstructed in (
+        replace(issued),
+        copy.copy(issued),
+        copy.deepcopy(issued),
+        pickle.loads(pickle.dumps(issued)),
+    ):
+        with pytest.raises(ValueError, match="live geography-bound producer result"):
+            annual_position_geography(reconstructed)
+
+    mutated = calculate_annual_position({**BASE_FACTS, "country": "England"})
+    object.__setattr__(mutated, "nation", "Wales")
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
+        annual_position_geography(mutated)
+
+
+def test_annual_geography_reader_ignores_module_helper_rebinding(monkeypatch):
+    import reserved.engines.integrated_annual_position as module
+
+    issued = calculate_annual_position({**BASE_FACTS, "country": "Wales"})
+    captured = annual_position_geography
+    forged = replace(issued)
+    for name in ("type", "object", "id", "list", "str", "int"):
+        monkeypatch.setattr(module, name, lambda *args, **kwargs: None, raising=False)
+    monkeypatch.setattr(module, "annual_position_geography", lambda value: "England")
+    assert captured(issued) == "Wales"
+    with pytest.raises(ValueError, match="live geography-bound producer result"):
+        captured(forged)
+
+
+def test_annual_calculator_captures_admission_and_issuance_helpers(monkeypatch):
+    import reserved.engines.integrated_annual_position as module
+
+    monkeypatch.setattr(module, "_normalise_geography", lambda value: "Wales")
+    monkeypatch.setattr(module, "_enforce_geography_admission", lambda facts: "Wales")
+    monkeypatch.setattr(module, "_issue_annual_position", lambda value: value)
+    issued = calculate_annual_position({**BASE_FACTS, "country": "England"})
+    assert issued.nation == "England"
+    assert annual_position_geography(issued) == "England"

@@ -7,9 +7,14 @@ same boundary.  In particular, a pre-credit or pre-finance-cost-reduction
 amount is never presented as a complete tax position.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from decimal import Decimal, InvalidOperation, ROUND_FLOOR, ROUND_HALF_UP
+import hashlib
+import hmac
+import json
+import threading
 from typing import Any
+import weakref
 
 from .tax_config import get_config
 
@@ -32,44 +37,54 @@ _GEOGRAPHY_ALIASES = (
 # deliberately small: the nation name plus its ISO 3166-2 GB subdivision code.
 # Umbrella labels such as "UK", "GB" or "United Kingdom" are not evidence of a
 # supported nation and are rejected (fail closed) rather than inferred.
-_GEOGRAPHY_NATION_ALIASES = {
-    "england": "england",
-    "gb-eng": "england",
-    "wales": "wales",
-    "gb-wls": "wales",
-    "northern ireland": "northern_ireland",
-    "gb-nir": "northern_ireland",
-}
+def _make_geography_admission():
+    aliases = _GEOGRAPHY_ALIASES
+    nation_aliases = {
+        "england": "England",
+        "gb-eng": "England",
+        "wales": "Wales",
+        "gb-wls": "Wales",
+        "northern ireland": "Northern Ireland",
+        "gb-nir": "Northern Ireland",
+    }
+    instance_check = isinstance
+    string_type = str
+    set_type = set
+    length = len
+    split_text = string_type.split
+    lower_text = string_type.lower
+    join_text = " ".join
+    error_type = ValueError
+    unsupported = "Unsupported geography for the annual tax position"
+    conflicting = "Conflicting geography facts for the annual tax position"
+
+    def normalise(raw: Any) -> str:
+        if not instance_check(raw, string_type):
+            raise error_type(unsupported)
+        # Call captured built-in ``str`` operations directly. A hostile
+        # subclass must not redefine ``split``/``lower`` to turn unsupported
+        # source text into an admitted nation.
+        text = lower_text(join_text(split_text(raw)))
+        nation = nation_aliases.get(text)
+        if nation is None:
+            raise error_type(unsupported)
+        return nation
+
+    def enforce(facts: dict[str, Any]) -> str | None:
+        nations = [
+            normalise(facts[alias])
+            for alias in aliases
+            if facts.get(alias) is not None
+        ]
+        if length(set_type(nations)) > 1:
+            raise error_type(conflicting)
+        return nations[0] if nations else None
+
+    return normalise, enforce
 
 
-def _normalise_geography(raw: Any) -> str:
-    """Return the canonical supported-nation key for one geography fact.
-
-    Fails closed on any non-string, empty/whitespace string or unknown value.
-    The exception message never embeds the rejected value.
-    """
-    if not isinstance(raw, str):
-        raise ValueError("Unsupported geography for the annual tax position")
-    text = " ".join(raw.split()).lower()
-    nation = _GEOGRAPHY_NATION_ALIASES.get(text)
-    if nation is None:
-        raise ValueError("Unsupported geography for the annual tax position")
-    return nation
-
-
-def _enforce_geography_admission(facts: dict[str, Any]) -> None:
-    """Validate supplied geography facts before any tax arithmetic.
-
-    All supplied geography facts must resolve to the same supported nation;
-    any unsupported, malformed or contradictory combination fails closed.
-    """
-    nations = [
-        _normalise_geography(facts[alias])
-        for alias in _GEOGRAPHY_ALIASES
-        if facts.get(alias) is not None
-    ]
-    if len(set(nations)) > 1:
-        raise ValueError("Conflicting geography facts for the annual tax position")
+_normalise_geography, _enforce_geography_admission = _make_geography_admission()
+del _make_geography_admission
 
 
 def _decimal(value: Any, name: str, *, default: str = "0") -> Decimal:
@@ -121,6 +136,7 @@ class AnnualPositionResult:
 
     contract_version: str
     tax_year: str
+    nation: str | None
     ruleset_version: str
     calculation_status: str
     adjusted_net_income: Decimal
@@ -146,6 +162,109 @@ class AnnualPositionResult:
     included_families: tuple[str, ...]
     unsupported_families: tuple[str, ...]
     limitations: tuple[str, ...]
+
+
+def _make_annual_position_issuance():
+    """Bind admitted geography to the exact live annual result.
+
+    The annual result predates this W8 boundary and remains a normal internal
+    dataclass.  This capability gives downstream customer-facing composition a
+    process-local way to prove that its geography came from the calculation
+    entry point rather than from ``replace``/copy/reconstruction or a later
+    caller.  It is mutation detection, not provider authentication.
+    """
+    dc_fields = fields
+    decimal_type = Decimal
+    annual_type = AnnualPositionResult
+    sha256 = hashlib.sha256
+    dumps = json.dumps
+    compare = hmac.compare_digest
+    make_ref = weakref.ref
+    lock = threading.RLock()
+    exact_type = type
+    raw = object.__getattribute__
+    identity = id
+    list_type = list
+    tuple_type = tuple
+    string_type = str
+    integer_type = int
+    failures = (AttributeError, TypeError, ValueError, ArithmeticError)
+    error_type = ValueError
+    registry: dict[int, tuple[weakref.ReferenceType[AnnualPositionResult], str]] = {}
+    failure = "annual position is not a live geography-bound producer result"
+
+    def canonical(value: object) -> object:
+        value_type = exact_type(value)
+        if value_type is annual_type:
+            return {
+                "type": "AnnualPositionResult",
+                "fields": {
+                    item.name: canonical(raw(value, item.name))
+                    for item in dc_fields(annual_type)
+                },
+            }
+        if value_type is decimal_type:
+            parts = value.as_tuple()
+            return {
+                "decimal": {
+                    "sign": parts.sign,
+                    "digits": list_type(parts.digits),
+                    "exponent": parts.exponent,
+                }
+            }
+        if value_type is tuple_type:
+            return {"tuple": [canonical(item) for item in value]}
+        if value is None or value_type in (string_type, integer_type):
+            return value
+        raise error_type(failure)
+
+    def digest(value: AnnualPositionResult) -> str:
+        try:
+            payload = dumps(
+                canonical(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+            ).encode("utf-8")
+        except failures:
+            raise error_type(failure) from None
+        return sha256(payload).hexdigest()
+
+    def issue(value: AnnualPositionResult) -> AnnualPositionResult:
+        value_digest = digest(value)
+        key = identity(value)
+
+        def cleanup(ref, *, registry=registry, key=key, lock=lock):
+            with lock:
+                current = registry.get(key)
+                if current is not None and current[0] is ref:
+                    registry.pop(key, None)
+
+        ref = make_ref(value, cleanup)
+        with lock:
+            registry[key] = (ref, value_digest)
+        return value
+
+    def geography(value: object) -> str | None:
+        if exact_type(value) is not annual_type:
+            raise error_type(failure)
+        with lock:
+            retained = registry.get(identity(value))
+        if retained is None or retained[0]() is not value:
+            raise error_type(failure)
+        current_digest = digest(value)
+        if not compare(retained[1], current_digest):
+            raise error_type(failure)
+        nation = raw(value, "nation")
+        if nation is not None and (
+            exact_type(nation) is not string_type
+            or nation not in ("England", "Wales", "Northern Ireland")
+        ):
+            raise error_type(failure)
+        return nation
+
+    return issue, geography
+
+
+_issue_annual_position, annual_position_geography = _make_annual_position_issuance()
+del _make_annual_position_issuance
 
 
 def _personal_allowance(ani: Decimal, cfg: dict) -> Decimal:
@@ -332,7 +451,13 @@ def _hicbc(ani: Decimal, benefit: Decimal, cfg: dict) -> tuple[int, Decimal]:
     return percentage, _money(charge)
 
 
-def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") -> AnnualPositionResult:
+def _calculate_annual_position_impl(
+    facts: dict[str, Any],
+    tax_year: str = "2026/27",
+    *,
+    _geography_admitter,
+    _issuer,
+) -> AnnualPositionResult:
     """Calculate a bounded annual position from explicit, synthetic-safe facts.
 
     The function does not read fixtures, providers, persistence, PAYE records or
@@ -341,7 +466,7 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
     """
     if tax_year != "2026/27":
         raise ValueError("The integrated annual-position tranche supports 2026/27 only")
-    _enforce_geography_admission(facts)
+    admitted_nation = _geography_admitter(facts)
     cfg = get_config(tax_year)
     joint_total_present = "joint_property_total_profit" in facts
     joint_share_present = "taxpayer_share_percentage" in facts
@@ -640,9 +765,10 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
     included = ["income_tax", "class_4_ni"]
     if benefit is not None and "hicbc" not in unsupported:
         included.append("hicbc")
-    return AnnualPositionResult(
+    return _issuer(AnnualPositionResult(
         contract_version="reserved-estimate-envelope/1.1-internal",
         tax_year=tax_year,
+        nation=admitted_nation,
         ruleset_version=cfg["rules_version"],
         calculation_status=status,
         adjusted_net_income=_money(reported_ani),
@@ -670,4 +796,27 @@ def calculate_annual_position(facts: dict[str, Any], tax_year: str = "2026/27") 
         included_families=tuple(included),
         unsupported_families=tuple(dict.fromkeys(unsupported)),
         limitations=tuple(limitations),
-    )
+    ))
+
+
+def _bind_annual_position_calculator(implementation, geography_admitter, issuer):
+    def calculate_annual_position(
+        facts: dict[str, Any], tax_year: str = "2026/27"
+    ) -> AnnualPositionResult:
+        return implementation(
+            facts,
+            tax_year,
+            _geography_admitter=geography_admitter,
+            _issuer=issuer,
+        )
+
+    return calculate_annual_position
+
+
+calculate_annual_position = _bind_annual_position_calculator(
+    _calculate_annual_position_impl,
+    _enforce_geography_admission,
+    _issue_annual_position,
+)
+del _bind_annual_position_calculator
+del _calculate_annual_position_impl

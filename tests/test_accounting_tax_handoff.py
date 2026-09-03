@@ -119,9 +119,10 @@ def _tax_input(*, input_id="i1", economic_event_id="e1", classification="turnove
     )
 
 
-def _calc(business_type, inputs, observations, tax_year="2026/27"):
+def _calc(business_type, inputs, observations, tax_year="2026/27", nation="England"):
     return calculate_annual_position_from_accounting(
         tax_year=tax_year,
+        nation=nation,
         business_type=business_type,
         inputs=inputs,
         observations=observations,
@@ -1546,7 +1547,7 @@ _EXTREME_MONEY_FIELDS = (
 
 
 def _genuine_annual_position(facts):
-    return calculate_annual_position(facts, "2026/27")
+    return calculate_annual_position({"country": "England", **facts}, "2026/27")
 
 
 def _calculated_annual_position():
@@ -2127,3 +2128,54 @@ def test_foreign_property_handoff_genuine_shapes_accepted():
         inputs, observations = _property_bundle(receipts, expenses)
         result = _calc(BusinessType.FOREIGN_PROPERTY, inputs, observations)
         assert isinstance(result.annual_position, AnnualPositionResult)
+
+
+@pytest.mark.parametrize("nation", ["England", "Wales", "Northern Ireland"])
+def test_customer_nation_is_explicit_and_preserved_in_result_and_provenance(nation):
+    inputs, observations = _trade_bundle()
+    result = _calc(BusinessType.TRADE, inputs, observations, nation=nation)
+    assert result.annual_position.nation == nation
+    assert result.provenance.nation == nation
+
+
+@pytest.mark.parametrize(
+    "nation", ["Scotland", "GB", "UK", "unknown", "england", None, 1, True]
+)
+def test_accounting_entry_rejects_noncanonical_or_ambiguous_customer_nation(nation):
+    inputs, observations = _trade_bundle()
+    with pytest.raises(AccountingTaxHandoffError) as exc:
+        _calc(BusinessType.TRADE, inputs, observations, nation=nation)
+    assert exc.value.code == "geography_invalid"
+
+
+def test_accounting_entry_rejects_string_subclass_nation():
+    class Nation(str):
+        pass
+
+    inputs, observations = _trade_bundle()
+    with pytest.raises(AccountingTaxHandoffError) as exc:
+        _calc(BusinessType.TRADE, inputs, observations, nation=Nation("England"))
+    assert exc.value.code == "geography_invalid"
+
+
+def test_accounting_entry_requires_nation_and_does_not_infer_provider_country():
+    inputs, observations = _trade_bundle()
+    with pytest.raises(TypeError, match="nation"):
+        calculate_annual_position_from_accounting(
+            tax_year="2026/27",
+            business_type=BusinessType.TRADE,
+            inputs=inputs,
+            observations=observations,
+        )
+
+
+def test_unissued_annual_result_cannot_be_promoted_by_helper_rebinding(monkeypatch):
+    import reserved.engines.accounting_tax_handoff as handoff
+
+    inputs, observations = _trade_bundle()
+    forged = replace(_calc(BusinessType.TRADE, inputs, observations).annual_position)
+    monkeypatch.setattr(handoff, "calculate_annual_position", lambda facts, tax_year: forged)
+    monkeypatch.setattr(handoff, "annual_position_geography", lambda value: "England")
+    with pytest.raises(AccountingTaxHandoffError) as exc:
+        _calc(BusinessType.TRADE, inputs, observations)
+    assert exc.value.code == "annual_position_result_unissued"
