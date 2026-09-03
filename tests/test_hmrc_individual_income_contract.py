@@ -36,6 +36,7 @@ from reserved.providers.hmrc_individual_income_contract import (
     PensionsBenefitsObservation,
     build_individual_income_request,
     observe_individual_income_response,
+    validate_individual_income_annual_summary_observation,
 )
 from reserved.providers.http_boundary import ProviderRequest
 
@@ -1622,3 +1623,56 @@ def test_no_cross_endpoint_join_or_double_count_surface():
             assert "mapping" not in lowered
             assert "dedupe" not in lowered
             assert "double" not in lowered
+
+
+def test_public_success_validator_revalidates_complete_exact_observation():
+    observation = _annual_obs()
+    assert validate_individual_income_annual_summary_observation(observation) is observation
+    with pytest.raises(HMRCIndividualIncomeContractError):
+        validate_individual_income_annual_summary_observation(_error_obs())
+    damaged = pickle.loads(pickle.dumps(observation))
+    object.__setattr__(damaged, "tax_year", "2024-25")
+    with pytest.raises(HMRCIndividualIncomeContractError):
+        validate_individual_income_annual_summary_observation(damaged)
+
+
+def test_public_success_validator_captures_private_boundary_and_ignores_metadata(
+    monkeypatch,
+):
+    import reserved.providers.hmrc_individual_income_contract as module
+
+    validator = validate_individual_income_annual_summary_observation
+    invalid = object.__new__(IndividualIncomeAnnualSummaryObservation)
+    monkeypatch.setattr(module, "_require_annual_summary_observation", lambda value: value)
+    monkeypatch.setattr(validator, "__defaults__", (lambda value: value,))
+    monkeypatch.setattr(validator, "__kwdefaults__", {"validator": lambda value: value})
+    monkeypatch.setitem(validator.__dict__, "validator", lambda value: value)
+    monkeypatch.setitem(validator.__dict__, "__wrapped__", lambda value: value)
+    with pytest.raises(HMRCIndividualIncomeContractError):
+        validator(invalid)
+
+
+def test_public_success_validator_snapshots_transitive_validation_graph(monkeypatch):
+    import reserved.providers.hmrc_individual_income_contract as module
+
+    validator = validate_individual_income_annual_summary_observation
+    valid = _annual_obs()
+    damaged = pickle.loads(pickle.dumps(valid))
+    object.__setattr__(damaged, "completeness", "COMPLETE")
+    for name in (
+        "_validate_annual_summary_values", "_require_employment_observation",
+        "_require_benefits_observation", "_require_observation_request_context",
+        "_require_request_binding", "_request_binding_for",
+        "_require_exact_instance_state", "_parse_number", "_require_unknown_names",
+    ):
+        monkeypatch.setattr(module, name, lambda value, *args: value)
+    monkeypatch.setattr(module, "HMRC_INDIVIDUAL_INCOME_COMPLETENESS", "COMPLETE")
+    monkeypatch.setattr(module, "Decimal", type("AttackerDecimal", (Decimal,), {}))
+    monkeypatch.setattr(module, "type", lambda value: object, raising=False)
+    monkeypatch.setattr(module, "set", lambda *args: set(), raising=False)
+    monkeypatch.setattr(module, "any", lambda values: False, raising=False)
+    for name in ("str", "int", "tuple", "dict", "frozenset"):
+        monkeypatch.setattr(module, name, object, raising=False)
+    assert validator(valid) is valid
+    with pytest.raises(HMRCIndividualIncomeContractError):
+        validator(damaged)

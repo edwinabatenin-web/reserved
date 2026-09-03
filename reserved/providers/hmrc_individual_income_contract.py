@@ -868,6 +868,255 @@ def _require_annual_summary_observation(
     return value
 
 
+def _bind_annual_summary_validator(
+    observation_type: type,
+    context_type: type,
+    request_type: type,
+    employment_type: type,
+    benefits_type: type,
+    decimal_type: type,
+    error_type: type,
+    unicode_category: object,
+    tax_year_match: object,
+    observation_names: frozenset[str],
+    context_names: frozenset[str],
+    request_names: frozenset[str],
+    employment_names: frozenset[str],
+    benefits_names: frozenset[str],
+    request_order: tuple[str, ...],
+    top_documented: frozenset[str],
+    employment_documented: frozenset[str],
+    benefits_documented: frozenset[str],
+    expected_method: str,
+    expected_origin: str,
+    expected_template: str,
+    expected_accept: str,
+    expected_scope: str,
+    redaction_marker: str,
+    expected_completeness: str,
+    max_members: int,
+    max_unknown: int,
+    max_key_length: int,
+    max_string_length: int,
+    max_employments: int,
+    max_digits: int,
+    max_places: int,
+    max_magnitude: Decimal,
+    max_int: int,
+):
+    """Snapshot the complete validation graph used by the public boundary."""
+    exact_type, length, maximum, absolute, any_value = type, len, max, abs, any
+    set_type = set
+    str_type, int_type = str, int
+    tuple_type, dict_type, frozenset_type = tuple, dict, frozenset
+    get = object.__getattribute__
+
+    def fail(rule: str):
+        return error_type(f"HMRC individual income contract: {rule}")
+
+    def exact_state(value: object, expected_type: type, names: frozenset[str], field: str):
+        if exact_type(value) is not expected_type:
+            raise fail(f"{field} must be the exact expected observation type")
+        state = get(value, "__dict__")
+        if exact_type(state) is not dict_type or length(state) != length(names):
+            raise fail(f"{field} internal state is not the exact expected shape")
+        actual = set_type()
+        for key in state:
+            if exact_type(key) is not str_type:
+                raise fail(f"{field} internal state contains a non-string key")
+            actual.add(key)
+        if actual != names:
+            raise fail(f"{field} internal state keys are not exact")
+        return state
+
+    def tax_year(value: object) -> str:
+        if exact_type(value) is not str_type or tax_year_match(value) is None:  # type: ignore[operator]
+            raise fail("tax_year must match ^[0-9]{4}-[0-9]{2}$")
+        return value
+
+    def safe_name(value: object, field: str) -> str:
+        if exact_type(value) is not str_type or not value or length(value) > max_key_length:
+            raise fail(f"{field} contains an invalid key name")
+        for char in value:
+            if unicode_category(char).startswith("C"):  # type: ignore[operator]
+                raise fail(f"{field} contains an unsafe character in a key name")
+        return value
+
+    def unknowns(value: object, field: str, documented: frozenset[str]):
+        if exact_type(value) is not frozenset_type or length(value) > max_unknown:
+            raise fail(f"{field} unknown names must be an exact bounded frozenset")
+        for name in value:
+            safe_name(name, field)
+            if name in documented:
+                raise fail(f"{field} unknown name collides with a documented member")
+
+    def number(value: object, field: str):
+        if exact_type(value) is int_type:
+            if value < -max_int or value > max_int:
+                raise fail(f"{field} exceeds the reserved integer magnitude bound")
+            return
+        if exact_type(value) is decimal_type:
+            if not value.is_finite():
+                raise fail(f"{field} must be a finite number")
+            parts = value.as_tuple()
+            places = maximum(0, -parts.exponent)
+            integer_digits = maximum(1, length(parts.digits) + parts.exponent)
+            if (
+                absolute(value) > max_magnitude
+                or length(parts.digits) > max_digits
+                or places > max_places
+                or integer_digits > max_digits
+            ):
+                raise fail(f"{field} exceeds the reserved decimal bound")
+            return
+        raise fail(f"{field} must be an exact built-in int or Decimal")
+
+    def request_binding(value: object):
+        if exact_type(value) is not tuple_type or length(value) != length(request_order):
+            raise fail("observation request binding is not the exact expected shape")
+        if any_value(exact_type(item) is not str_type for item in value):
+            raise fail("observation request binding values must be exact strings")
+        year = tax_year(value[0])
+        expected_path = expected_template.replace("{utr}", redaction_marker).replace(
+            "{taxYear}", year
+        )
+        expected = (
+            year, expected_method, expected_origin, expected_template,
+            expected_accept, expected_scope, expected_path,
+        )
+        if value != expected:
+            raise fail("observation request binding is not canonical")
+        return value
+
+    def request(value: object):
+        state = exact_state(value, request_type, request_names, "request")
+        year = tax_year(state["tax_year"])
+        expected_path = expected_template.replace("{utr}", redaction_marker).replace(
+            "{taxYear}", year
+        )
+        for name, expected in (
+            ("method", expected_method), ("sandbox_origin", expected_origin),
+            ("path_template", expected_template), ("accept", expected_accept),
+            ("scope", expected_scope), ("redacted_path", expected_path),
+        ):
+            if exact_type(state[name]) is not str_type or state[name] != expected:
+                raise fail(f"request {name} is not the exact documented value")
+        return tuple_type(state[name] for name in request_order)
+
+    def context(value: object):
+        state = exact_state(value, context_type, context_names, "observation source context")
+        actual = request(state["request"])
+        retained = request_binding(state["binding"])
+        if actual != retained:
+            raise fail("observation source context is not coherent")
+        return state, retained
+
+    def employment(value: object):
+        state = exact_state(value, employment_type, employment_names, "employment item")
+        reference = state["employer_paye_reference"]
+        if exact_type(reference) is not str_type or length(reference) > max_string_length:
+            raise fail("employerPayeReference must be an exact bounded string")
+        number(state["pay_from_employment"], "payFromEmployment")
+        unknowns(state["unknown_names"], "employment item", employment_documented)
+
+    def benefits(value: object):
+        state = exact_state(value, benefits_type, benefits_names, "benefits object")
+        present = state["present_fields"]
+        absent = state["absent_fields"]
+        if exact_type(present) is not frozenset_type or exact_type(absent) is not frozenset_type:
+            raise fail("benefits presence sets must be exact frozensets")
+        for names in (present, absent):
+            if any_value(exact_type(name) is not str_type or name not in benefits_documented for name in names):
+                raise fail("benefits presence sets contain an invalid member")
+        if present & absent or present | absent != benefits_documented:
+            raise fail("benefits present and absent fields must be coherent")
+        for source_name, field_name in (
+            ("otherPensionsAndRetirementAnnuities", "other_pensions_and_retirement_annuities"),
+            ("incapacityBenefit", "incapacity_benefit"),
+            ("jobseekersAllowance", "jobseekers_allowance"),
+            ("seissNetPaid", "seiss_net_paid"),
+        ):
+            retained = state[field_name]
+            if source_name in present:
+                if retained is None:
+                    raise fail("present benefit must retain a number")
+                number(retained, source_name)
+            elif retained is not None:
+                raise fail("absent benefit must remain absent")
+        unknowns(state["unknown_names"], "benefits object", benefits_documented)
+
+    def validate_individual_income_annual_summary_observation(
+        observation: object,
+    ) -> IndividualIncomeAnnualSummaryObservation:
+        state = exact_state(
+            observation,
+            observation_type,
+            observation_names,
+            "annual-summary observation",
+        )
+        source_state, source_binding = context(state["_source_context"])
+        actual_binding = request(state["request"])
+        retained_binding = request_binding(state["_request_binding"])
+        if (
+            state["request"] is not source_state["request"]
+            or actual_binding != retained_binding
+            or retained_binding != source_binding
+        ):
+            raise fail("request does not match the retained observation context")
+        if exact_type(state["tax_year"]) is not str_type or state["tax_year"] != retained_binding[0]:
+            raise fail("observation tax year is not derived from its request context")
+        employments = state["employments"]
+        if exact_type(employments) is not tuple_type or length(employments) > max_employments:
+            raise fail("employments must be an exact bounded tuple")
+        for item in employments:
+            employment(item)
+        benefits(state["pensions_benefits"])
+        if exact_type(state["completeness"]) is not str_type or state["completeness"] != expected_completeness:
+            raise fail("completeness must be the exact documented UNVERIFIED value")
+        unknowns(state["unknown_names"], "annual-summary observation", top_documented)
+        return observation  # type: ignore[return-value]
+
+    return validate_individual_income_annual_summary_observation
+
+
+validate_individual_income_annual_summary_observation = _bind_annual_summary_validator(
+    IndividualIncomeAnnualSummaryObservation,
+    _ObservationRequestContext,
+    IndividualIncomeRequestIntent,
+    EmploymentItemObservation,
+    PensionsBenefitsObservation,
+    Decimal,
+    HMRCIndividualIncomeContractError,
+    unicodedata.category,
+    _TAX_YEAR_RE.fullmatch,
+    _ANNUAL_OBSERVATION_STATE_NAMES,
+    frozenset({"request", "binding"}),
+    _REQUEST_INTENT_STATE_NAMES,
+    _EMPLOYMENT_OBSERVATION_STATE_NAMES,
+    _BENEFITS_OBSERVATION_STATE_NAMES,
+    _REQUEST_INTENT_STATE_ORDER,
+    _TOP_LEVEL_NAMES,
+    _EMPLOYMENT_NAMES,
+    _BENEFITS_NAMES,
+    HMRC_INDIVIDUAL_INCOME_HTTP_METHOD,
+    HMRC_INDIVIDUAL_INCOME_SANDBOX_ORIGIN,
+    HMRC_INDIVIDUAL_INCOME_PATH_TEMPLATE,
+    HMRC_INDIVIDUAL_INCOME_ACCEPT,
+    HMRC_INDIVIDUAL_INCOME_SCOPE,
+    UTR_REDACTION_MARKER,
+    HMRC_INDIVIDUAL_INCOME_COMPLETENESS,
+    _RESERVED_MAX_OBJECT_MEMBERS,
+    _RESERVED_MAX_UNKNOWN_KEYS,
+    _RESERVED_MAX_KEY_LENGTH,
+    _RESERVED_MAX_STRING_LENGTH,
+    _RESERVED_MAX_EMPLOYMENTS,
+    _RESERVED_NUMBER_MAX_DIGITS,
+    _RESERVED_NUMBER_MAX_PLACES,
+    _RESERVED_NUMBER_MAX_MAGNITUDE,
+    _RESERVED_NUMBER_MAX_INT,
+)
+
+
 def _require_error_observation(value: object) -> IndividualIncomeErrorObservation:
     state = _require_exact_instance_state(
         value,
