@@ -38,9 +38,13 @@ Authority observed 2026-09-01
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+import secrets
 import unicodedata
-from dataclasses import dataclass
+import weakref
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -48,6 +52,7 @@ from typing import Any, Mapping
 
 HMRC_INDIVIDUAL_EMPLOYMENT_API_NAME = "Individual Employment"
 HMRC_INDIVIDUAL_EMPLOYMENT_API_VERSION = "1.2"
+HMRC_INDIVIDUAL_EMPLOYMENT_HTTP_METHOD = "GET"
 HMRC_INDIVIDUAL_EMPLOYMENT_SANDBOX_ORIGIN = "https://test-api.service.hmrc.gov.uk"
 HMRC_INDIVIDUAL_EMPLOYMENT_PATH_TEMPLATE = (
     "/individual-employment/sa/{utr}/annual-summary/{taxYear}"
@@ -103,6 +108,19 @@ _ERROR_BODY_DOCUMENTED_FIELDS = frozenset({"code", "message"})
 _DOCUMENTED_STATUSES = frozenset({HMRC_INDIVIDUAL_EMPLOYMENT_SUCCESS_STATUS}) | (
     HMRC_INDIVIDUAL_EMPLOYMENT_ERROR_STATUSES
 )
+_REQUEST_BINDING_LENGTH = 8
+_OPAQUE_TOKEN_RE = re.compile(r"[0-9a-f]{64}")
+_OBSERVATION_INTEGRITY_RE = re.compile(r"[0-9a-f]{64}")
+
+# Process-local observer/reconstructor issuance records.  These are deliberately
+# not a cryptographic authenticity mechanism: Python code with arbitrary module
+# internals access is trusted.  They do, however, give the public validators an
+# identity boundary that deterministic object state alone cannot provide.  A
+# low-level clone is unsupported, while copy/deepcopy return the registered
+# object and pickle reconstruction registers the newly validated object.
+_OBSERVATION_ISSUANCE: dict[
+    int, tuple[weakref.ReferenceType[object], str, tuple[str, ...], str]
+] = {}
 
 
 class HMRCIndividualEmploymentContractError(ValueError):
@@ -122,7 +140,7 @@ class IndividualEmploymentRequestIntent:
     retained on the object.
     """
 
-    __slots__ = ("__tax_year",)
+    __slots__ = ("__binding", "__tax_year")
 
     def __init__(self, *, utr: str, tax_year: str) -> None:
         # Fail closed on a malformed UTR, then discard it. The intent keeps only
@@ -130,14 +148,17 @@ class IndividualEmploymentRequestIntent:
         _validate_utr(utr)
         validated_tax_year = _validate_tax_year(tax_year)
         object.__setattr__(
+            self,
+            "_IndividualEmploymentRequestIntent__binding",
+            _canonical_request_binding(secrets.token_hex(32), validated_tax_year),
+        )
+        object.__setattr__(
             self, "_IndividualEmploymentRequestIntent__tax_year", validated_tax_year
         )
 
     @property
     def tax_year(self) -> str:
-        return object.__getattribute__(
-            self, "_IndividualEmploymentRequestIntent__tax_year"
-        )
+        return _request_binding_for(self)[1]
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("IndividualEmploymentRequestIntent is immutable")
@@ -147,6 +168,26 @@ class IndividualEmploymentRequestIntent:
 
     def __repr__(self) -> str:
         return "IndividualEmploymentRequestIntent([REDACTED])"
+
+    def __eq__(self, other: object) -> bool:
+        binding = _request_binding_for(self)
+        if type(other) is not IndividualEmploymentRequestIntent:
+            return NotImplemented
+        return binding == _request_binding_for(other)
+
+    def __hash__(self) -> int:
+        return hash(_request_binding_for(self))
+
+    def __copy__(self) -> "IndividualEmploymentRequestIntent":
+        _request_binding_for(self)
+        return self
+
+    def __deepcopy__(self, memo: dict) -> "IndividualEmploymentRequestIntent":
+        _request_binding_for(self)
+        return self
+
+    def __reduce__(self):
+        return (_restore_request_intent, (_request_binding_for(self),))
 
 
 # ── Frozen, redacted observations ───────────────────────────────────────────
@@ -174,7 +215,7 @@ class EmploymentRecordObservation:
         return "EmploymentRecordObservation([REDACTED])"
 
 
-@dataclass(frozen=True, repr=False)
+@dataclass(frozen=True, repr=False, init=False, eq=False)
 class EmploymentHistoryObservation:
     """Validated annual-summary observation for a documented 200 response.
 
@@ -183,18 +224,46 @@ class EmploymentHistoryObservation:
     payload is not retained.
     """
 
-    tax_year: str
-    status_code: int
-    employments: tuple[EmploymentRecordObservation, ...]
-    completeness: str = COMPLETENESS_UNVERIFIED
-    absent_fields: frozenset[str] = frozenset()
-    unknown_fields: frozenset[str] = frozenset()
+    request: IndividualEmploymentRequestIntent = field(init=False, repr=False)
+    _request_binding: tuple[str, ...] = field(init=False, repr=False)
+    _source_binding: tuple[str, ...] = field(init=False, repr=False)
+    tax_year: str = field(init=False)
+    status_code: int = field(init=False)
+    employments: tuple[EmploymentRecordObservation, ...] = field(init=False)
+    completeness: str = field(init=False)
+    absent_fields: frozenset[str] = field(init=False)
+    unknown_fields: frozenset[str] = field(init=False)
+    _observation_integrity: str = field(init=False, repr=False)
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        raise TypeError("EmploymentHistoryObservation is observer-constructed only")
 
     def __repr__(self) -> str:
         return "EmploymentHistoryObservation([REDACTED])"
 
+    def __eq__(self, other: object) -> bool:
+        left = _history_state(self)
+        if type(other) is not EmploymentHistoryObservation:
+            return NotImplemented
+        return left == _history_state(other)
 
-@dataclass(frozen=True, repr=False)
+    def __hash__(self) -> int:
+        return hash(_history_state(self))
+
+    def __copy__(self):
+        _history_state(self)
+        return self
+
+    def __deepcopy__(self, memo: dict):
+        _history_state(self)
+        return self
+
+    def __reduce__(self):
+        state = _history_state(self)
+        return (_restore_history, (state[0],) + state[4:-1])
+
+
+@dataclass(frozen=True, repr=False, init=False, eq=False)
 class EmploymentErrorObservation:
     """Classified, non-echoing observation for a documented error status.
 
@@ -203,13 +272,41 @@ class EmploymentErrorObservation:
     documented, constant ``error_code`` is retained.
     """
 
-    tax_year: str
-    status_code: int
-    error_code: str
-    unknown_fields: frozenset[str] = frozenset()
+    request: IndividualEmploymentRequestIntent = field(init=False, repr=False)
+    _request_binding: tuple[str, ...] = field(init=False, repr=False)
+    _source_binding: tuple[str, ...] = field(init=False, repr=False)
+    tax_year: str = field(init=False)
+    status_code: int = field(init=False)
+    error_code: str = field(init=False)
+    unknown_fields: frozenset[str] = field(init=False)
+    _observation_integrity: str = field(init=False, repr=False)
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        raise TypeError("EmploymentErrorObservation is observer-constructed only")
 
     def __repr__(self) -> str:
         return "EmploymentErrorObservation([REDACTED])"
+
+    def __eq__(self, other: object) -> bool:
+        left = _error_state(self)
+        if type(other) is not EmploymentErrorObservation:
+            return NotImplemented
+        return left == _error_state(other)
+
+    def __hash__(self) -> int:
+        return hash(_error_state(self))
+
+    def __copy__(self):
+        _error_state(self)
+        return self
+
+    def __deepcopy__(self, memo: dict):
+        _error_state(self)
+        return self
+
+    def __reduce__(self):
+        state = _error_state(self)
+        return (_restore_error, (state[0],) + state[4:-1])
 
 
 # ── Exact built-in type and format validators ───────────────────────────────
@@ -237,6 +334,87 @@ def _validate_tax_year(value: Any) -> str:
             "HMRC Individual Employment contract: tax_year must match YYYY-YY"
         )
     return value
+
+
+def _binding_from_token(token: str, tax_year: str) -> tuple[str, ...]:
+    return (
+        token,
+        tax_year,
+        HMRC_INDIVIDUAL_EMPLOYMENT_HTTP_METHOD,
+        HMRC_INDIVIDUAL_EMPLOYMENT_PATH_TEMPLATE,
+        HMRC_INDIVIDUAL_EMPLOYMENT_API_NAME,
+        HMRC_INDIVIDUAL_EMPLOYMENT_API_VERSION,
+        HMRC_INDIVIDUAL_EMPLOYMENT_ACCEPT,
+        HMRC_INDIVIDUAL_EMPLOYMENT_OAUTH_SCOPE,
+    )
+
+
+def _canonical_request_binding(token: str, tax_year: str) -> tuple[str, ...]:
+    return _binding_from_token(token, tax_year)
+
+
+def _validate_request_binding(value: object) -> tuple[str, ...]:
+    if type(value) is not tuple or len(value) != _REQUEST_BINDING_LENGTH:
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: request binding has invalid shape"
+        )
+    if any(type(item) is not str for item in value):
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: request binding values must be strings"
+        )
+    token, tax_year = value[:2]
+    if _OPAQUE_TOKEN_RE.fullmatch(token) is None:
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: request correlation token is malformed"
+        )
+    _validate_tax_year(tax_year)
+    if value != _binding_from_token(token, tax_year):
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: request binding is not canonical"
+        )
+    return value
+
+
+def _request_binding_for(request: object) -> tuple[str, ...]:
+    if type(request) is not IndividualEmploymentRequestIntent:
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: request must be an "
+            "IndividualEmploymentRequestIntent"
+        )
+    try:
+        binding = object.__getattribute__(
+            request, "_IndividualEmploymentRequestIntent__binding"
+        )
+    except AttributeError:
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: request binding is missing"
+        )
+    canonical = _validate_request_binding(binding)
+    try:
+        tax_year = object.__getattribute__(
+            request, "_IndividualEmploymentRequestIntent__tax_year"
+        )
+    except AttributeError:
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: request tax year is missing"
+        )
+    if type(tax_year) is not str or tax_year != canonical[1]:
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: request tax year is incoherent"
+        )
+    return canonical
+
+
+def _restore_request_intent(binding: tuple[str, ...]) -> IndividualEmploymentRequestIntent:
+    canonical = _validate_request_binding(binding)
+    request = object.__new__(IndividualEmploymentRequestIntent)
+    object.__setattr__(
+        request, "_IndividualEmploymentRequestIntent__binding", canonical
+    )
+    object.__setattr__(
+        request, "_IndividualEmploymentRequestIntent__tax_year", canonical[1]
+    )
+    return request
 
 
 def _require_exact_int(value: Any, field: str) -> int:
@@ -368,6 +546,249 @@ def _classify(
     return absent, unknown
 
 
+_RECORD_STATE = frozenset({
+    "employer_paye_reference", "employer_name", "off_payroll_work_flag",
+    "absent_fields", "unknown_fields",
+})
+_HISTORY_STATE = frozenset({
+    "request", "_request_binding", "_source_binding", "tax_year", "status_code",
+    "employments", "completeness", "absent_fields", "unknown_fields",
+    "_observation_integrity",
+})
+_ERROR_STATE = frozenset({
+    "request", "_request_binding", "_source_binding", "tax_year", "status_code",
+    "error_code", "unknown_fields", "_observation_integrity",
+})
+
+
+def _exact_state(value: object, expected_type: type, names: frozenset[str]) -> dict:
+    if type(value) is not expected_type:
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: observation type is not exact"
+        )
+    state = object.__getattribute__(value, "__dict__")
+    if type(state) is not dict or set(state.keys()) != set(names):
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: observation state is not exact"
+        )
+    return state
+
+
+def _validate_name_set(value: object, documented: frozenset[str], *, absent: bool) -> frozenset[str]:
+    if type(value) is not frozenset:
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: retained names must be a frozenset"
+        )
+    for name in value:
+        if type(name) is not str or len(name) > RESERVED_DEFENSIVE_MAX_MEMBER_NAME_LENGTH:
+            raise HMRCIndividualEmploymentContractError(
+                "HMRC Individual Employment contract: retained member name is invalid"
+            )
+        if _has_unsafe_unicode_character(name):
+            raise HMRCIndividualEmploymentContractError(
+                "HMRC Individual Employment contract: retained member name is unsafe"
+            )
+        if (name not in documented) != (not absent):
+            raise HMRCIndividualEmploymentContractError(
+                "HMRC Individual Employment contract: retained member classification is invalid"
+            )
+    return value
+
+
+def _validate_record(record: object) -> EmploymentRecordObservation:
+    state = _exact_state(record, EmploymentRecordObservation, _RECORD_STATE)
+    _require_employer_string(state["employer_paye_reference"], "employerPayeReference", RESERVED_DEFENSIVE_MAX_EMPLOYER_PAYE_REFERENCE_LENGTH)
+    _require_employer_string(state["employer_name"], "employerName", RESERVED_DEFENSIVE_MAX_EMPLOYER_NAME_LENGTH)
+    flag = state["off_payroll_work_flag"]
+    if flag is not None and type(flag) is not bool:
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: retained off-payroll flag is invalid"
+        )
+    absent = _validate_name_set(state["absent_fields"], HMRC_INDIVIDUAL_EMPLOYMENT_OPTIONAL_EMPLOYMENT_FIELDS, absent=True)
+    unknown = _validate_name_set(state["unknown_fields"], _EMPLOYMENT_DOCUMENTED_FIELDS, absent=False)
+    if (flag is None) != ("offPayrollWorkFlag" in absent) or not absent.isdisjoint(unknown):
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: retained employment state is incoherent"
+        )
+    return record
+
+
+def _bound_observation_state(state: dict) -> tuple[str, ...]:
+    request_binding = _request_binding_for(state["request"])
+    retained = _validate_request_binding(state["_request_binding"])
+    source = _validate_request_binding(state["_source_binding"])
+    if request_binding != retained or retained != source:
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: observation request binding is incoherent"
+        )
+    if type(state["tax_year"]) is not str or state["tax_year"] != retained[1]:
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: observation tax year is incoherent"
+        )
+    return retained
+
+
+def _observation_digest(canonical: object) -> str:
+    encoded = json.dumps(
+        canonical, ensure_ascii=True, separators=(",", ":"), sort_keys=False
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_observation_integrity(value: object, expected: str) -> str:
+    if type(value) is not str or _OBSERVATION_INTEGRITY_RE.fullmatch(value) is None:
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: observation integrity is malformed"
+        )
+    if not secrets.compare_digest(value, expected):
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: observation integrity is incoherent"
+        )
+    return value
+
+
+def _register_observation(
+    value: object, kind: str, binding: tuple[str, ...], integrity: str
+) -> None:
+    identity = id(value)
+
+    def discard(reference: weakref.ReferenceType[object]) -> None:
+        current = _OBSERVATION_ISSUANCE.get(identity)
+        if current is not None and current[0] is reference:
+            _OBSERVATION_ISSUANCE.pop(identity, None)
+
+    reference = weakref.ref(value, discard)
+    _OBSERVATION_ISSUANCE[identity] = (reference, kind, binding, integrity)
+
+
+def _validate_observation_issuance(
+    value: object, kind: str, binding: tuple[str, ...], integrity: str
+) -> None:
+    issued = _OBSERVATION_ISSUANCE.get(id(value))
+    if (
+        issued is None
+        or issued[0]() is not value
+        or issued[1] != kind
+        or issued[2] != binding
+        or not secrets.compare_digest(issued[3], integrity)
+    ):
+        raise HMRCIndividualEmploymentContractError(
+            "HMRC Individual Employment contract: observation provenance is unsupported"
+        )
+
+
+def _record_integrity_value(record: EmploymentRecordObservation) -> list[object]:
+    state = object.__getattribute__(record, "__dict__")
+    return [
+        state["employer_paye_reference"], state["employer_name"],
+        state["off_payroll_work_flag"], sorted(state["absent_fields"]),
+        sorted(state["unknown_fields"]),
+    ]
+
+
+def _history_state(value: object) -> tuple[object, ...]:
+    state = _exact_state(value, EmploymentHistoryObservation, _HISTORY_STATE)
+    binding = _bound_observation_state(state)
+    if type(state["status_code"]) is not int or state["status_code"] != 200:
+        raise HMRCIndividualEmploymentContractError("HMRC Individual Employment contract: history status is invalid")
+    employments = state["employments"]
+    if type(employments) is not tuple or not employments or len(employments) > RESERVED_DEFENSIVE_MAX_EMPLOYMENTS:
+        raise HMRCIndividualEmploymentContractError("HMRC Individual Employment contract: retained employments are invalid")
+    for record in employments:
+        _validate_record(record)
+    if type(state["completeness"]) is not str or state["completeness"] != COMPLETENESS_UNVERIFIED:
+        raise HMRCIndividualEmploymentContractError("HMRC Individual Employment contract: completeness is invalid")
+    absent = _validate_name_set(state["absent_fields"], frozenset(), absent=True)
+    unknown = _validate_name_set(state["unknown_fields"], _TOP_LEVEL_DOCUMENTED_FIELDS, absent=False)
+    if absent:
+        raise HMRCIndividualEmploymentContractError("HMRC Individual Employment contract: top-level absence is invalid")
+    canonical = ["success", list(binding), state["tax_year"], state["status_code"],
+                 [_record_integrity_value(record) for record in employments],
+                 state["completeness"], sorted(absent), sorted(unknown)]
+    integrity = _validate_observation_integrity(
+        state["_observation_integrity"], _observation_digest(canonical)
+    )
+    _validate_observation_issuance(value, "success", binding, integrity)
+    return (binding, state["_request_binding"], state["_source_binding"], state["tax_year"], state["status_code"], employments, state["completeness"], absent, unknown, integrity)
+
+
+def _error_state(value: object) -> tuple[object, ...]:
+    state = _exact_state(value, EmploymentErrorObservation, _ERROR_STATE)
+    binding = _bound_observation_state(state)
+    status = state["status_code"]
+    if type(status) is not int or status not in HMRC_INDIVIDUAL_EMPLOYMENT_ERROR_STATUSES:
+        raise HMRCIndividualEmploymentContractError("HMRC Individual Employment contract: error status is invalid")
+    code = _require_documented_string(state["error_code"], "code", RESERVED_DEFENSIVE_MAX_ERROR_CODE_LENGTH)
+    if code not in HMRC_INDIVIDUAL_EMPLOYMENT_ERROR_CODES[status]:
+        raise HMRCIndividualEmploymentContractError("HMRC Individual Employment contract: retained error is invalid")
+    unknown = _validate_name_set(state["unknown_fields"], _ERROR_BODY_DOCUMENTED_FIELDS, absent=False)
+    canonical = ["error", list(binding), state["tax_year"], status, code,
+                 sorted(unknown)]
+    integrity = _validate_observation_integrity(
+        state["_observation_integrity"], _observation_digest(canonical)
+    )
+    _validate_observation_issuance(value, "error", binding, integrity)
+    return (binding, state["_request_binding"], state["_source_binding"], state["tax_year"], status, code, unknown, integrity)
+
+
+def _new_history(request: IndividualEmploymentRequestIntent, status: int, employments: tuple[EmploymentRecordObservation, ...], unknown: frozenset[str]) -> EmploymentHistoryObservation:
+    binding = _request_binding_for(request)
+    value = object.__new__(EmploymentHistoryObservation)
+    for name, item in (("request", request), ("_request_binding", binding), ("_source_binding", binding), ("tax_year", binding[1]), ("status_code", status), ("employments", employments), ("completeness", COMPLETENESS_UNVERIFIED), ("absent_fields", frozenset()), ("unknown_fields", unknown)):
+        object.__setattr__(value, name, item)
+    canonical = ["success", list(binding), binding[1], status,
+                 [_record_integrity_value(record) for record in employments],
+                 COMPLETENESS_UNVERIFIED, [], sorted(unknown)]
+    object.__setattr__(value, "_observation_integrity", _observation_digest(canonical))
+    _register_observation(
+        value, "success", binding,
+        object.__getattribute__(value, "_observation_integrity"),
+    )
+    _history_state(value)
+    return value
+
+
+def _new_error(request: IndividualEmploymentRequestIntent, status: int, code: str, unknown: frozenset[str]) -> EmploymentErrorObservation:
+    binding = _request_binding_for(request)
+    value = object.__new__(EmploymentErrorObservation)
+    for name, item in (("request", request), ("_request_binding", binding), ("_source_binding", binding), ("tax_year", binding[1]), ("status_code", status), ("error_code", code), ("unknown_fields", unknown)):
+        object.__setattr__(value, name, item)
+    canonical = ["error", list(binding), binding[1], status, code, sorted(unknown)]
+    object.__setattr__(value, "_observation_integrity", _observation_digest(canonical))
+    _register_observation(
+        value, "error", binding,
+        object.__getattribute__(value, "_observation_integrity"),
+    )
+    _error_state(value)
+    return value
+
+
+def _restore_history(binding, status, employments, completeness, absent, unknown):
+    if completeness != COMPLETENESS_UNVERIFIED or absent != frozenset():
+        raise HMRCIndividualEmploymentContractError("HMRC Individual Employment contract: serialized history is invalid")
+    return _new_history(_restore_request_intent(binding), status, employments, unknown)
+
+
+def _restore_error(binding, status, code, unknown):
+    return _new_error(_restore_request_intent(binding), status, code, unknown)
+
+
+def validate_employment_history_observation(
+    observation: object,
+) -> EmploymentHistoryObservation:
+    """Revalidate exact state and its complete producing-request binding."""
+    _history_state(observation)
+    return observation
+
+
+def validate_employment_error_observation(
+    observation: object,
+) -> EmploymentErrorObservation:
+    """Revalidate exact error state and its complete producing-request binding."""
+    _error_state(observation)
+    return observation
+
+
 # ── Public builders and validators ──────────────────────────────────────────
 
 
@@ -384,7 +805,7 @@ def build_individual_employment_request(
 
 
 def _observe_employment_history(
-    tax_year: str, status_code: int, payload: Any
+    request: IndividualEmploymentRequestIntent, status_code: int, payload: Any
 ) -> EmploymentHistoryObservation:
     if type(payload) is not dict:
         raise HMRCIndividualEmploymentContractError(
@@ -412,13 +833,7 @@ def _observe_employment_history(
 
     records = tuple(_parse_employment_record(entry) for entry in employments)
     _, unknown = _classify(payload, _TOP_LEVEL_DOCUMENTED_FIELDS)
-    return EmploymentHistoryObservation(
-        tax_year=tax_year,
-        status_code=status_code,
-        employments=records,
-        completeness=COMPLETENESS_UNVERIFIED,
-        unknown_fields=unknown,
-    )
+    return _new_history(request, status_code, records, unknown)
 
 
 def _parse_employment_record(entry: Any) -> EmploymentRecordObservation:
@@ -468,7 +883,7 @@ def _parse_employment_record(entry: Any) -> EmploymentRecordObservation:
 
 
 def _observe_employment_error(
-    tax_year: str, status_code: int, payload: Any
+    request: IndividualEmploymentRequestIntent, status_code: int, payload: Any
 ) -> EmploymentErrorObservation:
     if type(payload) is not dict:
         raise HMRCIndividualEmploymentContractError(
@@ -500,12 +915,7 @@ def _observe_employment_error(
         )
 
     _, unknown = _classify(payload, _ERROR_BODY_DOCUMENTED_FIELDS)
-    return EmploymentErrorObservation(
-        tax_year=tax_year,
-        status_code=status_code,
-        error_code=error_code,
-        unknown_fields=unknown,
-    )
+    return _new_error(request, status_code, error_code, unknown)
 
 
 def observe_individual_employment_response(
@@ -523,11 +933,7 @@ def observe_individual_employment_response(
     constant, non-echoing observations; undocumented or malformed combinations
     are rejected.
     """
-    if type(request) is not IndividualEmploymentRequestIntent:
-        raise HMRCIndividualEmploymentContractError(
-            "HMRC Individual Employment contract: request must be an "
-            "IndividualEmploymentRequestIntent"
-        )
+    _request_binding_for(request)
 
     status = _require_exact_int(status_code, "status_code")
     if status not in _DOCUMENTED_STATUSES:
@@ -544,7 +950,6 @@ def observe_individual_employment_response(
             "application/json"
         )
 
-    tax_year = request.tax_year
     if status == HMRC_INDIVIDUAL_EMPLOYMENT_SUCCESS_STATUS:
-        return _observe_employment_history(tax_year, status, payload)
-    return _observe_employment_error(tax_year, status, payload)
+        return _observe_employment_history(request, status, payload)
+    return _observe_employment_error(request, status, payload)

@@ -52,6 +52,8 @@ from reserved.providers.hmrc_individual_employment_contract import (
     RESERVED_DEFENSIVE_MAX_UNKNOWN_KEYS,
     EmploymentHistoryObservation,
     EmploymentRecordObservation,
+    HMRCIndividualEmploymentContractError,
+    validate_employment_history_observation,
 )
 
 # ── Reserved defensive policy bounds (NOT HMRC wire facts) ──────────────────
@@ -85,12 +87,16 @@ _SOURCE_RECORD_INSTANCE_FIELDS = frozenset(
 )
 _SOURCE_OBSERVATION_INSTANCE_FIELDS = frozenset(
     {
+        "request",
+        "_request_binding",
+        "_source_binding",
         "tax_year",
         "status_code",
         "employments",
         "completeness",
         "absent_fields",
         "unknown_fields",
+        "_observation_integrity",
     }
 )
 
@@ -326,6 +332,17 @@ def _validate_source_observation(observation: Any) -> EmploymentHistoryObservati
     _validate_exact_instance_state(
         observation, _SOURCE_OBSERVATION_INSTANCE_FIELDS, "source"
     )
+
+    # Re-run the source contract's complete request/observation proof before
+    # reading any translatable value. This checks exact built-in state and
+    # canonical constants before equality could dispatch to hostile objects.
+    try:
+        validate_employment_history_observation(observation)
+    except HMRCIndividualEmploymentContractError as exc:
+        raise HMRCIndividualEmploymentSourceEvidenceError(
+            "HMRC Individual Employment source evidence: source request binding "
+            "is invalid"
+        ) from exc
 
     tax_year = _require_exact_str(observation.tax_year, "tax_year")
     if _TAX_YEAR_RE.fullmatch(tax_year) is None:

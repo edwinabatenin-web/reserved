@@ -14,8 +14,8 @@ transport adapter, a parser of the full OpenAPI document, a sandbox fixture, a
 credential store, a provider enabler, or a step toward production or customer
 display.
 
-This package makes no claim of source authenticity beyond receipt of an exact
-validated observation. It makes no claim of provider completeness,
+This package makes no claim of provider authenticity beyond receipt of an exact
+validated and internally request-bound observation. It makes no claim of provider completeness,
 cross-endpoint reconciliation, customer fitness, launch readiness or production
 authority.
 
@@ -67,6 +67,16 @@ exact built-in type checks to every container, scalar and nested object, and
 re-checks:
 
 - the source observation's exact type (subclasses and lookalikes rejected);
+- the source contract's canonical producing-request binding, including its
+  opaque per-request correlation token, tax year, fixed method, endpoint template, API
+  name/version, Accept media and scope semantics;
+- coherence among the reconstructed request, retained request binding,
+  independent source-binding snapshot and binding-derived public tax year;
+- the canonical observation-integrity digest over that complete binding and
+  every retained semantic observation value, after exact shape/type validation;
+- process-local observer/reconstructor issuance identity, so unsupported
+  low-level clones and wholesale cross-request transplants are rejected even
+  when success payloads or error status/code semantics are identical;
 - the exact instance-state shape of the non-slotted source observation and
   every nested record (missing or additional attributes rejected by name
   before field translation, without reading an additional attribute's value);
@@ -83,13 +93,32 @@ re-checks:
 - unknown-name safety, length and count bounds and disjointness from documented
   and absent field names.
 
-Hostile or malformed source objects and metadata fail without invoking
-comparison, `repr`, truthiness, hashing, iteration, mapping, attribute or string
-hooks beyond the strictly unavoidable built-in operations. Errors are constant
+The translator invokes the contract's full observation validator before it
+reads any translatable field. Cross-UTR, cross-year, cross-method, cross-path,
+cross-version/media/scope, malformed-binding, observation replacement and
+coordinated request/binding substitution therefore fail closed. Hostile or
+malformed source objects and metadata fail without invoking comparison, `repr`,
+truthiness, hashing, iteration, mapping, attribute or string hooks beyond the
+strictly unavoidable built-in operations. Exact built-in state is checked before
+equality, so a hostile equality hook is not needed to reject a mismatch. Errors are constant
 and non-echoing and never expose a UTR, raw/redacted path, raw payload, provider
 message, employer value, evidence reference or digest input. No UTR, request
 path, raw payload, provider message, HTTP content/body, secret, credential or
 transport state is retained in object state, `repr`, errors or pickle.
+
+The observation-integrity value is an internal, unkeyed deterministic content
+digest for mutation/coherence detection. It is not authentication,
+authorisation, a credential or an unforgeable seal, and does not claim to stop
+trusted in-process code that replaces a complete object graph and recomputes
+all public deterministic state. Its boundary is deterministic rejection of
+inconsistent or partial state substitution before source translation.
+The additional issuance check is process-local identity/coherence state. It
+accepts observer-issued objects and validated pickle reconstructions and rejects
+unsupported low-level object cloning or coordinated transplantation onto a
+different issued instance. It is not durable provenance, authentication,
+attestation or an unforgeable boundary against Python code with arbitrary
+module-internal access; publicly reconstructible pickle state carries no such
+claim.
 
 The additional Reserved defensive bounds used here are local safety limits only,
 not provider facts:

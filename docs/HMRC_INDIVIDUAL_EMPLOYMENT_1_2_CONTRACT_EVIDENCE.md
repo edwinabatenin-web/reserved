@@ -55,10 +55,21 @@ The module exposes only these documented constants:
   `headers`, `body`, authorisation header or redacted-summary surface;
 - validates a 10-digit SA UTR (`^[0-9]{10}$`) and the documented tax-year form
   (`^[0-9]{4}-[0-9]{2}$`) before storing anything;
-- discards the UTR after validation: no raw UTR, UTR-bearing path, name-mangled
-  private attribute or recoverable equivalent is retained on the object;
+- discards the UTR immediately after validation and generates a fresh 256-bit
+  opaque per-request correlation token containing no function of the UTR;
 - exposes only the non-sensitive, validated `tax_year`;
-- is immutable: attribute assignment and deletion raise.
+- is immutable: attribute assignment and deletion raise;
+- retains a private canonical tuple binding the correlation token and tax year to the
+  fixed `GET`, endpoint path template, API name/version, Accept media type and
+  OAuth scope. The sandbox origin is deliberately excluded because a request
+  identity contains no network authority.
+
+The token is internal correlation/integrity state only: it is not authentication,
+authorisation, a credential, customer identity, externally durable identity or
+permission to send. Separately constructed requests always receive distinct
+identities, even when every supplied value is equal. Copy, deepcopy and pickle
+preserve and revalidate the same UTR-free identity. Malformed, subclassed,
+missing or low-level-mutated request state fails closed.
 
 Error text for a malformed UTR or tax year is constant and never echoes the
 supplied value.
@@ -73,7 +84,7 @@ payload)` returns either an `EmploymentHistoryObservation` (200) or an
 Rules applied in order:
 
 1. The request must be exactly an `IndividualEmploymentRequestIntent` (subclasses
-   rejected).
+   rejected), and its complete canonical binding is revalidated.
 2. `status_code` must be exactly a built-in `int` (bool and `int` subclasses
    rejected) and one of `{200, 400, 401, 404}`.
 3. `content_type` must be exactly `application/json`.
@@ -148,6 +159,28 @@ before it can be inspected. The single constant, non-echoing predicate uses
 - The raw response payload is not retained; observations keep only validated
   scalars and field-name sets.
 - All observation objects are frozen and their `repr` is `[REDACTED]`.
+- Success and error observations are constructible only by the observer. Each
+  retains a canonical UTR-free request reconstruction, binding snapshot and
+  independent source-binding snapshot; `tax_year` is derived from that binding.
+- Each also retains a canonical SHA-256 observation-integrity digest covering
+  the complete request binding, observation kind and every retained semantic
+  value. It is recomputed after exact shape/type validation on validation,
+  copy/deepcopy, pickle and source translation. This unkeyed content digest
+  detects inconsistent or partial substitution; it is not authentication or
+  protection against trusted in-process code replacing the complete object
+  graph and recomputing all public deterministic state.
+  In addition, the observer records process-local object identity, observation
+  kind, request binding and digest. Public validation accepts only that issued
+  object (copy/deepcopy return it) or a newly validated and registered pickle
+  reconstruction. Thus an unsupported low-level clone or wholesale transplant
+  from another issued observation fails even when payload semantics are
+  identical. This process-local registry is not durable provenance,
+  cryptographic authentication or a defence against code with arbitrary access
+  to module internals; the pickle reconstructor is validation, not attestation.
+  Exact instance shape and nested built-in state are validated before equality,
+  hashing, copy, deepcopy or pickle reconstruction. Direct construction,
+  `dataclasses.replace`, cross-request replacement and coordinated replacement
+  of the convenient request/binding fields fail closed.
 
 ## Prohibited surfaces
 

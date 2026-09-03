@@ -70,6 +70,58 @@ def _history(*, utr="1234567890", tax_year="2026-27", **record_overrides):
     )
 
 
+def _mutated(observation, **changes):
+    """Model hostile low-level mutation without weakening observer construction."""
+    candidate = object.__new__(type(observation))
+    for name, value in vars(observation).items():
+        object.__setattr__(candidate, name, value)
+    for name, value in changes.items():
+        object.__setattr__(candidate, name, value)
+    return candidate
+
+
+def test_translation_rejects_identical_payload_wholesale_provenance_swap():
+    original = _history(utr="1234567890")
+    other = _history(utr="0987654321")
+    forged = pickle.loads(pickle.dumps(original))
+    for name in (
+        "request", "_request_binding", "_source_binding", "tax_year",
+        "_observation_integrity",
+    ):
+        object.__setattr__(forged, name, getattr(other, name))
+    with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
+        _evidence(observation=forged)
+
+
+def test_translation_rejects_identical_error_semantics_wholesale_swap():
+    def error(utr):
+        return observe_individual_employment_response(
+            _request(utr=utr), status_code=404, content_type="application/json",
+            payload={"code": "NOT_FOUND", "message": "ignored"},
+        )
+
+    original = error("1234567890")
+    other = error("0987654321")
+    forged = pickle.loads(pickle.dumps(original))
+    for name in (
+        "request", "_request_binding", "_source_binding", "tax_year",
+        "_observation_integrity",
+    ):
+        object.__setattr__(forged, name, getattr(other, name))
+    with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
+        _evidence(observation=forged)
+
+
+def test_translation_rejects_unrelated_observation_integrity_value():
+    original = _history(utr="1234567890")
+    other = _history(utr="0987654321")
+    forged = _mutated(
+        original, _observation_integrity=other._observation_integrity
+    )
+    with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
+        _evidence(observation=forged)
+
+
 def _evidence(*, observation=_OBS_UNSET, **overrides):
     kwargs = {
         "evidence_reference": "run-abc123",
@@ -184,9 +236,7 @@ def test_rejects_error_observation():
 
 
 def test_rejects_history_subclass():
-    subclass = _HistorySubclass(
-        tax_year="2026-27", status_code=200, employments=(), completeness="UNVERIFIED"
-    )
+    subclass = object.__new__(_HistorySubclass)
     with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
         _evidence(observation=subclass)
 
@@ -215,40 +265,40 @@ def test_rejects_simple_namespace_lookalike():
 
 def test_revalidates_tax_year_type_and_format():
     for bad in (None, 202627, True, "2026", "2026/27", "2026-275", "abc-ef"):
-        obs = replace(_history(), tax_year=bad)
+        obs = _mutated(_history(), tax_year=bad)
         with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
             _evidence(observation=obs)
 
 
 def test_revalidates_status_code_type_and_success_value():
     for bad in (201, 0, -1, True, "200", None):
-        obs = replace(_history(), status_code=bad)
+        obs = _mutated(_history(), status_code=bad)
         with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
             _evidence(observation=obs)
 
 
 def test_revalidates_completeness_exact_unverified():
     for bad in ("COMPLETE", "VERIFIED", "PARTIAL", "", None, 123):
-        obs = replace(_history(), completeness=bad)
+        obs = _mutated(_history(), completeness=bad)
         with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
             _evidence(observation=obs)
 
 
 def test_revalidates_top_level_absent_fields_empty():
-    obs = replace(_history(), absent_fields=frozenset({"employments"}))
+    obs = _mutated(_history(), absent_fields=frozenset({"employments"}))
     with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
         _evidence(observation=obs)
 
 
 def test_revalidates_employments_container_and_non_empty():
     for bad in ([], (), None, "x", 123, [_history().employments[0]]):
-        obs = replace(_history(), employments=bad)
+        obs = _mutated(_history(), employments=bad)
         with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
             _evidence(observation=obs)
 
 
 def test_revalidates_employment_exact_type():
-    obs = replace(_history(), employments=("not-a-record",))
+    obs = _mutated(_history(), employments=("not-a-record",))
     with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
         _evidence(observation=obs)
 
@@ -256,11 +306,11 @@ def test_revalidates_employment_exact_type():
 def test_revalidates_employer_strings_type_and_bounds():
     record = _history().employments[0]
     for bad in (None, 123, True):
-        obs = replace(_history(), employments=(replace(record, employer_name=bad),))
+        obs = _mutated(_history(), employments=(replace(record, employer_name=bad),))
         with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
             _evidence(observation=obs)
     oversized = replace(record, employer_name="x" * 600)
-    obs = replace(_history(), employments=(oversized,))
+    obs = _mutated(_history(), employments=(oversized,))
     with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
         _evidence(observation=obs)
 
@@ -268,7 +318,7 @@ def test_revalidates_employer_strings_type_and_bounds():
 def test_revalidates_off_payroll_exact_bool_or_none():
     record = _history().employments[0]
     for bad in (1, 0, "true", [], {}):
-        obs = replace(_history(), employments=(replace(record, off_payroll_work_flag=bad),))
+        obs = _mutated(_history(), employments=(replace(record, off_payroll_work_flag=bad),))
         with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
             _evidence(observation=obs)
 
@@ -276,7 +326,7 @@ def test_revalidates_off_payroll_exact_bool_or_none():
 def test_revalidates_off_payroll_presence_absence_coherence():
     record = _history().employments[0]
     # absent flag without recorded absence is incoherent.
-    obs = replace(
+    obs = _mutated(
         _history(),
         employments=(
             replace(record, off_payroll_work_flag=None, absent_fields=frozenset()),
@@ -285,7 +335,7 @@ def test_revalidates_off_payroll_presence_absence_coherence():
     with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
         _evidence(observation=obs)
     # present flag alongside recorded absence is incoherent.
-    obs = replace(
+    obs = _mutated(
         _history(),
         employments=(
             replace(
@@ -301,7 +351,7 @@ def test_revalidates_off_payroll_presence_absence_coherence():
 
 def test_revalidates_absent_field_names():
     record = _history().employments[0]
-    obs = replace(
+    obs = _mutated(
         _history(),
         employments=(replace(record, absent_fields=frozenset({"employerName"})),),
     )
@@ -310,26 +360,26 @@ def test_revalidates_absent_field_names():
 
 
 def test_revalidates_unknown_names_type_safety_bounds_and_disjointness():
-    obs = replace(_history(), unknown_fields=frozenset({123}))
+    obs = _mutated(_history(), unknown_fields=frozenset({123}))
     with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
         _evidence(observation=obs)
 
-    obs = replace(_history(), unknown_fields=frozenset({"employments"}))
+    obs = _mutated(_history(), unknown_fields=frozenset({"employments"}))
     with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
         _evidence(observation=obs)
 
-    obs = replace(_history(), unknown_fields=frozenset({"\x00"}))
+    obs = _mutated(_history(), unknown_fields=frozenset({"\x00"}))
     with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
         _evidence(observation=obs)
 
-    obs = replace(_history(), unknown_fields=frozenset({"x" * 300}))
+    obs = _mutated(_history(), unknown_fields=frozenset({"x" * 300}))
     with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
         _evidence(observation=obs)
 
 
 def test_revalidates_record_unknown_disjointness_with_absent():
     record = _history().employments[0]
-    obs = replace(
+    obs = _mutated(
         _history(),
         employments=(
             replace(
@@ -680,7 +730,7 @@ def test_evidence_and_records_are_deeply_immutable():
 def test_failures_are_constant_and_never_echo_values():
     obs = _history()
     bad_employer = replace(obs.employments[0], employer_name="SECRET-CORP-NAME" + "x" * 600)
-    bad_obs = replace(obs, employments=(bad_employer,))
+    bad_obs = _mutated(obs, employments=(bad_employer,))
     with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError) as exc:
         _evidence(observation=bad_obs, evidence_reference="UNIQUE-REF-999")
     message = str(exc.value)
@@ -689,9 +739,49 @@ def test_failures_are_constant_and_never_echo_values():
 
 
 def test_hostile_source_field_fails_without_invoking_hooks():
-    obs = replace(_history(), tax_year=_Hostile())
+    obs = _mutated(_history(), tax_year=_Hostile())
     with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
         _evidence(observation=obs)
+
+
+def test_translation_rejects_cross_request_and_coordinated_replacement():
+    original = _history(utr="1234567890")
+    replacement = _history(utr="0987654321")
+
+    cross_request = _mutated(original, request=replacement.request)
+    with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
+        _evidence(observation=cross_request)
+
+    coordinated = _mutated(
+        original,
+        request=replacement.request,
+        _request_binding=replacement._request_binding,
+    )
+    with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
+        _evidence(observation=coordinated)
+
+
+def test_translation_rejects_hostile_binding_before_equality_hook():
+    observation = _mutated(_history(), _request_binding=_Hostile())
+    with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
+        _evidence(observation=observation)
+
+
+def test_translation_rejects_cross_method_endpoint_media_version_and_scope():
+    for index, replacement in (
+        (2, "POST"),
+        (3, "/different/{utr}/{taxYear}"),
+        (4, "Different API"),
+        (5, "9.9"),
+        (6, "application/json"),
+        (7, "different:scope"),
+    ):
+        observation = _history()
+        binding = list(observation._request_binding)
+        binding[index] = replacement
+        damaged = _mutated(observation, _request_binding=tuple(binding))
+        with pytest.raises(HMRCIndividualEmploymentSourceEvidenceError):
+            _evidence(observation=damaged)
 
 
 @pytest.mark.parametrize("kwarg", ["evidence_reference", "observed_at", "source_artifact_sha256"])

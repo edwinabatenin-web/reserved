@@ -44,6 +44,8 @@ from reserved.providers.hmrc_individual_employment_contract import (
     IndividualEmploymentRequestIntent,
     build_individual_employment_request,
     observe_individual_employment_response,
+    validate_employment_error_observation,
+    validate_employment_history_observation,
 )
 from reserved.providers.http_boundary import ProviderRequest
 
@@ -843,3 +845,207 @@ def test_adapter_decision_document_preserves_disabled_decision_and_gates():
     assert "do not implement or enable an HMRC HTTP adapter" in text
     assert "implementation_enabled=False" in text
     assert "Individual Employment 1.2" in text
+
+
+# ── Exact redacted request/source identity binding ──────────────────────────
+
+
+def test_request_identity_is_unique_per_construction_and_instance_stable():
+    import copy
+    import pickle
+
+    first = _request(utr="1234567890", tax_year="2026-27")
+    same = _request(utr="1234567890", tax_year="2026-27")
+    other_utr = _request(utr="0987654321", tax_year="2026-27")
+    other_year = _request(utr="1234567890", tax_year="2027-28")
+    assert len({first, same, other_utr, other_year}) == 4
+    for candidate in (copy.copy(first), copy.deepcopy(first), pickle.loads(pickle.dumps(first))):
+        assert candidate == first and hash(candidate) == hash(first)
+    assert b"1234567890" not in pickle.dumps(first)
+
+
+def test_request_contains_neither_utr_nor_old_enumerable_utr_digest():
+    import hashlib
+    import pickle
+
+    utr = "1234567890"
+    request = _request(utr=utr)
+    old_digest = hashlib.sha256(
+        b"reserved:hmrc:individual-employment:1.2:utr:v1\x00" + utr.encode("ascii")
+    ).hexdigest()
+    state_text = repr(vars(request) if hasattr(request, "__dict__") else [
+        object.__getattribute__(request, "_IndividualEmploymentRequestIntent__binding"),
+        object.__getattribute__(request, "_IndividualEmploymentRequestIntent__tax_year"),
+    ])
+    serialized = pickle.dumps(request)
+    assert utr not in state_text and utr.encode() not in serialized
+    assert old_digest not in state_text and old_digest.encode() not in serialized
+
+
+def test_observations_bind_success_and_error_to_exact_request_without_utr():
+    import copy
+    import pickle
+
+    request = _request(utr="1234567890")
+    history = observe_individual_employment_response(
+        request, status_code=200, content_type="application/json",
+        payload=_success_payload(_employment()),
+    )
+    error = observe_individual_employment_response(
+        request, status_code=404, content_type="application/json",
+        payload={"code": "NOT_FOUND", "message": "1234567890"},
+    )
+    for observation in (history, error):
+        assert observation.request == request
+        assert observation.tax_year == request.tax_year
+        assert "1234567890" not in repr(observation)
+        assert b"1234567890" not in pickle.dumps(observation)
+        assert copy.copy(observation) == observation
+        assert copy.deepcopy(observation) == observation
+        assert pickle.loads(pickle.dumps(observation)) == observation
+
+
+def test_observer_only_construction_replace_and_coordinated_substitution_fail_closed():
+    import copy
+    from dataclasses import replace
+
+    history = _observe(utr="1234567890")
+    other = _observe(utr="0987654321")
+    with pytest.raises(TypeError):
+        EmploymentHistoryObservation()
+    with pytest.raises(TypeError):
+        replace(history, tax_year="2027-28")
+
+    forged = object.__new__(EmploymentHistoryObservation)
+    for name, value in vars(history).items():
+        object.__setattr__(forged, name, value)
+    object.__setattr__(forged, "request", other.request)
+    object.__setattr__(forged, "_request_binding", other._request_binding)
+    with pytest.raises(HMRCIndividualEmploymentContractError):
+        copy.copy(forged)
+
+
+@pytest.mark.parametrize("kind", ["success", "error"])
+def test_identical_semantics_wholesale_provenance_swap_fails_all_paths(kind):
+    import copy
+    import pickle
+
+    validator = (validate_employment_history_observation if kind == "success"
+                 else validate_employment_error_observation)
+
+    for clone_kind in ("low-level", "copy", "deepcopy", "pickle"):
+        original = (_observe() if kind == "success" else _observe(
+            status_code=404, payload={"code": "NOT_FOUND", "message": "x"}
+        ))
+        other = (_observe(utr="0987654321", payload=_success_payload(_employment()))
+                 if kind == "success" else _observe(
+                     status_code=404,
+                     payload={"code": "NOT_FOUND", "message": "different ignored text"},
+                     utr="0987654321",
+                 ))
+        if clone_kind == "low-level":
+            forged = object.__new__(type(original))
+            for name, value in vars(original).items():
+                object.__setattr__(forged, name, value)
+        elif clone_kind == "copy":
+            forged = copy.copy(original)
+        elif clone_kind == "deepcopy":
+            forged = copy.deepcopy(original)
+        else:
+            forged = pickle.loads(pickle.dumps(original))
+
+        for name in (
+            "request", "_request_binding", "_source_binding", "tax_year",
+            "_observation_integrity",
+        ):
+            object.__setattr__(forged, name, getattr(other, name))
+        for operation in (validator, copy.copy, copy.deepcopy, pickle.dumps):
+            with pytest.raises(HMRCIndividualEmploymentContractError):
+                operation(forged)
+
+
+@pytest.mark.parametrize("kind", ["success", "error"])
+def test_unrelated_observation_integrity_value_is_rejected(kind):
+    import copy
+
+    first = (_observe() if kind == "success" else
+             _observe(status_code=404, payload={"code": "NOT_FOUND", "message": "x"}))
+    second = (_observe(utr="0987654321") if kind == "success" else
+              _observe(status_code=404, payload={"code": "NOT_FOUND", "message": "x"},
+                       utr="0987654321"))
+    object.__setattr__(first, "_observation_integrity", second._observation_integrity)
+    with pytest.raises(HMRCIndividualEmploymentContractError):
+        copy.copy(first)
+
+
+@pytest.mark.parametrize("field,replacement", [
+    ("employments", (EmploymentRecordObservation("999/ZZ99999", "Other", True,
+                                                  frozenset(), frozenset({"extra"})),)),
+    ("unknown_fields", frozenset({"anotherTopLevel"})),
+])
+def test_each_success_payload_component_is_integrity_bound(field, replacement):
+    history = _observe(payload=_success_payload(
+        _employment(offPayrollWorkFlag=False), originalTopLevel="ignored"
+    ))
+    object.__setattr__(history, field, replacement)
+    with pytest.raises(HMRCIndividualEmploymentContractError):
+        validate_employment_history_observation(history)
+
+
+@pytest.mark.parametrize("field,replacement", [
+    ("employer_paye_reference", "999/ZZ99999"),
+    ("employer_name", "Other Ltd"),
+    ("off_payroll_work_flag", True),
+    ("unknown_fields", frozenset({"differentUnknown"})),
+])
+def test_each_retained_employment_value_is_integrity_bound(field, replacement):
+    history = _observe(payload=_success_payload(
+        _employment(offPayrollWorkFlag=False, originalUnknown="ignored")
+    ))
+    original = history.employments[0]
+    record = EmploymentRecordObservation(**{
+        **vars(original), field: replacement,
+    })
+    object.__setattr__(history, "employments", (record,))
+    with pytest.raises(HMRCIndividualEmploymentContractError):
+        validate_employment_history_observation(history)
+
+
+def test_retained_employment_absence_is_integrity_bound():
+    history = _observe(payload=_success_payload(_employment()))
+    original = history.employments[0]
+    record = EmploymentRecordObservation(
+        original.employer_paye_reference, original.employer_name, False,
+        frozenset(), original.unknown_fields,
+    )
+    object.__setattr__(history, "employments", (record,))
+    with pytest.raises(HMRCIndividualEmploymentContractError):
+        validate_employment_history_observation(history)
+
+
+def test_each_error_payload_component_is_integrity_bound():
+    error = _observe(status_code=400,
+                     payload={"code": "SA_UTR_INVALID", "message": "x", "original": 1})
+    object.__setattr__(error, "error_code", "TAX_YEAR_INVALID")
+    with pytest.raises(HMRCIndividualEmploymentContractError):
+        validate_employment_error_observation(error)
+
+
+@pytest.mark.parametrize("index,replacement", [
+    (0, "not-an-exact-opaque-token"),
+    (2, "POST"),
+    (3, "/different/{utr}/{taxYear}"),
+    (4, "Different API"),
+    (5, "9.9"),
+    (6, "application/json"),
+    (7, "different:scope"),
+])
+def test_request_rejects_cross_semantics_and_malformed_binding(index, replacement):
+    import copy
+
+    request = _request()
+    binding = list(object.__getattribute__(request, "_IndividualEmploymentRequestIntent__binding"))
+    binding[index] = replacement
+    object.__setattr__(request, "_IndividualEmploymentRequestIntent__binding", tuple(binding))
+    with pytest.raises(HMRCIndividualEmploymentContractError):
+        copy.copy(request)
