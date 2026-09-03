@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Plans — Reserved™{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <p class="eyebrow">Reserved plans</p>
+        <h1>Choose the cadence that suits you</h1>
+        <p>These are Reserved's initial subscription plans.</p>
+    </div>
+</section>
+
+<section class="panel" aria-label="Reserved subscription prices">
+    {{ billing_plans_fragment }}
+</section>
+
+<section class="panel" aria-labelledby="w10-preview-availability-heading">
+    <h2 id="w10-preview-availability-heading">Preview availability</h2>
+    <p>Purchasing a plan or changing access is not available in this preview.</p>
+</section>
+{% endblock %}

@@ -44,6 +44,7 @@ from flask import (
     Blueprint, abort, g, jsonify, redirect, render_template,
     request, session, url_for,
 )
+from markupsafe import Markup
 
 from reserved.auth import (
     DEMO_CLERK_ID, DEMO_DISPLAY, DEMO_EMAIL,
@@ -68,6 +69,7 @@ from reserved.database import (
 )
 from reserved.extensions import csrf
 from reserved.matching.engine import MatchingEngine
+from reserved.billing.contracts import INITIAL_BILLING_AUTHORITY
 from reserved.providers.banking.classifier import TransactionCategory
 from reserved.providers.banking.ingestion import (
     get_demo_transactions,
@@ -76,6 +78,8 @@ from reserved.providers.banking.ingestion import (
 )
 from reserved.providers.banking.yapily import YapilyClient
 from reserved.services.dashboard import build_dashboard, DEFAULT_PROFILE
+from reserved.services.w10_billing_page import render_w10_billing_plans_fragment
+from reserved.services.w10_billing_presentation import present_w10_billing_presentation
 from reserved.tax_year_context import UnsupportedTaxYear, configured_tax_year, resolve_tax_year
 
 log = logging.getLogger(__name__)
@@ -315,6 +319,52 @@ def logout():
 
 
 # ── Protected page routes ─────────────────────────────────────────────────────
+
+def _bind_w10_plan_fragment(
+    authority: object = INITIAL_BILLING_AUTHORITY,
+    presenter: object = present_w10_billing_presentation,
+    renderer: object = render_w10_billing_plans_fragment,
+    trusted_html_type: type = Markup,
+):
+    """Bind the route to reviewed S6A/S6B collaborators and fixed authority."""
+    closed_fragment = trusted_html_type(renderer(None))  # type: ignore[operator]
+
+    def fragment() -> Markup:
+        try:
+            presentation = presenter(authority)  # type: ignore[operator]
+            return trusted_html_type(renderer(presentation))  # type: ignore[operator]
+        except Exception:
+            return closed_fragment
+
+    return fragment
+
+
+_w10_plan_fragment = _bind_w10_plan_fragment()
+
+
+def _bind_w10_billing_plans_route(
+    fragment_supplier: object,
+    template_renderer: object,
+):
+    """Keep trusted route collaborators in closure state, never defaults."""
+
+    def billing_plans():
+        """Show settled launch prices without enabling any billing action."""
+        return template_renderer(  # type: ignore[operator]
+            "v2/plans.html",
+            billing_plans_fragment=fragment_supplier(),  # type: ignore[operator]
+        )
+
+    return billing_plans
+
+
+billing_plans = _bind_w10_billing_plans_route(_w10_plan_fragment, render_template)
+billing_plans = require_auth(billing_plans)
+# ``require_auth`` uses functools.wraps. Its mutable introspection pointer is
+# not needed by Flask and must not expose a route-handler substitution path.
+billing_plans.__dict__.pop("__wrapped__", None)
+billing_plans = v2.get("/plans")(billing_plans)
+
 
 @v2.get("/")
 @require_auth
