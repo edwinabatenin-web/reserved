@@ -1,0 +1,5 @@
+{% if model %}<section role="status" aria-live="polite" aria-atomic="true" aria-labelledby="service-status-heading">
+  <h2 id="service-status-heading">{{ model[0] }}</h2>
+  <p>{{ model[1] }}</p>
+  <p>{{ model[2] }}</p>
+</section>{% endif %}
