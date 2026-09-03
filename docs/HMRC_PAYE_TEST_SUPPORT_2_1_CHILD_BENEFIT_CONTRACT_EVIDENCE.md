@@ -1,87 +1,143 @@
 # HMRC PAYE Test Support 2.1 Child Benefit contract evidence
 
-Status: **implementation-derived candidate awaiting independent review**.
-Date: **2 September 2026**.
+Status: **corrected candidate awaiting independent re-review**.
+Date: **3 September 2026**.
 
 ## Implemented boundary
 
-This candidate implements a dependency-free, network-inert typed value contract
-for the documented request and HTTP 201 response of:
+This dependency-free, network-inert value contract covers the documented HTTP
+201 result of `createChildBenefitEntitlementTestData`. Provider facts remain
+grounded in `HMRC_PAYE_TEST_SUPPORT_2_1_ENDPOINT_EVIDENCE.md`.
 
-`POST /individual-paye-test-support/sa/{utr}/child-benefit-entitlement/annual-summary/{taxYear}`
+Each request receives a fresh 256-bit process-generated opaque correlation
+identity after its ten-ASCII-digit UTR is validated and discarded. The
+canonical UTR-free binding contains the exact tax year; scenario
+omission/presence/value; operation ID; POST method; sandbox origin; path
+template; API version; Accept and JSON media types; client-credentials grant;
+and empty-scope fact. Even requests with identical semantic inputs—and requests
+whose discarded UTRs differ—therefore have distinct identities.
 
-Provider facts come only from the authoritative local
-`docs/HMRC_PAYE_TEST_SUPPORT_2_1_ENDPOINT_EVIDENCE.md` capture. The implementation:
+HTTP observations are observer-constructed only. The observer first fully
+revalidates the exact request object, then checks exact built-in status 201
+before content type or payload. It retains the exact request and matching
+request/source bindings, request facts, HTTP status and content type,
+`expectedStatus`, `expectedJson` omission/presence and parsed object,
+entitlement numeric type/value/Decimal sign and scale, bounded unknown names at
+both object layers, and `UNVERIFIED` completeness. Unknown values are neither
+inspected nor retained. Existing literal-status, response-ordering, open-schema
+and local defensive-bound semantics remain unchanged; no scenario-to-response
+or HICBC/product interpretation is added.
 
-- validates a ten-ASCII-digit UTR and `YYYY-YY` tax year, then immediately
-  discards the UTR;
-- preserves tax year, scenario omission/presence and the three documented
-  scenario values in an immutable, non-sendable request intent;
-- accepts only an exact built-in integer HTTP status `201`, checking status
-  before content type or body;
-- requires an exact built-in integer response `expectedStatus` and preserves it
-  literally without imposing a scenario-to-response relationship;
-- distinguishes omitted `expectedJson` from a present object and rejects an
-  explicit null;
-- when present, requires exact `childBenefitEntitlement` numeric evidence as a
-  built-in `int` or finite `Decimal`, retaining it without coercion or rounding;
-- preserves bounded, safe unknown member names at response and `expectedJson`
-  layers without retaining or traversing their values; and
-- binds every response observation to the validated request intent's retained
-  tax-year and scenario facts, including direct construction and replacement;
-  the request is required at construction but is not retained; and
-- validates every response object member name as an exact built-in string
-  before classifying it as documented or unknown.
+The public `validate_child_benefit_create_response_observation` function checks
+exact type and exact low-level state before reading retained fields. Raw state
+shape and key types are validated without hashing, equality or iteration over
+hostile keys. It then revalidates request/source coherence, all field
+invariants, a canonical SHA-256 integrity digest over every retained semantic
+value, and a process-local weak issuance record. Equality, hashing,
+representation, copying and serialization all enter this validation boundary.
+Every public field read re-enters the same boundary, so forged low-level state
+is not returned to callers. Direct construction, dataclass replacement,
+subclasses, malformed state and unsupported low-level clones fail closed. The
+public validator captures the same private `state` collaborator in the
+response-observation closure at construction time, so rebinding the
+module-global `_state` cannot replace it.
 
-Local defensive limits reject excessive object members, unknown names, name
-lengths, integer magnitude, Decimal coefficient size, Decimal fractional places
-and Decimal magnitude. These limits are safety policy only. They are not HMRC
-amount, precision, scale, range or sign rules.
+The exported `ChildBenefitExpectedJsonObservation` carries its own canonical
+SHA-256 integrity digest and process-local weak issuance record, matching the
+enclosing response. Its identity, validation and reconstruction collaborators
+are captured in private closure state at construction time, so rebinding the
+module-global `_json_identity` (or `_json_state`, `_digest`, `_amount`,
+`_names`, `_exact`, `_number`, `_new_json` or `_restore_json`) cannot replace
+them. The digest closure likewise captures the genuine `hashlib.sha256` and
+`json.dumps` callables (not the `hashlib`/`json` modules), so rebinding
+`hashlib`, `json`, `hashlib.sha256` or `json.dumps` cannot substitute a forged
+digest or serialization anywhere in the nested validation, equality, hash,
+repr, copy, deepcopy, reduce or reconstruction path. Every read, equality in
+both operand directions, hash, repr, copy and
+deepcopy revalidates raw state shape and key types without hashing, then
+recomputes the digest and compares it against the registered issuance. Direct
+low-level mutation between two otherwise-valid states (entitlement value,
+unknown-name presence or name, or whole-state transplantation) therefore fails
+closed before any value is returned. Pickle `__reduce__` revalidates through the
+same closure and carries the source's issued integrity; reconstruction then
+revalidates that the supplied values match the exact originally issued semantic
+identity and refuses to register altered values as a new issuance. Standard
+shallow/deep copy validates and returns the same immutable object. These
+mechanisms preserve coherence but do not make untrusted pickle data safe.
 
-All retained value objects validate their invariants in public constructors.
-Response `dataclasses.replace` must re-enter through a freshly supplied exact
-validated request intent; free-floating request identity fields are not public
-constructor or replacement inputs. Standard copy, deep-copy and pickle paths
-retain no request or UTR and preserve the already validated retained facts.
-Request `replace` must re-enter via a newly supplied, validated UTR because no
-UTR is retained.
+The exported `ChildBenefitCreateResponseObservation` enforces the same
+discipline through its own closure. Its identity, validation and reconstruction
+collaborators are captured in private closure state at construction time
+(`_exact`, `_integer`, `_names`, `_request_binding`, `_valid_binding`,
+`_restore_request`, `_new_observation` and `_restore_observation`), so rebinding
+any of those module-global helper names cannot replace them. The request helpers
+`_request_binding` and `_restore_request` also capture the genuine
+`_valid_binding` collaborator directly, so validating and reconstructing a raw
+request binding runs through that bound capability rather than a rebindable
+module global. The nested
+`ChildBenefitExpectedJsonObservation` collaborators are passed in as the nested
+closure's own captured `_json_state`, `_json_canonical` and `_json_identity`
+rather than re-read from the module. The digest closure captures the genuine
+`hashlib.sha256` and `json.dumps` callables (not the `hashlib`/`json` modules),
+so rebinding `hashlib`, `json`, `hashlib.sha256` or `json.dumps` cannot
+substitute a forged digest or serialization anywhere in the outer validation,
+equality, hash, repr, copy, deepcopy, reduce or reconstruction path. Every
+public read, equality in both operand directions, hash, repr, copy and deepcopy
+revalidates raw state shape and key types without hashing, then recomputes the
+digest and compares it against the registered issuance. Direct low-level
+mutation of `expected_status` or any retained outer field between two
+otherwise-valid states therefore fails closed before any value is returned.
+Pickle `__reduce__` revalidates through the same closure and carries the
+source's issued `_observation_integrity`; reconstruction then revalidates that
+the supplied binding, status, payload/presence and unknown names match that
+exact originally issued outer semantic identity before registration, refusing
+altered values as a new issuance.
+
+## Security and provenance limits
+
+The correlation identity is unrelated to, and not derived from, the discarded
+UTR. No raw UTR, UTR hash, encoding, path or other deterministic/enumerable UTR
+identity is retained. Error messages are constant and do not echo input.
+
+The token, digest and issuance registry provide process-local detection of
+mutation, context relabelling and substitution through supported public use.
+They are **not** provider authenticity, durable provenance, authorisation,
+attestation, replay prevention or a cryptographic trust boundary. Python module
+privacy is not a security boundary: arbitrary code trusted with module-internal
+access can also alter the registry or call private constructors. Issuance is not
+durable across serialization or process boundaries; pickle reconstruction
+creates a newly validated process-local issuance record.
+
+This module has no HTTP client, credential handling, persistence, sandbox or
+production execution, route, activation surface, payment capability, HICBC
+calculation or product mapping. It establishes no subscription, provider access,
+fixture visibility, replacement/reset semantics or launch readiness.
 
 ## Verification performed
 
-Commands used `PYTHONDONTWRITEBYTECODE=1`; pytest used `-p no:cacheprovider`.
+Using `PYTHONDONTWRITEBYTECODE=1` and pytest `-p no:cacheprovider`, the focused
+Child Benefit suite passed **135 tests**. The affected PAYE Test Support
+Income/Employment/Tax/Benefits/Winter Fuel, HICBC isolation/evidence,
+PAYE-evidence and provider HTTP-boundary matrix passed **782 tests**. The
+focused suite plus that matrix together passed **917 tests**. AST syntax
+validation and exact path/status/hash/diff checks also passed.
 
-- Focused contract suite:
-  `python3 -m pytest -p no:cacheprovider tests/test_hmrc_paye_test_support_child_benefit_contract.py -q`
-  — **69 passed**.
-- Compatibility matrix:
-  `python3 -m pytest -p no:cacheprovider tests/test_provider_http_boundary.py tests/test_hicbc_isolation.py tests/test_hicbc_bounded_evidence_adequacy.py tests/test_paye_evidence_capture.py -q`
-  — **124 passed**.
-- Complete local suite:
-  `python3 -m pytest -p no:cacheprovider -q`
-  — **4,272 passed** (the exact count was confirmed by collection after the
-  successful run; no test suite was rerun to derive it).
+The focused adversarial suite covers all scenario states, identical and
+different request instances, request/source/integrity substitution, all retained
+response semantics, exact numeric type and Decimal scale, unknown names,
+observer ordering, hostile values/hooks, armed keys, direct low-level reads,
+both equality operand directions, lifecycle operations, malformed state,
+valid-to-valid low-level mutation and whole-state transplantation, helper/global
+rebinding, transitive `hashlib`/`json` module and attribute rebinding, stateful
+old/new digest laundering and reconstruction-identity laundering, UTR absence and
+architectural isolation.
 
-The focused tests cover scenario enumeration/default omission, explicit-null
-rejection, path shapes and UTR disposal, status typing and non-201 body
-non-traversal, request/response binding, optional-object presence, required
-members, exact numeric preservation/rejection, both open-schema layers,
-hostile unknown values, unsafe names, lifecycle coherence, and absence of
-network, credential, persistence, activation and product-engine imports. They
-also cover documented-name string subclasses at both object layers, controlled
-hostile-name classification, required exact request construction and response
-replacement through a supplied exact validated request intent.
-
-## Limitations and activation gates
-
-This candidate is a parser/value contract only. It does not make an HMRC call,
-hold credentials, create a test user, persist data, calculate HICBC, map to a
-canonical product value, activate a provider, or establish production access.
-It supplies no endpoint-specific error body or named OAuth scope. It does not
-establish re-POST replacement/reset semantics, visibility timing, read-side
-availability, or that an Individual Benefits read will return a created fixture.
-
-No sandbox verification, provider activation, launch readiness or independent
-assurance is claimed. Subscription approval, credential custody, transport,
-provider execution, read-side verification, operational controls and review of
-the exact uncommitted diff remain gated. Independent owning-task review is
-required before this evidence can be accepted.
+The complete suite did not pass (`5413 passed, 19 failed, 136 errors,
+7 subtests passed`). Its sole root cause was the unrelated active W8 artefact
+compatibility gate: the existing
+`reserved/engines/accounting_tax_handoff.py` absolute import from
+`reserved.providers.accounting.contracts` is rejected as non-self-contained.
+That build failure cascaded into artefact, assurance-metadata, engine-adapter,
+release-gate and RW3 tests. This candidate does not modify either W8 path and no
+metadata was regenerated. Independent review of the exact uncommitted diff
+remains required.
