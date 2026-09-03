@@ -143,6 +143,7 @@ def test_live_producer_result_maps_all_supported_facts_once_as_local_estimate():
     result = project(value)
     assert result is not None
     assert result.presentation_input.evidence is EvidenceClassification.QUALIFIED_LOCAL_ESTIMATE
+    assert result.tax_year == value.tax_year == "2026/27"
     assert result.presentation_input.annual_liability == value.final_self_assessment_liability
     assert result.evidence_references == references(value)
     assert {item.kind for item in result.presentation_input.obligations} == {
@@ -255,6 +256,18 @@ def test_nested_amount_date_and_funding_mutations_fail_closed():
     funding_refs = references(funding_value)
     object.__setattr__(funding_value.funding_position, "total_required", Decimal("1.00"))
     assert project(funding_value, evidence_references=funding_refs) is None
+
+
+def test_tax_year_is_derived_only_from_live_producer_and_mutation_fails_closed():
+    import inspect
+
+    assert "tax_year" not in inspect.signature(
+        compose_w8_annual_cash_customer_result
+    ).parameters
+    value = compose()
+    refs = references(value)
+    object.__setattr__(value, "tax_year", "2025/26")
+    assert project(value, evidence_references=refs) is None
 
 
 def test_exact_complete_evidence_reference_tuple_is_required():

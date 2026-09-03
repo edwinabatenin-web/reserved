@@ -51,6 +51,7 @@ _SOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
 # A derived content identity is not an opaque source reference; substituting it
 # for one is a provenance mismatch.
 _DIGEST_REFERENCE = re.compile(r"^[a-z-]+:sha256-[0-9a-f]{64}$")
+_TAX_YEAR = re.compile(r"^[0-9]{4}/[0-9]{2}$")
 
 # Fixed machine-readable constraints. They are retained verbatim and must not
 # be removed or weakened by any caller.
@@ -97,6 +98,7 @@ _NATION_BY_NAME = {member.value: member for member in SupportedNation}
 class W8CustomerResult:
     """Immutable provider-neutral public result projection.
 
+    ``tax_year`` preserves the exact annual/cash producer period.
     ``user_id`` and ``business_id`` bind ownership for identity and provenance
     checks only; they are never customer copy. ``view`` is the exact reviewed
     W2 customer-language view. ``presentation_input`` retains the exact,
@@ -108,6 +110,7 @@ class W8CustomerResult:
 
     contract_version: str
     nation: SupportedNation
+    tax_year: str
     user_id: str
     business_id: str
     presentation_input: W2PresentationInput
@@ -273,7 +276,24 @@ def _validate_fixed_constraints(
         raise ValueError(f"public result {field_name} were altered")
 
 
-def _validate_result_state(value: object) -> W8CustomerResult:
+def _validate_tax_year(
+    value: object,
+    *,
+    _pattern: re.Pattern[str] = _TAX_YEAR,
+    _integer: type[int] = int,
+) -> str:
+    """Require conventional UK ``YYYY/YY`` using import-bound primitives."""
+    if type(value) is not str or not _pattern.fullmatch(value):
+        raise ValueError("invalid public result tax year")
+    if _integer(value[-2:]) != (_integer(value[:4]) + 1) % 100:
+        raise ValueError("invalid public result tax year")
+    return value
+
+
+def _validate_result_state(
+    value: object,
+    _tax_year_validator: object = _validate_tax_year,
+) -> W8CustomerResult:
     """Validate all public result state without relying on the private seal."""
     if type(value) is not W8CustomerResult:
         raise ValueError("public result must be an exact W8CustomerResult")
@@ -281,6 +301,7 @@ def _validate_result_state(value: object) -> W8CustomerResult:
         raise ValueError("unsupported public result contract version")
     if type(value.nation) is not SupportedNation:
         raise ValueError("unsupported public result geography")
+    _tax_year_validator(value.tax_year)  # type: ignore[operator]
     _validate_owner_reference(value.user_id, "user")
     _validate_owner_reference(value.business_id, "business")
     if value.user_id == value.business_id:
@@ -313,6 +334,7 @@ def _result_components(value: W8CustomerResult) -> tuple[object, ...]:
     return (
         value.contract_version,
         value.nation,
+        value.tax_year,
         value.user_id,
         value.business_id,
         value.presentation_input,
@@ -363,13 +385,15 @@ def _validate_evidence_references(value: object) -> None:
         seen.add(item)
 
 
-def compose_w8_customer_result(
+def _compose_w8_customer_result_impl(
     value: W2PresentationInput,
     *,
     nation: str,
+    tax_year: str,
     user_id: str,
     business_id: str,
     evidence_references: tuple[str, ...],
+    _tax_year_validator: object,
 ) -> W8CustomerResult | None:
     """Build a public result projection, or return ``None`` when W2 fails closed.
 
@@ -386,6 +410,7 @@ def compose_w8_customer_result(
     view = present_w2_customer_language(value)
 
     canonical_nation = _validate_nation(nation)
+    canonical_tax_year = _tax_year_validator(tax_year)  # type: ignore[operator]
     _validate_owner_reference(user_id, "user")
     _validate_owner_reference(business_id, "business")
     if user_id == business_id:
@@ -395,6 +420,7 @@ def compose_w8_customer_result(
     return W8CustomerResult(
         CONTRACT_VERSION,
         canonical_nation,
+        canonical_tax_year,
         user_id,
         business_id,
         value,
@@ -403,6 +429,36 @@ def compose_w8_customer_result(
         _LIMITATIONS,
         _PROHIBITED_USES,
     )
+
+
+def _make_public_composer(implementation, tax_year_validator):
+    """Capture the tax-year authority outside mutable module-global names."""
+
+    def compose_w8_customer_result(
+        value: W2PresentationInput,
+        *,
+        nation: str,
+        tax_year: str,
+        user_id: str,
+        business_id: str,
+        evidence_references: tuple[str, ...],
+    ) -> W8CustomerResult | None:
+        return implementation(
+            value,
+            nation=nation,
+            tax_year=tax_year,
+            user_id=user_id,
+            business_id=business_id,
+            evidence_references=evidence_references,
+            _tax_year_validator=tax_year_validator,
+        )
+
+    return compose_w8_customer_result
+
+
+compose_w8_customer_result = _make_public_composer(
+    _compose_w8_customer_result_impl, _validate_tax_year
+)
 
 
 def _canonical(value: object) -> object:

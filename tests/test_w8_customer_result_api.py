@@ -68,6 +68,7 @@ def _compose_result(**overrides) -> W8CustomerResult:
     base = dict(
         value=_w2_input(),
         nation="England",
+        tax_year="2026/27",
         user_id=USER_ID,
         business_id=BUSINESS_ID,
         evidence_references=("annual:source-england-001", "cash:obligation-england-001"),
@@ -250,8 +251,35 @@ def test_schema_version_nation_and_result_identity_are_preserved_exactly():
     assert parsed["schema_version"] == PAYLOAD_SCHEMA_VERSION
     assert parsed["nation"] == result.nation.value
     assert parsed["nation"] == SupportedNation.ENGLAND.value
+    assert parsed["tax_year"] == result.tax_year == "2026/27"
     assert parsed["w8_customer_result_identity"] == w8_customer_result_identity(result)
     assert _DIGEST_SHAPE.fullmatch(parsed["w8_customer_result_identity"])
+
+
+def test_mutated_or_malformed_result_tax_year_is_refused_atomically():
+    result = _compose_result()
+    object.__setattr__(result, "tax_year", "2027/28")
+    with pytest.raises(ValueError) as exc:
+        _render(result)
+    assert str(exc.value) == PAYLOAD_REFUSED
+
+
+def test_rebound_tax_year_helper_or_grammar_cannot_revalidate_malformed_state(monkeypatch):
+    import reserved.services.w8_customer_result as result_module
+
+    result = _compose_result()
+    object.__setattr__(result, "tax_year", "not-a-tax-year")
+    monkeypatch.setattr(result_module, "_validate_tax_year", lambda value: value)
+    monkeypatch.setattr(result_module, "_TAX_YEAR", re.compile(r".*"))
+    with pytest.raises(ValueError) as exc:
+        _render(result)
+    assert str(exc.value) == PAYLOAD_REFUSED
+
+    malformed = _compose_result()
+    object.__setattr__(malformed, "tax_year", "2026/26")
+    with pytest.raises(ValueError) as exc:
+        _render(malformed)
+    assert str(exc.value) == PAYLOAD_REFUSED
 
 
 def test_every_reviewed_presentation_field_is_preserved_exactly():
@@ -285,6 +313,7 @@ def test_each_supported_nation_is_rendered_without_internal_enum(nation):
     result = compose_w8_customer_result(
         _w2_input(),
         nation=nation,
+        tax_year="2026/27",
         user_id=f"user-{nation.replace(' ', '-').lower()}",
         business_id=f"business-{nation.replace(' ', '-').lower()}",
         evidence_references=("annual:source-england-001",),
@@ -466,6 +495,7 @@ def test_duplicate_obligation_kind_cannot_be_emitted():
     assert compose_w8_customer_result(
         bad,
         nation="England",
+        tax_year="2026/27",
         user_id=USER_ID,
         business_id=BUSINESS_ID,
         evidence_references=("annual:source-england-001",),
@@ -838,6 +868,7 @@ def test_capture_contains_only_immutable_primitives():
     result = _compose_result()
     capture = api._capture_snapshot(result)
     _assert_primitive_only(capture)
+    assert capture[0][2] == result.tax_year
 
 
 def test_mutating_reconstructed_snapshot_view_after_identity_cannot_enter_json():

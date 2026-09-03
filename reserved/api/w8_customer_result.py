@@ -8,7 +8,8 @@ to a fully validated, immutable primitive capture and matched to the exact owner
 pair.
 
 It copies only the reviewed customer-facing W2 view fields (without
-recalculating or reinterpreting them), the supported ``nation``, the
+recalculating or reinterpreting them), the supported ``nation``, the exact
+producer-bound ``tax_year``, the
 deterministic ``w8_customer_result_identity`` and the fixed customer-safe
 ``limitations`` / ``prohibited_uses`` already carried by the reviewed result.
 It never exposes ``user_id``, ``business_id``, ``presentation_input``, raw
@@ -134,6 +135,7 @@ def _capture_snapshot(source):
     scalars = (
         source.contract_version,
         source.nation.value,
+        source.tax_year,
         source.user_id,
         source.business_id,
         tuple(source.evidence_references),
@@ -270,6 +272,7 @@ def _reconstruct_result(capture):
     (
         contract_version,
         nation_value,
+        tax_year,
         user_id,
         business_id,
         evidence_references,
@@ -280,6 +283,7 @@ def _reconstruct_result(capture):
     return _W8CustomerResult(
         contract_version,
         _SupportedNation(nation_value),
+        tax_year,
         user_id,
         business_id,
         _reconstruct_input(input_primitives),
@@ -362,7 +366,7 @@ def _build_renderer(
                 raise ValueError(refused)
 
             (
-                (_contract_version, nation_value, owner_user_id, owner_business_id,
+                (_contract_version, nation_value, tax_year, owner_user_id, owner_business_id,
                  _evidence_references, limitations, prohibited_uses),
                 _input_primitives,
                 view_primitives,
@@ -376,6 +380,7 @@ def _build_renderer(
             graph = {
                 "schema_version": schema_version,
                 "nation": nation_value,
+                "tax_year": tax_year,
                 "w8_customer_result_identity": snapshot_identity,
                 "view": project_view(view_primitives),
                 "limitations": list(limitations),

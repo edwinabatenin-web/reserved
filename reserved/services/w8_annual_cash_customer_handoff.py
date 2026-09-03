@@ -160,6 +160,7 @@ def _make_handoff():
             provenance = provenance_reader(value)
             if type(issued_identity) is not str or type(provenance) is not provenance_type:
                 raise ValueError("annual/cash producer evidence is unsupported")
+            tax_year = raw(value, "tax_year")
 
             status = raw(value, "status")
             if type(status) is not annual_status_type:
@@ -261,6 +262,7 @@ def _make_handoff():
         return public_composer(
             presentation,
             nation=nation,
+            tax_year=tax_year,
             user_id=user_id,
             business_id=business_id,
             evidence_references=evidence_references_for_value,

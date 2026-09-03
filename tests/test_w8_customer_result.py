@@ -62,6 +62,7 @@ def _kwargs(**overrides) -> dict:
     base = dict(
         value=_w2_input(),
         nation="England",
+        tax_year="2026/27",
         user_id="user-england-001",
         business_id="business-england-001",
         evidence_references=("annual:source-england-001", "cash:obligation-england-001"),
@@ -94,6 +95,7 @@ def _direct_result(result: W8CustomerResult, **overrides) -> W8CustomerResult:
     values = dict(
         contract_version=result.contract_version,
         nation=result.nation,
+        tax_year=result.tax_year,
         user_id=result.user_id,
         business_id=result.business_id,
         presentation_input=result.presentation_input,
@@ -113,6 +115,7 @@ def test_supported_nations_yield_result_with_exact_w2_view(nation):
     result = _compose(nation=nation)
     assert isinstance(result, W8CustomerResult)
     assert result.nation is SupportedNation(nation)
+    assert result.tax_year == "2026/27"
     assert result.view == present_w2_customer_language(_w2_input())
     assert result.view.safe_to_present is True
 
@@ -168,6 +171,49 @@ def test_hostile_geography_fails_without_value_leakage(value):
 def test_geography_subclass_is_rejected():
     with pytest.raises(ValueError):
         _compose(nation=_GeographyString("England"))
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, "", "2026", "2026-27", "2026/26", "2026/28", "26/27", "2026/027", True, 2026],
+)
+def test_missing_or_malformed_tax_year_fails_closed(value):
+    with pytest.raises(ValueError, match="tax year"):
+        _compose(tax_year=value)
+
+
+def test_tax_year_subclass_is_rejected():
+    with pytest.raises(ValueError, match="tax year"):
+        _compose(tax_year=_StringSubclass("2026/27"))
+
+
+def test_tax_year_is_bound_into_result_identity():
+    first = _compose(tax_year="2026/27")
+    second = _compose(tax_year="2027/28")
+    assert w8_customer_result_identity(first) != w8_customer_result_identity(second)
+
+
+def test_post_construction_tax_year_mutation_fails_all_identity_validation():
+    result = _compose()
+    object.__setattr__(result, "tax_year", "2027/28")
+    with pytest.raises(ValueError, match="integrity"):
+        w8_customer_result_identity(result)
+
+
+def test_tax_year_helper_and_grammar_rebinding_cannot_issue_malformed_result(monkeypatch):
+    import reserved.services.w8_customer_result as module
+
+    monkeypatch.setattr(module, "_validate_tax_year", lambda value: value)
+    monkeypatch.setattr(module, "_TAX_YEAR", re.compile(r".*"))
+    with pytest.raises(ValueError, match="tax year"):
+        _compose(tax_year="not-a-tax-year")
+
+    valid = _compose()
+    assert valid.tax_year == "2026/27"
+    assert w8_customer_result_identity(copy(valid)) == w8_customer_result_identity(valid)
+    assert w8_customer_result_identity(pickle.loads(pickle.dumps(valid))) == (
+        w8_customer_result_identity(valid)
+    )
 
 
 # ── 3. Ownership binding: missing, conflicting and cross-owner facts fail ────
