@@ -19,17 +19,22 @@ implementation decisions recorded for this contract.
 
 The request boundary accepts an SA UTR (ten ASCII digits), a tax year
 (``^[0-9]{4}-[0-9]{2}$``) and an optional ``scenario``. The raw UTR is
-validated and immediately discarded; only the tax year and scenario
-presence/value are retained. The raw response payload is never retained and no
+validated and immediately discarded; a fresh opaque correlation identity, the
+tax year, scenario presence/value and fixed operation descriptors are retained
+in a canonical UTR-free binding. The raw response payload is never retained and no
 rendered URL/path, credential, authorization header, token or sendable
 header/body is exposed anywhere.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+import secrets
 import unicodedata
-from dataclasses import InitVar, dataclass, field
+import weakref
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 # ── Exact documented constants (provider facts, not Reserved inference) ─────
@@ -96,6 +101,17 @@ _TAX_YEAR_RE = re.compile(r"[0-9]{4}-[0-9]{2}")
 # Private sentinel used only at the build boundary to distinguish "scenario
 # omitted" from an explicit ``None`` (JSON null), which fails closed.
 _SCENARIO_OMITTED = object()
+_REQUEST_BINDING_LENGTH = 14
+_OPAQUE_TOKEN_RE = re.compile(r"[0-9a-f]{64}")
+_INTEGRITY_RE = re.compile(r"[0-9a-f]{64}")
+
+# Process-local coherence records. This registry is deliberately not provider
+# authenticity, durable provenance, authorisation, attestation or replay
+# prevention. Code with arbitrary module-internal access is trusted; Python
+# module privacy is not a security boundary.
+_OBSERVATION_ISSUANCE: dict[
+    int, tuple[weakref.ReferenceType[object], tuple[str, ...], str]
+] = {}
 
 
 class HMRCPayeTestSupportIncomeContractError(ValueError):
@@ -269,46 +285,82 @@ def _require_scenario(scenario: object) -> str:
 # ── Request intent ───────────────────────────────────────────────────────────
 
 
-@dataclass(frozen=True, repr=False)
 class CreateAnnualIncomeSummaryRequestIntent:
     """Frozen, UTR-free intent for the documented annual-summary create.
 
     The construction boundary accepts ``utr``, ``tax_year`` and an optional
     ``scenario``. The raw UTR is validated as exactly ten ASCII digits and
-    immediately discarded. Only the validated tax year and the scenario
-    presence/value are retained. Omitting ``scenario`` (via the private sentinel
+    immediately discarded. A fresh opaque correlation identity, the validated
+    tax year, scenario presence/value and fixed operation facts are retained in
+    one canonical binding. Omitting ``scenario`` (via the private sentinel
     default) records absence; an explicit ``None`` (JSON null) fails closed. The
     intent is not, does not inherit from, and does not convert by default into a
     generic sendable request, and it exposes no rendered URL/path, credential,
     authorization header, token, header map, body or transport. The raw UTR is
-    never present in any field, so it cannot leak through ordinary, private,
+    never present in that binding, so it cannot leak through ordinary, private,
     name-mangled, serialized, copied, equality/hash, representation or conversion
     state.
     """
 
-    utr: InitVar[str]
-    tax_year: str
-    scenario: str | None = _SCENARIO_OMITTED
-    scenario_present: bool = field(init=False, default=False)
+    __slots__ = ("__binding",)
 
-    def __post_init__(self, utr: str) -> None:
+    def __init__(self, *, utr: str, tax_year: str,
+                 scenario: object = _SCENARIO_OMITTED) -> None:
         _require_ascii_utr(utr)
-        tax_year = _require_tax_year(self.tax_year)
-        object.__setattr__(self, "tax_year", tax_year)
-        if self.scenario is _SCENARIO_OMITTED:
-            object.__setattr__(self, "scenario", None)
-            object.__setattr__(self, "scenario_present", False)
+        validated_year = _require_tax_year(tax_year)
+        if scenario is _SCENARIO_OMITTED:
+            present, validated_scenario = False, None
         else:
-            scenario = _require_scenario(self.scenario)
-            object.__setattr__(self, "scenario", scenario)
-            object.__setattr__(self, "scenario_present", True)
+            present, validated_scenario = True, _require_scenario(scenario)
+        object.__setattr__(
+            self, "_CreateAnnualIncomeSummaryRequestIntent__binding",
+            _canonical_request_binding(
+                secrets.token_hex(32), validated_year, present, validated_scenario
+            ),
+        )
+
+    @property
+    def tax_year(self) -> str:
+        return _request_binding_for(self)[1]
+
+    @property
+    def scenario_present(self) -> bool:
+        return _request_binding_for(self)[2] == "present"
+
+    @property
+    def scenario(self) -> str | None:
+        value = _request_binding_for(self)[3]
+        return None if value == "<omitted>" else value
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("CreateAnnualIncomeSummaryRequestIntent is immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("CreateAnnualIncomeSummaryRequestIntent is immutable")
 
     def __repr__(self) -> str:
-        return (
-            "CreateAnnualIncomeSummaryRequestIntent("
-            f"tax_year={self.tax_year!r}, scenario={self.scenario!r}, "
-            f"scenario_present={self.scenario_present!r})"
-        )
+        _request_binding_for(self)
+        return "CreateAnnualIncomeSummaryRequestIntent([REDACTED])"
+
+    def __eq__(self, other: object) -> bool:
+        binding = _request_binding_for(self)
+        if type(other) is not CreateAnnualIncomeSummaryRequestIntent:
+            return NotImplemented
+        return binding == _request_binding_for(other)
+
+    def __hash__(self) -> int:
+        return hash(_request_binding_for(self))
+
+    def __copy__(self):
+        _request_binding_for(self)
+        return self
+
+    def __deepcopy__(self, memo: dict):
+        _request_binding_for(self)
+        return self
+
+    def __reduce__(self):
+        return (_restore_request_intent, (_request_binding_for(self),))
 
 
 def _require_ascii_utr(utr: object) -> None:
@@ -325,6 +377,76 @@ def _require_tax_year(tax_year: object) -> str:
     if _TAX_YEAR_RE.fullmatch(tax_year) is None:
         raise _fail("tax_year must match ^[0-9]{4}-[0-9]{2}$")
     return tax_year
+
+
+def _binding_from_values(
+    token: str, tax_year: str, scenario_present: bool, scenario: str | None
+) -> tuple[str, ...]:
+    return (
+        token,
+        tax_year,
+        "present" if scenario_present else "omitted",
+        scenario if scenario_present else "<omitted>",
+        HMRC_PAYE_TEST_SUPPORT_OPERATION_ID,
+        HMRC_PAYE_TEST_SUPPORT_HTTP_METHOD,
+        HMRC_PAYE_TEST_SUPPORT_SANDBOX_ORIGIN,
+        HMRC_PAYE_TEST_SUPPORT_PATH_TEMPLATE,
+        HMRC_PAYE_TEST_SUPPORT_API,
+        HMRC_PAYE_TEST_SUPPORT_API_VERSION,
+        HMRC_PAYE_TEST_SUPPORT_ACCEPT,
+        HMRC_PAYE_TEST_SUPPORT_JSON_CONTENT_TYPE,
+        HMRC_PAYE_TEST_SUPPORT_OAUTH_GRANT_TYPE,
+        "scopes:<empty>",
+    )
+
+
+def _canonical_request_binding(
+    token: str, tax_year: str, scenario_present: bool, scenario: str | None
+) -> tuple[str, ...]:
+    return _binding_from_values(token, tax_year, scenario_present, scenario)
+
+
+def _validate_request_binding(value: object) -> tuple[str, ...]:
+    if type(value) is not tuple or len(value) != _REQUEST_BINDING_LENGTH:
+        raise _fail("request binding has invalid shape")
+    if any(type(item) is not str for item in value):
+        raise _fail("request binding values must be exact built-in strings")
+    token, tax_year, presence, scenario = value[:4]
+    if _OPAQUE_TOKEN_RE.fullmatch(token) is None:
+        raise _fail("request correlation identity is malformed")
+    _require_tax_year(tax_year)
+    if presence == "omitted" and scenario == "<omitted>":
+        present, scenario_value = False, None
+    elif presence == "present":
+        present, scenario_value = True, _require_scenario(scenario)
+    else:
+        raise _fail("request scenario state is malformed")
+    if value != _binding_from_values(token, tax_year, present, scenario_value):
+        raise _fail("request binding is not canonical")
+    return value
+
+
+def _request_binding_for(request: object) -> tuple[str, ...]:
+    if type(request) is not CreateAnnualIncomeSummaryRequestIntent:
+        raise _fail("request must be an exact CreateAnnualIncomeSummaryRequestIntent")
+    try:
+        binding = object.__getattribute__(
+            request, "_CreateAnnualIncomeSummaryRequestIntent__binding"
+        )
+    except AttributeError:
+        raise _fail("request binding is missing") from None
+    return _validate_request_binding(binding)
+
+
+def _restore_request_intent(
+    binding: tuple[str, ...]
+) -> CreateAnnualIncomeSummaryRequestIntent:
+    canonical = _validate_request_binding(binding)
+    request = object.__new__(CreateAnnualIncomeSummaryRequestIntent)
+    object.__setattr__(
+        request, "_CreateAnnualIncomeSummaryRequestIntent__binding", canonical
+    )
+    return request
 
 
 def build_create_annual_income_summary_request(
@@ -351,7 +473,7 @@ def build_create_annual_income_summary_request(
 # ── Observations ─────────────────────────────────────────────────────────────
 
 
-@dataclass(frozen=True, repr=False)
+@dataclass(frozen=True, repr=False, eq=False)
 class AnnualIncomeEmploymentObservation:
     """Validated facts from one ``employments`` array item."""
 
@@ -365,10 +487,32 @@ class AnnualIncomeEmploymentObservation:
         _require_unknown_names(self.unknown_names, "employment item", _EMPLOYMENT_NAMES)
 
     def __repr__(self) -> str:
+        _employment_protocol_state(self)
         return "AnnualIncomeEmploymentObservation([REDACTED])"
 
+    def __eq__(self, other: object) -> bool:
+        state = _employment_protocol_state(self)
+        if type(other) is not AnnualIncomeEmploymentObservation:
+            return False
+        other_state = _employment_protocol_state(other)
+        return state == other_state
 
-@dataclass(frozen=True, repr=False)
+    def __hash__(self) -> int:
+        return hash(_employment_protocol_state(self))
+
+    def __copy__(self):
+        _employment_protocol_state(self)
+        return self
+
+    def __deepcopy__(self, memo: dict):
+        _employment_protocol_state(self)
+        return self
+
+    def __reduce__(self):
+        return (_restore_employment, _employment_protocol_state(self))
+
+
+@dataclass(frozen=True, repr=False, eq=False)
 class AnnualIncomePensionsBenefitsObservation:
     """Validated facts from ``pensionsAnnuitiesAndOtherStateBenefits``.
 
@@ -391,6 +535,12 @@ class AnnualIncomePensionsBenefitsObservation:
             raise _fail("benefits present_fields must be an exact frozenset")
         if type(absent) is not frozenset:
             raise _fail("benefits absent_fields must be an exact frozenset")
+        for name in present:
+            if type(name) is not str or name not in _BENEFITS_NAMES:
+                raise _fail("benefits present_fields contains an invalid name")
+        for name in absent:
+            if type(name) is not str or name not in _BENEFITS_NAMES:
+                raise _fail("benefits absent_fields contains an invalid name")
         if present & absent:
             raise _fail("benefits present and absent fields must be disjoint")
         if present | absent != _BENEFITS_NAMES:
@@ -410,38 +560,77 @@ class AnnualIncomePensionsBenefitsObservation:
         _require_unknown_names(self.unknown_names, "benefits object", _BENEFITS_NAMES)
 
     def __repr__(self) -> str:
+        _benefits_protocol_state(self)
         return "AnnualIncomePensionsBenefitsObservation([REDACTED])"
 
+    def __eq__(self, other: object) -> bool:
+        state = _benefits_protocol_state(self)
+        if type(other) is not AnnualIncomePensionsBenefitsObservation:
+            return False
+        other_state = _benefits_protocol_state(other)
+        return state == other_state
 
-@dataclass(frozen=True, repr=False)
+    def __hash__(self) -> int:
+        return hash(_benefits_protocol_state(self))
+
+    def __copy__(self):
+        _benefits_protocol_state(self)
+        return self
+
+    def __deepcopy__(self, memo: dict):
+        _benefits_protocol_state(self)
+        return self
+
+    def __reduce__(self):
+        return (_restore_benefits, _benefits_protocol_state(self))
+
+
+@dataclass(frozen=True, repr=False, init=False, eq=False)
 class AnnualIncomeSummaryTestDataObservation:
     """Validated facts from a documented HTTP 201 create response."""
 
-    employments: tuple[AnnualIncomeEmploymentObservation, ...]
-    pensions_benefits: AnnualIncomePensionsBenefitsObservation
-    unknown_names: frozenset[str] = frozenset()
-    completeness: str = HMRC_PAYE_TEST_SUPPORT_COMPLETENESS
+    request: CreateAnnualIncomeSummaryRequestIntent = field(init=False, repr=False)
+    _request_binding: tuple[str, ...] = field(init=False, repr=False)
+    _source_binding: tuple[str, ...] = field(init=False, repr=False)
+    tax_year: str = field(init=False)
+    scenario: str | None = field(init=False)
+    scenario_present: bool = field(init=False)
+    status_code: int = field(init=False)
+    employments: tuple[AnnualIncomeEmploymentObservation, ...] = field(init=False)
+    pensions_benefits: AnnualIncomePensionsBenefitsObservation = field(init=False)
+    unknown_names: frozenset[str] = field(init=False)
+    completeness: str = field(init=False)
+    _observation_integrity: str = field(init=False, repr=False)
 
-    def __post_init__(self) -> None:
-        if type(self.employments) is not tuple:
-            raise _fail("employments must be an exact built-in tuple")
-        if len(self.employments) > _RESERVED_MAX_EMPLOYMENTS:
-            raise _fail("employments exceeds the reserved item bound")
-        for item in self.employments:
-            if type(item) is not AnnualIncomeEmploymentObservation:
-                raise _fail("employments must contain exact employment observations")
-        if type(self.pensions_benefits) is not AnnualIncomePensionsBenefitsObservation:
-            raise _fail(
-                "pensions_benefits must be an exact AnnualIncomePensionsBenefitsObservation"
-            )
-        if type(self.completeness) is not str or self.completeness != HMRC_PAYE_TEST_SUPPORT_COMPLETENESS:
-            raise _fail("completeness must be the exact documented UNVERIFIED value")
-        _require_unknown_names(
-            self.unknown_names, "annual-summary observation", _TOP_LEVEL_NAMES
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        raise TypeError(
+            "AnnualIncomeSummaryTestDataObservation is observer-constructed only"
         )
 
     def __repr__(self) -> str:
+        _observation_state(self)
         return "AnnualIncomeSummaryTestDataObservation([REDACTED])"
+
+    def __eq__(self, other: object) -> bool:
+        state = _observation_state(self)
+        if type(other) is not AnnualIncomeSummaryTestDataObservation:
+            return NotImplemented
+        return state == _observation_state(other)
+
+    def __hash__(self) -> int:
+        return hash(_observation_state(self))
+
+    def __copy__(self):
+        _observation_state(self)
+        return self
+
+    def __deepcopy__(self, memo: dict):
+        _observation_state(self)
+        return self
+
+    def __reduce__(self):
+        state = _observation_state(self)
+        return (_restore_observation, (state[0],) + state[7:-1])
 
 
 # ── Response observation ─────────────────────────────────────────────────────
@@ -516,17 +705,323 @@ def _parse_annual_summary(payload: dict) -> AnnualIncomeSummaryTestDataObservati
     employments = tuple(_parse_employment_item(item) for item in employments_raw)
     benefits = _parse_benefits(obj["pensionsAnnuitiesAndOtherStateBenefits"])
 
-    return AnnualIncomeSummaryTestDataObservation(
-        employments=employments,
-        pensions_benefits=benefits,
-        unknown_names=unknown_names,
-        completeness=HMRC_PAYE_TEST_SUPPORT_COMPLETENESS,
+    # Internal parse carrier only; it is completed, issued and validated by
+    # ``_new_observation`` before it can cross the public observer boundary.
+    parsed = object.__new__(AnnualIncomeSummaryTestDataObservation)
+    object.__setattr__(parsed, "employments", employments)
+    object.__setattr__(parsed, "pensions_benefits", benefits)
+    object.__setattr__(parsed, "unknown_names", unknown_names)
+    return parsed
+
+
+_EMPLOYMENT_STATE = frozenset({
+    "employer_paye_reference", "pay_from_employment", "unknown_names",
+})
+_BENEFITS_STATE = frozenset({
+    "other_pensions_and_retirement_annuities", "incapacity_benefit",
+    "jobseekers_allowance", "seiss_net_paid", "present_fields",
+    "absent_fields", "unknown_names",
+})
+_OBSERVATION_STATE = frozenset({
+    "request", "_request_binding", "_source_binding", "tax_year", "scenario",
+    "scenario_present", "status_code", "employments", "pensions_benefits",
+    "unknown_names", "completeness", "_observation_integrity",
+})
+
+
+def _exact_state(value: object, expected_type: type, names: frozenset[str]) -> dict:
+    if type(value) is not expected_type:
+        raise _fail("observation type is not exact")
+    state = object.__getattribute__(value, "__dict__")
+    if type(state) is not dict or len(state) != len(names):
+        raise _fail("observation state is not exact")
+    for name in state:
+        if type(name) is not str:
+            raise _fail("observation state names must be exact built-in strings")
+    if frozenset(state) != names:
+        raise _fail("observation state is not exact")
+    return state
+
+
+def _validate_employment(value: object) -> AnnualIncomeEmploymentObservation:
+    state = _exact_state(value, AnnualIncomeEmploymentObservation, _EMPLOYMENT_STATE)
+    _require_string_value(state["employer_paye_reference"], "employerPayeReference")
+    _parse_number(state["pay_from_employment"], "payFromEmployment")
+    _require_unknown_names(state["unknown_names"], "employment item", _EMPLOYMENT_NAMES)
+    return value
+
+
+def _validate_benefits(value: object) -> AnnualIncomePensionsBenefitsObservation:
+    state = _exact_state(value, AnnualIncomePensionsBenefitsObservation, _BENEFITS_STATE)
+    present = state["present_fields"]
+    absent = state["absent_fields"]
+    if type(present) is not frozenset or type(absent) is not frozenset:
+        raise _fail("benefits retained field sets must be exact frozensets")
+    for name in present:
+        if type(name) is not str or name not in _BENEFITS_NAMES:
+            raise _fail("benefits retained present name is invalid")
+    for name in absent:
+        if type(name) is not str or name not in _BENEFITS_NAMES:
+            raise _fail("benefits retained absent name is invalid")
+    if present & absent or present | absent != _BENEFITS_NAMES:
+        raise _fail("benefits retained field presence is incoherent")
+    for name, attribute in (
+        ("otherPensionsAndRetirementAnnuities", "other_pensions_and_retirement_annuities"),
+        ("incapacityBenefit", "incapacity_benefit"),
+        ("jobseekersAllowance", "jobseekers_allowance"),
+        ("seissNetPaid", "seiss_net_paid"),
+    ):
+        item = state[attribute]
+        if name in present:
+            if item is None:
+                raise _fail("present benefit value is missing")
+            _parse_number(item, name)
+        elif item is not None:
+            raise _fail("absent benefit value is retained")
+    _require_unknown_names(state["unknown_names"], "benefits object", _BENEFITS_NAMES)
+    return value
+
+
+def _employment_protocol_state(value: object) -> tuple[object, ...]:
+    state = object.__getattribute__(_validate_employment(value), "__dict__")
+    return (
+        state["employer_paye_reference"], state["pay_from_employment"],
+        state["unknown_names"],
     )
 
 
-def _require_request_intent(request: object) -> None:
-    if type(request) is not CreateAnnualIncomeSummaryRequestIntent:
-        raise _fail("request must be an exact CreateAnnualIncomeSummaryRequestIntent")
+def _benefits_protocol_state(value: object) -> tuple[object, ...]:
+    state = object.__getattribute__(_validate_benefits(value), "__dict__")
+    return (
+        state["other_pensions_and_retirement_annuities"],
+        state["incapacity_benefit"], state["jobseekers_allowance"],
+        state["seiss_net_paid"], state["present_fields"],
+        state["absent_fields"], state["unknown_names"],
+    )
+
+
+def _restore_employment(employer_paye_reference, pay_from_employment, unknown_names):
+    shell = object.__new__(AnnualIncomeEmploymentObservation)
+    object.__setattr__(shell, "employer_paye_reference", employer_paye_reference)
+    object.__setattr__(shell, "pay_from_employment", pay_from_employment)
+    object.__setattr__(shell, "unknown_names", unknown_names)
+    _validate_employment(shell)
+    return AnnualIncomeEmploymentObservation(
+        employer_paye_reference, pay_from_employment, unknown_names
+    )
+
+
+def _restore_benefits(
+    other_pensions_and_retirement_annuities, incapacity_benefit,
+    jobseekers_allowance, seiss_net_paid, present_fields, absent_fields,
+    unknown_names,
+):
+    shell = object.__new__(AnnualIncomePensionsBenefitsObservation)
+    for name, item in (
+        ("other_pensions_and_retirement_annuities", other_pensions_and_retirement_annuities),
+        ("incapacity_benefit", incapacity_benefit),
+        ("jobseekers_allowance", jobseekers_allowance),
+        ("seiss_net_paid", seiss_net_paid),
+        ("present_fields", present_fields), ("absent_fields", absent_fields),
+        ("unknown_names", unknown_names),
+    ):
+        object.__setattr__(shell, name, item)
+    _validate_benefits(shell)
+    return AnnualIncomePensionsBenefitsObservation(
+        other_pensions_and_retirement_annuities, incapacity_benefit,
+        jobseekers_allowance, seiss_net_paid, present_fields, absent_fields,
+        unknown_names,
+    )
+
+
+def _number_integrity_value(value: int | Decimal) -> list[object]:
+    if type(value) is int:
+        return ["int", str(value)]
+    _require_decimal_number(value, "retained number")
+    parts = value.as_tuple()
+    return ["decimal", parts.sign, list(parts.digits), parts.exponent]
+
+
+def _employment_integrity_value(value: AnnualIncomeEmploymentObservation) -> list[object]:
+    state = object.__getattribute__(_validate_employment(value), "__dict__")
+    return [state["employer_paye_reference"],
+            _number_integrity_value(state["pay_from_employment"]),
+            sorted(state["unknown_names"])]
+
+
+def _benefits_integrity_value(value: AnnualIncomePensionsBenefitsObservation) -> list[object]:
+    state = object.__getattribute__(_validate_benefits(value), "__dict__")
+    values = []
+    for attribute in (
+        "other_pensions_and_retirement_annuities", "incapacity_benefit",
+        "jobseekers_allowance", "seiss_net_paid",
+    ):
+        item = state[attribute]
+        values.append(None if item is None else _number_integrity_value(item))
+    return values + [sorted(state["present_fields"]), sorted(state["absent_fields"]),
+                     sorted(state["unknown_names"])]
+
+
+def _observation_digest(canonical: object) -> str:
+    encoded = json.dumps(
+        canonical, ensure_ascii=True, separators=(",", ":"), sort_keys=False
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _canonical_observation(state: dict, binding: tuple[str, ...]) -> list[object]:
+    return [
+        "success", list(binding), state["tax_year"], state["scenario_present"],
+        state["scenario"], state["status_code"],
+        [_employment_integrity_value(item) for item in state["employments"]],
+        _benefits_integrity_value(state["pensions_benefits"]),
+        sorted(state["unknown_names"]), state["completeness"],
+    ]
+
+
+def _register_observation(value: object, binding: tuple[str, ...], integrity: str) -> None:
+    identity = id(value)
+    def discard(reference: weakref.ReferenceType[object]) -> None:
+        current = _OBSERVATION_ISSUANCE.get(identity)
+        if current is not None and current[0] is reference:
+            _OBSERVATION_ISSUANCE.pop(identity, None)
+    reference = weakref.ref(value, discard)
+    _OBSERVATION_ISSUANCE[identity] = (reference, binding, integrity)
+
+
+def _observation_state(value: object) -> tuple[object, ...]:
+    state = _exact_state(value, AnnualIncomeSummaryTestDataObservation, _OBSERVATION_STATE)
+    request_binding = _request_binding_for(state["request"])
+    retained = _validate_request_binding(state["_request_binding"])
+    source = _validate_request_binding(state["_source_binding"])
+    if request_binding != retained or retained != source:
+        raise _fail("observation request/source binding is incoherent")
+    expected_present = retained[2] == "present"
+    expected_scenario = None if retained[3] == "<omitted>" else retained[3]
+    scenario = state["scenario"]
+    scenario_invalid = (
+        scenario is not None if expected_scenario is None
+        else type(scenario) is not str or scenario != expected_scenario
+    )
+    if (type(state["tax_year"]) is not str or state["tax_year"] != retained[1]
+            or type(state["scenario_present"]) is not bool
+            or state["scenario_present"] is not expected_present
+            or scenario_invalid):
+        raise _fail("observation request context is incoherent")
+    if type(state["status_code"]) is not int or state["status_code"] != 201:
+        raise _fail("observation status is invalid")
+    employments = state["employments"]
+    if type(employments) is not tuple or len(employments) > _RESERVED_MAX_EMPLOYMENTS:
+        raise _fail("retained employments are invalid")
+    for item in employments:
+        _validate_employment(item)
+    _validate_benefits(state["pensions_benefits"])
+    _require_unknown_names(state["unknown_names"], "annual-summary observation", _TOP_LEVEL_NAMES)
+    if type(state["completeness"]) is not str or state["completeness"] != HMRC_PAYE_TEST_SUPPORT_COMPLETENESS:
+        raise _fail("completeness is invalid")
+    expected = _observation_digest(_canonical_observation(state, retained))
+    integrity = state["_observation_integrity"]
+    if (type(integrity) is not str or _INTEGRITY_RE.fullmatch(integrity) is None
+            or not secrets.compare_digest(integrity, expected)):
+        raise _fail("observation integrity is incoherent")
+    issued = _OBSERVATION_ISSUANCE.get(id(value))
+    if (issued is None or issued[0]() is not value or issued[1] != retained
+            or not secrets.compare_digest(issued[2], integrity)):
+        raise _fail("observation provenance is unsupported")
+    return (
+        retained, state["_request_binding"], state["_source_binding"],
+        state["tax_year"], state["scenario"], state["scenario_present"],
+        state["status_code"], employments, state["pensions_benefits"],
+        state["unknown_names"], state["completeness"], integrity,
+    )
+
+
+def _new_observation(
+    request: CreateAnnualIncomeSummaryRequestIntent, status_code: int,
+    parsed: AnnualIncomeSummaryTestDataObservation,
+) -> AnnualIncomeSummaryTestDataObservation:
+    binding = _request_binding_for(request)
+    parsed_state = object.__getattribute__(parsed, "__dict__")
+    value = object.__new__(AnnualIncomeSummaryTestDataObservation)
+    fields = (
+        ("request", request), ("_request_binding", binding), ("_source_binding", binding),
+        ("tax_year", binding[1]), ("scenario", None if binding[3] == "<omitted>" else binding[3]),
+        ("scenario_present", binding[2] == "present"), ("status_code", status_code),
+        ("employments", parsed_state["employments"]),
+        ("pensions_benefits", parsed_state["pensions_benefits"]),
+        ("unknown_names", parsed_state["unknown_names"]),
+        ("completeness", HMRC_PAYE_TEST_SUPPORT_COMPLETENESS),
+    )
+    for name, item in fields:
+        object.__setattr__(value, name, item)
+    state = object.__getattribute__(value, "__dict__")
+    integrity = _observation_digest(_canonical_observation(state, binding))
+    object.__setattr__(value, "_observation_integrity", integrity)
+    _register_observation(value, binding, integrity)
+    _observation_state(value)
+    return value
+
+
+def _restore_observation(binding, employments, benefits, unknown, completeness):
+    # Structural preflight covers every reconstruction argument before any
+    # canonical equality, set algebra, sorting, digesting or construction.
+    if (type(binding) is not tuple or len(binding) != _REQUEST_BINDING_LENGTH
+            or any(type(item) is not str for item in binding)):
+        raise _fail("serialized observation request binding is invalid")
+    if type(completeness) is not str:
+        raise _fail("serialized observation is invalid")
+    if type(employments) is not tuple or len(employments) > _RESERVED_MAX_EMPLOYMENTS:
+        raise _fail("serialized observation employments are invalid")
+    for item in employments:
+        item_state = _exact_state(
+            item, AnnualIncomeEmploymentObservation, _EMPLOYMENT_STATE
+        )
+        if (type(item_state["employer_paye_reference"]) is not str
+                or type(item_state["pay_from_employment"]) not in (int, Decimal)):
+            raise _fail("serialized employment state is invalid")
+        names = item_state["unknown_names"]
+        if (type(names) is not frozenset
+                or any(type(name) is not str for name in names)):
+            raise _fail("serialized employment unknown names are invalid")
+    benefit_state = _exact_state(
+        benefits, AnnualIncomePensionsBenefitsObservation, _BENEFITS_STATE
+    )
+    for attribute in (
+        "other_pensions_and_retirement_annuities", "incapacity_benefit",
+        "jobseekers_allowance", "seiss_net_paid",
+    ):
+        item = benefit_state[attribute]
+        if item is not None and type(item) not in (int, Decimal):
+            raise _fail("serialized benefit value is invalid")
+    for attribute in ("present_fields", "absent_fields", "unknown_names"):
+        names = benefit_state[attribute]
+        if (type(names) is not frozenset
+                or any(type(name) is not str for name in names)):
+            raise _fail("serialized benefit name state is invalid")
+    if (type(unknown) is not frozenset
+            or any(type(name) is not str for name in unknown)):
+        raise _fail("serialized observation unknown names are invalid")
+
+    canonical_binding = _validate_request_binding(binding)
+    for item in employments:
+        _validate_employment(item)
+    _validate_benefits(benefits)
+    _require_unknown_names(unknown, "annual-summary observation", _TOP_LEVEL_NAMES)
+    if completeness != HMRC_PAYE_TEST_SUPPORT_COMPLETENESS:
+        raise _fail("serialized observation is invalid")
+    shell = object.__new__(AnnualIncomeSummaryTestDataObservation)
+    object.__setattr__(shell, "employments", employments)
+    object.__setattr__(shell, "pensions_benefits", benefits)
+    object.__setattr__(shell, "unknown_names", unknown)
+    return _new_observation(_restore_request_intent(canonical_binding), 201, shell)
+
+
+def validate_annual_income_summary_observation(
+    observation: object,
+) -> AnnualIncomeSummaryTestDataObservation:
+    """Validate exact state, issuance and complete producing-request binding."""
+    _observation_state(observation)
+    return observation
 
 
 def observe_create_annual_income_summary_response(
@@ -542,7 +1037,7 @@ def observe_create_annual_income_summary_response(
     fails closed as unclassified: its arbitrary body is never parsed, echoed,
     retained, classified or turned into a no-data/zero/success record.
     """
-    _require_request_intent(request)
+    _request_binding_for(request)
     if type(status_code) is not int or isinstance(status_code, bool):
         raise _fail("status_code must be an exact built-in integer")
 
@@ -551,6 +1046,7 @@ def observe_create_annual_income_summary_response(
             raise _fail("content_type must be an exact built-in string")
         if content_type != HMRC_PAYE_TEST_SUPPORT_JSON_CONTENT_TYPE:
             raise _fail("HTTP 201 requires exact application/json")
-        return _parse_annual_summary(_require_object(payload, "response payload"))
+        parsed = _parse_annual_summary(_require_object(payload, "response payload"))
+        return _new_observation(request, status_code, parsed)
 
     raise _fail("undocumented HTTP status is not accepted")

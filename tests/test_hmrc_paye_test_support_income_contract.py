@@ -13,6 +13,7 @@ from types import MappingProxyType
 
 import pytest
 
+import reserved.providers.hmrc_paye_test_support_income_contract as income_contract
 from reserved.providers.hmrc_paye_test_support_income_contract import (
     HMRC_PAYE_TEST_SUPPORT_ACCEPT,
     HMRC_PAYE_TEST_SUPPORT_API,
@@ -36,6 +37,7 @@ from reserved.providers.hmrc_paye_test_support_income_contract import (
     HMRCPayeTestSupportIncomeContractError,
     build_create_annual_income_summary_request,
     observe_create_annual_income_summary_response,
+    validate_annual_income_summary_observation,
 )
 from reserved.providers.http_boundary import ProviderRequest
 
@@ -88,6 +90,15 @@ class _HostileValue:
     def __iter__(self):
         raise RuntimeError("iter touched")
 
+    def __bool__(self):
+        raise RuntimeError("bool touched")
+
+    def __sub__(self, other):
+        raise RuntimeError("subtraction touched")
+
+    def __rsub__(self, other):
+        raise RuntimeError("reverse subtraction touched")
+
 
 class _IntSubclass(int):
     pass
@@ -133,10 +144,10 @@ def test_scenario_universe_is_exactly_two_literals():
     assert type(HMRC_PAYE_TEST_SUPPORT_SCENARIOS) is frozenset
 
 
-def test_request_intent_retains_only_tax_year_and_scenario():
+def test_request_intent_retains_canonical_utr_free_identity_and_context():
     request = _request()
     assert isinstance(request, CreateAnnualIncomeSummaryRequestIntent)
-    assert set(vars(request)) == {"tax_year", "scenario", "scenario_present"}
+    assert not hasattr(request, "__dict__")
     assert request.tax_year == "2023-24"
     assert request.scenario == "HAPPY_PATH_1"
     assert request.scenario_present is True
@@ -158,8 +169,6 @@ def test_raw_utr_is_discarded_from_every_retained_state():
     snapshots = [
         repr(request),
         str(request),
-        str(vars(request)),
-        str(request.__dict__),
         repr(copy.copy(request)),
         repr(copy.deepcopy(request)),
     ]
@@ -170,17 +179,14 @@ def test_raw_utr_is_discarded_from_every_retained_state():
     assert UTR.encode("ascii") not in pickled
     assert UTR not in repr(pickle.loads(pickled))
 
-    # Equality and hash depend only on the UTR-free fields.
-    assert _request(utr="1111111111") == _request(utr="2222222222")
-    assert hash(_request(utr="1111111111")) == hash(_request(utr="2222222222"))
+    assert pickle.loads(pickled) == request
+    assert hash(pickle.loads(pickled)) == hash(request)
 
 
-def test_different_utrs_same_tax_year_and_scenario_leave_identical_retained_state():
+def test_each_request_has_fresh_identity_independent_of_utr():
     a = _request(utr="1111111111")
     b = _request(utr="2222222222")
-    assert vars(a) == vars(b)
-    assert a == b
-    assert hash(a) == hash(b)
+    assert a != b
     assert repr(a) == repr(b)
     for snapshot in (pickle.dumps(a), pickle.dumps(b)):
         assert b"1111111111" not in snapshot
@@ -205,34 +211,23 @@ def test_request_intent_constructor_validates_utr_and_tax_year_directly():
     assert valid.scenario_present is False
 
 
-def test_request_intent_dataclasses_replace_revalidates_boundary():
+def test_request_intent_dataclasses_replace_is_not_a_construction_boundary():
     request = _request()
-    # replace() cannot re-enter without the validated UTR boundary.
     with pytest.raises(TypeError):
         replace(request)
     with pytest.raises(TypeError):
         replace(request, scenario_present=True)
-    # The only accepted re-entry is through the validated UTR/tax-year/scenario
-    # boundary, which discards the UTR and revalidates the scenario.
-    forged = replace(request, utr="1111111111")
-    assert UTR not in repr(forged)
-    assert "1111111111" not in repr(forged)
-    assert forged.tax_year == request.tax_year
-    assert forged.scenario == request.scenario
-    assert forged.scenario_present is True
-
-    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+    with pytest.raises(TypeError):
         replace(request, utr="1111111111", scenario="HAPPY_PATH_3")
 
 
 def test_request_intent_replace_rejects_explicit_null_scenario():
     request = _request()
-    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+    with pytest.raises(TypeError):
         replace(request, utr="1111111111", scenario=None)
 
     omitted = build_create_annual_income_summary_request(utr=UTR, tax_year=TAX_YEAR)
-    # replace() cannot silently re-enter an omitted scenario as an explicit null.
-    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+    with pytest.raises(TypeError):
         replace(omitted, utr="1111111111")
 
 
@@ -845,10 +840,11 @@ def _benefits_obs():
 
 
 def _annual_obs():
-    return AnnualIncomeSummaryTestDataObservation(
-        employments=(_employment_item_obs(),),
-        pensions_benefits=_benefits_obs(),
-    )
+    return _observe(payload=_success_payload(
+        employments=[{"employerPayeReference": "267/LS500",
+                      "payFromEmployment": Decimal("1.00")}],
+        pensionsAnnuitiesAndOtherStateBenefits={"incapacityBenefit": 0},
+    ))
 
 
 def test_employment_item_direct_constructor_rejects_mutable_or_invalid_state():
@@ -905,26 +901,11 @@ def test_benefits_direct_constructor_enforces_coherence():
 
 
 def test_annual_summary_direct_constructor_enforces_coherence():
-    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+    with pytest.raises(TypeError):
+        AnnualIncomeSummaryTestDataObservation()
+    with pytest.raises(TypeError):
         AnnualIncomeSummaryTestDataObservation(
-            employments=[_employment_item_obs()], pensions_benefits=_benefits_obs(),
-        )
-    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
-        AnnualIncomeSummaryTestDataObservation(
-            employments=(object(),), pensions_benefits=_benefits_obs(),
-        )
-    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
-        AnnualIncomeSummaryTestDataObservation(
-            employments=(), pensions_benefits=object()
-        )
-    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
-        AnnualIncomeSummaryTestDataObservation(
-            employments=(), pensions_benefits=_benefits_obs(), completeness="VERIFIED",
-        )
-    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
-        AnnualIncomeSummaryTestDataObservation(
-            employments=(), pensions_benefits=_benefits_obs(), unknown_names=["x"],
-        )
+            employments=(), pensions_benefits=_benefits_obs())
 
 
 def test_dataclasses_replace_cannot_create_incoherent_observation():
@@ -936,9 +917,9 @@ def test_dataclasses_replace_cannot_create_incoherent_observation():
         replace(_benefits_obs(), present_fields=frozenset())
     with pytest.raises(HMRCPayeTestSupportIncomeContractError):
         replace(_benefits_obs(), unknown_names=["x"])
-    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+    with pytest.raises((TypeError, HMRCPayeTestSupportIncomeContractError)):
         replace(_annual_obs(), completeness="VERIFIED")
-    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+    with pytest.raises((TypeError, HMRCPayeTestSupportIncomeContractError)):
         replace(_annual_obs(), employments=[_employment_item_obs()])
 
 
@@ -959,11 +940,10 @@ def test_unknown_names_must_be_disjoint_from_documented_names():
             }),
             unknown_names=frozenset({"incapacityBenefit"}),
         )
+    obs = _annual_obs()
+    object.__setattr__(obs, "unknown_names", frozenset({"employments"}))
     with pytest.raises(HMRCPayeTestSupportIncomeContractError):
-        AnnualIncomeSummaryTestDataObservation(
-            employments=(), pensions_benefits=_benefits_obs(),
-            unknown_names=frozenset({"employments"}),
-        )
+        validate_annual_income_summary_observation(obs)
 
 
 def test_unknown_names_disjointness_enforced_through_replace():
@@ -974,7 +954,7 @@ def test_unknown_names_disjointness_enforced_through_replace():
         )
     with pytest.raises(HMRCPayeTestSupportIncomeContractError):
         replace(_benefits_obs(), unknown_names=frozenset({"incapacityBenefit"}))
-    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+    with pytest.raises((TypeError, HMRCPayeTestSupportIncomeContractError)):
         replace(_annual_obs(), unknown_names=frozenset({"employments"}))
 
 
@@ -1020,7 +1000,11 @@ def test_observation_copy_deepcopy_and_pickle_preserve_coherence():
 
 def test_observations_do_not_retain_raw_mappings_or_unknown_values():
     obs = _annual_obs()
-    assert set(vars(obs)) == {"employments", "pensions_benefits", "unknown_names", "completeness"}
+    assert set(vars(obs)) == {
+        "request", "_request_binding", "_source_binding", "tax_year", "scenario",
+        "scenario_present", "status_code", "employments", "pensions_benefits",
+        "unknown_names", "completeness", "_observation_integrity",
+    }
     assert set(vars(obs.pensions_benefits)) == {
         "other_pensions_and_retirement_annuities", "incapacity_benefit",
         "jobseekers_allowance", "seiss_net_paid", "present_fields",
@@ -1029,7 +1013,7 @@ def test_observations_do_not_retain_raw_mappings_or_unknown_values():
     assert set(vars(obs.employments[0])) == {
         "employer_paye_reference", "pay_from_employment", "unknown_names",
     }
-    for container in (obs, obs.pensions_benefits, obs.employments[0]):
+    for container in (obs.pensions_benefits, obs.employments[0]):
         for value in vars(container).values():
             assert not isinstance(value, (dict, list, set))
 
@@ -1062,6 +1046,258 @@ def test_observe_rejects_request_intent_subclass():
         )
 
 
+# ── Exact request/response provenance and adversarial validation ─────────────
+
+
+def test_omitted_and_both_scenarios_survive_request_to_observation_distinctly():
+    requests = (
+        build_create_annual_income_summary_request(utr=UTR, tax_year=TAX_YEAR),
+        _request(scenario="HAPPY_PATH_1"),
+        _request(scenario="HAPPY_PATH_2"),
+    )
+    observed = [_observe(request=request) for request in requests]
+    assert [(item.scenario_present, item.scenario) for item in observed] == [
+        (False, None), (True, "HAPPY_PATH_1"), (True, "HAPPY_PATH_2")]
+    assert len(set(observed)) == 3
+    assert all(validate_annual_income_summary_observation(item) is item for item in observed)
+
+
+def test_cross_request_wholesale_relabelling_fails_even_with_coordinated_swaps():
+    a = _observe(request=_request(tax_year="2023-24", scenario="HAPPY_PATH_1"))
+    b = _observe(request=_request(tax_year="2024-25", scenario="HAPPY_PATH_2"))
+    for name in (
+        "request", "_request_binding", "_source_binding", "tax_year", "scenario",
+        "scenario_present", "_observation_integrity",
+    ):
+        object.__setattr__(a, name, object.__getattribute__(b, name))
+    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+        validate_annual_income_summary_observation(a)
+
+
+@pytest.mark.parametrize("index", range(4, 14))
+def test_fixed_request_descriptor_substitution_fails(index):
+    request = _request()
+    name = "_CreateAnnualIncomeSummaryRequestIntent__binding"
+    binding = object.__getattribute__(request, name)
+    altered = binding[:index] + ("forged",) + binding[index + 1:]
+    object.__setattr__(request, name, altered)
+    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+        _observe(request=request)
+
+
+def test_every_nested_semantic_category_is_integrity_bound():
+    payload = _success_payload(
+        employments=[{
+            "employerPayeReference": "267/LS500", "payFromEmployment": Decimal("1.20"),
+            "futureEmployment": _HostileValue(),
+        }],
+        pensionsAnnuitiesAndOtherStateBenefits={
+            "incapacityBenefit": 2, "futureBenefit": _HostileValue(),
+        },
+        futureTop=_HostileValue(),
+    )
+    mutations = (
+        ("employment", "employer_paye_reference", "changed"),
+        ("employment", "pay_from_employment", Decimal("1.21")),
+        ("employment", "unknown_names", frozenset({"otherEmployment"})),
+        ("benefits", "incapacity_benefit", 3),
+        ("benefits", "present_fields", frozenset()),
+        ("benefits", "absent_fields", frozenset()),
+        ("benefits", "unknown_names", frozenset({"otherBenefit"})),
+        ("outer", "employments", ()),
+        ("outer", "unknown_names", frozenset({"otherTop"})),
+        ("outer", "completeness", "VERIFIED"),
+    )
+    for level, name, replacement in mutations:
+        obs = _observe(payload=payload)
+        target = (obs.employments[0] if level == "employment" else
+                  obs.pensions_benefits if level == "benefits" else obs)
+        object.__setattr__(target, name, replacement)
+        with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+            validate_annual_income_summary_observation(obs)
+
+
+def test_low_level_clone_extra_missing_subclass_and_shadow_state_fail_closed():
+    authentic = _annual_obs()
+    for mutate in ("missing", "extra", "shadow"):
+        forged = object.__new__(AnnualIncomeSummaryTestDataObservation)
+        for name, value in vars(authentic).items():
+            object.__setattr__(forged, name, value)
+        if mutate == "missing":
+            object.__delattr__(forged, "status_code")
+        elif mutate == "extra":
+            object.__setattr__(forged, "validate_annual_income_summary_observation", _HostileValue())
+        else:
+            object.__setattr__(forged, "__dataclass_fields__", _HostileValue())
+        with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+            validate_annual_income_summary_observation(forged)
+
+    class Subclass(AnnualIncomeSummaryTestDataObservation):
+        pass
+    forged_subclass = object.__new__(Subclass)
+    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+        validate_annual_income_summary_observation(forged_subclass)
+
+
+def test_hostile_instance_hooks_are_not_invoked_before_exact_state_rejection():
+    obs = _annual_obs()
+    for name in ("request", "status_code", "employments", "pensions_benefits",
+                 "unknown_names", "completeness", "_observation_integrity"):
+        candidate = _annual_obs()
+        object.__setattr__(candidate, name, _HostileValue())
+        with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+            validate_annual_income_summary_observation(candidate)
+    assert validate_annual_income_summary_observation(obs) is obs
+
+
+@pytest.mark.parametrize("operation", [
+    lambda value: repr(value),
+    lambda value: hash(value),
+    lambda value: value == _annual_obs(),
+    lambda value: copy.copy(value),
+    lambda value: copy.deepcopy(value),
+    lambda value: pickle.dumps(value),
+])
+def test_observation_protocols_validate_before_hostile_hook_dispatch(operation):
+    candidate = _annual_obs()
+    object.__setattr__(candidate, "scenario", _HostileValue())
+    with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+        operation(candidate)
+
+
+def _clone_nested(value, cls):
+    clone = object.__new__(cls)
+    for name, item in vars(value).items():
+        object.__setattr__(clone, name, item)
+    return clone
+
+
+def _nested_protocol_operations(candidate, valid):
+    return (
+        lambda: hash(candidate), lambda: repr(candidate),
+        lambda: candidate == valid, lambda: valid == candidate,
+        lambda: copy.copy(candidate), lambda: copy.deepcopy(candidate),
+        lambda: pickle.dumps(candidate),
+    )
+
+
+@pytest.mark.parametrize("kind", ["employment", "benefits"])
+@pytest.mark.parametrize("mutation", ["hostile", "missing", "extra"])
+def test_nested_protocols_reject_low_level_malformed_exact_state(kind, mutation):
+    valid = _employment_item_obs() if kind == "employment" else _benefits_obs()
+    cls = type(valid)
+    for operation_index in range(7):
+        candidate = _clone_nested(valid, cls)
+        first_name = next(iter(vars(candidate)))
+        if mutation == "hostile":
+            object.__setattr__(candidate, first_name, _HostileValue())
+        elif mutation == "missing":
+            object.__delattr__(candidate, first_name)
+        else:
+            object.__setattr__(candidate, "unexpected_state", _HostileValue())
+        operation = _nested_protocol_operations(candidate, valid)[operation_index]
+        with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+            operation()
+
+
+@pytest.mark.parametrize("kind", ["employment", "benefits"])
+def test_nested_protocols_reject_subclass_state_in_both_equality_directions(kind):
+    valid = _employment_item_obs() if kind == "employment" else _benefits_obs()
+    base = type(valid)
+    subclass = type("NestedSubclass", (base,), {})
+    candidate = _clone_nested(valid, subclass)
+    for operation in _nested_protocol_operations(candidate, valid):
+        with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+            operation()
+
+
+def test_valid_nested_protocols_preserve_ordinary_value_semantics():
+    for value in (_employment_item_obs(), _benefits_obs()):
+        assert value == copy.copy(value) == copy.deepcopy(value)
+        assert hash(value) == hash(copy.copy(value))
+        restored = pickle.loads(pickle.dumps(value))
+        assert type(restored) is type(value)
+        assert restored == value
+
+
+class _CountedHostile:
+    calls = 0
+
+    @classmethod
+    def _touched(cls):
+        cls.calls += 1
+        raise RuntimeError("attacker hook touched")
+
+    __repr__ = lambda self: self._touched()
+    __str__ = lambda self: self._touched()
+    __hash__ = lambda self: self._touched()
+    __bool__ = lambda self: self._touched()
+    __iter__ = lambda self: self._touched()
+    __eq__ = lambda self, other: self._touched()
+
+
+class _CountedHostileName(str):
+    calls = 0
+
+    def __hash__(self):
+        type(self).calls += 1
+        return super().__hash__()
+
+    def __eq__(self, other):
+        type(self).calls += 1
+        return super().__eq__(other)
+
+
+def test_restore_rejects_hostile_fields_before_any_attacker_hook():
+    obs = _annual_obs()
+    binding = object.__getattribute__(obs.request, "_CreateAnnualIncomeSummaryRequestIntent__binding")
+    valid_args = (binding, obs.employments, obs.pensions_benefits,
+                  obs.unknown_names, obs.completeness)
+    hostile_name = _CountedHostileName("futureTop")
+    hostile_names = frozenset({hostile_name})
+    _CountedHostileName.calls = 0
+    cases = (
+        valid_args[:-1] + (_CountedHostile(),),
+        (binding, _CountedHostile(), *valid_args[2:]),
+        (binding, (_CountedHostile(),), *valid_args[2:]),
+        (binding, valid_args[1], _CountedHostile(), *valid_args[3:]),
+        (binding, valid_args[1], valid_args[2], _CountedHostile(), valid_args[4]),
+        (binding, valid_args[1], valid_args[2], hostile_names, valid_args[4]),
+    )
+    for args in cases:
+        _CountedHostile.calls = 0
+        _CountedHostileName.calls = 0
+        with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+            income_contract._restore_observation(*args)
+        assert _CountedHostile.calls == 0
+        assert _CountedHostileName.calls == 0
+
+
+def test_request_properties_and_protocols_fail_closed_after_low_level_mutation():
+    request = _request()
+    object.__setattr__(
+        request, "_CreateAnnualIncomeSummaryRequestIntent__binding", _HostileValue()
+    )
+    operations = (
+        lambda: request.tax_year, lambda: request.scenario,
+        lambda: request.scenario_present, lambda: repr(request),
+        lambda: hash(request), lambda: copy.copy(request),
+        lambda: copy.deepcopy(request), lambda: pickle.dumps(request),
+    )
+    for operation in operations:
+        with pytest.raises(HMRCPayeTestSupportIncomeContractError):
+            operation()
+
+
+def test_observation_pickle_is_validated_utr_free_reconstruction():
+    obs = _annual_obs()
+    encoded = pickle.dumps(obs)
+    assert UTR.encode("ascii") not in encoded
+    restored = pickle.loads(encoded)
+    assert validate_annual_income_summary_observation(restored) is restored
+    assert restored == obs
+
+
 # ── No cross-endpoint join / double-count / activation claims ───────────────
 
 
@@ -1070,10 +1306,10 @@ def test_no_cross_endpoint_join_or_double_count_surface():
         {"employerPayeReference": "267/LS500", "payFromEmployment": Decimal("100.00")},
     ]))
     assert obs.completeness == "UNVERIFIED"
-    assert set(vars(obs)) == {
-        "employments", "pensions_benefits", "unknown_names", "completeness",
-    }
-    for container in (obs, obs.pensions_benefits, obs.employments[0]):
+    assert obs.tax_year == TAX_YEAR
+    assert obs.scenario == "HAPPY_PATH_1"
+    assert obs.scenario_present is True
+    for container in (obs.pensions_benefits, obs.employments[0]):
         for name in vars(container):
             lowered = name.lower()
             assert "join" not in lowered

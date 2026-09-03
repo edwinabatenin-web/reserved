@@ -43,25 +43,29 @@ The module exposes a minimal, network-inert surface:
 - `observe_create_annual_income_summary_response(request, *, status_code,
   content_type, payload)`.
 
-The request intent `CreateAnnualIncomeSummaryRequestIntent` is a frozen
-dataclass that is not, does not inherit from, and does not convert by default
+The request intent `CreateAnnualIncomeSummaryRequestIntent` is an immutable,
+slot-backed value that is not, does not inherit from, and does not convert by default
 into the sendable `ProviderRequest`. It owns no HTTP client, transport,
 credential, token, authorization header, persistence, routing, provider mapping,
 production origin or activation path, and it exposes no rendered URL/path.
 
 ## Request validation, UTR discard and scenario presence
 
-`CreateAnnualIncomeSummaryRequestIntent` retains exactly three fields:
-`tax_year`, `scenario` and `scenario_present`. The UTR is validated as exactly
+`CreateAnnualIncomeSummaryRequestIntent` retains one private canonical binding.
+It contains a fresh 256-bit opaque correlation identity for each construction,
+the exact tax year, exact scenario omission/presence/value, and the fixed
+operation, method, sandbox origin, path-template, API, version, media, grant and
+empty-scope facts above. The identity is random and is not derived from the
+UTR. Read-only properties expose tax year and scenario state. The UTR is validated as exactly
 ten ASCII digits using `[0-9]{10}` and discarded immediately. The character
 class is ASCII-only, so `str.isdigit()`/`isdecimal()`/`isnumeric()` semantics
 are never used and full-width or Arabic-Indic Unicode digits are rejected. The
 tax year is validated against the captured regex `^[0-9]{4}-[0-9]{2}$`. No UTR
 surrogate, rendered URL/path, credential, Authorization header, token, header
 map or body is retained in ordinary, private, name-mangled, serialized, copied,
-equality/hash, representation or conversion state. Two requests built from
-different UTRs with the same tax year and scenario compare equal and leave
-identical retained state.
+equality/hash, representation or conversion state. Independently constructed
+requests remain distinct even when their semantic request fields and returned
+sandbox fixture payloads are identical.
 
 Scenario omission is distinguished from presence. The retained `scenario` is
 `None` with `scenario_present=False` when the scenario is absent, and one of the
@@ -71,8 +75,8 @@ that omitting `scenario` records absence while an explicit `None` (JSON null)
 fails closed. The frozen dataclass uses the same private sentinel default at the
 direct-construction boundary, so omission is available only through the genuine
 sentinel/default path and an explicit `None` fails closed there too.
-`dataclasses.replace` re-enters the same validated boundary and cannot create a
-contradictory `scenario`/`scenario_present` state. A present scenario is accepted
+`dataclasses.replace` is not a construction boundary for this non-dataclass
+identity type. A present scenario is accepted
 only as the exact built-in `str` `HAPPY_PATH_1` or `HAPPY_PATH_2`; subclasses,
 custom objects, bytes, booleans, integers, whitespace, Unicode lookalikes, empty
 strings, wrong case and undocumented identifiers are rejected. No other scenario
@@ -169,11 +173,47 @@ whose every character is outside Unicode general category `C` (`Cc` control,
 unassigned/noncharacter). Unsafe category-C characters (for example U+200B
 zero-width space) are rejected without trimming or normalising valid strings.
 
+## Producing-request binding and process-local integrity
+
+Only `observe_create_annual_income_summary_response` creates a supported
+successful observation. It validates the exact request and canonical binding,
+parses the exact 201 response, then retains the request, request binding, source
+binding, tax year, scenario presence/value, status and all semantic response
+state. A deterministic SHA-256 coherence digest covers that complete binding,
+employment ordering and every employment value and unknown name, every benefit
+value and exact presence/absence set, benefit and top-level unknown names, and
+`UNVERIFIED` completeness. Decimal sign, coefficient digits and exponent are
+encoded separately.
+
+`validate_annual_income_summary_observation` is the public read-only validator.
+It checks exact type and exact built-in `__dict__` keys before retained values;
+revalidates every nested type, value, name and presence/absence invariant;
+requires request, retained binding and source binding equality; recomputes the
+digest; and requires a matching process-local issuance record for that exact
+object. Coordinated wholesale replacement with another valid observation's
+request, source, tax year, scenario and integrity therefore fails because the
+object's issuance record remains bound to its original request instance.
+
+This is process-local coherence and mutation/substitution detection only. It is
+not provider authenticity, durable provenance, authorization, attestation or
+replay prevention. Python module privacy is not a security boundary; code with
+arbitrary module-internal access is trusted. A validated pickle contains only
+the UTR-free canonical identity and semantic state. Unpickling revalidates its
+arguments, reconstructs a request/observation, and registers the new object in
+the receiving process. A valid pickle can therefore replay an earlier accepted
+observation, including across processes, and is not freshness or replay
+protection. Untrusted pickle bytes must never be loaded.
+
+No error observation is invented: all non-201 responses still fail before an
+observation exists, so request relabelling cannot convert them into negative,
+zero-income or successful evidence.
+
 ## Deep immutability of observations
 
-Every public observation class is a frozen dataclass whose `__post_init__`
-revalidates the full package invariants, so direct construction and
-`dataclasses.replace` cannot create an incoherent instance:
+The nested semantic value classes are frozen dataclasses whose `__post_init__`
+revalidates local invariants. The aggregate observation is a frozen exact-state
+dataclass with `init=False`; direct construction and `dataclasses.replace` fail
+closed, and only the validated observer/reconstructor issues supported values:
 
 - `AnnualIncomeEmploymentObservation` revalidates the exact built-in bounded
   category-C-free string `employer_paye_reference`, the exact built-in
@@ -184,16 +224,21 @@ revalidates the full package invariants, so direct construction and
   four documented benefit names, each optional numeric value to be non-`None`
   exactly when its provider field is present, and bounded safe unknown names
   disjoint from `_BENEFITS_NAMES`;
-- `AnnualIncomeSummaryTestDataObservation` requires an exact tuple of exact
+- the aggregate validator requires an exact tuple of exact
   employment observations, an exact `AnnualIncomePensionsBenefitsObservation`,
   bounded safe unknown names disjoint from `_TOP_LEVEL_NAMES`, and the exact
   `UNVERIFIED` completeness value.
 
-Mutable lists, dicts and sets, subclasses, unbounded values, invalid
-completeness and mutable nested observation state are rejected at construction
-and on `dataclasses.replace`. Copy, deepcopy and pickle round-trips preserve
-the frozen, coherent objects; raw mappings and unknown values are never
-retained.
+Mutable lists, dicts and sets, subclasses, missing/extra/shadow state, unbounded
+values, invalid completeness and low-level mutation fail validation. Request,
+nested observation and aggregate equality, hash, repr, properties, copy,
+deepcopy and pickle enter exact-state validation without first dispatching to attacker-controlled
+instance equality, hash, repr, string, boolean, iteration or subtraction hooks.
+Copy/deepcopy return each validated immutable object. Nested pickle round-trips
+revalidate exact semantic state; aggregate pickle reconstruction structurally
+preflights every field before canonical comparison, set operations, sorting,
+digesting or construction, then revalidates semantics and registers a new
+coherent aggregate. Raw mappings and unknown values are never retained.
 
 ## Non-201 fail-close and isolation
 
@@ -236,6 +281,6 @@ The following remain unresolved and are not implemented or authorized here:
   assurance; and
 - production activation and release authority.
 
-This is a review-ready, uncommitted candidate limited to exactly the three new
-paths listed below. It does not claim approval, independent assurance,
+This is a review-ready, uncommitted candidate limited to exactly the three
+modified paths specified for this hardening. It does not claim approval, independent assurance,
 integration, enablement, launch readiness or production/contractual authority.
