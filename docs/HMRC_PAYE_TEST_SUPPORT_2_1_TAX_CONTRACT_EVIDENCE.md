@@ -1,77 +1,106 @@
 # HMRC PAYE Test Support 2.1 tax contract — implementation evidence
 
-Status: **implementation-derived evidence; candidate for independent review**.
-Date: **2 September 2026**.
+Status: **UNVERIFIED, Sandbox-only implementation candidate for independent review**.
+Date: **3 September 2026**.
 
-## Boundary implemented
+## Exact boundary
 
-`reserved/providers/hmrc_paye_test_support_tax_contract.py` implements a
-dependency-free, network-inert typed boundary for the documented HTTP 201 body
-of:
+`reserved/providers/hmrc_paye_test_support_tax_contract.py` represents only the
+documented `createTaxSummaryTestData` operation:
 
 `POST /individual-paye-test-support/sa/{utr}/tax/annual-summary/{taxYear}`
 
-Provider facts are taken only from
-`docs/HMRC_PAYE_TEST_SUPPORT_2_1_ENDPOINT_EVIDENCE.md`. The implementation:
+The request intent binds Individual PAYE Test Support API 2.1, the documented
+path template, `application/vnd.hmrc.2.1+json` Accept media type,
+`application/json` request/response media type, application-restricted OAuth
+Client Credentials grant metadata with no named scopes, beta/Sandbox-only
+status, tax year, and exact scenario omission/presence semantics. A UTR must be
+an exact string of ten ASCII digits. It is discarded immediately after
+validation; no raw, masked, suffix, digest, or other enumerable UTR derivative
+is retained. An omitted scenario records absence and produces the documented
+`HAPPY_PATH_1` default response context. Explicit null is rejected. The only
+other retained request discriminator is a random process correlation value
+which is independent of the UTR.
 
-- accepts only exact integer status `201` and scenarios `HAPPY_PATH_1` or
-  `HAPPY_PATH_2`; omission alone selects `HAPPY_PATH_1`, while explicit null is
-  invalid;
-- requires the three documented top-level members and both documented members
-  of every employment item;
-- retains numeric values only as exact built-in `int` or finite `Decimal`, with
-  defensive magnitude, digit and scale bounds and no rounding or coercion;
-- records optional-field presence separately from the value, preserving the
-  distinction between omission and exact zero and rejecting explicit null;
-- retains open-schema extensions only as bounded immutable member-name sets at
-  all four object layers; extension values are not read, traversed, copied,
-  represented or retained;
-- uses frozen dataclasses whose constructors validate their own complete state,
-  including documented-name exclusion from `unknown_names`; and
-- bounds object members, unknown names, member/string lengths, number shapes
-  and employment count. Retained names and employer references reject every
-  Unicode general-category C character. Empty and ordinary-space employer
-  references remain accepted because the provider evidence states no regex or
-  minimum length.
+The intent is frozen, redacted and deliberately non-sendable. It owns no HTTP
+client, rendered URL, provider request, headers, body, token, credential,
+transport, persistence, routing or activation behaviour.
 
-The response value retains no UTR. Array position is retained solely as source
-shape and conveys no identity, precedence or chronology.
+This intentionally replaces the former public scenario-only
+`TaxTestSupportRequest(scenario=...)` constructor: that name now denotes the
+UTR/tax-year create intent. Scenario-body callers must migrate to the truthful
+public `TaxTestSupportRequestBody` compatibility value; the legacy
+`parse_tax_test_support_request()` parser returns that same public type. This is
+a documented public API transition, not unchanged constructor compatibility.
 
-## Tests
+## Bound observation
 
-Focused tests are in
-`tests/test_hmrc_paye_test_support_tax_contract.py`. They cover both scenarios,
-default omission and explicit-null rejection; exact status typing; empty,
-single and multiple employment arrays; required containers/members; optional
-presence and zero; exact decimals and invalid numeric forms; open-schema names
-and hostile extension values; unsafe/bounded strings and names; direct
-construction, `dataclasses.replace`, copy/deepcopy and pickle; and import/
-network/credential isolation.
+`observe_create_tax_summary_response` is the single request-bound observation
+boundary. It first revalidates the exact request state. A non-exact/non-201
+status fails before content type or payload access. HTTP 201 then requires exact
+`application/json` and the documented payload shape.
 
-Executed commands and results:
+The issued `TaxSummaryCreated` binds its producing request identity, a unique
+source-observation identity, status/content type, effective scenario and its
+presence, `UNVERIFIED` completeness, every employment item and its order, both
+pensions/benefits optional members, the refund member, all presence/absence
+sets, and bounded unknown member names at every open-schema layer. Unknown
+values are never accessed or retained. Integers remain exact built-in integers.
+Decimals bind their exact type, sign, coefficient digits and exponent, including
+negative zero and trailing fractional zeroes.
 
-- `PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -p no:cacheprovider tests/test_hmrc_paye_test_support_tax_contract.py -q`
-  — **39 passed**.
-- `PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -p no:cacheprovider tests/test_hmrc_individual_tax_contract.py tests/test_hmrc_individual_income_contract.py tests/test_hmrc_individual_employment_contract.py -q`
-  — **557 passed**.
+The effective scenario is derived canonically from the exact retained request
+identity: retained presence must equal request presence, and retained scenario
+must equal the explicit request literal or `HAPPY_PATH_1` when omitted. The
+invariant is checked before construction, integrity computation, issuance
+registration and reconstruction, so contradictory or hostile serialized inputs
+fail closed without protocol-hook dispatch.
 
-No complete repository suite was run; the focused file and smallest relevant
-neighbouring HMRC contract matrix passed.
+Every public value/protocol surface revalidates exact type, state keys,
+containers and members before equality, hashing, iteration, deepcopy or pickle
+hooks can be dispatched. Per-instance nested identities detect substitution by
+an independently valid equal-looking nested value. A complete semantic seal and
+process-local issuance registry detect mutation, hand-built lookalikes,
+cross-request transplantation, coordinated request/source relabelling, and
+wholesale provenance/integrity swaps. Copy/deepcopy return the validated frozen
+instance. Pickle reconstruction validates all supplied state and registers a
+new local instance with the same bound identity.
 
-## Limitations and activation gates
+`parse_tax_summary_created` remains as a body-only compatibility boundary. Its
+result is the same public value type but is explicitly exposed as
+`request_bound == False`, with `request_identity` and `source_identity` both
+`None`. It must not be represented as request-bound or independently assured.
+Direct construction and `dataclasses.replace` compatibility for the rewritten
+`TaxSummaryCreated` observation is intentionally unavailable; observations are
+boundary-constructed or validated through the documented parse compatibility
+boundary only.
 
-This component is a parser/value boundary for synthetic sandbox evidence only.
-It does not make an HTTP call, construct a sendable request, handle OAuth or
-credentials, persist data, activate an HMRC product, interpret extensions,
-map into product engines, or establish that a later read succeeds. It supplies
-no pagination, error-body model, named OAuth scope, retry/idempotency rule,
-reset/replacement semantics, visibility timing, ordering semantics or
-cross-product identity authority.
+## Accurate limitations
 
-No provider or sandbox call was made. Subscription/access approval, credential
-custody, transport implementation, visibility and re-POST behaviour, reset or
-cleanup, cross-API linkage and any activation decision remain hard gates.
+The binding and seal enforce only process-local coherence plus mutation and
+substitution detection. Random correlation values and SHA-256 state digests are
+not secrets or provider attestations. This code does **not** establish provider
+authenticity, authorization, durable provenance, cryptographic secrecy,
+attestation, replay prevention, fixture visibility, subsequent-read completeness
+or production suitability.
 
-This evidence does not claim sandbox verification, provider activation, launch
-readiness, assurance or independent review. The owning Codex task must review
-the exact diff before acceptance.
+There is no network call, credential handling, persistence, controller/route,
+activation, product-engine conversion, payment, customer UI, metadata change,
+or provider authority in this boundary. Provider access, transport, operational
+behaviour and any activation decision remain outside scope.
+
+## Verification scope
+
+Focused tests cover malformed request values; omission/default/null behaviour;
+UTR non-retention through representation, equality/hash, copy/deepcopy and
+pickle; exact request/source binding; full response/numeric/presence/unknown-name
+semantics; non-201 short-circuiting; direct and low-level state mutation;
+identical-payload cross-request swaps; coordinated relabelling; exact-type,
+container, key and member rejection; hostile protocol hooks; truthful legacy
+parser status; and continued network/credential/routing/persistence prohibition.
+It also covers explicit `HAPPY_PATH_1`/`HAPPY_PATH_2`, omitted/default and
+contradictory reconstruction, including hostile scenario/presence inputs with
+zero hostile-hook dispatch.
+
+Verification results are recorded in the owning review task output rather than
+claimed as permanent provider evidence here.
