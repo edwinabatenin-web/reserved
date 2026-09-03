@@ -245,9 +245,11 @@ def test_accounting_tax_handoff_parity(business_type_attr):
     prod_business = getattr(prod_contracts.BusinessType, business_type_attr)
     art_business = getattr(art_contracts.BusinessType, business_type_attr)
 
-    prod_out = _call(prod_handoff, tax_year="2026/27", business_type=prod_business,
+    prod_out = _call(prod_handoff, tax_year="2026/27", nation="England",
+                     business_type=prod_business,
                      inputs=prod_inputs, observations=prod_obs)
-    art_out = _call(art_handoff, tax_year="2026/27", business_type=art_business,
+    art_out = _call(art_handoff, tax_year="2026/27", nation="England",
+                    business_type=art_business,
                     inputs=art_inputs, observations=art_obs)
     assert prod_out[0] == "ok", f"production failed for {business_type_attr}: {prod_out}"
     assert prod_out == art_out
@@ -266,10 +268,10 @@ def test_accounting_tax_handoff_unsupported_business_type_fails_closed_identical
     prod_inputs, prod_obs = _handoff_bundle(prod_contracts)
     art_inputs, art_obs = _handoff_bundle(art_contracts)
 
-    prod_out = _call(prod_handoff, tax_year="2026/27",
+    prod_out = _call(prod_handoff, tax_year="2026/27", nation="England",
                      business_type=prod_contracts.BusinessType.UNSUPPORTED,
                      inputs=prod_inputs, observations=prod_obs)
-    art_out = _call(art_handoff, tax_year="2026/27",
+    art_out = _call(art_handoff, tax_year="2026/27", nation="England",
                     business_type=art_contracts.BusinessType.UNSUPPORTED,
                     inputs=art_inputs, observations=art_obs)
     assert prod_out[0] == "raise", f"production did not fail closed: {prod_out}"
