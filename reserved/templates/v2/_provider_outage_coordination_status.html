@@ -1,0 +1,8 @@
+{% if model %}<section role="status" aria-live="polite" aria-atomic="true" aria-labelledby="coordinated-service-status-heading">
+  <h2 id="coordinated-service-status-heading">{{ model[0] }}</h2>
+  <p>{{ model[1] }}</p>
+  <p>{{ model[2] }}</p>
+{% if model[3] %}  <ul aria-label="What you can do">
+{% for action in model[3] %}    <li>{{ action }}</li>
+{% endfor %}  </ul>
+{% endif %}</section>{% endif %}
