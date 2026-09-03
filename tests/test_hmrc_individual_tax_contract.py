@@ -42,6 +42,7 @@ from reserved.providers.hmrc_individual_tax_contract import (
     _rebuild_refunds,
     build_individual_tax_request,
     observe_individual_tax_response,
+    validate_individual_tax_annual_summary_observation,
 )
 from reserved.providers.http_boundary import ProviderRequest
 
@@ -123,6 +124,66 @@ class _DictSubclass(dict):
 
 class _ListSubclass(list):
     pass
+
+
+def test_public_success_validator_is_narrow_closure_bound_and_metadata_sealed():
+    success = _observe()
+    assert validate_individual_tax_annual_summary_observation(success) is success
+    assert not hasattr(validate_individual_tax_annual_summary_observation, "__dict__")
+    assert not hasattr(validate_individual_tax_annual_summary_observation, "__defaults__")
+    assert not hasattr(validate_individual_tax_annual_summary_observation, "__kwdefaults__")
+    assert not hasattr(validate_individual_tax_annual_summary_observation, "__wrapped__")
+    with pytest.raises(HMRCIndividualTaxContractError):
+        validate_individual_tax_annual_summary_observation(
+            _observe(status_code=404, payload=_error_payload(404))
+        )
+
+
+def test_public_success_validator_rejects_subtype_and_mutated_nested_state():
+    class SummarySubclass(IndividualTaxAnnualSummaryObservation):
+        pass
+
+    with pytest.raises(HMRCIndividualTaxContractError):
+        validate_individual_tax_annual_summary_observation(
+            object.__new__(SummarySubclass)
+        )
+    success = _observe(payload=_success_payload(employments=[{
+        "employerPayeReference": "123/AB456",
+        "taxTakenOffPay": Decimal("1.00"),
+    }]))
+    object.__setattr__(success.employments[0], "tax_taken_off_pay", Decimal("2.00"))
+    with pytest.raises(HMRCIndividualTaxContractError):
+        validate_individual_tax_annual_summary_observation(success)
+
+
+@pytest.mark.parametrize("replacement", [Decimal("1.0"), 1])
+def test_public_validator_fingerprint_distinguishes_equality_equal_numbers(replacement):
+    success = _observe(payload=_success_payload(employments=[{
+        "employerPayeReference": "123/AB456",
+        "taxTakenOffPay": Decimal("1.00"),
+    }]))
+    object.__setattr__(success.employments[0], "tax_taken_off_pay", replacement)
+    with pytest.raises(HMRCIndividualTaxContractError):
+        validate_individual_tax_annual_summary_observation(success)
+
+
+def test_public_validator_rejects_equality_equal_subclass_key_and_presence_member():
+    keyed = _observe()
+    employments = vars(keyed).pop("employments")
+    vars(keyed)[_StrSubclass("employments")] = employments
+    with pytest.raises(HMRCIndividualTaxContractError):
+        validate_individual_tax_annual_summary_observation(keyed)
+
+    present = _observe(payload=_success_payload(
+        pensionsAnnuitiesAndOtherStateBenefits={"incapacityBenefit": 1}
+    ))
+    object.__setattr__(
+        present.pensions_benefits,
+        "present_fields",
+        frozenset({_StrSubclass("incapacityBenefit")}),
+    )
+    with pytest.raises(HMRCIndividualTaxContractError):
+        validate_individual_tax_annual_summary_observation(present)
 
 
 # --- Exact constants and request construction ---------------------------------

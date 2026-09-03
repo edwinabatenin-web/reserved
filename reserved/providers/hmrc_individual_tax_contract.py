@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+import weakref
 from dataclasses import InitVar, dataclass, field
 from decimal import Decimal
 from types import MappingProxyType
@@ -945,7 +946,7 @@ def _parse_annual_summary(
     benefits = _parse_benefits(obj["pensionsAnnuitiesAndOtherStateBenefits"])
     refunds = _parse_refunds(obj["refunds"])
 
-    return IndividualTaxAnnualSummaryObservation(
+    observation = IndividualTaxAnnualSummaryObservation(
         employments=employments,
         pensions_benefits=benefits,
         refunds=refunds,
@@ -953,6 +954,8 @@ def _parse_annual_summary(
         unknown_names=unknown_names,
         completeness=HMRC_INDIVIDUAL_TAX_COMPLETENESS,
     )
+    _register_individual_tax_annual_summary_observation(observation)
+    return observation
 
 
 def _parse_error(
@@ -1176,3 +1179,373 @@ def _rebuild_error(
         request=request,
         unknown_names=unknown_names,
     )
+
+
+def _make_annual_summary_validator(
+    observation_type: type[IndividualTaxAnnualSummaryObservation],
+    request_type: type[IndividualTaxRequestIntent],
+    employment_type: type[EmploymentItemObservation],
+    benefits_type: type[PensionsBenefitsObservation],
+    refunds_type: type[RefundsObservation],
+    decimal_type: type[Decimal],
+    category: object,
+    tax_year_fullmatch: object,
+    error_type: type[HMRCIndividualTaxContractError],
+    type_of: object,
+    object_type: type[object],
+    dict_type: type[dict],
+    list_type: type[list],
+    tuple_type: type[tuple],
+    frozenset_type: type[frozenset],
+    string_type: type[str],
+    integer_type: type[int],
+    length: object,
+    absolute: object,
+    maximum: object,
+    annual_state_keys: frozenset[str],
+    employment_state_keys: frozenset[str],
+    benefits_state_keys: frozenset[str],
+    refunds_state_keys: frozenset[str],
+    weak_reference: object,
+    identity_of: object,
+    attribute_error_type: type[AttributeError],
+    type_error_type: type[TypeError],
+) -> tuple[object, object]:
+    """Return a narrow callable bound to the genuine success validator.
+
+    The local callable type has no instances outside this factory and its
+    instance has neither mutable instance state nor function-style defaults,
+    keyword defaults, ``__dict__`` or ``__wrapped__`` metadata.  Capturing the
+    exact types, constants and primitive validators here means later rebinding
+    of the public name, module helpers, regex globals, imported types or class
+    methods cannot substitute the validation used by an already-imported
+    consumer.
+
+    This is process-local defensive binding, not an unforgeable boundary
+    against arbitrary trusted Python code able to mutate closure cells or type
+    dictionaries.
+    """
+
+    issuance: dict[int, tuple[object, tuple[object, ...]]] = {}
+
+    def string_fingerprint(value: str) -> tuple[str, str]:
+        return ("str", value)
+
+    def number_fingerprint(value: object) -> tuple[object, ...]:
+        if type_of(value) is integer_type:  # type: ignore[operator]
+            return ("int", value)
+        if type_of(value) is decimal_type:  # type: ignore[operator]
+            parts = value.as_tuple()
+            return (
+                "Decimal",
+                parts.sign,
+                tuple_type(parts.digits),
+                parts.exponent,
+            )
+        # Registration occurs only after the source constructor's full
+        # validation. A later unsupported value receives a non-matching tag
+        # and is rejected by the semantic validator before comparison.
+        return ("invalid-number",)
+
+    def names_fingerprint(value: frozenset[str]) -> frozenset[tuple[str, str]]:
+        return frozenset_type(string_fingerprint(name) for name in value)
+
+    def state_keys_fingerprint(value: dict) -> frozenset[tuple[str, str]]:
+        return frozenset_type(string_fingerprint(name) for name in value)
+
+    def snapshot(observation: object) -> tuple[object, ...]:
+        state = object_type.__getattribute__(observation, "__dict__")
+        request = state["request"]
+        binding = state["_request_binding"]
+        request_state = tuple_type(
+            string_fingerprint(object_type.__getattribute__(request, name)) for name in (
+                "tax_year", "method", "sandbox_origin", "path_template", "accept",
+                "scope", "redacted_path", "_tax_year_binding",
+            )
+        )
+        binding_state = tuple_type(
+            string_fingerprint(object_type.__getattribute__(binding, name)) for name in (
+                "tax_year", "method", "sandbox_origin", "path_template", "accept",
+                "scope", "redacted_path", "_tax_year_binding",
+            )
+        )
+        employments = tuple_type(
+            (
+                state_keys_fingerprint(object_type.__getattribute__(item, "__dict__")),
+                string_fingerprint(item.employer_paye_reference),
+                number_fingerprint(item.tax_taken_off_pay),
+                names_fingerprint(item.unknown_names),
+            )
+            for item in state["employments"]
+        )
+        benefits = state["pensions_benefits"]
+        refunds = state["refunds"]
+        return (
+            state_keys_fingerprint(state),
+            identity_of(request),
+            identity_of(binding),
+            request_state,
+            binding_state,
+            string_fingerprint(state["tax_year"]),
+            employments,
+            (
+                state_keys_fingerprint(object_type.__getattribute__(benefits, "__dict__")),
+                None if benefits.other_pensions_and_retirement_annuities is None
+                else number_fingerprint(benefits.other_pensions_and_retirement_annuities),
+                None if benefits.incapacity_benefit is None
+                else number_fingerprint(benefits.incapacity_benefit),
+                names_fingerprint(benefits.present_fields),
+                names_fingerprint(benefits.absent_fields),
+                names_fingerprint(benefits.unknown_names),
+            ),
+            (
+                state_keys_fingerprint(object_type.__getattribute__(refunds, "__dict__")),
+                None if refunds.tax_refunded_or_set_off is None
+                else number_fingerprint(refunds.tax_refunded_or_set_off),
+                names_fingerprint(refunds.present_fields),
+                names_fingerprint(refunds.absent_fields),
+                names_fingerprint(refunds.unknown_names),
+            ),
+            names_fingerprint(state["unknown_names"]),
+            string_fingerprint(state["completeness"]),
+        )
+
+    class _AnnualSummaryValidator:
+        __slots__ = ()
+
+        def __call__(self, observation: object) -> IndividualTaxAnnualSummaryObservation:
+            def fail(rule: str) -> None:
+                raise error_type(
+                    f"HMRC individual tax contract: {rule}"
+                )
+
+            def exact_state(value: object, expected: frozenset[str], name: str) -> dict:
+                try:
+                    state = object_type.__getattribute__(value, "__dict__")
+                except (attribute_error_type, type_error_type):
+                    fail(f"{name} state must be inspectable")
+                if type_of(state) is not dict_type or length(state) != length(expected):  # type: ignore[operator]
+                    fail(f"{name} carries unexpected instance state")
+                for key in state:
+                    if type_of(key) is not string_type or key not in expected:  # type: ignore[operator]
+                        fail(f"{name} carries unexpected instance state")
+                return state
+
+            def safe_unknowns(value: object, context: str) -> None:
+                if type_of(value) is not frozenset_type or length(value) > 32:  # type: ignore[operator]
+                    fail(f"{context} unknown names are invalid")
+                for name in value:
+                    if type_of(name) is not string_type or not name or length(name) > 256:  # type: ignore[operator]
+                        fail(f"{context} unknown name is invalid")
+                    for character in name:
+                        if category(character).startswith("C"):  # type: ignore[operator]
+                            fail(f"{context} unknown name is unsafe")
+
+            def number(value: object, field: str) -> None:
+                if type_of(value) is integer_type:  # type: ignore[operator]
+                    if value > 10**18 or value < -(10**18):
+                        fail(f"{field} exceeds the reserved integer bound")
+                    return
+                if type_of(value) is decimal_type:  # type: ignore[operator]
+                    if not value.is_finite():
+                        fail(f"{field} must be finite")
+                    parts = value.as_tuple()
+                    places = maximum(0, -parts.exponent)  # type: ignore[operator]
+                    integer_digits = maximum(1, length(parts.digits) + parts.exponent)  # type: ignore[operator]
+                    if (
+                        absolute(value) > decimal_type("1000000000000000000")  # type: ignore[operator]
+                        or length(parts.digits) > 38  # type: ignore[operator]
+                        or places > 12
+                        or integer_digits > 38
+                    ):
+                        fail(f"{field} exceeds the reserved decimal bound")
+                    return
+                fail(f"{field} must be an exact built-in int or Decimal")
+
+            def request_state(value: object) -> tuple[str, ...]:
+                if type_of(value) is not request_type:  # type: ignore[operator]
+                    fail("request must be an exact IndividualTaxRequestIntent")
+                names = (
+                    "tax_year", "method", "sandbox_origin", "path_template",
+                    "accept", "scope", "redacted_path", "_tax_year_binding",
+                )
+                retained: list[str] = []
+                for name in names:
+                    try:
+                        item = object_type.__getattribute__(value, name)
+                    except attribute_error_type:
+                        fail(f"request {name} must be present")
+                    if type_of(item) is not string_type:  # type: ignore[operator]
+                        fail(f"request {name} must be an exact built-in string")
+                    retained.append(item)
+                tax_year = retained[0]
+                if tax_year_fullmatch(tax_year) is None:  # type: ignore[operator]
+                    fail("request tax year is invalid")
+                expected_path = (
+                    "/individual-tax/sa/[UTR-REDACTED]/annual-summary/" + tax_year
+                )
+                expected = (
+                    tax_year,
+                    "GET",
+                    "https://test-api.service.hmrc.gov.uk",
+                    "/individual-tax/sa/{utr}/annual-summary/{taxYear}",
+                    "application/vnd.hmrc.1.1+json",
+                    "read:individual-tax",
+                    expected_path,
+                    tax_year,
+                )
+                if tuple_type(retained) != expected:
+                    fail("request state is not coherent with documented constants")
+                return tuple_type(retained)
+
+            if type_of(observation) is not observation_type:  # type: ignore[operator]
+                fail("success observation must be an exact annual summary")
+            state = exact_state(observation, annual_state_keys, "observation")
+            request = request_state(state["request"])
+            binding = request_state(state["_request_binding"])
+            if request != binding or type_of(state["tax_year"]) is not string_type or state["tax_year"] != request[0]:  # type: ignore[operator]
+                fail("observation request binding is incoherent")
+            if type_of(state["completeness"]) is not string_type or state["completeness"] != "UNVERIFIED":  # type: ignore[operator]
+                fail("completeness must be UNVERIFIED")
+            employments = state["employments"]
+            if type_of(employments) is not tuple_type or length(employments) > 10_000:  # type: ignore[operator]
+                fail("employments must be a bounded exact tuple")
+            for employment in employments:
+                if type_of(employment) is not employment_type:  # type: ignore[operator]
+                    fail("employment must be an exact observation")
+                item = exact_state(employment, employment_state_keys, "employment")
+                reference = item["employer_paye_reference"]
+                if type_of(reference) is not string_type or length(reference) > 4096:  # type: ignore[operator]
+                    fail("employer PAYE reference is invalid")
+                for character in reference:
+                    if category(character).startswith("C"):  # type: ignore[operator]
+                        fail("employer PAYE reference is unsafe")
+                number(item["tax_taken_off_pay"], "taxTakenOffPay")
+                safe_unknowns(item["unknown_names"], "employment")
+
+            benefits = state["pensions_benefits"]
+            if type_of(benefits) is not benefits_type:  # type: ignore[operator]
+                fail("benefits must be an exact observation")
+            benefit_state = exact_state(benefits, benefits_state_keys, "benefits")
+            benefit_names = frozenset_type(
+                {"otherPensionsAndRetirementAnnuities", "incapacityBenefit"}
+            )
+            benefit_present = benefit_state["present_fields"]
+            benefit_absent = benefit_state["absent_fields"]
+            if (
+                type_of(benefit_present) is not frozenset_type  # type: ignore[operator]
+                or type_of(benefit_absent) is not frozenset_type  # type: ignore[operator]
+            ):
+                fail("benefits presence state is invalid")
+            for names in (benefit_present, benefit_absent):
+                for name in names:
+                    if type_of(name) is not string_type or name not in benefit_names:  # type: ignore[operator]
+                        fail("benefits presence state is invalid")
+            if (
+                benefit_present & benefit_absent
+                or benefit_present | benefit_absent != benefit_names
+            ):
+                fail("benefits presence state is invalid")
+            for source_name, python_name in (
+                ("otherPensionsAndRetirementAnnuities", "other_pensions_and_retirement_annuities"),
+                ("incapacityBenefit", "incapacity_benefit"),
+            ):
+                item = benefit_state[python_name]
+                if source_name in benefit_present:
+                    if item is None:
+                        fail(f"{source_name} cannot be None when present")
+                    number(item, source_name)
+                elif item is not None:
+                    fail(f"{source_name} must be None when absent")
+            safe_unknowns(benefit_state["unknown_names"], "benefits")
+
+            refunds = state["refunds"]
+            if type_of(refunds) is not refunds_type:  # type: ignore[operator]
+                fail("refunds must be an exact observation")
+            refund_state = exact_state(refunds, refunds_state_keys, "refunds")
+            refund_names = frozenset_type({"taxRefundedOrSetOff"})
+            refund_present = refund_state["present_fields"]
+            refund_absent = refund_state["absent_fields"]
+            if (
+                type_of(refund_present) is not frozenset_type  # type: ignore[operator]
+                or type_of(refund_absent) is not frozenset_type  # type: ignore[operator]
+            ):
+                fail("refund presence state is invalid")
+            for names in (refund_present, refund_absent):
+                for name in names:
+                    if type_of(name) is not string_type or name not in refund_names:  # type: ignore[operator]
+                        fail("refund presence state is invalid")
+            if (
+                refund_present & refund_absent
+                or refund_present | refund_absent != refund_names
+            ):
+                fail("refund presence state is invalid")
+            refund_value = refund_state["tax_refunded_or_set_off"]
+            if "taxRefundedOrSetOff" in refund_present:
+                if refund_value is None:
+                    fail("taxRefundedOrSetOff cannot be None when present")
+                number(refund_value, "taxRefundedOrSetOff")
+            elif refund_value is not None:
+                fail("taxRefundedOrSetOff must be None when absent")
+            safe_unknowns(refund_state["unknown_names"], "refunds")
+            safe_unknowns(state["unknown_names"], "annual summary")
+            issued = issuance.get(identity_of(observation))  # type: ignore[operator]
+            if issued is None or issued[0]() is not observation or issued[1] != snapshot(observation):  # type: ignore[operator]
+                fail("success observation is not an intact observer-issued value")
+            return observation
+
+    class _AnnualSummaryRegistrar:
+        __slots__ = ()
+
+        def __call__(self, observation: object) -> None:
+            identity = identity_of(observation)  # type: ignore[operator]
+
+            def cleanup(reference: object) -> None:
+                current = issuance.get(identity)
+                if current is not None and current[0] is reference:
+                    issuance.pop(identity, None)
+
+            issuance[identity] = (
+                weak_reference(observation, cleanup),  # type: ignore[operator]
+                snapshot(observation),
+            )
+
+    return _AnnualSummaryValidator(), _AnnualSummaryRegistrar()
+
+
+# Public, narrow full-success observation validator for downstream offline
+# evidence translators.  Errors (including 404), subclasses and lookalikes are
+# rejected before the complete retained state is revalidated.
+(
+    validate_individual_tax_annual_summary_observation,
+    _register_individual_tax_annual_summary_observation,
+) = _make_annual_summary_validator(
+    IndividualTaxAnnualSummaryObservation,
+    IndividualTaxRequestIntent,
+    EmploymentItemObservation,
+    PensionsBenefitsObservation,
+    RefundsObservation,
+    Decimal,
+    unicodedata.category,
+    _TAX_YEAR_RE.fullmatch,
+    HMRCIndividualTaxContractError,
+    type,
+    object,
+    dict,
+    list,
+    tuple,
+    frozenset,
+    str,
+    int,
+    len,
+    abs,
+    max,
+    _ANNUAL_SUMMARY_STATE_KEYS,
+    _EMPLOYMENT_ITEM_STATE_KEYS,
+    _PENSIONS_BENEFITS_STATE_KEYS,
+    _REFUNDS_STATE_KEYS,
+    weakref.ref,
+    id,
+    AttributeError,
+    TypeError,
+)
