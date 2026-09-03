@@ -1,0 +1,9 @@
+<section aria-labelledby="w10-selected-plan-heading">
+    <h2 id="w10-selected-plan-heading">Selected plan</h2>
+    {% if model[0] %}
+    <p id="w10-selected-plan-label">{{ model[1] }}</p>
+    <p id="w10-selected-plan-vat">{{ model[2] }}</p>
+    {% else %}
+    <p role="status">Plan unavailable — review required.</p>
+    {% endif %}
+</section>

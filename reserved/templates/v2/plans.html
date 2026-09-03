@@ -10,9 +10,23 @@
     </div>
 </section>
 
+{% if billing_plans_fragment is defined %}
 <section class="panel" aria-label="Reserved subscription prices">
     {{ billing_plans_fragment }}
 </section>
+
+<nav class="panel" aria-label="Plan details">
+    <ol>
+        <li><a href="{{ url_for('v2.billing_plan_selection', plan_key='monthly') }}">View monthly plan</a></li>
+        <li><a href="{{ url_for('v2.billing_plan_selection', plan_key='six_month') }}">View six-month plan</a></li>
+        <li><a href="{{ url_for('v2.billing_plan_selection', plan_key='yearly') }}">View yearly plan</a></li>
+    </ol>
+</nav>
+{% else %}
+<section class="panel" aria-label="Selected Reserved subscription plan">
+    {{ billing_plan_selection_fragment }}
+</section>
+{% endif %}
 
 <section class="panel" aria-labelledby="w10-preview-availability-heading">
     <h2 id="w10-preview-availability-heading">Preview availability</h2>

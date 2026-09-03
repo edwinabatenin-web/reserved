@@ -79,6 +79,9 @@ from reserved.providers.banking.ingestion import (
 from reserved.providers.banking.yapily import YapilyClient
 from reserved.services.dashboard import build_dashboard, DEFAULT_PROFILE
 from reserved.services.w10_billing_page import render_w10_billing_plans_fragment
+from reserved.services.w10_billing_plan_selection import (
+    render_w10_billing_plan_selection_fragment,
+)
 from reserved.services.w10_billing_presentation import present_w10_billing_presentation
 from reserved.tax_year_context import UnsupportedTaxYear, configured_tax_year, resolve_tax_year
 
@@ -364,6 +367,92 @@ billing_plans = require_auth(billing_plans)
 # not needed by Flask and must not expose a route-handler substitution path.
 billing_plans.__dict__.pop("__wrapped__", None)
 billing_plans = v2.get("/plans")(billing_plans)
+
+
+def _bind_w10_plan_selection_fragment(
+    authority: object,
+    presenter: object,
+    renderer: object,
+    trusted_html_type: type,
+):
+    """Bind selected-plan rendering to the settled S6A authority chain."""
+    closed_fragment = trusted_html_type(renderer(None, None))  # type: ignore[operator]
+
+    def fragment(plan_key: object) -> Markup:
+        try:
+            presentation = presenter(authority)  # type: ignore[operator]
+            return trusted_html_type(renderer(presentation, plan_key))  # type: ignore[operator]
+        except Exception:
+            return closed_fragment
+
+    return fragment
+
+
+_w10_plan_selection_fragment = _bind_w10_plan_selection_fragment(
+    INITIAL_BILLING_AUTHORITY,
+    present_w10_billing_presentation,
+    render_w10_billing_plan_selection_fragment,
+    Markup,
+)
+
+
+def _bind_w10_billing_plan_selection_route(
+    fragment_supplier: object,
+    template_renderer: object,
+    request_proxy: object,
+):
+    """Keep selected-plan route collaborators in non-default closure state."""
+
+    def billing_plan_selection(plan_key: object):
+        # WSGI does not guarantee either raw-URI extension. Decoded ``PATH_INFO``
+        # cannot distinguish a canonical segment from (for example) ``%6donthly``.
+        # Accept only when every raw field that is present is an exact string,
+        # at least one exists, and all independently prove the exact same path.
+        environ = request_proxy.environ  # type: ignore[attr-defined]
+        raw_values: list[str] = []
+        raw_evidence_valid = True
+        for field in ("RAW_URI", "REQUEST_URI"):
+            if field not in environ:
+                continue
+            raw_value = environ[field]
+            if type(raw_value) is not str:
+                raw_evidence_valid = False
+                break
+            raw_values.append(raw_value)
+        expected_path = (
+            f"/v2/plans/{plan_key}" if type(plan_key) is str else None
+        )
+        raw_paths = tuple(value.split("?", 1)[0] for value in raw_values)
+        if (
+            not raw_evidence_valid
+            or not raw_paths
+            or expected_path is None
+            or any("%" in path or path != expected_path for path in raw_paths)
+            or len(set(raw_paths)) != 1
+        ):
+            effective_key = None
+        else:
+            effective_key = plan_key
+        return template_renderer(  # type: ignore[operator]
+            "v2/plans.html",
+            billing_plan_selection_fragment=fragment_supplier(  # type: ignore[operator]
+                effective_key
+            ),
+        )
+
+    return billing_plan_selection
+
+
+billing_plan_selection = _bind_w10_billing_plan_selection_route(
+    _w10_plan_selection_fragment,
+    render_template,
+    request,
+)
+billing_plan_selection = require_auth(billing_plan_selection)
+billing_plan_selection.__dict__.pop("__wrapped__", None)
+billing_plan_selection = v2.get("/plans/<path:plan_key>")(
+    billing_plan_selection
+)
 
 
 @v2.get("/")
