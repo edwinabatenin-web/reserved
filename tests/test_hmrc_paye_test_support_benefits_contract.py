@@ -64,7 +64,15 @@ def test_tax_year_shape(bad):
 
 def test_request_discards_utr_and_tracks_scenario_omission_and_values():
     omitted = intent()
-    assert vars(omitted) == {"tax_year": YEAR, "scenario": None, "scenario_present": False}
+    assert set(vars(omitted)) == {"_request_identity"}
+    assert (omitted.tax_year, omitted.scenario, omitted.scenario_present) == (YEAR, None, False)
+    assert omitted.request_identity == (
+        "HMRC_PAYE_TEST_SUPPORT_BENEFITS_REQUEST_V1", "POST",
+        "https://test-api.service.hmrc.gov.uk",
+        "/individual-paye-test-support/sa/{utr}/benefits/annual-summary/{taxYear}",
+        "application/vnd.hmrc.2.1+json", "application/json", "application/json",
+        "2.1", YEAR, False, None,
+    )
     assert UTR not in repr(omitted) and UTR not in pickle.dumps(omitted).decode("latin1")
     for value in ("HAPPY_PATH_1", "HAPPY_PATH_2"):
         request = intent(scenario=value)
@@ -100,22 +108,428 @@ def test_exact_201_and_content_type():
     for media in (None, "Application/JSON", "application/json; charset=utf-8"):
         with pytest.raises(ERR):
             observe(content_type=media)
+    with pytest.raises(ERR):
+        observe_benefits_summary_response(intent(), status_code=201,
+                                          content_type="text/plain", payload=Hostile())
 
 
-def test_response_is_request_bound_and_replace_requires_fresh_request():
+def test_response_is_request_bound_and_replace_cannot_rebind():
     request = intent(scenario="HAPPY_PATH_2")
     result = observe(request=request)
     assert (result.tax_year, result.scenario, result.scenario_present) == (YEAR, "HAPPY_PATH_2", True)
-    assert "request" not in vars(result)
+    assert "request" not in vars(result) and result.request_identity == request.request_identity
+    assert result.request_binding == (
+        "HMRC_PAYE_TEST_SUPPORT_BENEFITS_REQUEST_V1", request.request_identity)
     with pytest.raises((TypeError, ERR)):
         BenefitsSummaryCreated(employments=result.employments)
     with pytest.raises((TypeError, ERR)):
         replace(result, employments=result.employments)
     fresh = build_benefits_summary_request(utr="0000000000", tax_year="2024-25", scenario="HAPPY_PATH_1")
-    changed = replace(result, request=fresh, employments=result.employments)
-    assert (changed.tax_year, changed.scenario) == ("2024-25", "HAPPY_PATH_1")
-    with pytest.raises(TypeError):
-        replace(result, request=fresh, tax_year="2020-21")
+    with pytest.raises((TypeError, ERR)):
+        replace(result, request=fresh, employments=result.employments)
+    with pytest.raises((TypeError, ERR)):
+        replace(result)
+
+
+@pytest.mark.parametrize("scenario", [contract._OMITTED, "HAPPY_PATH_1", "HAPPY_PATH_2"])
+def test_exact_request_to_observation_binding_survives_copy_and_pickle(scenario):
+    request = intent() if scenario is contract._OMITTED else intent(scenario=scenario)
+    result = observe(request=request)
+    expected = (None, False) if scenario is contract._OMITTED else (scenario, True)
+    assert (result.scenario, result.scenario_present) == expected
+    assert result.request_identity == request.request_identity
+    for request_clone in (copy.copy(request), copy.deepcopy(request),
+                          pickle.loads(pickle.dumps(request))):
+        assert request_clone == request and hash(request_clone) == hash(request)
+        assert request_clone.request_identity == request.request_identity
+    for result_clone in (copy.copy(result), copy.deepcopy(result),
+                         pickle.loads(pickle.dumps(result))):
+        assert result_clone == result and hash(result_clone) == hash(result)
+        assert result_clone.request_binding == result.request_binding
+
+
+def test_year_scenario_descriptor_and_coordinated_substitution_fail_closed():
+    result = observe(request=intent(scenario="HAPPY_PATH_1"))
+    original_identity = result.request_identity
+    variants = [
+        original_identity[:8] + ("2024-25",) + original_identity[9:],
+        original_identity[:9] + (True, "HAPPY_PATH_2"),
+        original_identity[:1] + ("GET",) + original_identity[2:],
+        original_identity[:9] + (False, None),
+    ]
+    for changed_identity in variants:
+        altered = object.__new__(BenefitsSummaryCreated)
+        altered.__dict__.update(vars(result))
+        object.__setattr__(altered, "_request_identity", changed_identity)
+        with pytest.raises(ERR):
+            hash(altered)
+    other = observe(request=intent(scenario="HAPPY_PATH_2"),
+                    body=payload(otherBenefits=99))
+    altered = object.__new__(BenefitsSummaryCreated)
+    altered.__dict__.update(vars(result))
+    for name in ("_request_identity", "_request_binding", "_integrity_digest"):
+        altered.__dict__[name] = vars(other)[name]
+    with pytest.raises(ERR):
+        pickle.dumps(altered)
+
+
+def test_reconstruction_and_direct_construction_cannot_relabel_payload_with_transplanted_digest():
+    first = observe(request=intent(scenario="HAPPY_PATH_1"),
+                    body=payload(otherBenefits=1))
+    second = observe(request=intent(scenario="HAPPY_PATH_2"),
+                     body=payload(otherBenefits=2))
+    with pytest.raises(ERR):
+        contract._rebuild_summary(
+            second.request_identity, second.request_binding, first.employments,
+            second.status_code, second.content_type, second.unknown_names,
+            second.completeness, vars(second)["_integrity_digest"])
+    rebuilt_request = contract._rebuild_intent(second.request_identity)
+    with pytest.raises(ERR):
+        BenefitsSummaryCreated(
+            rebuilt_request, first.employments,
+            _integrity_digest=vars(second)["_integrity_digest"])
+    assert not hasattr(contract, "_CONSTRUCTION_KEY")
+    assert not hasattr(contract, "_observation_integrity")
+
+
+def test_private_construction_subclasses_missing_extra_and_mutated_state_rejected():
+    with pytest.raises(ERR):
+        BenefitsSummaryRequestIntent(("x",))
+    with pytest.raises(ERR):
+        BenefitsSummaryCreated(intent(), (BenefitsEmployment("x"),))
+    class RequestSubclass(BenefitsSummaryRequestIntent):
+        pass
+    class ObservationSubclass(BenefitsSummaryCreated):
+        pass
+    request_subclass = object.__new__(RequestSubclass)
+    request_subclass.__dict__.update(vars(intent()))
+    with pytest.raises(ERR):
+        repr(request_subclass)
+    observation_subclass = object.__new__(ObservationSubclass)
+    observation_subclass.__dict__.update(vars(observe()))
+    with pytest.raises(ERR):
+        repr(observation_subclass)
+    for state_change in ("missing", "extra"):
+        malformed = object.__new__(BenefitsSummaryRequestIntent)
+        malformed.__dict__.update(vars(intent()))
+        if state_change == "missing":
+            del malformed.__dict__["_request_identity"]
+        else:
+            malformed.__dict__["extra"] = 1
+        with pytest.raises(ERR):
+            copy.copy(malformed)
+    for state_change in ("missing", "extra"):
+        malformed = object.__new__(BenefitsSummaryCreated)
+        malformed.__dict__.update(vars(observe()))
+        if state_change == "missing":
+            del malformed.__dict__["_request_binding"]
+        else:
+            malformed.__dict__["extra"] = 1
+        with pytest.raises(ERR):
+            hash(malformed)
+
+
+class HookBomb:
+    def __eq__(self, other):
+        raise AssertionError("equality hook invoked")
+    def __hash__(self):
+        raise AssertionError("hash hook invoked")
+    def __repr__(self):
+        raise AssertionError("repr hook invoked")
+    def __str__(self):
+        raise AssertionError("string hook invoked")
+    def __bool__(self):
+        raise AssertionError("bool hook invoked")
+    def __iter__(self):
+        raise AssertionError("iteration hook invoked")
+
+
+class ArmedCollision:
+    def __init__(self, collision):
+        self.collision = collision
+        self.armed = False
+        self.calls = []
+
+    def __hash__(self):
+        if self.armed:
+            self.calls.append("hash")
+            raise AssertionError("armed hash hook invoked")
+        return hash(self.collision)
+
+    def __eq__(self, other):
+        if self.armed:
+            self.calls.append("eq")
+            raise AssertionError("armed equality hook invoked")
+        return False
+
+
+def _state_with_armed_key(value):
+    original = vars(value)
+    replaced = next(iter(original))
+    bomb = ArmedCollision(replaced)
+    state = {bomb: original[replaced]}
+    state.update((name, item) for name, item in original.items() if name != replaced)
+    bomb.calls.clear()
+    bomb.armed = True
+    malformed = object.__new__(type(value))
+    object.__setattr__(malformed, "__dict__", state)
+    return malformed, bomb
+
+
+def test_malformed_identity_rejected_before_custom_hooks():
+    malformed = object.__new__(BenefitsSummaryRequestIntent)
+    good = intent()
+    malformed.__dict__.update(vars(good))
+    identity = list(good.request_identity)
+    identity[1] = HookBomb()
+    malformed.__dict__["_request_identity"] = tuple(identity)
+    with pytest.raises(ERR):
+        repr(malformed)
+
+
+def test_employment_exact_layout_precedes_shadowed_dataclass_fields_hook():
+    malformed = object.__new__(BenefitsEmployment)
+    malformed.__dict__.update(vars(BenefitsEmployment("x")))
+    bomb = HookBomb()
+    malformed.__dict__["__dataclass_fields__"] = bomb
+    with pytest.raises(ERR):
+        BenefitsEmployment._validated_values(malformed)
+
+
+class InvocationBomb:
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, *args, **kwargs):
+        self.calls.append(("call", args, kwargs))
+        raise AssertionError("injected callable was invoked")
+
+    def __rsub__(self, other):
+        self.calls.append(("rsub", other))
+        raise AssertionError("injected subtraction hook was invoked")
+
+
+def _shadowed_clone(value, name, bomb):
+    malformed = object.__new__(type(value))
+    malformed.__dict__.update(vars(value))
+    object.__setattr__(malformed, name, bomb)
+    return malformed
+
+
+def _hostile_public_operations(good, malformed, properties):
+    return (
+        lambda: repr(malformed),
+        lambda: malformed == good,
+        lambda: good == malformed,
+        lambda: hash(malformed),
+        lambda: copy.copy(malformed),
+        lambda: copy.deepcopy(malformed),
+        lambda: pickle.dumps(malformed),
+        *(lambda name=name: getattr(malformed, name) for name in properties),
+    )
+
+
+@pytest.mark.parametrize("surface", ["request", "employment", "observation"])
+def test_armed_custom_state_key_rejected_without_hash_or_equality_hooks(surface):
+    request = intent(scenario="HAPPY_PATH_1")
+    values = {
+        "request": (request, ("request_identity", "tax_year", "scenario_present", "scenario")),
+        "employment": (BenefitsEmployment("123/AB456"),
+                       ("employer_paye_reference", "present_fields", "absent_fields")),
+        "observation": (observe(request=request),
+                        ("request_identity", "request_binding", "tax_year", "scenario_present",
+                         "scenario", "employments", "status_code", "content_type",
+                         "unknown_names", "completeness")),
+    }
+    good, properties = values[surface]
+    malformed, bomb = _state_with_armed_key(good)
+    for operation in _hostile_public_operations(good, malformed, properties):
+        with pytest.raises(ERR):
+            operation()
+        assert bomb.calls == []
+
+
+@pytest.mark.parametrize("field_name", ["present_fields", "unknown_names"])
+def test_armed_frozenset_member_rejected_without_hash_or_equality_hooks(field_name):
+    request = intent(scenario="HAPPY_PATH_2")
+    if field_name == "present_fields":
+        good = BenefitsEmployment("123/AB456")
+        collision = "otherBenefits"
+        properties = ("employer_paye_reference", "present_fields", "absent_fields")
+    else:
+        good = observe(request=request)
+        collision = "employments"
+        properties = ("request_identity", "request_binding", "tax_year", "scenario_present",
+                      "scenario", "employments", "status_code", "content_type",
+                      "unknown_names", "completeness")
+    bomb = ArmedCollision(collision)
+    hostile_members = frozenset((bomb,))
+    bomb.calls.clear()
+    bomb.armed = True
+    malformed = object.__new__(type(good))
+    malformed.__dict__.update(vars(good))
+    object.__setattr__(malformed, field_name, hostile_members)
+    for operation in _hostile_public_operations(good, malformed, properties):
+        with pytest.raises(ERR):
+            operation()
+        assert bomb.calls == []
+
+
+@pytest.mark.parametrize("surface", ["request_identity", "observation_employments"])
+def test_armed_tuple_member_rejected_without_hash_or_equality_hooks(surface):
+    request = intent(scenario="HAPPY_PATH_1")
+    if surface == "request_identity":
+        good = request
+        identity = list(request.request_identity)
+        bomb = ArmedCollision(identity[1])
+        identity[1] = bomb
+        field_name, hostile_value = "_request_identity", tuple(identity)
+        properties = ("request_identity", "tax_year", "scenario_present", "scenario")
+    else:
+        good = observe(request=request)
+        bomb = ArmedCollision(good.employments[0])
+        field_name, hostile_value = "employments", (bomb,)
+        properties = ("request_identity", "request_binding", "tax_year", "scenario_present",
+                      "scenario", "employments", "status_code", "content_type",
+                      "unknown_names", "completeness")
+    bomb.calls.clear()
+    bomb.armed = True
+    malformed = object.__new__(type(good))
+    malformed.__dict__.update(vars(good))
+    object.__setattr__(malformed, field_name, hostile_value)
+    for operation in _hostile_public_operations(good, malformed, properties):
+        with pytest.raises(ERR):
+            operation()
+        assert bomb.calls == []
+
+
+@pytest.mark.parametrize("helper_name", ["_identity"])
+def test_request_helper_shadowing_rejects_before_any_injected_hook(helper_name):
+    good = intent(scenario="HAPPY_PATH_1")
+    bomb = InvocationBomb()
+    malformed = _shadowed_clone(good, helper_name, bomb)
+    for operation in _hostile_public_operations(
+            good, malformed,
+            ("request_identity", "tax_year", "scenario_present", "scenario")):
+        with pytest.raises(ERR):
+            operation()
+        assert bomb.calls == []
+
+
+@pytest.mark.parametrize("helper_name", ["_validated_values", "_values"])
+def test_employment_helper_shadowing_rejects_before_any_injected_hook(helper_name):
+    good = BenefitsEmployment("123/AB456", other_benefits=1,
+                              present_fields=frozenset({"otherBenefits"}))
+    bomb = InvocationBomb()
+    malformed = _shadowed_clone(good, helper_name, bomb)
+    for operation in _hostile_public_operations(
+            good, malformed,
+            ("employer_paye_reference", "present_fields", "absent_fields")):
+        with pytest.raises(ERR):
+            operation()
+        assert bomb.calls == []
+
+
+def test_employment_absent_fields_rejects_before_injected_rsub_hook():
+    good = BenefitsEmployment("123/AB456")
+    bomb = InvocationBomb()
+    malformed = object.__new__(BenefitsEmployment)
+    malformed.__dict__.update(vars(good))
+    object.__setattr__(malformed, "present_fields", bomb)
+    for property_name in ("present_fields", "absent_fields"):
+        with pytest.raises(ERR):
+            getattr(malformed, property_name)
+        assert bomb.calls == []
+
+
+@pytest.mark.parametrize("helper_name", ["_validated_state"])
+def test_observation_helper_shadowing_rejects_before_any_injected_hook(helper_name):
+    good = observe(request=intent(scenario="HAPPY_PATH_2"))
+    bomb = InvocationBomb()
+    malformed = _shadowed_clone(good, helper_name, bomb)
+    for operation in _hostile_public_operations(
+            good, malformed,
+            ("request_identity", "request_binding", "tax_year", "scenario_present",
+             "scenario", "employments", "status_code", "content_type",
+             "unknown_names", "completeness")):
+        with pytest.raises(ERR):
+            operation()
+        assert bomb.calls == []
+
+
+@pytest.mark.parametrize("state_change", ["missing", "extra", "malformed"])
+def test_malformed_exact_request_fails_before_status_content_or_payload_access(state_change):
+    malformed = object.__new__(BenefitsSummaryRequestIntent)
+    malformed.__dict__.update(vars(intent()))
+    if state_change == "missing":
+        del malformed.__dict__["_request_identity"]
+    elif state_change == "extra":
+        malformed.__dict__["extra"] = HookBomb()
+    else:
+        malformed.__dict__["_request_identity"] = (HookBomb(),)
+    messages = []
+    for status in (201, 404):
+        with pytest.raises(ERR) as captured:
+            observe_benefits_summary_response(
+                malformed, status_code=status, content_type=Hostile(), payload=Hostile())
+        messages.append(str(captured.value))
+    assert messages[0] == messages[1]
+
+
+def test_raw_utr_absent_from_all_retained_and_reconstructed_surfaces():
+    request = intent(scenario="HAPPY_PATH_2")
+    result = observe(request=request)
+    surfaces = (vars(request), request.request_identity, repr(request), vars(result),
+                result.request_identity, result.request_binding, repr(result))
+    assert all(UTR not in repr(surface) for surface in surfaces)
+    assert UTR.encode() not in pickle.dumps(request)
+    assert UTR.encode() not in pickle.dumps(result)
+    other_utr_result = observe_benefits_summary_response(
+        build_benefits_summary_request(utr="9876543210", tax_year=YEAR,
+                                       scenario="HAPPY_PATH_2"),
+        status_code=201, content_type="application/json", payload=payload())
+    assert vars(other_utr_result)["_integrity_digest"] == vars(result)["_integrity_digest"]
+    with pytest.raises(ERR) as captured:
+        build_benefits_summary_request(utr=UTR[:-1], tax_year=YEAR)
+    assert UTR not in str(captured.value)
+
+
+def test_all_retained_payload_fields_and_cross_object_digests_are_integrity_bound():
+    original = observe(payload(**{name: index for index, name in enumerate(NUMBERS, 1)}))
+    other = observe(payload(otherBenefits=Decimal("45.60")))
+    employment_replacements = {
+        "employer_paye_reference": "changed",
+        **{attribute: 100 + index for index, attribute in enumerate(NUMBERS.values())},
+        "present_fields": frozenset(),
+        "unknown_names": frozenset({"future"}),
+    }
+    for name, value in employment_replacements.items():
+        employment = object.__new__(BenefitsEmployment)
+        employment.__dict__.update(vars(original.employments[0]))
+        employment.__dict__[name] = value
+        altered = object.__new__(BenefitsSummaryCreated)
+        altered.__dict__.update(vars(original))
+        altered.__dict__["employments"] = (employment,)
+        with pytest.raises(ERR):
+            hash(altered)
+    for name, value in {
+        "employments": other.employments,
+        "unknown_names": frozenset({"futureTop"}),
+        "content_type": "text/plain",
+        "status_code": 200,
+        "completeness": "VERIFIED",
+    }.items():
+        altered = object.__new__(BenefitsSummaryCreated)
+        altered.__dict__.update(vars(original))
+        altered.__dict__[name] = value
+        with pytest.raises(ERR):
+            hash(altered)
+    transplanted = object.__new__(BenefitsSummaryCreated)
+    transplanted.__dict__.update(vars(original))
+    transplanted.__dict__["_integrity_digest"] = vars(other)["_integrity_digest"]
+    for operation in (copy.copy, copy.deepcopy, pickle.dumps):
+        with pytest.raises(ERR):
+            operation(transplanted)
 
 
 def test_one_or_more_employments_and_order_is_only_source_shape():
