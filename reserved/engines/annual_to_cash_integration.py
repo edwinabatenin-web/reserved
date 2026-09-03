@@ -15,7 +15,9 @@ import hashlib
 import hmac
 import json
 import re
+import threading
 from typing import Iterable
+import weakref
 
 from . import cash_funding_position as funding
 from . import cash_obligation_reconciliation as obligations
@@ -59,6 +61,25 @@ class AnnualToCashPosition:
     prohibited_uses: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class AnnualToCashInputProvenance:
+    """Process-local evidence bindings captured by the producer."""
+
+    annual_position_reference: str
+    preceding_year_status: poa.PrecedingYearStatus
+    prior_year_reference: str | None
+    deductions_credits_reference: str
+    deductions_credits_evidence_ids: tuple[str, ...]
+    prior_poa_reference: str
+    prior_poa_evidence_ids: tuple[str, ...]
+    payment_content_references: tuple[str, ...]
+    payment_source_ids: tuple[str, ...]
+    account_reconciliation_reference: str
+    set_aside_evidence_reference: str | None
+    as_of: date
+    stale_after_days: int
+
+
 _PROHIBITED_USES = (
     "customer_presentation_without_separate_ux_approval",
     "present_local_expectation_as_hmrc_bill",
@@ -97,6 +118,172 @@ def _content_digest(value: object) -> str:
         _canonical(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _make_issuance_capability():
+    """Create capabilities whose security-critical state has no global lookup."""
+    sha256 = hashlib.sha256
+    dumps = json.dumps
+    compare = hmac.compare_digest
+    dc_fields = fields
+    lock = threading.RLock()
+    registry: dict[int, tuple[weakref.ReferenceType[AnnualToCashPosition],
+                              AnnualToCashInputProvenance, str]] = {}
+    allowed_dataclasses = frozenset(
+        value
+        for module in (poa, account, obligations, funding)
+        for value in vars(module).values()
+        if type(value) is type and is_dataclass(value)
+    ) | frozenset({
+        AnnualToCashPosition, AnnualToCashInputProvenance,
+        CashReadyAnnualPosition, CashReadyLoanComponent,
+    })
+    allowed_enums = frozenset(
+        value
+        for module in (poa, account, obligations, funding)
+        for value in vars(module).values()
+        if isinstance(value, type) and issubclass(value, Enum)
+    ) | frozenset({AnnualToCashStatus, LoanComponent})
+    failure = "annual-to-cash position is not a valid live producer-issued value"
+
+    def canonical(value: object) -> object:
+        value_type = type(value)
+        if value_type in allowed_dataclasses:
+            return {
+                "type": f"{value_type.__module__}.{value_type.__qualname__}",
+                "fields": {
+                    item.name: canonical(object.__getattribute__(value, item.name))
+                    for item in dc_fields(value_type)
+                },
+            }
+        if value_type is Decimal:
+            return {"decimal": str(value)}
+        if value_type is date:
+            return {"date": value.isoformat()}
+        if value_type in allowed_enums:
+            return {
+                "enum": f"{value_type.__module__}.{value_type.__qualname__}",
+                "value": canonical(object.__getattribute__(value, "_value_")),
+            }
+        if value_type is tuple:
+            return {"tuple": [canonical(item) for item in value]}
+        if value is None or value_type in (str, int, bool):
+            return value
+        raise ValueError(failure)
+
+    def digest(value: AnnualToCashPosition,
+               provenance: AnnualToCashInputProvenance) -> str:
+        payload = dumps(
+            canonical((value, provenance)), sort_keys=True,
+            separators=(",", ":"), ensure_ascii=True,
+        ).encode("utf-8")
+        return "annual-to-cash-position:sha256-" + sha256(payload).hexdigest()
+
+    def issue(value: AnnualToCashPosition,
+              provenance: AnnualToCashInputProvenance) -> AnnualToCashPosition:
+        if (
+            type(value) is not AnnualToCashPosition
+            or type(provenance) is not AnnualToCashInputProvenance
+        ):
+            raise ValueError(failure)
+        expected = digest(value, provenance)
+        if not compare(expected, digest(value, provenance)):
+            raise ValueError(failure)
+        key = id(value)
+
+        def discard(reference: weakref.ReferenceType[AnnualToCashPosition],
+                    *, identity: int = key) -> None:
+            with lock:
+                current = registry.get(identity)
+                if current is not None and current[0] is reference:
+                    registry.pop(identity, None)
+
+        reference = weakref.ref(value, discard)
+        with lock:
+            registry[key] = (reference, provenance, expected)
+        return value
+
+    def lookup(value: object) -> tuple[AnnualToCashInputProvenance, str]:
+        if type(value) is not AnnualToCashPosition:
+            raise ValueError(failure)
+        with lock:
+            entry = registry.get(id(value))
+            if entry is None or entry[0]() is not value:
+                raise ValueError(failure)
+            provenance, expected = entry[1], entry[2]
+            try:
+                current = digest(value, provenance)
+                confirmation = digest(value, provenance)
+            except BaseException:
+                raise ValueError(failure) from None
+            if not compare(current, confirmation) or not compare(current, expected):
+                raise ValueError(failure)
+            return provenance, expected
+
+    def identity(value: object) -> str:
+        return lookup(value)[1]
+
+    def provenance(value: object) -> AnnualToCashInputProvenance:
+        return lookup(value)[0]
+
+    def content_reference(value: object, exact_type: type, namespace: str) -> str:
+        if type(value) is not exact_type:
+            raise ValueError(failure)
+        payload = dumps(
+            canonical(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode("utf-8")
+        return f"{namespace}:sha256-{sha256(payload).hexdigest()}"
+
+    def bind(composer):
+        def compose(
+            *,
+            annual_position: CashReadyAnnualPosition,
+            annual_position_reference: str,
+            preceding_year_status: poa.PrecedingYearStatus,
+            prior_year_evidence: poa.PriorYearEvidence | None,
+            prior_year_reference: str | None,
+            deductions_credits: poa.BalanceItem,
+            deductions_credits_reference: str,
+            deductions_credits_evidence_ids: tuple[str, ...],
+            prior_poa: poa.BalanceItem,
+            prior_poa_reference: str,
+            prior_poa_evidence_ids: tuple[str, ...],
+            payments_made: Iterable[poa.PaymentMade],
+            payment_content_references: tuple[str, ...],
+            account_reconciliation: account.AccountReconciliation,
+            set_aside_evidence: funding.SetAsideEvidence | None,
+            as_of: date,
+            stale_after_days: int = 45,
+        ) -> AnnualToCashPosition:
+            value, provenance = composer(
+                annual_position=annual_position,
+                annual_position_reference=annual_position_reference,
+                preceding_year_status=preceding_year_status,
+                prior_year_evidence=prior_year_evidence,
+                prior_year_reference=prior_year_reference,
+                deductions_credits=deductions_credits,
+                deductions_credits_reference=deductions_credits_reference,
+                deductions_credits_evidence_ids=deductions_credits_evidence_ids,
+                prior_poa=prior_poa,
+                prior_poa_reference=prior_poa_reference,
+                prior_poa_evidence_ids=prior_poa_evidence_ids,
+                payments_made=payments_made,
+                payment_content_references=payment_content_references,
+                account_reconciliation=account_reconciliation,
+                set_aside_evidence=set_aside_evidence,
+                as_of=as_of,
+                stale_after_days=stale_after_days,
+            )
+            return issue(value, provenance)
+
+        return compose
+
+    return bind, identity, provenance, content_reference
+
+
+_bind_annual_to_cash_composer, annual_to_cash_position_identity, \
+    annual_to_cash_position_provenance, _secure_content_reference = \
+    _make_issuance_capability()
 
 
 def cash_ready_annual_position_identity(value: CashReadyAnnualPosition) -> str:
@@ -395,7 +582,17 @@ def _unresolved(
     )
 
 
-def compose_annual_to_cash_position(
+def _unresolved_with_provenance(
+    annual_position: CashReadyAnnualPosition,
+    annual_reference: str,
+    as_of: date,
+    limitations: Iterable[str],
+    provenance: AnnualToCashInputProvenance,
+) -> tuple[AnnualToCashPosition, AnnualToCashInputProvenance]:
+    return _unresolved(annual_position, annual_reference, as_of, limitations), provenance
+
+
+def _compose_annual_to_cash_position(
     *,
     annual_position: CashReadyAnnualPosition,
     annual_position_reference: str,
@@ -414,7 +611,7 @@ def compose_annual_to_cash_position(
     set_aside_evidence: funding.SetAsideEvidence | None,
     as_of: date,
     stale_after_days: int = 45,
-) -> AnnualToCashPosition:
+) -> tuple[AnnualToCashPosition, AnnualToCashInputProvenance]:
     """Compose the final internal W1-to-W2 result from exact evidence channels."""
     as_of = _date(as_of, "as_of")
     if isinstance(stale_after_days, bool) or not isinstance(stale_after_days, int):
@@ -447,12 +644,11 @@ def compose_annual_to_cash_position(
     )
     if not isinstance(preceding_year_status, poa.PrecedingYearStatus):
         raise ValueError("preceding_year_status must be a PrecedingYearStatus")
-    if preceding_year_status is poa.PrecedingYearStatus.FIRST_YEAR:
-        if prior_year_evidence is not None or prior_year_reference is not None:
-            return _unresolved(
-                annual_position, annual_reference, as_of,
-                ("first_year_conflicts_with_prior_year_evidence",),
-            )
+    first_year_conflict = (
+        preceding_year_status is poa.PrecedingYearStatus.FIRST_YEAR
+        and (prior_year_evidence is not None or prior_year_reference is not None)
+    )
+    if preceding_year_status is poa.PrecedingYearStatus.FIRST_YEAR and not first_year_conflict:
         prior_year_ref = None
     elif prior_year_evidence is None:
         if prior_year_reference is not None:
@@ -484,35 +680,19 @@ def compose_annual_to_cash_position(
     refs = [annual_reference, deductions_ref, prior_poa_ref, *payment_refs]
     if prior_year_ref is not None:
         refs.append(prior_year_ref)
-    if len(refs) != len(set(refs)):
-        return _unresolved(
-            annual_position, annual_reference, as_of,
-            ("evidence_identity_reused_across_cash_channels",),
-        )
+    duplicate_content_reference = len(refs) != len(set(refs))
     if type(account_reconciliation) is not account.AccountReconciliation:
         raise ValueError("account_reconciliation must be an AccountReconciliation")
-    if account_reconciliation.as_of != as_of:
-        return _unresolved(
-            annual_position, annual_reference, as_of,
-            ("account_reconciliation_as_of_mismatch",),
-        )
+    account_date_mismatch = account_reconciliation.as_of != as_of
     source_ids = [
         *annual_position.evidence_ids,
         *deductions_source_ids,
         *prior_poa_source_ids,
         *payment_source_ids,
     ]
-    if len(source_ids) != len(set(source_ids)):
-        return _unresolved(
-            annual_position, annual_reference, as_of,
-            ("source_evidence_identity_reused_across_cash_channels",),
-        )
+    duplicate_source_id = len(source_ids) != len(set(source_ids))
     account_ids = _account_identities(account_reconciliation)
-    if set(source_ids) & account_ids:
-        return _unresolved(
-            annual_position, annual_reference, as_of,
-            ("evidence_identity_reused_in_account_channel",),
-        )
+    account_source_reuse = bool(set(source_ids) & account_ids)
     if set_aside_evidence is not None and type(set_aside_evidence) is not funding.SetAsideEvidence:
         raise ValueError("set_aside_evidence must be an exact SetAsideEvidence or None")
     if set_aside_evidence is not None and (
@@ -523,30 +703,70 @@ def compose_annual_to_cash_position(
         )
     ):
         raise ValueError("set_aside_evidence contains invalid allocations")
-    if set_aside_evidence is not None and set(source_ids) & {
+    set_aside_source_reuse = set_aside_evidence is not None and bool(set(source_ids) & {
         set_aside_evidence.evidence_id, set_aside_evidence.source_reference,
         *(item.allocation_id for item in set_aside_evidence.allocations),
-    }:
-        return _unresolved(
-            annual_position, annual_reference, as_of,
-            ("evidence_identity_reused_in_set_aside_channel",),
+    })
+
+    provenance = AnnualToCashInputProvenance(
+        annual_position_reference=annual_reference,
+        preceding_year_status=preceding_year_status,
+        prior_year_reference=prior_year_ref,
+        deductions_credits_reference=deductions_ref,
+        deductions_credits_evidence_ids=deductions_source_ids,
+        prior_poa_reference=prior_poa_ref,
+        prior_poa_evidence_ids=prior_poa_source_ids,
+        payment_content_references=tuple(payment_refs),
+        payment_source_ids=tuple(payment_source_ids),
+        account_reconciliation_reference=_secure_content_reference(
+            account_reconciliation, account.AccountReconciliation,
+            "account-reconciliation",
+        ),
+        set_aside_evidence_reference=(
+            None if set_aside_evidence is None else
+            _secure_content_reference(
+                set_aside_evidence, funding.SetAsideEvidence, "set-aside-evidence"
+            )
+        ),
+        as_of=as_of,
+        stale_after_days=stale_after_days,
+    )
+
+    early_limitations = []
+    if first_year_conflict:
+        early_limitations.append("first_year_conflicts_with_prior_year_evidence")
+    if duplicate_content_reference:
+        early_limitations.append("evidence_identity_reused_across_cash_channels")
+    if account_date_mismatch:
+        early_limitations.append("account_reconciliation_as_of_mismatch")
+    if duplicate_source_id:
+        early_limitations.append("source_evidence_identity_reused_across_cash_channels")
+    if account_source_reuse:
+        early_limitations.append("evidence_identity_reused_in_account_channel")
+    if set_aside_source_reuse:
+        early_limitations.append("evidence_identity_reused_in_set_aside_channel")
+    if early_limitations:
+        return _unresolved_with_provenance(
+            annual_position, annual_reference, as_of, early_limitations, provenance
         )
 
     annual_problems = _annual_limitations(annual_position, as_of=as_of)
     if annual_problems:
-        return _unresolved(annual_position, annual_reference, as_of, annual_problems)
+        return _unresolved_with_provenance(
+            annual_position, annual_reference, as_of, annual_problems, provenance
+        )
     if (
         preceding_year_status is poa.PrecedingYearStatus.FIRST_YEAR
         and prior_poa.amount != ZERO
     ):
-        return _unresolved(
+        return _unresolved_with_provenance(
             annual_position, annual_reference, as_of,
-            ("first_year_has_nonzero_prior_poa",),
+            ("first_year_has_nonzero_prior_poa",), provenance,
         )
     if prior_year_evidence is not None and prior_year_evidence.tax_year != annual_position.tax_year:
-        return _unresolved(
+        return _unresolved_with_provenance(
             annual_position, annual_reference, as_of,
-            ("prior_year_evidence_tax_year_mismatch",),
+            ("prior_year_evidence_tax_year_mismatch",), provenance,
         )
 
     poa_assessment = poa.assess_payments_on_account(
@@ -613,7 +833,7 @@ def compose_annual_to_cash_position(
     else:
         status = AnnualToCashStatus.CALCULATED
 
-    return AnnualToCashPosition(
+    result = AnnualToCashPosition(
         contract_version=CONTRACT_VERSION,
         status=status,
         tax_year=annual_position.tax_year,
@@ -633,3 +853,17 @@ def compose_annual_to_cash_position(
         limitations=tuple(dict.fromkeys(limitations)),
         prohibited_uses=_PROHIBITED_USES,
     )
+    return result, provenance
+
+
+compose_annual_to_cash_position = _bind_annual_to_cash_composer(
+    _compose_annual_to_cash_position
+)
+compose_annual_to_cash_position.__name__ = "compose_annual_to_cash_position"
+compose_annual_to_cash_position.__qualname__ = "compose_annual_to_cash_position"
+compose_annual_to_cash_position.__doc__ = (
+    "Compose the final internal W1-to-W2 result from exact evidence channels."
+)
+del _bind_annual_to_cash_composer
+del _compose_annual_to_cash_position
+del _make_issuance_capability
