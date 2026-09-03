@@ -41,12 +41,14 @@ from reserved.engines.paye_reconciliation import (
     EvidenceKind,
     EvidenceRepresentation,
     PayeEvidence,
+    make_paye_reconciliation_policy,
     reconcile_paye,
 )
 
 
 D = Decimal
 TAX_YEAR = "2026/27"
+PAYE_POLICY = make_paye_reconciliation_policy(45, D("1.00"))
 
 
 def incremental(invoice, *, salary="0", profit="0", plans=None):
@@ -181,7 +183,10 @@ class TestIndependentPayeEvidenceFixtures(unittest.TestCase):
             PayeEvidence(EvidenceKind.HMRC, "2026-27", "1800", employment_id="job-a", observed_on=date(2026, 8, 10), effective_through=date(2026, 8, 10), evidence_id="job-a", representation=EvidenceRepresentation.EMPLOYMENT_CUMULATIVE, completeness=Completeness.COMPLETE_FOR_REPRESENTATION),
             PayeEvidence(EvidenceKind.HMRC, "2026-27", "700", employment_id="job-b", observed_on=date(2026, 8, 10), effective_through=date(2026, 8, 10), evidence_id="job-b", representation=EvidenceRepresentation.EMPLOYMENT_CUMULATIVE, completeness=Completeness.COMPLETE_FOR_REPRESENTATION),
         ]
-        result = reconcile_paye("10000", evidence, tax_year="2026-27", as_of=date(2026, 8, 12))
+        result = reconcile_paye(
+            "10000", tuple(evidence), tax_year="2026-27",
+            as_of=date(2026, 8, 12), policy=PAYE_POLICY,
+        )
         self.assertEqual(result.tax_paid_to_date, D("2500.00"))
         self.assertEqual(result.estimated_remaining_liability, D("7500.00"))
         self.assertIs(result.confidence, Confidence.HIGH)
@@ -192,7 +197,10 @@ class TestIndependentPayeEvidenceFixtures(unittest.TestCase):
             PayeEvidence(EvidenceKind.HMRC, "2026-27", "1800", employment_id="job-a", observed_on=date(2026, 8, 10), effective_through=date(2026, 8, 10), evidence_id="job-a", representation=EvidenceRepresentation.EMPLOYMENT_CUMULATIVE, completeness=Completeness.COMPLETE_FOR_REPRESENTATION),
             PayeEvidence(EvidenceKind.HMRC, "2026-27", "700", employment_id="job-b", observed_on=date(2026, 8, 10), effective_through=date(2026, 8, 10), evidence_id="job-b", representation=EvidenceRepresentation.EMPLOYMENT_CUMULATIVE, completeness=Completeness.COMPLETE_FOR_REPRESENTATION),
         ]
-        result = reconcile_paye("10000", evidence, tax_year="2026-27", as_of=date(2026, 8, 12))
+        result = reconcile_paye(
+            "10000", tuple(evidence), tax_year="2026-27",
+            as_of=date(2026, 8, 12), policy=PAYE_POLICY,
+        )
         self.assertEqual(result.tax_paid_to_date, D("2500.00"))
         self.assertTrue(any("double counting" in warning for warning in result.warnings))
 

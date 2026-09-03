@@ -19,11 +19,17 @@ from reserved.engines.paye_reconciliation import (
     Confidence,
     EvidenceKind,
     EvidenceRepresentation,
+    make_paye_reconciliation_policy,
     reconcile_paye,
 )
 
 
 AS_OF = date(2026, 8, 20)
+POLICY = make_paye_reconciliation_policy(45, Decimal("1.00"))
+
+
+def reconcile(liability, evidence, **kwargs):
+    return reconcile_paye(liability, tuple(evidence), policy=POLICY, **kwargs)
 
 
 def capture(**changes):
@@ -184,7 +190,7 @@ def test_reconciliation_conflict_compatibility_without_source_precedence():
         tax_paid_to_date="2200", observed_on=date(2026, 8, 19),
     ))
     current = normalise_paye_evidence(capture(evidence_id="document-1", tax_paid_to_date="2000"))
-    result = reconcile_paye("6000", [old, current], tax_year="2026-27", as_of=AS_OF)
+    result = reconcile("6000", [old, current], tax_year="2026-27", as_of=AS_OF)
     assert result.calculation_status == "conflict_requires_review"
     assert result.tax_paid_to_date is None
     assert {e.evidence_id for e in result.considered_evidence} == {"manual-1", "document-1"}
@@ -195,11 +201,11 @@ def test_reconciliation_stale_and_apparent_overpayment_compatibility():
         effective_through=date(2026, 6, 1), observed_on=date(2026, 6, 1),
         tax_paid_to_date="1200",
     ))
-    stale_result = reconcile_paye("4000", [stale], tax_year="2026-27", as_of=AS_OF)
+    stale_result = reconcile("4000", [stale], tax_year="2026-27", as_of=AS_OF)
     assert stale_result.confidence is Confidence.MEDIUM
     assert stale_result.indeterminable_effect is True
 
     excess = normalise_paye_evidence(replace(capture(), tax_paid_to_date="1200"))
-    excess_result = reconcile_paye("1000", [excess], tax_year="2026-27", as_of=AS_OF)
+    excess_result = reconcile("1000", [excess], tax_year="2026-27", as_of=AS_OF)
     assert excess_result.estimated_remaining_liability == Decimal("0.00")
     assert excess_result.apparent_overpayment == Decimal("200.00")

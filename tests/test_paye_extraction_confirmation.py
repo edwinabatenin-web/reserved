@@ -35,11 +35,13 @@ from reserved.engines.paye_reconciliation import (
     Completeness,
     EvidenceKind,
     EvidenceRepresentation,
+    make_paye_reconciliation_policy,
     reconcile_paye,
 )
 
 
 AS_OF = date(2026, 8, 20)
+POLICY = make_paye_reconciliation_policy(45, Decimal("1.00"))
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -506,7 +508,9 @@ def test_output_normalises_to_partial_document_employment_cumulative():
 def test_output_remains_compatible_with_reconciliation():
     result = confirm(candidate())
     item = normalise_paye_evidence(result.capture)
-    reconciled = reconcile_paye("6000", [item], tax_year="2026-27", as_of=AS_OF)
+    reconciled = reconcile_paye(
+        "6000", (item,), tax_year="2026-27", as_of=AS_OF, policy=POLICY
+    )
     assert reconciled.tax_paid_to_date == Decimal("2345.60")
     assert reconciled.selected_kind is EvidenceKind.DOCUMENT
 
