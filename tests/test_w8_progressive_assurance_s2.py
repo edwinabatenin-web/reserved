@@ -640,13 +640,27 @@ def test_w8_map_declares_stable_denominator_and_numbered_slices():
     )
 
 
-def test_w8_map_each_delivery_slice_has_single_planned_state():
+def test_w8_map_each_delivery_slice_has_one_truthful_primary_state():
     section = _w8_map_section("W8 delivery slices")
-    states = re.findall(r"^\|\s*\d+\s*\|.*\|\s*([a-z_]+)\s*\|\s*$", section, flags=re.MULTILINE)
-    assert states, "each delivery-slice row must expose exactly one state cell"
-    assert all(state == "planned" for state in states), (
-        f"every undelivered W8 slice must remain planned; found {set(states)}"
-    )
+    rows = [
+        tuple(cell.strip() for cell in line.strip().strip("|").split("|"))
+        for line in section.splitlines()
+        if re.match(r"^\|\s*\d+\s*\|", line)
+    ]
+    assert [int(row[0]) for row in rows] == [1, 2, 3, 4, 5]
+    assert all(len(row) == 3 for row in rows)
+    states = []
+    for row in rows:
+        marked = re.findall(r"\*\*(.+?)\*\*", row[2])
+        assert len(marked) == 1, f"slice {row[0]} must have one bold primary state"
+        states.append(marked[0])
+    assert states == [
+        "integrated and independently reviewed",
+        "partial",
+        "integrated and independently reviewed",
+        "partial, not integrated as an enabled journey",
+        "planned; correctly waiting for completed slices 2 and 4",
+    ]
 
 
 def test_w8_map_separates_achieved_boundaries_from_delivery_slices():
@@ -655,22 +669,36 @@ def test_w8_map_separates_achieved_boundaries_from_delivery_slices():
         "achieved evidence boundaries must be listed separately, before delivery slices"
     )
     section = _w8_map_section("Achieved evidence boundaries")
-    states = re.findall(r"^\|.*\|\s*([a-z_]+)\s*\|\s*$", section, flags=re.MULTILINE)
-    assert states, "each achieved-boundary row must expose exactly one state cell"
-    assert set(states) <= {"component_implemented", "synthetic_coexistence_evidence"}, (
-        f"achieved-boundary states must stay within the declared vocabulary; found {set(states)}"
-    )
+    rows = [
+        tuple(cell.strip() for cell in line.strip().strip("|").split("|"))
+        for line in section.splitlines()
+        if line.startswith("|") and not line.startswith("|---")
+        and not line.startswith("| Evidence boundary")
+    ]
+    assert all(len(row) == 2 for row in rows)
+    states = [row[1] for row in rows]
+    assert states == [
+        "integrated",
+        "integrated sub-boundary; persistence remains open",
+        "integrated",
+        "synthetic_coexistence_evidence",
+        "synthetic_coexistence_evidence",
+        "synthetic_coexistence_evidence",
+        "component_implemented",
+    ]
 
 
-def test_w8_terminal_gate_is_distinct_from_s2_package_gate():
+def test_w8_terminal_gate_is_distinct_from_historical_s2_assurance():
     text = _w8_map_text()
     assert "## Overall W8 terminal completion gate" in text
-    assert "## W8-S2 package acceptance gate" in text
+    assert "## Historical W8-S2 assurance package" in text
+    assert "## W8-S2 package acceptance gate" not in text
     terminal = _w8_map_section("Overall W8 terminal completion gate")
-    package = _w8_map_section("W8-S2 package acceptance gate")
+    package = _w8_map_section("Historical W8-S2 assurance package")
     assert terminal.strip() != package.strip(), (
-        "the W8 terminal gate and the W8-S2 package gate must be distinct sections"
+        "the W8 terminal gate and historical W8-S2 evidence must be distinct sections"
     )
+    assert "do not advance" in package.lower()
     assert "not passed" in terminal.lower()
     for required in (
         "target-runtime", "privacy", "security", "release", "Founder",
