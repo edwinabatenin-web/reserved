@@ -94,7 +94,6 @@ def test_scenario_omission_presence_and_explicit_null_are_distinct():
     for make in (
         lambda: build_winter_fuel_create_request(nino=NINO, tax_year=YEAR, scenario=None),
         lambda: WinterFuelCreateRequestIntent(nino=NINO, tax_year=YEAR, scenario=None),
-        lambda: replace(request(), nino="QQ000000A", scenario=None),
     ):
         with pytest.raises(HMRCPayeTestSupportWinterFuelContractError): make()
     with pytest.raises(HMRCPayeTestSupportWinterFuelContractError): request(scenario=StrSub("HAPPY_PATH_1"))
@@ -103,14 +102,13 @@ def test_scenario_omission_presence_and_explicit_null_are_distinct():
 
 def test_nino_is_discarded_from_all_state_and_errors():
     item = request()
-    assert set(vars(item)) == {"tax_year", "scenario", "scenario_present"}
+    assert set(vars(item)) == {"_request_binding"}
     candidates = [item, copy.copy(item), copy.deepcopy(item), pickle.loads(pickle.dumps(item))]
     for candidate in candidates:
         assert NINO not in repr(candidate)
         assert NINO not in str(vars(candidate))
         assert NINO.encode() not in pickle.dumps(candidate)
-    assert request(nino="QQ000000A") == request(nino="ZZ999999Z")
-    assert hash(request(nino="QQ000000A")) == hash(request(nino="ZZ999999Z"))
+    assert request(nino="QQ000000A") != request(nino="ZZ999999Z")
     with pytest.raises(HMRCPayeTestSupportWinterFuelContractError) as exc: request(nino=NINO.lower())
     assert NINO.lower() not in str(exc.value)
 
@@ -121,7 +119,7 @@ def test_request_is_frozen_non_sendable_and_replace_revalidates():
     for name in ("url", "headers", "body", "token", "credential", "client", "transport", "method"):
         assert not hasattr(item, name)
     with pytest.raises(AttributeError): item.tax_year = "x"
-    assert replace(item, nino="QQ000000A") == item
+    with pytest.raises(TypeError): replace(item, nino="QQ000000A")
     with pytest.raises(TypeError): replace(item)
     with pytest.raises(TypeError): WinterFuelCreateRequestIntent(NINO, YEAR)
 
@@ -195,7 +193,7 @@ def test_excessive_positive_exponent_zero_is_rejected_by_parser_constructor_and_
                 expected_json=None,
                 expected_json_present=False,
             )
-        with pytest.raises(HMRCPayeTestSupportWinterFuelContractError):
+        with pytest.raises((HMRCPayeTestSupportWinterFuelContractError, TypeError)):
             replace(obs, request=req, expected_status=value)
     else:
         with pytest.raises(HMRCPayeTestSupportWinterFuelContractError):
@@ -238,7 +236,7 @@ def test_non_201_records_only_status_and_never_touches_or_retains_body_or_media(
     hostile = Hostile()
     obs = observe_winter_fuel_create_response(request(), status_code=404, content_type=hostile, payload=hostile)
     assert type(obs) is WinterFuelNon201Observation
-    assert set(vars(obs)) == {"status_code", "completeness", "tax_year", "scenario", "scenario_present"}
+    assert "content_type" not in vars(obs) and "payload" not in vars(obs)
     assert obs.status_code == 404 and obs.completeness == "UNVERIFIED"
     assert not any(value is hostile for value in vars(obs).values())
 
@@ -252,12 +250,13 @@ def test_direct_replace_copy_deepcopy_pickle_coherence():
     obs = WinterFuelCreateResponseObservation(request=req, expected_status=Decimal("404"), expected_json=nested, expected_json_present=True, unknown_names=frozenset({"topFuture"}))
     for candidate in (obs, copy.copy(obs), copy.deepcopy(obs), pickle.loads(pickle.dumps(obs))):
         assert candidate == obs and candidate.completeness == "UNVERIFIED"
-    assert replace(obs, request=req) == obs
+    with pytest.raises(TypeError): replace(obs, request=req)
     with pytest.raises(TypeError): replace(obs)
-    with pytest.raises(HMRCPayeTestSupportWinterFuelContractError): replace(obs, request=req, expected_json=None)
+    with pytest.raises(TypeError): replace(obs, request=req, expected_json=None)
     non201 = WinterFuelNon201Observation(request=req, status_code=500)
-    for candidate in (copy.copy(non201), copy.deepcopy(non201), pickle.loads(pickle.dumps(non201)), replace(non201, request=req)):
+    for candidate in (copy.copy(non201), copy.deepcopy(non201), pickle.loads(pickle.dumps(non201))):
         assert candidate == non201
+    with pytest.raises(TypeError): replace(non201, request=req)
 
 
 def test_module_ast_has_no_forbidden_operational_surfaces():
@@ -273,3 +272,183 @@ def test_module_ast_has_no_forbidden_operational_surfaces():
         "send", "persist", "save", "activate", "dispatch",
         "canonical", "liability", "cash", "customer", "hicbc",
     })
+
+
+class HookBomb:
+    calls = 0
+    def _hit(self, *args, **kwargs):
+        type(self).calls += 1
+        raise AssertionError("attacker hook dispatched")
+    __eq__ = __hash__ = __bool__ = __iter__ = __repr__ = __str__ = _hit
+    __deepcopy__ = __reduce__ = __reduce_ex__ = _hit
+
+class ArmedKey:
+    def __init__(self): self.armed = False
+    def __hash__(self):
+        if self.armed: HookBomb.calls += 1; raise AssertionError("hash dispatched")
+        return 1
+    def __eq__(self, other):
+        if self.armed: HookBomb.calls += 1; raise AssertionError("equality dispatched")
+        return False
+
+
+class HostileSuccessSubclass(WinterFuelCreateResponseObservation):
+    calls = 0
+    def _validated(self):
+        type(self).calls += 1
+        raise AssertionError("hostile success validator dispatched")
+
+
+class HostileNon201Subclass(WinterFuelNon201Observation):
+    calls = 0
+    def _validated(self):
+        type(self).calls += 1
+        raise AssertionError("hostile non-201 validator dispatched")
+
+
+def clone_with(value, **changes):
+    result = object.__new__(type(value))
+    result.__dict__.update(vars(value))
+    result.__dict__.update(changes)
+    return result
+
+
+def public_surfaces(value, peer, fields):
+    return (
+        lambda: repr(value), lambda: value == peer, lambda: peer == value,
+        lambda: hash(value), lambda: copy.copy(value), lambda: copy.deepcopy(value),
+        lambda: pickle.dumps(value), *(lambda name=name: getattr(value, name) for name in fields),
+    )
+
+
+@pytest.mark.parametrize("base, hostile, constructor", [
+    (WinterFuelCreateResponseObservation, HostileSuccessSubclass,
+     lambda cls: cls(request=Hostile(), expected_status=Hostile(),
+                     expected_json=Hostile(), expected_json_present=Hostile())),
+    (WinterFuelNon201Observation, HostileNon201Subclass,
+     lambda cls: cls(request=Hostile(), status_code=Hostile())),
+])
+def test_observation_subclasses_fail_closed_without_validator_hooks(base, hostile, constructor):
+    ordinary = type("OrdinaryObservationSubclass", (base,), {})
+    for subclass in (ordinary, hostile):
+        with pytest.raises(HMRCPayeTestSupportWinterFuelContractError):
+            constructor(subclass)
+
+        unissued = object.__new__(subclass)
+        peer = (observe({"expectedStatus": 200}) if base is WinterFuelCreateResponseObservation
+                else observe_winter_fuel_create_response(
+                    request(), status_code=500, content_type=Hostile(), payload=Hostile()))
+        operations = (
+            lambda: unissued == peer,
+            lambda: peer == unissued,
+            lambda: hash(unissued),
+            lambda: copy.copy(unissued),
+            lambda: copy.deepcopy(unissued),
+        )
+        for operation in operations:
+            with pytest.raises(HMRCPayeTestSupportWinterFuelContractError):
+                operation()
+
+    assert hostile.calls == 0
+
+
+def test_fresh_identity_binds_identical_payload_to_exact_producing_request():
+    first_request, second_request = request(), request()
+    payload = {"expectedStatus": 200, "expectedJson": {"winterFuelPaymentAmount": Decimal("0.00")}}
+    first = observe_winter_fuel_create_response(first_request, status_code=201,
+        content_type="application/json", payload=payload)
+    second = observe_winter_fuel_create_response(second_request, status_code=201,
+        content_type="application/json", payload=payload)
+    assert first_request != second_request and first != second
+    substituted = clone_with(first, request=second_request)
+    with pytest.raises(HMRCPayeTestSupportWinterFuelContractError):
+        substituted.expected_status
+
+
+@pytest.mark.parametrize("kind", ["success", "non201"])
+def test_valid_whole_context_and_coordinated_integrity_transplants_fail(kind):
+    make = (lambda req: observe_winter_fuel_create_response(req, status_code=201,
+        content_type="application/json", payload={"expectedStatus": 200})) if kind == "success" else (
+        lambda req: observe_winter_fuel_create_response(req, status_code=404,
+            content_type=Hostile(), payload=Hostile()))
+    first, second = make(request()), make(request(scenario="HAPPY_PATH_2"))
+    fields = ("request", "_request_binding", "_source_binding", "tax_year", "scenario",
+              "scenario_present", "_observation_integrity")
+    transplanted = clone_with(first, **{name: vars(second)[name] for name in fields})
+    with pytest.raises(HMRCPayeTestSupportWinterFuelContractError): hash(transplanted)
+
+
+def test_valid_to_valid_semantic_mutation_and_recomputed_digest_fail():
+    original = observe({"expectedStatus": 200, "expectedJson": {"winterFuelPaymentAmount": Decimal("1.00")}})
+    replacement = WinterFuelExpectedJsonObservation(Decimal("2.00"))
+    altered = clone_with(original, expected_json=replacement)
+    state = vars(altered)
+    values = contract._success_values(state)
+    altered.__dict__["_observation_integrity"] = contract._digest(
+        "success", state["_request_binding"], values)
+    with pytest.raises(HMRCPayeTestSupportWinterFuelContractError): hash(altered)
+
+
+def test_nested_equality_and_hash_preserve_numeric_type_sign_and_scale():
+    values = [WinterFuelExpectedJsonObservation(value) for value in (
+        0, Decimal("0"), Decimal("-0"), Decimal("0.0"), Decimal("0.00"))]
+    for index, left in enumerate(values):
+        for other_index, right in enumerate(values):
+            assert (left == right) is (index == other_index)
+            hash(left)
+
+
+@pytest.mark.parametrize("surface", ["request", "inner", "success", "non201"])
+def test_missing_extra_subclass_and_hostile_low_level_state_fail_all_surfaces(surface):
+    req = request()
+    values = {
+        "request": (req, ("tax_year", "scenario", "scenario_present")),
+        "inner": (WinterFuelExpectedJsonObservation(1), ("winter_fuel_payment_amount", "unknown_names")),
+        "success": (observe_winter_fuel_create_response(req, status_code=201,
+            content_type="application/json", payload={"expectedStatus": 200}),
+            ("expected_status", "expected_json_present", "unknown_names", "completeness")),
+        "non201": (observe_winter_fuel_create_response(req, status_code=500,
+            content_type=Hostile(), payload=Hostile()),
+            ("status_code", "completeness")),
+    }
+    good, fields = values[surface]
+    malformed = clone_with(good, extra=HookBomb())
+    for operation in public_surfaces(malformed, good, fields):
+        with pytest.raises(HMRCPayeTestSupportWinterFuelContractError): operation()
+    HookBomb.calls = 0
+    key = ArmedKey(); hostile_state = {key: 1}; key.armed = True
+    hostile = object.__new__(type(good)); object.__setattr__(hostile, "__dict__", hostile_state)
+    with pytest.raises(HMRCPayeTestSupportWinterFuelContractError): repr(hostile)
+    assert HookBomb.calls == 0
+    subclass = type("ContractSubclass", (type(good),), {})
+    bad_subclass = object.__new__(subclass)
+    object.__setattr__(bad_subclass, "__dict__", dict(vars(good)))
+    with pytest.raises(HMRCPayeTestSupportWinterFuelContractError): repr(bad_subclass)
+
+
+def test_hostile_reconstruction_preflight_dispatches_zero_hooks():
+    bomb = HookBomb(); HookBomb.calls = 0
+    calls = (
+        lambda: contract._restore_request((bomb,)),
+        lambda: contract._restore_inner(bomb, bomb),
+        lambda: contract._restore_success((bomb,), bomb, bomb, bomb, bomb, bomb),
+        lambda: contract._restore_non201((bomb,), bomb, bomb),
+    )
+    for call in calls:
+        with pytest.raises(HMRCPayeTestSupportWinterFuelContractError): call()
+    assert HookBomb.calls == 0
+
+
+def test_all_request_descriptors_and_observation_semantics_are_bound():
+    req = request(); original = tuple(vars(req)["_request_binding"])
+    for index in range(len(original)):
+        changed = list(original)
+        changed[index] = "0" * 64 if index == 0 else "changed"
+        malformed = clone_with(req, _request_binding=tuple(changed))
+        with pytest.raises(HMRCPayeTestSupportWinterFuelContractError): repr(malformed)
+    success = observe({"expectedStatus": Decimal("-0.00"), "expectedJson": {
+        "winterFuelPaymentAmount": Decimal("2.50"), "innerFuture": Hostile()}, "topFuture": Hostile()})
+    for name, value in {"expected_status": 0, "expected_json_present": False,
+            "unknown_names": frozenset(), "completeness": "VERIFIED"}.items():
+        with pytest.raises(HMRCPayeTestSupportWinterFuelContractError):
+            getattr(clone_with(success, **{name: value}), "expected_status")

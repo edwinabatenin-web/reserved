@@ -30,8 +30,13 @@ to the presence or value of `expectedJson`. No such coupling is implemented.
 
 The public request builder is keyword-only. Exact built-in strings are required;
 scenario omission is distinct from presence and explicit null fails closed. The
-NINO is validated first and discarded completely. The frozen request retains
-only tax year and scenario presence/value and is not sendable.
+NINO is validated first and discarded completely. No raw NINO, hash, suffix,
+mask or enumerable NINO derivative is retained by any value or reconstruction
+surface. The frozen, non-sendable request instead receives a fresh random
+process-local correlation identity unrelated to NINO and binds operation,
+method, path template, API version and media types, client-credentials grant,
+empty scope, Sandbox-only state, tax year, and scenario presence/value/default
+semantics.
 
 The observer accepts only an exact validated request intent. HTTP 201 requires
 exact `application/json` and exact built-in dictionaries. Numbers remain exact
@@ -43,17 +48,35 @@ coefficient digits, 12 fractional places and a 38-digit Decimal integer shape
 not HMRC sign, magnitude, scale, rounding, precision or exponent facts.
 
 All names are validated before classification. Only safe, bounded unknown names
-are retained; unknown values are untouched. Non-201 responses retain only the
-exact integer status and request-derived redacted identity; media type and body
-are neither inspected nor retained. Observations are frozen/redacted and always
-carry `completeness = "UNVERIFIED"`.
+are retained; unknown values are untouched. A success binds its exact producing
+request and the entire retained observation: `expectedStatus`, optional
+`expectedJson` presence, exact Winter Fuel amount including int-versus-Decimal
+and Decimal sign/exponent/digits, both levels of unknown names, and
+`UNVERIFIED` completeness. Non-201 responses bind only the exact integer status
+and producing request; media type and body are neither inspected nor retained.
+
+Every public value and protocol surface revalidates exact type/layout through
+an exact observation-kind dispatcher that directly invokes the corresponding
+contract-class validator,
+request/source/context coherence, retained semantics, an integrity digest and a
+weak process-local issuance record. Copy and deepcopy return the validated
+immutable value; pickle reconstruction structurally preflights all arguments,
+rebuilds validated values, and creates new process-local issuance records.
+Observation construction branches only over the two exact supported classes.
+Subclasses and missing, extra, transplanted or low-level-mutated state fail
+closed before unpacking, mutation, hostile keys, containers, members or
+overridden validation/protocol hooks can run.
 
 ## 3. Bounded inference
 
 The sole bounded inference is that the retained schema is sufficient for a
-disabled local fixture intent/observation contract. It is not evidence that any
-scenario outcome is complete, that a fixture becomes visible, or that a Winter
-Fuel amount has accounting, tax, cash, eligibility or product meaning.
+disabled local fixture intent/observation contract. The guarantee is only
+process-local coherence plus mutation/substitution detection. It is not
+provider authenticity, durable provenance, authorisation, attestation, secrecy,
+replay prevention, evidence that any scenario outcome is complete, evidence
+that a fixture becomes visible, or evidence that a Winter Fuel amount has
+accounting, tax, cash, eligibility or product meaning. Python module privacy is
+not a security boundary.
 
 ## 4. Unresolved gates
 
