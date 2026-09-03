@@ -1,8 +1,9 @@
 # W8 completion map — progressive integration
 
-Evidence cut-off: 2 September 2026. This finite map governs completion of W8;
-the W8-S2 package is assurance evidence for the existing lineage and does not
-itself deliver the missing production handoffs.
+Evidence cut-off: 3 September 2026. Current integration identity:
+`be978a32a55954d6fe2888c830253a35fbf9852b`. This finite map governs
+completion of W8; earlier W8-S2 planning evidence does not override the
+subsequently reviewed and integrated production handoffs recorded below.
 
 ## Owned outcome and boundary
 
@@ -39,8 +40,9 @@ bounded assurance only and never advance a delivery slice.
 
 | Evidence boundary | Evidence state |
 |---|---|
-| Annual-to-cash composition, including source identity and duplicate/double-count controls | synthetic_coexistence_evidence |
-| Missing, stale, conflicting and discrepant evidence fails closed | synthetic_coexistence_evidence |
+| Accounting evidence through annual tax and annual-to-cash composition, including source identity and duplicate/double-count controls | integrated |
+| Approved annual/cash result through the non-persistent customer/API boundary, including missing, stale, conflicting and discrepant evidence | integrated sub-boundary; persistence remains open |
+| Supported-geography admission and exact geography provenance through the customer result | integrated |
 | HICBC ambiguity is non-actionable and MTD incomplete evidence fails closed | synthetic_coexistence_evidence |
 | Reviewed FreeAgent invoice record, Xero invoice/observation/adapter result and QuickBooks invoice observation/adapter result coexist in one synthetic process | synthetic_coexistence_evidence |
 | Provider and business source-identity substitution is rejected using actual Xero and QuickBooks observations | synthetic_coexistence_evidence |
@@ -59,24 +61,28 @@ denominator.
 
 | # | Smallest coherent delivery slice and why needed | Current state |
 |---|---|---|
-| 1 | Provider/canonical accounting input → annual-tax handoff; joins reviewed accounting evidence to the production calculation boundary without source loss or double counting | planned |
-| 2 | Approved annual/cash result → customer/API/persistence handoff; makes the integrated result usable while keeping internal tax objects non-public | planned |
-| 3 | Enforced geography admission before actionable calculation; rejects Scotland/Scottish and every unsupported jurisdiction instead of silently ignoring geography facts | planned |
-| 4 | Enabled reviewed provider adapters and bounded customer journeys; provides the real acquisition path while preserving each provider's unequal reviewed contract | planned |
-| 5 | End-to-end multi-provider/mixed-income assembly over slices 1–4; proves the complete W8 production path without duplicate economic events | planned |
+| 1 | Provider-neutral canonical accounting input → annual-tax handoff; joins reviewed canonical accounting evidence to the production calculation boundary without source loss or double counting | **integrated and independently reviewed**; contextual handoff is present at `5c17c62...`, with the current exact geography/provenance reinforcement at `33aa569...`; provider acquisition remains slice 4 |
+| 2 | Approved annual/cash result → customer/API/persistence handoff; makes the integrated result usable while keeping internal tax objects non-public | **partial**; the public result/API, annual-cash customer handoff and tax-year binding are integrated and independently reviewed through `a3164e7...`, but approved durable persistence is intentionally absent pending the W9 data-lifecycle boundary |
+| 3 | Enforced geography admission before actionable calculation; rejects Scotland/Scottish and every unsupported jurisdiction instead of silently ignoring geography facts | **integrated and independently reviewed** at `33aa569...`; canonical artefact parity is corrected and passing at `be978a3...` |
+| 4 | Enabled reviewed provider adapters and bounded customer journeys; provides the real acquisition path while preserving each provider's unequal reviewed contract | **partial, not integrated as an enabled journey**; provider contracts and several network-inert adapters are reviewed, but credential custody, authenticated transport, provider sandbox evidence and deliberate enablement remain open |
+| 5 | End-to-end multi-provider/mixed-income assembly over slices 1–4; proves the complete W8 production path without duplicate economic events | **planned; correctly waiting for completed slices 2 and 4** |
 
-Progress at the evidence cut-off is **0/5 delivery slices** at `integrated` or
-beyond. Synthetic/component evidence is reported separately and does not alter
-that denominator.
+Progress at the evidence cut-off is **2/5 delivery slices (40%)** at
+`integrated` and independently reviewed. Slices 2 and 4 are partial and each
+contributes zero until its complete boundary is accepted; slice 5 remains
+planned. Synthetic/component evidence is reported separately and does not
+round any remaining slice up.
 
 ## Dependencies and authority
 
-- Slice 1 depends on the current canonical accounting tax-input/source-
-  observation contracts and annual-position contract. Slice 2 depends on slice
-  1 and the existing annual-to-cash output. Slice 3 depends on an authoritative
-  supported-geography rule and must precede any actionable route. Slice 4
-  depends on reviewed provider contracts plus approved credentials/sandboxes.
-  Slice 5 depends on slices 1–4.
+- Slices 1 and 3 have satisfied their local implementation, review and
+  integration dependencies on the current lineage. Slice 2's non-persistent
+  customer/API boundary is integrated, but its persistence boundary depends on
+  the approved W9 durable-data lifecycle. Slice 4 depends on the separately
+  governed provider-custody, authenticated-transport, sandbox and enablement
+  gates recorded in the FreeAgent, Xero and QuickBooks completion maps. Slice 5
+  depends on completed slices 2 and 4 and must not simulate either dependency
+  away.
 - External dependencies are provider sandbox availability, approved target
   runtime and production credentials. Their evidence is required by the
   terminal gate; this map grants none of them.
@@ -87,14 +93,16 @@ that denominator.
 
 ## Sequencing, parallelism and collision rules
 
-- Slices 1 and 3 may proceed in parallel because their contract boundaries are
-  independent. Slice 2 follows the stable output from slice 1.
+- Slices 1 and 3 are complete at the integrated-engineering level and must
+  remain regression-protected rather than reopened for ordinary later work.
+  Slice 2's reviewed non-persistent handoff must remain protected while W9 owns
+  the missing durable-data decision and implementation.
 - Provider-specific work inside slice 4 may run in parallel when it owns
   separate provider modules/tests. Changes to shared accounting contracts,
   canonical identity/normalisation or fixtures are serial and require one
   owner plus affected-provider review.
-- Slice 5 is serial after slices 1–4 are integrated. Release evidence begins
-  only on the assembled candidate.
+- Slice 5 is serial after slices 2 and 4 are integrated. Release evidence
+  begins only on the assembled candidate.
 - The annual entry point, canonical accounting contracts/normalisation,
   customer schema/persistence boundary and release gate are collision zones.
   A package touching any one must declare the owning slice and avoid concurrent
@@ -115,26 +123,24 @@ excludes unbounded provider/Founder waits.
 | 4 | 15–30 working days | 4–8 weeks plus provider queues | 10–25 working days |
 | 5 | 8–14 working days | 2–4 weeks | 7–12 working days |
 
-Total active effort is approximately **36–68 working days**. With permitted
-parallelism, the modeled critical path is **27–56 working days** and elapsed
-delivery is roughly **8–16 weeks plus unresolved external queues**.
+The original effort ranges are retained as historical planning evidence. The
+remaining W8 boundary spans the persistence remainder of slice 2 plus slices
+4–5: at most **28–53 working days** of the original active estimate before
+crediting the already-complete non-persistent S2 work. Slice 4's provider and
+security queues and W9's persistence decision are the dominant elapsed-time
+risks. Completed work is not rebooked as remaining effort.
 
-## Honest geography finding
+## Geography closure
 
-`calculate_annual_position` accepts an open facts mapping. Direct execution
-with each of `jurisdiction="Scotland"`, `country="Scotland"`,
-`country_code="GB-SCT"`, `territory="Scotland"` and
-`tax_regime="Scottish"` produces the same `calculated` result as the baseline
-(`total_liability=3486.00`). Those keys are silently ignored; unsupported
-geography does **not** fail closed. This is an unresolved launch blocker owned
-by slice 3.
-
-Existing concepts are narrower and do not solve that blocker: QuickBooks
-`CompanyInfoObservation.country` and canonical
-`AccountingBusiness.country_code` are retained structures; FreeAgent validates
-the documented company `country` wire member but its current
-`FreeAgentCompanyRecord` does not retain it; the reviewed public structures do
-not expose a `territory` field. None is wired to annual-tax admission.
+The earlier silent-ignore defect is closed on the current lineage. Exact
+supported geography is admitted before actionable calculation, preserved in
+the issued annual result and provenance, revalidated through accounting,
+annual-to-cash and customer/API handoffs, and rejects Scotland/Scottish and
+unsupported jurisdictions. Independent hostile-state review additionally
+proved that a lying string subclass cannot promote Scotland as England and
+that mutation/rebinding cannot turn an issued England result into an accepted
+Wales result. This is integrated-engineering evidence, not authority to add
+Scottish tax or evidence that provider source geography is complete.
 
 ## Overall W8 terminal completion gate
 
@@ -161,16 +167,19 @@ these finite checks pass on one exact candidate:
 9. Independent final review accepts the combined evidence and residual risks.
 10. Founder authority for merge, release and go-live is explicit and traceable.
 
-## W8-S2 package acceptance gate
+## Historical W8-S2 assurance package
 
-This assurance-only package is ready for a different independent reviewer when
-only the three enumerated paths are present, its focused 24-test suite, declared
-affected matrix and actual-provider contract matrix pass with bytecode/cache
-disabled, and the claims above match executable evidence. Acceptance advances
-no delivery slice and cannot pass the W8 terminal gate.
+The historical W8-S2 assurance package supplied planning evidence but is no
+longer the immediate checkpoint action. Its synthetic claims do not override
+the reviewed production evidence for slices 1–3 and do not advance slices 4–5.
 
 ## Immediate next action
 
-Give the exact three-path W8-S2 correction candidate to a different independent
-reviewer. If accepted, the owning Codex may make the checkpoint decision; no
-product implementation, merge, release or Founder decision is implied.
+Keep slices 1 and 3 and the non-persistent S2 handoff regression-protected.
+Complete slice 2 persistence only through W9's approved durable-data lifecycle.
+Resume slice 4 only through the exact provider completion-map entry gates:
+approved credential/token custody, authenticated disabled-first transport,
+provider sandbox evidence and bounded customer journeys. Do not invent a
+generic W8 adapter or begin slice 5 early to work around those gates. While
+those boundaries are gated, continue other non-colliding launch-critical
+packages that already have complete authority and evidence.
