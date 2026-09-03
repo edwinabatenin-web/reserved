@@ -1,0 +1,20 @@
+<section role="status" aria-live="polite" aria-atomic="true" aria-labelledby="mtd-scope-indication-heading">
+  <h2 id="mtd-scope-indication-heading">{{ model[0] }}</h2>
+  <p><strong>{{ model[1] }}</strong></p>
+  <p>{{ model[2] }}</p>
+  <p>{{ model[3] }}</p>
+  <p>{{ model[4] }}</p>
+{% if model[5] %}  <dl>
+    <dt>Assessment tax year</dt><dd>{{ model[6] }}</dd>
+    <dt>Mandatory from tax year</dt><dd>{{ model[7] }}</dd>
+    <dt>Effective start date</dt><dd>{{ model[8] }}</dd>
+{% if model[9] %}    <dt>Qualifying gross income</dt><dd>{{ model[10] }}</dd>
+    <dt>Threshold</dt><dd>{{ model[11] }}</dd>
+    <dt>Difference from threshold</dt><dd>{{ model[12] }}</dd>
+{% endif %}    <dt>Included income sources</dt><dd>{{ model[14] }}</dd>
+    <dt>Included businesses</dt><dd>{{ model[15] }}</dd>
+    <dt>Excluded income sources</dt><dd>{{ model[17] }}</dd>
+  </dl>
+{% if model[13] %}  <p>Included categories: {% for category in model[13] %}{{ category }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+{% endif %}{% if model[16] %}  <p>Excluded categories: {% for category in model[16] %}{{ category }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+{% endif %}{% endif %}</section>
