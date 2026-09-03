@@ -80,8 +80,15 @@ boundary:
 
 The resulting `EmploymentTestSupportRequestIntent`:
 
-- retains only the validated tax year and the explicit scenario-presence/value
-  facts;
+- validates `utr` before deriving retained state, then discards it completely;
+- retains only the validated tax year, the explicit scenario-presence/value
+  facts, a fresh high-entropy opaque correlation token and the fixed documented
+  request descriptors (method, sandbox origin, path template, request/response
+  media types and API version) held in name-mangled private slots derived from
+  module constants;
+- derives the correlation token from a cryptographically secure random source
+  (`secrets.token_hex(32)`), never from the UTR, so two separately built intents
+  with identical semantics are distinct per request;
 - retains no raw, reversible, recoverable or surrogate UTR;
 - exposes no rendered path/URL, no method+origin combination, no
   `Authorization` header, no access token, no credential, no sendable header map
@@ -89,12 +96,16 @@ The resulting `EmploymentTestSupportRequestIntent`:
 - is frozen (attribute assignment/deletion raise), redacted
   (`repr` is `EmploymentTestSupportRequestIntent([REDACTED])`), and has no
   mutable `__dict__`;
-- resists direct construction, mutation, `copy`, `deepcopy`, `pickle` and
-  derived-field injection (copy/deepcopy/pickle raise `TypeError`);
+- revalidates its exact complete retained state before equality, hashing, copy,
+  deepcopy or pickle reconstruction, so low-level forged or incoherent state
+  fails closed instead of being shared or serialised;
+- round-trips coherently through `copy`, `deepcopy` and `pickle` using only its
+  canonical UTR-free binding (never the raw UTR);
 - is not, and cannot become, a `ProviderRequest`.
 
-Method/path/header values are recorded as module-level constants only; the
-public object never assembles them into a sendable request.
+Method/path/header/media/version values are recorded as module-level constants
+only and are retained on the object solely as private canonical-identity slots;
+the public object never assembles them into a sendable request.
 
 ## 5. HTTP 201 response observation
 
@@ -117,12 +128,52 @@ The result is an `EmploymentTestSupportResponseObservation` (and per-element
 `EmploymentTestSupportRecordObservation`), both frozen and redacted. The raw
 payload is never retained.
 
-### Constructor and `replace` exact-coherence invariants
+### Observation construction and request binding
 
-Both observation classes re-run their full parser invariants in `__post_init__`,
-so direct construction and `dataclasses.replace` (as well as copy/deepcopy and
-pickle round-trips of already-coherent instances) cannot diverge from the
-parse-time state; every invalid or contradictory state fails closed.
+`EmploymentTestSupportResponseObservation` is observer-constructed only: its
+dataclass initialiser and `dataclasses.replace` both raise `TypeError`, so no
+caller-supplied request, tax year, scenario or fact can be injected through a
+public construction path. It is produced only by the private request-bound
+factory inside `observe_employment_test_support_response`.
+
+The factory retains, on every response observation:
+
+- `request` — the exact validated, UTR-free producing request intent;
+- `_request_binding` and `_source_binding` — two retained references to the
+  same immutable canonical tuple holding the complete request identity (opaque
+  correlation token, tax year, scenario presence/value, method, sandbox origin,
+  path template, request/response media types and API version); and
+- `_observation_integrity` — a canonical SHA-256 digest over the complete request
+  binding and every retained semantic value (status, employments record values,
+  completeness, absent/unknown names).
+
+`tax_year`, `scenario` and `scenario_present` are derived from that trusted
+retained context, never from duplicated caller input. The observer also records
+the observation in a process-local issuance registry keyed by object identity,
+so a low-level clone is unsupported while `copy`/`deepcopy` return the registered
+object and pickle reconstruction registers the newly validated object.
+
+Every property, equality, hash, copy, deepcopy, pickle and reconstruction surface
+revalidates the full exact state, the `request`/`_request_binding`/`_source_binding`/
+derived-field coherence, the canonical integrity digest and the issuance record,
+so:
+
+- omitted/present scenario substitution and `HAPPY_PATH_1`/`HAPPY_PATH_2`
+  substitution are rejected;
+- tax-year, fixed-descriptor and opaque-correlation substitution are rejected;
+- coordinated request/observation substitution, including coherent whole-context
+  relabelling and identical-payload provenance swaps, is rejected;
+- replacing `employments` or `unknown_fields` with another valid value, or
+  mutating any retained employment value, is rejected;
+- direct construction, `dataclasses.replace`, low-level mutation, subclasses and
+  missing/extra/malformed built-in state fail closed;
+- tampered copy/deepcopy/pickle reconstruction fails closed.
+
+`EmploymentTestSupportRecordObservation` remains a validated, directly
+constructible value object. It re-runs its full parser invariants in
+`__post_init__` and again before equality/hashing/copy/deepcopy/pickle, so
+direct construction and `dataclasses.replace` cannot diverge from parse-time
+state; every invalid or contradictory state fails closed.
 
 `EmploymentTestSupportRecordObservation` enforces:
 
@@ -143,7 +194,13 @@ parse-time state; every invalid or contradictory state fails closed.
 
 `EmploymentTestSupportResponseObservation` enforces:
 
-- `tax_year` is the exact validated `YYYY-YY` form;
+- `request`, `_request_binding` and `_source_binding` are exact, coherent and
+  validated UTR-free request identity (opaque correlation token, tax year,
+  scenario presence/value and every fixed descriptor);
+- `_observation_integrity` is the exact canonical SHA-256 digest recomputed from
+  the retained binding and every retained semantic value;
+- `tax_year`, `scenario` and `scenario_present` are exact built-in values
+  derived from the retained request binding (never caller-supplied);
 - `status_code` is an exact built-in `int` equal to 201;
 - `employments` is an exact built-in `tuple` with no more than
   `RESERVED_DEFENSIVE_MAX_EMPLOYMENTS`, containing only exact coherent record
@@ -152,6 +209,28 @@ parse-time state; every invalid or contradictory state fails closed.
 - top-level `absent_fields` is exactly empty (because `employments` is required);
 - top-level `unknown_fields` is exact, safe, bounded and disjoint from
   `employments`.
+
+### Enforceable integrity boundary (what this is and is not)
+
+The request correlation token and observation-integrity digest establish
+**process-local coherence and mutation detection only**. They detect, at every
+public protocol surface, whether a retained observation still matches the exact
+request that produced it and whether any retained semantic value has changed.
+
+They are **not** a security or authenticity mechanism and must not be presented
+as one. In particular this package does **not** provide:
+
+- cryptographic authenticity, signing or verification of observations;
+- durable provenance or an audit trail across processes, restarts or storage;
+- authorisation, attestation or trust in the caller or the payload;
+- replay prevention or non-repudiation;
+- confidentiality: module privacy (name-mangled slots, redacted `repr`) is
+  encapsulation, not a security boundary against Python code that can reach the
+  internals of a trusted process.
+
+Python code with arbitrary module-internals access is trusted; the identity
+boundary exists because deterministic object state alone cannot distinguish a
+registered observation from a low-level clone.
 
 ### Prose "one or more" versus schema constraint
 
@@ -216,7 +295,8 @@ including `requests`, `httpx`, `urllib`, `socket`, `http.client`, `aiohttp`,
 `subprocess`, the generic provider HTTP boundary (`reserved.providers.http_boundary`),
 environment/configuration reads, persistence, routes, provider activation,
 production HMRC origin, OAuth/token machinery or credential handling. Its only
-imports are `re`, `unicodedata`, `dataclasses` and `typing`. The test suite
+imports are `re`, `unicodedata`, `hashlib`, `json`, `secrets`, `weakref`,
+`dataclasses` and `typing`. The test suite
 asserts this via in-memory AST import inspection and module-attribute checks.
 
 ## 9. No canonical / accounting / tax / cash / customer use
