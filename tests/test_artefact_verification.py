@@ -63,7 +63,7 @@ def built(tmp_path):
 
 
 def _expected_names(prov):
-    return set(prov["source_files"]) | {"evidence_uncertainty.py"}
+    return set(prov["source_files"]) | {"evidence_uncertainty.py", "accounting_contracts.py"}
 
 
 def _writable(out):
@@ -169,7 +169,7 @@ def test_build_rejects_unknown_source(tmp_path):
 
 def test_build_rejects_dirty_source(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        BUILD, "_dirty_source_paths", lambda source, evidence: ["reserved/engines/income_tax.py"]
+        BUILD, "_dirty_source_paths", lambda *paths: ["reserved/engines/income_tax.py"]
     )
     with pytest.raises(SystemExit, match="dirty source"):
         BUILD.build(ROOT / "reserved" / "engines", tmp_path / "out")

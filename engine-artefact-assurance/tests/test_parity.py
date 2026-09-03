@@ -11,6 +11,7 @@ Student Loan behaviour.
 The gate compares material public behaviour and version/configuration
 identity without coupling to private implementation layout.
 """
+from datetime import date, datetime, timezone
 from decimal import Decimal as D
 
 import pytest
@@ -151,3 +152,125 @@ def test_optimise_parity():
     for income, pension in [(D("110000"), D("0")), (D("70000"), D("0")),
                             (D("200000"), D("80000"))]:
         assert _call(prod_pos, income, pension) == _call(art_pos, income, pension)
+
+
+# ── W8-S1 accounting-to-tax handoff parity ────────────────────────────────────
+
+_HANDOFF_RETRIEVED_AT = datetime(2026, 8, 3, 10, 0, 0, tzinfo=timezone.utc)
+
+
+def _handoff_bundle(c):
+    """Build an identical synthetic accounting bundle from a contracts module."""
+    def _identity(**overrides):
+        kwargs = dict(user_id="user-1", provider=c.AccountingProviderName.XERO,
+                      connected_organisation_id="org-1", business_id="business-1",
+                      import_run_id="run-1")
+        kwargs.update(overrides)
+        return c.SourceIdentity(kwargs["user_id"], kwargs["provider"],
+                                kwargs["connected_organisation_id"],
+                                kwargs["business_id"], kwargs["import_run_id"])
+
+    def _provenance(record_id, **identity_kwargs):
+        return c.Provenance(
+            identity=_identity(**identity_kwargs),
+            api_name="synthetic",
+            api_version="v1",
+            resource="invoices",
+            record_id=record_id,
+            source_fields=("provider_document_id",),
+            retrieved_at=_HANDOFF_RETRIEVED_AT,
+            adapter_version="syn-1",
+            source_record_digest="digest",
+        )
+
+    def _observation(observation_id):
+        return c.SourceObservation(
+            observation_id=observation_id,
+            provenance=_provenance(record_id=observation_id),
+            evidence_state=c.EvidenceState.SELECTED,
+        )
+
+    def _tax_input(input_id, economic_event_id, classification, amount,
+                   evidence_observation_ids, allowability=None,
+                   allowability_decision_id=None):
+        return c.CanonicalAccountingTaxInput(
+            input_id=input_id,
+            purpose="income",
+            scope="self-assessment",
+            business_id="business-1",
+            economic_event_id=economic_event_id,
+            tax_year="2026/27",
+            recognised_amount=D(amount),
+            recognised_date=date(2026, 8, 10),
+            classification=classification,
+            currency="GBP",
+            base_currency="GBP",
+            evidence_observation_ids=evidence_observation_ids,
+            recognition_decision_id="recognition-1",
+            allowability_decision_id=allowability_decision_id,
+            policy_version="v1",
+            allowability=allowability,
+            permitted_uses=("tax_estimate",),
+            prohibited_uses=("settlement", "write_back"),
+        )
+
+    o1 = _observation("o1")
+    o2 = _observation("o2")
+    allow = c.AllowabilityDecision(
+        "a1", c.AllowabilityOutcome.ALLOWABLE,
+        c.DecisionAuthority.RESERVED_RULE, _HANDOFF_RETRIEVED_AT,
+        "business expense", allowable_fraction=None, source_observation_ids=("o2",),
+    )
+    i1 = _tax_input("i1", "e1", "turnover", "10000", ("o1",))
+    i2 = _tax_input("i2", "e2", "expense", "2000", ("o2",),
+                    allowability=allow, allowability_decision_id="a1")
+    return [i1, i2], [o1, o2]
+
+
+@pytest.mark.parametrize("business_type_attr", [
+    "TRADE", "UK_PROPERTY", "FOREIGN_PROPERTY",
+])
+def test_accounting_tax_handoff_parity(business_type_attr):
+    from reserved.engines.accounting_tax_handoff import (
+        calculate_annual_position_from_accounting as prod_handoff,
+    )
+    from reserved_engine.accounting_tax_handoff import (
+        calculate_annual_position_from_accounting as art_handoff,
+    )
+    import reserved.providers.accounting.contracts as prod_contracts
+    import reserved_engine.accounting_contracts as art_contracts
+
+    prod_inputs, prod_obs = _handoff_bundle(prod_contracts)
+    art_inputs, art_obs = _handoff_bundle(art_contracts)
+    prod_business = getattr(prod_contracts.BusinessType, business_type_attr)
+    art_business = getattr(art_contracts.BusinessType, business_type_attr)
+
+    prod_out = _call(prod_handoff, tax_year="2026/27", business_type=prod_business,
+                     inputs=prod_inputs, observations=prod_obs)
+    art_out = _call(art_handoff, tax_year="2026/27", business_type=art_business,
+                    inputs=art_inputs, observations=art_obs)
+    assert prod_out[0] == "ok", f"production failed for {business_type_attr}: {prod_out}"
+    assert prod_out == art_out
+
+
+def test_accounting_tax_handoff_unsupported_business_type_fails_closed_identically():
+    from reserved.engines.accounting_tax_handoff import (
+        calculate_annual_position_from_accounting as prod_handoff,
+    )
+    from reserved_engine.accounting_tax_handoff import (
+        calculate_annual_position_from_accounting as art_handoff,
+    )
+    import reserved.providers.accounting.contracts as prod_contracts
+    import reserved_engine.accounting_contracts as art_contracts
+
+    prod_inputs, prod_obs = _handoff_bundle(prod_contracts)
+    art_inputs, art_obs = _handoff_bundle(art_contracts)
+
+    prod_out = _call(prod_handoff, tax_year="2026/27",
+                     business_type=prod_contracts.BusinessType.UNSUPPORTED,
+                     inputs=prod_inputs, observations=prod_obs)
+    art_out = _call(art_handoff, tax_year="2026/27",
+                    business_type=art_contracts.BusinessType.UNSUPPORTED,
+                    inputs=art_inputs, observations=art_obs)
+    assert prod_out[0] == "raise", f"production did not fail closed: {prod_out}"
+    assert prod_out == art_out

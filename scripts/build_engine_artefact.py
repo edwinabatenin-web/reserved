@@ -3,8 +3,9 @@
 Deterministic engine release-artefact generator.
 
 Builds a self-contained, importable copy of the maintained tax engine
-(``reserved/engines``) together with its single stdlib-only external
-dependency (``reserved/evidence_uncertainty.py``), and records immutable
+(``reserved/engines``) together with its stdlib-only external dependencies
+(``reserved/evidence_uncertainty.py`` and
+``reserved/providers/accounting/contracts.py``), and records immutable
 provenance in ``PROVENANCE.json``.
 
 Why this exists
@@ -18,8 +19,8 @@ step.
 Determinism
 -----------
 For identical source content the artefact is byte-identical: files are copied
-in a fixed order, the single permitted absolute import is rewritten in a
-stable way, and the ``generated_on`` timestamp is taken from
+in a fixed order, the permitted absolute imports are rewritten in a stable
+way, and the ``generated_on`` timestamp is taken from
 ``SOURCE_DATE_EPOCH`` (reproducible-builds convention) or, failing that, the
 source commit's committer timestamp.
 
@@ -31,8 +32,8 @@ the whole artefact, and the build timestamp.
 
 Fail-closed behaviour
 ---------------------
-Any absolute ``reserved.*`` import in the engine source (other than the one
-known stdlib-only dependency that is explicitly rewritten) aborts the build,
+Any absolute ``reserved.*`` import in the engine source (other than the known
+stdlib-only dependencies that are explicitly rewritten) aborts the build,
 so a non-self-contained artefact can never be silently produced.
 
 Usage
@@ -60,10 +61,19 @@ from pathlib import Path
 EVIDENCE_UNCERTAINTY_SOURCE = "reserved/evidence_uncertainty.py"
 EVIDENCE_UNCERTAINTY_TARGET = "evidence_uncertainty.py"
 
-# The one absolute import that must be rewritten so the artefact is
-# self-contained (annual_loan_wp7u imports reserved.evidence_uncertainty).
-REWRITE_ABS_IMPORT_FROM = "from reserved.evidence_uncertainty import"
-REWRITE_ABS_IMPORT_TO   = "from .evidence_uncertainty import"
+ACCOUNTING_CONTRACTS_SOURCE = "reserved/providers/accounting/contracts.py"
+ACCOUNTING_CONTRACTS_TARGET = "accounting_contracts.py"
+
+# Absolute ``reserved.*`` imports that must be rewritten so the artefact is
+# self-contained.  Each engine dependency is copied into the flat artefact and
+# its import is rewritten to the artefact-local module name.
+REWRITE_RULES = (
+    ("from reserved.evidence_uncertainty import", "from .evidence_uncertainty import"),
+    (
+        "from reserved.providers.accounting.contracts import",
+        "from .accounting_contracts import",
+    ),
+)
 
 PROVENANCE_SCHEMA = "reserved-engine-artefact-provenance-1"
 
@@ -172,10 +182,10 @@ def _produced_content_hash(directory: Path, expected_names: set[str]) -> str:
     )
 
 
-def _dirty_source_paths(source: Path, evidence: Path) -> list[str]:
-    """Return uncommitted/changed paths under ``source`` and ``evidence``."""
+def _dirty_source_paths(*paths: Path) -> list[str]:
+    """Return uncommitted/changed paths under the supplied source/dependency paths."""
     proc = subprocess.run(
-        ["git", "status", "--porcelain", "--", str(source), str(evidence)],
+        ["git", "status", "--porcelain", "--", *(str(p) for p in paths)],
         cwd=_repo_root(),
         capture_output=True,
         text=True,
@@ -198,17 +208,21 @@ def _abs_import_lines(text: str) -> list[str]:
 
 
 def _copy_and_rewrite(src: Path, dst: Path) -> None:
-    """Copy a source module, rewriting the single permitted absolute import."""
+    """Copy a source module, rewriting the permitted absolute imports."""
     text = src.read_text(encoding="utf-8")
     abs_imports = _abs_import_lines(text)
     for line in abs_imports:
         stripped = line.strip()
-        if stripped.startswith(REWRITE_ABS_IMPORT_FROM):
-            text = text.replace(REWRITE_ABS_IMPORT_FROM, REWRITE_ABS_IMPORT_TO)
-            continue
-        raise SystemExit(
-            f"{src}: artefact is not self-contained (absolute reserved.* import): {line!r}"
-        )
+        matched = False
+        for rewrite_from, rewrite_to in REWRITE_RULES:
+            if stripped.startswith(rewrite_from):
+                text = text.replace(rewrite_from, rewrite_to)
+                matched = True
+                break
+        if not matched:
+            raise SystemExit(
+                f"{src}: artefact is not self-contained (absolute reserved.* import): {line!r}"
+            )
     dst.write_text(text, encoding="utf-8")
 
 
@@ -251,8 +265,12 @@ def build(source: Path, out: Path, *, allow_dirty: bool = False) -> dict:
     if not evidence.exists():
         raise SystemExit(f"missing evidence_uncertainty dependency: {evidence}")
 
+    accounting_contracts = (_repo_root() / ACCOUNTING_CONTRACTS_SOURCE).resolve()
+    if not accounting_contracts.exists():
+        raise SystemExit(f"missing accounting_contracts dependency: {accounting_contracts}")
+
     if not allow_dirty:
-        dirty = _dirty_source_paths(source, evidence)
+        dirty = _dirty_source_paths(source, evidence, accounting_contracts)
         if dirty:
             raise SystemExit(
                 "refusing to build from a dirty source; commit or revert "
@@ -269,6 +287,7 @@ def build(source: Path, out: Path, *, allow_dirty: bool = False) -> dict:
     if (source / "CHANGELOG.md").exists():
         source_files["CHANGELOG.md"] = _sha256_bytes((source / "CHANGELOG.md").read_bytes())
     evidence_hash = _sha256_bytes(evidence.read_bytes())
+    accounting_contracts_hash = _sha256_bytes(accounting_contracts.read_bytes())
 
     # Build into a temp directory, then atomically publish.
     tmp = Path(tempfile.mkdtemp(prefix="reserved-engine-artefact-"))
@@ -280,11 +299,15 @@ def build(source: Path, out: Path, *, allow_dirty: bool = False) -> dict:
         if (source / "CHANGELOG.md").exists():
             shutil.copy2(source / "CHANGELOG.md", pkg / "CHANGELOG.md")
         shutil.copy2(evidence, pkg / EVIDENCE_UNCERTAINTY_TARGET)
+        shutil.copy2(accounting_contracts, pkg / ACCOUNTING_CONTRACTS_TARGET)
 
         # Content identity is computed over the produced bytes (the shipped
         # files), not over the source-hash metadata.  The expected file set is
-        # the source files plus the copied evidence dependency.
-        expected_names = set(source_files) | {EVIDENCE_UNCERTAINTY_TARGET}
+        # the source files plus the copied dependencies.
+        expected_names = set(source_files) | {
+            EVIDENCE_UNCERTAINTY_TARGET,
+            ACCOUNTING_CONTRACTS_TARGET,
+        }
         content_hash = _produced_content_hash(pkg, expected_names)
 
         provenance = {
@@ -298,6 +321,8 @@ def build(source: Path, out: Path, *, allow_dirty: bool = False) -> dict:
             "source_files": source_files,
             "evidence_uncertainty_source": EVIDENCE_UNCERTAINTY_SOURCE,
             "evidence_uncertainty_sha256": evidence_hash,
+            "accounting_contracts_source": ACCOUNTING_CONTRACTS_SOURCE,
+            "accounting_contracts_sha256": accounting_contracts_hash,
         }
         (pkg / "PROVENANCE.json").write_text(
             json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8"

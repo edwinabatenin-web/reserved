@@ -137,7 +137,7 @@ def _read_verified_artefact(path: Path) -> tuple[dict, dict[str, bytes]]:
     if not isinstance(source_files, dict) or not source_files:
         raise RuntimeError("engine artefact provenance has no source_files manifest")
 
-    expected_names = set(source_files) | {"evidence_uncertainty.py"}
+    expected_names = set(source_files) | {"evidence_uncertainty.py", "accounting_contracts.py"}
     buffers: dict[str, bytes] = {}
     for entry in sorted(path.iterdir()):
         if entry.name == "PROVENANCE.json":
@@ -171,6 +171,9 @@ def _read_verified_artefact(path: Path) -> tuple[dict, dict[str, bytes]]:
 
     if _sha256_bytes(buffers["evidence_uncertainty.py"]) != prov.get("evidence_uncertainty_sha256"):
         raise RuntimeError("engine artefact evidence_uncertainty mismatch")
+
+    if _sha256_bytes(buffers["accounting_contracts.py"]) != prov.get("accounting_contracts_sha256"):
+        raise RuntimeError("engine artefact accounting_contracts mismatch")
 
     return prov, buffers
 
