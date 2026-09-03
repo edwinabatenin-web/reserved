@@ -1,0 +1,11 @@
+<section aria-labelledby="w10-billing-plans-heading">
+    <h2 id="w10-billing-plans-heading">Billing plans</h2>
+    {% if model[0] %}
+    <ul id="w10-billing-plan-list" aria-describedby="w10-billing-vat-note">
+        {% for label in model[1] %}<li>{{ label }}</li>{% endfor %}
+    </ul>
+    <p id="w10-billing-vat-note">{{ model[2] }}</p>
+    {% else %}
+    <p role="status">Review required — billing plans are temporarily unavailable.</p>
+    {% endif %}
+</section>
