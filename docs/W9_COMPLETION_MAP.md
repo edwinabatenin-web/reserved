@@ -7,7 +7,7 @@ finite denominator. It is a planning and assurance control, not evidence that a
 control is deployed or launch-ready.
 
 - Evidence cut-off: 4 September 2026.
-- Current integration reconciliation point:
+- Historical integration reconciliation point:
   `7a1dbdbb27b2132d62c92ea4b965e81436f72f85` (tree
   `64463d3d586c31fd8757907399132f73caa2455f`).
 - Inspection worktree branch: `codex/w9-s3e-map-reconciliation` (an isolated
@@ -15,6 +15,11 @@ control is deployed or launch-ready.
 - Immutable starting commit: `7a1dbdbb27b2132d62c92ea4b965e81436f72f85`.
 - Starting tree: `64463d3d586c31fd8757907399132f73caa2455f`.
 - Starting worktree: clean.
+- Narrow lifecycle/handoff reconciliation snapshot:
+  `c118dbdac2b03eeb43b386928c2416aa78fdafd3` (tree
+  `5ca34122142e846eb9b28a3b8553226cd11643a1`). The earlier inspection metadata
+  above remains historical evidence. This immutable snapshot is not a moving
+  latest-HEAD requirement; the refresh changes no delivery state or denominator.
 - Evidence used: repository implementation and tests, [Founder Decisions](../FOUNDER_DECISIONS.md),
   [W9-S1 independent-review findings](W9_S1_INDEPENDENT_REVIEW_EVIDENCE.md),
   [W9-S1 launch data-flow and threat model](W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md),
@@ -85,6 +90,47 @@ local test suite passes.
 
 ## Finite delivery slices
 
+### Accepted lifecycle/handoff reconciliation
+
+HICBC mutual-permission lifecycle source
+`7674b2f756f621ae9a8d1fe18063f634be90c367` is accepted and integrated at
+`91cb4c2f14bce089db1f92f656c8cbc1d85639b7`. Its five tables are `hicbc_links`,
+`hicbc_link_invitations`, `hicbc_link_consents`,
+`hicbc_permission_form_bindings` and `hicbc_permission_events`. Invitation
+acceptance creates a link, not permission. Each user separately affirms four
+notices; page state/binding issuance and consent validation/write are atomic.
+The form binding checks exact link/cycle/user/year/notice/expiry. Current
+link/consent rows control use, never event history. Notice-version-aware events
+are append-only through the application API, not deletion-proof: account
+deletion cascades to permissions, bindings and events. Withdrawal/unlink
+invalidates permission; re-link advances `permission_cycle`, invalidates old
+consent/bindings and requires fresh permission from both users.
+`HICBC_ENABLED` stays disabled by default; privacy, retention, legal,
+anti-probing and target cross-account acceptance remain open.
+
+The owner-unbound W8 handoff and W9-S3A migration, source
+`5ba53dccc8c608ff9c61a6913fa29704141c38a2`, are accepted and integrated at
+`d3c0f53f785a4fca75e54c466032244ee2bbb2b3`. The historical S3A checkpoint below
+is preserved, but its admission now checks exact source type before
+property/descriptor access and validates a sealed owner-unbound handoff against
+exact source/evidence/as-of/tax-year/geography context before binding separately
+supplied authenticated user/business references. The handoff carries no
+user/business identity and is `owner_authoritative=False`; an owner-bound
+customer result is not admission input. This does not authenticate the caller
+or supply a physical membership repository, durable I/O or production authority.
+
+The W9 companion evidence refresh, source
+`6c8703ddedbea7c6190408010bf4737062bf72cd`, is accepted and integrated at
+`c118dbdac2b03eeb43b386928c2416aa78fdafd3`. It updates the launch data-flow model,
+decision dossier and evidence test for these two accepted changes; it does not
+change the gap register or close any external gate. See
+[the model](W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md) and
+[the dossier](W9_SECURITY_DECISION_DOSSIER.md). This evidence acceptance leaves
+S1 partial, S3 non-durable, all five slice states unchanged and all physical
+persistence/custody/retention/provider/target/human/activation gates open.
+
+### Stable delivery denominator
+
 | Slice | Owned outcome | Current state | Dependencies and concurrency | Completion evidence |
 | --- | --- | --- | --- | --- |
 | **W9-S1 — control inventory, launch data-flow and threat boundary** | Preserve existing authentication/session, provider fail-close and canonical release controls; document the complete October data flow, trust boundaries, threats and exact unresolved security/privacy decisions without creating another readiness authority. | **Implemented and integrated; completion evidence remains partial.** The S1 independent-review findings record (`81ae02044cccd921d98a0d1fc2360e1c4a983ab1`) and findings-driven S1B current-state reconciliation (`587828337e01f269320048847b3250a690ce6133`) are accepted/integrated as exact local evidence. The model, decision dossier, gap register and test now cover the accepted lineage and preserve all 15 flows, 14 boundaries, 21 threats and 14 decisions. This does not complete S1: 13 decision owners remain “to be named”, and required human/provider/target/legal/privacy/security/operations evidence is not accepted. | Preserve S1A/S1B; do not repeat or redispatch their evidence-only work. Name the accountable roles without inferring them, obtain their dated evidence/acceptance, and complete the applicable target/provider journeys under S5. | The accepted structural review/reconciliation is necessary but insufficient. Slice completion still requires every unresolved choice to have a named accountable owner and accepted evidence, plus independent review of the exact resulting launch candidate; no environment, credential, network, persistence or activation side effects. |
@@ -97,7 +143,7 @@ The accepted W9-S3 layers must be read narrowly:
 
 | Layer | What is integrated | What it does not establish |
 | --- | --- | --- |
-| W9-S3A — `c489c25bab669c64e1c11d28caf29fcde9678fdd` | A minimised structured annual-position projection, local producer admission boundary, provenance/uncertainty representation, exact identity and supersession-chain contract. | No datastore, relational row, migration, retention period, legal hold, backup expiry, encryption/key custody, target write or production activation. |
+| W9-S3A — historical `c489c25bab669c64e1c11d28caf29fcde9678fdd`; accepted migration `d3c0f53f785a4fca75e54c466032244ee2bbb2b3` | A minimised structured annual-position projection, local producer admission boundary, provenance/uncertainty representation, exact identity and supersession-chain contract. Admission now validates the exact source and sealed owner-unbound W8 handoff before binding separately supplied authenticated owner/business references. | No caller authentication, datastore, relational row, migration, retention period, legal hold, backup expiry, encryption/key custody, target write or production activation. |
 | W9-S3B — `110a90043dfc770c70059482be9d7b7e237749a6` | A datastore-neutral detached primitive candidate, logical annual-position/evidence rows, governance-input gates and pure create/read/CAS/deletion-plan decisions. It is explicitly non-admitted and grants no persistence authority. | No authentication of live S3A output, adapter, database/SQL, durable read/write, atomic target CAS, migration, deletion execution, retention clock, custody, backup behavior, target runtime or activation. |
 | W9-S3C — `c9bdaa6538d68c0c64b2dcde97f224a69c089d30` / integration `5f5a948891e1e812a5c74ff6c7266d153bb492fa` | A validating non-durable detachment adapter from the exact live admitted S3A projection to the detached S3B candidate shape. It binds caller-supplied expected owner/business references, preserves predecessor linkage and grants zero persistence authority; it does not authenticate the runtime caller or issuer. | S3C itself supplies no runtime-owner authentication, owner-to-business membership, database/SQL, datastore selection, durable write/read, target CAS, migration, retention/deletion execution, custody, backup behavior, target runtime or activation. |
 | W9-S3D — source `98e4887e038f9ada1f090b0723837f3cb49eb8af` + `2ccafb00047583979e55e0ebb4fb193f17abe659`; integrations `5f7b76408a5d72b71be71d0e5d6c7a6edde260b7` + `b8ce971f4dc6b8a1ced10e9b490be68d481752de` | An exact three-path, pure/non-durable adapter that snapshots the authenticated signed-session `users.id`, canonicalises it through the accepted owner mapper and supplies it to S3C. Source ancestry is preserved after checkpoint. | No owner-to-business membership authentication, database/SQL, datastore selection, durable write/read, target CAS, migration, retention/deletion execution, custody, backup behavior, target runtime or activation. |

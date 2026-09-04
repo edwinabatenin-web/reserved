@@ -1,10 +1,16 @@
 # W8 completion map — progressive integration
 
-Evidence cut-off: 4 September 2026. Current integration identity:
+Evidence cut-off: 4 September 2026. Historical integration identity:
 `b8ce971f4dc6b8a1ced10e9b490be68d481752de` (tree
 `7fcc5be531c5a4331e6a7ff65ce18a33e1772766`). This finite map governs
 completion of W8; earlier W8-S2 planning evidence does not override the
 subsequently reviewed and integrated production handoffs recorded below.
+
+Narrow handoff/lifecycle reconciliation snapshot:
+`c118dbdac2b03eeb43b386928c2416aa78fdafd3` (tree
+`5ca34122142e846eb9b28a3b8553226cd11643a1`). These are immutable inspected
+checkpoints, not a requirement that later integration HEAD remain fixed. This
+map refresh changes no delivery state, denominator or terminal gate.
 
 ## Owned outcome and boundary
 
@@ -65,6 +71,37 @@ or authorise the separately supplied business reference. The chain remains
 pure/in-memory and does not select or operate a physical datastore, schema,
 migration or durable I/O boundary.
 
+The accepted owner-unbound W8 handoff and W9-S3A migration, source
+`5ba53dccc8c608ff9c61a6913fa29704141c38a2`, are integrated at
+`d3c0f53f785a4fca75e54c466032244ee2bbb2b3`. The handoff carries no user/business
+identity and is `owner_authoritative=False`. S3A rejects non-exact source types
+before property/descriptor access, validates the sealed handoff against exact
+source/evidence/as-of/tax-year/geography context, and only then binds separately
+supplied authenticated owner/business references. A caller-supplied owner-bound
+customer result is not admission input. This supersedes the earlier handoff
+description, not its historical evidence; it supplies neither caller
+authentication nor physical persistence authority.
+
+Accepted HICBC mutual-permission lifecycle source
+`7674b2f756f621ae9a8d1fe18063f634be90c367` is integrated at
+`91cb4c2f14bce089db1f92f656c8cbc1d85639b7`. Linking alone is not permission:
+both users must separately affirm the four notices, with exact
+link/cycle/user/year/notice/expiry binding. Current link/consent rows, not
+lifecycle events, control use; withdrawal/unlink disables linked use and re-link
+requires fresh mutual permission. This is bounded permission-lifecycle evidence,
+not full HICBC calculation, privacy or launch acceptance; `HICBC_ENABLED` remains
+disabled by default and privacy/retention/legal/target gates remain open.
+
+The companion W9 lifecycle/handoff evidence refresh, source
+`6c8703ddedbea7c6190408010bf4737062bf72cd`, is integrated at
+`c118dbdac2b03eeb43b386928c2416aa78fdafd3`; see the
+[W9 launch data-flow model](W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md) and
+[decision dossier](W9_SECURITY_DECISION_DOSSIER.md). Its acceptance is evidence
+reconciliation only. None of these three accepted packages completes W8 slice 2,
+advances the HICBC/MTD synthetic-coexistence boundary, or closes membership,
+physical persistence, custody, retention, provider, target, human or activation
+gates.
+
 Accepted early-W8/W10 lifecycle-composition evidence is integrated at
 `584ff7f31009913706d3427c38a986bbfa6799d2`. It composes the detached S6E
 payment-recovery, S6F cancellation, S6G initial pending/failed and S6H
@@ -88,7 +125,7 @@ denominator.
 | # | Smallest coherent delivery slice and why needed | Current state |
 |---|---|---|
 | 1 | Provider-neutral canonical accounting input → annual-tax handoff; joins reviewed canonical accounting evidence to the production calculation boundary without source loss or double counting | **integrated and independently reviewed**; contextual handoff is present at `5c17c62...`, with the current exact geography/provenance reinforcement at `33aa569...`; provider acquisition remains slice 4 |
-| 2 | Approved annual/cash result → customer/API/persistence handoff; makes the integrated result usable while keeping internal tax objects non-public | **partial**; the public result/API, annual-cash customer handoff and tax-year binding are integrated and independently reviewed through `a3164e7...`; W9-S3A-D now supplies a bounded non-durable projection/repository/adapter/runtime-owner chain through `b8ce971...`, but owner-to-business membership, physical persistence and its lifecycle evidence remain open |
+| 2 | Approved annual/cash result → customer/API/persistence handoff; makes the integrated result usable while keeping internal tax objects non-public | **partial**; the historical public result/API and tax-year binding through `a3164e7...` are preserved; the accepted owner-unbound annual-cash handoff and S3A admission migration are integrated at `d3c0f53f785a4fca75e54c466032244ee2bbb2b3`. W9-S3A-D supplies the bounded non-durable projection/repository/adapter/runtime-owner chain through `b8ce971...` with that S3A migration, but authoritative physical owner-to-business membership, physical persistence and its lifecycle evidence remain open |
 | 3 | Enforced geography admission before actionable calculation; rejects Scotland/Scottish and every unsupported jurisdiction instead of silently ignoring geography facts | **integrated and independently reviewed** at `33aa569...`; canonical artefact parity is corrected and passing at `be978a3...` |
 | 4 | Enabled reviewed provider adapters and bounded customer journeys; provides the real acquisition path while preserving each provider's unequal reviewed contract | **partial, not integrated as an enabled journey**; provider contracts and several network-inert adapters are reviewed, but credential custody, authenticated transport, provider sandbox evidence and deliberate enablement remain open |
 | 5 | End-to-end multi-provider/mixed-income assembly over slices 1–4; proves the complete W8 production path without duplicate economic events | **planned; correctly waiting for completed slices 2 and 4** |
