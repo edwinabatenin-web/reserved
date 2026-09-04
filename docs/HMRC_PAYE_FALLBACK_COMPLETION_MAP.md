@@ -9,6 +9,7 @@ integration, independent review, or launch readiness.
 | S2A extraction-confirmation contract (pure, network-inert) | Yes | Yes | Yes | No | Document-processing integration plus privacy/security controls remain |
 | PAYE reconciliation trust, explicit-policy issuance and authoritative projection | Yes | Yes | Yes | No | Integrated at `c23d343`; customer orchestration, persistence, UX/security evidence and launch assurance remain |
 | Customer-safe PAYE reconciliation evidence presentation (route-less) | Yes | Yes | Yes | No | Integrated at `14cc0d8`; route/auth binding and target UX/security evidence remain |
+| Explicit-confirmed-period future-pay forecast composition (detached) | Yes | Yes | Yes | No | Authenticated owner/business orchestration, persistence, customer-safe presentation, full-period coverage and launch assurance remain |
 | Upload, extraction, customer confirmation, and secure raw-document deletion | No | No | No | No | Document-processing integration plus privacy/security controls |
 | Customer journey, persistence, replacement/deletion actions, structured retention, account deletion, and backups | No | No | No | No | Product, data, privacy, legal, and platform implementation |
 | Independently reviewed usability of the payslip/manual journey | No | No | No | No | Representative journey implementation and independent usability evidence |
@@ -78,3 +79,46 @@ review and controlled integration were completed at local
 checkpoint `14cc0d8c6a3723c5b2e3c654103a71ea043ecc8b`. Its table state remains
 not launch-ready because route/auth binding and target UX/security evidence are
 still outstanding.
+
+## Explicit-confirmed-period future-pay forecast boundary
+
+The independently reviewed forecast composer is accepted at source checkpoint
+`3496a31c1ebcfece7e81ee593301a7c2e9370460` and integrated on the isolated
+local integration lineage at
+`0c8de58ad2abfe9f600b29cc71fd9e1efa51bcdb`. Both commits have the exact tree
+`8f2d8e103b4f60943cef89d0261766edc0761590`; the accepted three-path package is
+`docs/PAYE_FUTURE_PAY_FORECAST_EVIDENCE.md`,
+`reserved/services/paye_future_pay_forecast.py`, and
+`tests/test_paye_future_pay_forecast.py`.
+
+This is a detached composition boundary, not a payroll predictor. It combines
+an exact live unambiguous reconciliation projection only with explicit,
+individually dated and complete future-pay periods. It retains expected gross
+pay and expected tax as separate confirmed inputs; it does not expand a pay
+frequency, fill unconfirmed periods, calculate PAYE, or infer a whole-year
+forecast. Immutable producer issuance, ordered source identities and SHA-256
+digests, exact owner/business/tax-year matching across future facts, represented
+period uniqueness/non-overlap, confirmation recency, reconciliation chronology,
+exact-money validation and caller-supplied materiality thresholds are
+revalidated on composition and projection. The accepted correction set also
+fails closed on mutated or forged issued objects, cross-boundary evidence-ID
+collisions, partial periods, duplicate facts, stale confirmations and future or
+overlapping chronology.
+
+Every accepted output remains explicitly limited to
+`submitted_confirmed_periods_only`, is `not_customer_authoritative`, and states
+`not_established_requires_authenticated_orchestration` for owner/business
+authentication. The accepted reconciliation input has no owner/business field,
+so matching the future facts to caller-supplied identifiers cannot prove that
+the reconciliation belongs to that owner and business. The exact outstanding
+requirement is
+`authenticated_owner_business_reconciliation_binding_required`.
+
+The package adds no provider or HMRC access, capture authority, persistence,
+route/authentication boundary, customer presentation, tax-liability
+determination, reserve recommendation, refund decision or payment authority.
+Accordingly, it does **not** close the canonical
+`paye_evidence_and_forecasting` blocker. Customer orchestration and
+owner/business binding, durable lifecycle/persistence, safe presentation,
+coverage of the required periods and sources, target UX/security evidence,
+integrated end-to-end assurance and launch enablement remain outstanding.
