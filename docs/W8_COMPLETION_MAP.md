@@ -117,6 +117,30 @@ existing state and every external/activation gate remains open.
 
 ## W8 delivery slices
 
+### Subsequent accepted manual HICBC components
+
+At clean integration `bed02d9ee30e1b18ecf6ceb50b03040aa549c736` (tree
+`028119b7b769f6689a75f1369b5a04686c5dd93c`), the manual annual-source runtime
+checkpoint `bb06354c597336dcff7ae963b5d2605ee14186cc` and explicit W8 boundary
+correction `0e842e750daa30f94adb3f18b1e1b4f91b424aee` are integrated. Frontend
+source `315248807667868ff52dffce2ab0dab599e651dc` is integrated at `bed02d9...`.
+The authenticated, CSRF-protected, disabled-first non-production form submits
+explicit own annual facts to the named annual-engine caller and renders only
+the minimised manual HICBC view. It never publishes the internal annual result,
+annual cash/reserve advice, or a stored annual position. Any active link refuses
+this manual preview; linked annual-source and anti-probing work remain open.
+
+Frontend independent re-review passed 326 affected tests, including 60 executed
+JavaScript cases, and separately challenged 219 actual producer responses. Root
+loopback-only synthetic browser verification exercised £703, native edit clearing
+and missing-input refusal. Full internal canonical regression at `bed02d9...`
+passed 7,934 root tests and all mandatory subgates; October remains `not_ready`
+with 18 blockers. This does not establish human comprehension, accessibility,
+privacy/legal/retention or target acceptance. The separately identified existing
+claimant-`none` source-adapter defect still requires correction; it is not hidden
+by this frontend acceptance. These are accepted partial components, not closure
+of slice 2, the HICBC annual-integration gate, or any delivery denominator.
+
 The stable delivery denominator is exactly **5** (denominator = 5). Terminal
 checks are deliberately excluded. No slice may be added or split merely to
 inflate progress; authoritative scope change is required to revise the

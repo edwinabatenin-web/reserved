@@ -851,7 +851,8 @@ projects exact content-identified admitted facts, but does not authenticate the
 provider or caller, establish globally latest durable state, prevent replay or
 forks across processes, persist, wire any route or enforce access live.
 S4A-C remain disabled provider-edge and intent contracts with no runtime adapter,
-provider session creation, signature verification or activation. S5A supplies the exact source-bound route inventory;
+provider session creation, runtime webhook signature admission or activation. The
+separately accepted offline signature primitive is recorded below. S5A supplies the exact source-bound route inventory;
 its linked-HICBC refresh is accepted at `8480264...`, integrated at `95dd628...`
 and reconciled downstream through `d954ddc...` / `05134e5...` without changing
 the paid-boundary policy or closing S5.
@@ -950,8 +951,8 @@ S3C admission seam compatible with S5D, but no durable inbox,
 provider-authenticated source, globally latest durable state, cross-process
 replay/fork prevention, persistence, route wiring or enforcement boundary; S4 partially
 implemented with independently reviewed/integrated disabled S4A, Checkout-intent
-S4B and Portal-intent S4C but no runtime adapter, provider session, signature
-verification, persistence or activation; S5 partially implemented,
+S4B and Portal-intent S4C but no runtime adapter, provider session, runtime
+webhook admission, persistence or activation; S5 partially implemented,
 with independently reviewed/integrated S5A inventory, S5B 11-route reconciliation,
 S5C five-treatment hardening, HICBC-refreshed route evidence and S5D route-less
 paid-access guard kernel; S3C is its compatible local admission seam, but these
@@ -968,3 +969,37 @@ closure and every slice's remaining completion evidence.** W9 remains 0/5.
 Provider, target,
 specialist-review, residual-risk, Founder activation/release and launch authority
 gates remain open.
+
+## Subsequent accepted offline signature and HICBC presentation evidence
+
+This bounded update uses clean integration
+`bed02d9ee30e1b18ecf6ceb50b03040aa549c736`, tree
+`028119b7b769f6689a75f1369b5a04686c5dd93c`; earlier route counts and source
+snapshots above remain historical, not mutable current-HEAD requirements.
+
+Offline Stripe verifier source `9e4e01a64fa393225db873ad8194a11b8cf81e78`
+was independently accepted and integrated at
+`7df8af92915ad28d9fee62c3d68c588ceb21d57b`. It verifies unchanged bytes with
+supplied bounded keys, HMAC-SHA256, constant-time comparison and a fixed bounded
+timestamp policy. Success is only a supplied-key signature/freshness match.
+There is no key discovery/custody, webhook consumer, JSON/event admission,
+provider/account ownership, durable replay prevention, entitlement, provider
+session, SDK integration or activation. The three-path package had 71 focused
+tests and 336 passing affected tests on its clean checkpoint, plus independent
+OpenSSL/negative probes. It advances a local S4 prerequisite, not S4 completion.
+
+The accepted HICBC annual runtime `bb06354...` and frontend source
+`315248807667868ff52dffce2ab0dab599e651dc`, integrated at `bed02d9...`, refresh
+live S5A/S5B bindings. Current S5A has 53 routes with HICBC enabled and 26 paid
+endpoints; this is classification only, not runtime entitlement enforcement.
+The manual preview remains disabled-first, non-production and non-persistent;
+its source-adapter claimant-`none` defect is separately open. Billing repository
+correction is also still pending independent acceptance and is not promoted here
+to durable application billing. No accepted-but-unreviewed result is inferred.
+
+At this inspected lineage the full canonical internal gate passes 7,934 root
+tests and all mandatory subgates, while October remains `not_ready` with 18
+blockers. Strict completion remains 0/8, terminal 0/13 and W9 0/5. Preserve all
+specialist, custody, retention, physical persistence, authenticated membership,
+provider, human, target and Founder activation/release gates. No new slice,
+policy, authority or launch claim is introduced by this evidence refresh.
