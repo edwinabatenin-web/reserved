@@ -54,13 +54,13 @@ _COPY = (
     ),
     (
         "Worth reviewing",
-        "Making Tax Digital may apply in a future tax year.",
+        "Making Tax Digital may apply from the tax year shown.",
         True,
     ),
     (
         "Not currently indicated",
         "Based on the information checked, this does not currently indicate "
-        "that Making Tax Digital may apply from the future tax year shown. "
+        "that Making Tax Digital may apply from the tax year shown. "
         "This is not a promise of exemption or future non-applicability.",
         True,
     ),

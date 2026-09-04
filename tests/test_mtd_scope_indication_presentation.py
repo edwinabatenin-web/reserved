@@ -111,7 +111,7 @@ def substituted(mapping):
         (
             indication((source(gross=Decimal("50000.00")),)),
             "Worth reviewing",
-            "Making Tax Digital may apply in a future tax year.",
+            "Making Tax Digital may apply from the tax year shown.",
         ),
         (
             indication((source(gross=Decimal("10000.00")),)),
@@ -168,6 +168,105 @@ def test_negative_distance_is_displayed_without_changing_the_issued_value():
     output = render(value)
     assert "-£0.01" in output
     assert as_mtd_scope_mapping(value)["distance_from_threshold"] is before
+
+
+@pytest.mark.parametrize(
+    "year,mandatory,effective,threshold",
+    [
+        ("2024-25", "2026-27", "2026-04-06", Decimal("50000")),
+        ("2025-26", "2027-28", "2027-04-06", Decimal("30000")),
+        ("2026-27", "2028-29", "2028-04-06", Decimal("20000")),
+    ],
+)
+@pytest.mark.parametrize(
+    "case,headline",
+    [
+        ("above", "Worth reviewing"),
+        ("approaching", "Worth reviewing"),
+        ("below", "Not currently indicated"),
+        ("exempt", "Not currently indicated"),
+        ("unknown-eligibility", "More information needed"),
+        ("unknown-income", "More information needed"),
+        ("unsupported-completeness", "More information needed"),
+    ],
+)
+def test_live_issuer_to_renderer_has_neutral_copy_for_current_and_later_starts(
+    year, mandatory, effective, threshold, case, headline
+):
+    gross = threshold + Decimal("0.01")
+    if case == "approaching":
+        gross = threshold * Decimal("0.80")
+    elif case == "below":
+        gross = threshold * Decimal("0.79")
+    elif case == "unknown-income":
+        gross = None
+    value = indication(
+        (source(gross=gross),),
+        year=year,
+        registered=None if case == "unknown-eligibility" else True,
+        exempt=case == "exempt",
+        completeness=None if case == "unsupported-completeness" else COMPLETE,
+    )
+    projection = as_mtd_scope_mapping(value)
+    output = render_mtd_scope_indication(value)
+    assert projection["contract_version"] == "reserved-mtd-scope-indication/1.1"
+    assert projection["headline"] == headline
+    assert headline in output
+    assert projection["summary"] in output
+    assert "future tax year" not in output
+    assert "definitely applies" not in output
+    assert "MTD ready" not in output
+    assert projection["filing_action_available"] is False
+    assert "The threshold uses qualifying gross income before expenses." in output
+    assert "This is a local planning indication, not HMRC&#39;s formal determination." in output
+    if case == "unsupported-completeness":
+        assert projection["assessment_tax_year"] is None
+        assert output == render()
+    else:
+        assert projection["assessment_tax_year"] == year
+        assert projection["mandatory_from_tax_year"] == mandatory
+        assert projection["effective_start_date"] == effective
+        assert projection["threshold"].as_tuple() == threshold.as_tuple()
+        for text in (year, mandatory, effective):
+            assert f"<dd>{text}</dd>" in output
+    if headline == "More information needed":
+        assert projection["information_complete"] is False
+        assert projection["qualifying_income"] is None
+        assert projection["distance_from_threshold"] is None
+        assert "£" not in output
+    else:
+        assert projection["information_complete"] is True
+        assert projection["qualifying_income"] == gross
+        assert f"£{threshold:,.2f}" in output
+        if headline == "Worth reviewing":
+            assert projection["summary"] == "Making Tax Digital may apply from the tax year shown."
+        else:
+            assert projection["summary"] == (
+                "Based on the information checked, this does not currently indicate "
+                "that Making Tax Digital may apply from the tax year shown. "
+                "This is not a promise of exemption or future non-applicability."
+            )
+
+
+@pytest.mark.parametrize("gross", [Decimal("50000"), Decimal("10000")])
+@pytest.mark.parametrize("mutation", ["old-copy", "old-version", "old-both", "mismatched-copy"])
+def test_stale_or_mismatched_copy_contract_fails_to_generic_refusal(gross, mutation):
+    value = indication((source(gross=gross),))
+    state = dict(as_mtd_scope_mapping(value))
+    if mutation in ("old-copy", "old-both"):
+        state["summary"] = (
+            "Making Tax Digital may apply in a future tax year."
+            if gross == Decimal("50000") else
+            "Based on the information checked, this does not currently indicate "
+            "that Making Tax Digital may apply from the future tax year shown. "
+            "This is not a promise of exemption or future non-applicability."
+        )
+    if mutation in ("old-version", "old-both"):
+        state["contract_version"] = "reserved-mtd-scope-indication/1.0"
+    if mutation == "mismatched-copy":
+        other = indication((source(gross=Decimal("10000") if gross == Decimal("50000") else Decimal("50000")),))
+        state["summary"] = as_mtd_scope_mapping(other)["summary"]
+    assert substituted(state)(value) == render()
 
 
 def test_safe_categories_and_counts_render_without_opaque_identifiers():
