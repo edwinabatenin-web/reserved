@@ -34,14 +34,17 @@ from flask import Blueprint, g, jsonify, redirect, render_template, request, ses
 
 from reserved.auth import require_auth
 from reserved.database import (
+    HICBC_NOTICE_VERSION,
     accept_hicbc_link_invitation,
     create_hicbc_link_invitation,
     delete_hicbc_estimate,
     get_active_hicbc_link,
     get_hicbc_estimate,
     get_hicbc_link_partner_id,
+    get_hicbc_link_permission_view,
     get_profile_by_user,
     has_mutual_hicbc_link_consent,
+    record_hicbc_link_consent_from_binding,
     revoke_hicbc_link,
     save_hicbc_estimate,
 )
@@ -678,19 +681,50 @@ def delete_estimate():
 # ── Linked-account consent (HICBC-only) ────────────────────────────────────────
 
 def _link_view(user_id: int, tax_year: str, *, message: str | None = None) -> dict:
-    link = get_active_hicbc_link(user_id, tax_year)
+    # Status and the opaque form authority are derived in one transaction so a
+    # concurrent unlink/relink cannot pair displayed state from one cycle with
+    # a usable token from another.
+    permission = get_hicbc_link_permission_view(user_id, tax_year)
     return {
         "tax_year": tax_year,
-        "link": link,
-        "linked": link is not None,
+        "linked": permission["linked"],
+        "own_permission": permission["own_permission"],
+        "mutual_permission": permission["mutual_permission"],
+        "permission_binding": permission["permission_binding"],
         "message": message,
     }
 
 
-@hicbc.get("/link")
+@hicbc.route("/link", methods=["GET", "POST"])
 @require_auth
 def link_page():
     tax_year = configured_tax_year()
+    if request.method == "POST":
+        acknowledgement = request.form.get("acknowledgement")
+        permission_binding = request.form.get("permission_binding")
+        if acknowledgement != "yes" or not permission_binding:
+            session["_hicbc_link_message"] = (
+                "We could not record that permission. Review the explanation "
+                "and tick the box before trying again."
+            )
+        elif record_hicbc_link_consent_from_binding(
+            g.user_id,
+            tax_year,
+            HICBC_NOTICE_VERSION,
+            permission_binding,
+        ):
+            session["_hicbc_link_message"] = (
+                "Your permission to use linked information for Child Benefit "
+                "charge has been recorded."
+            )
+        else:
+            # Deliberately generic: do not reveal another account, link or
+            # permission state to a caller who cannot establish current access.
+            session["_hicbc_link_message"] = (
+                "We could not record that permission for this linked account."
+            )
+        return redirect(url_for("hicbc.link_page"))
+
     message = session.pop("_hicbc_link_message", None)
     return render_template(
         "v2/hicbc_link.html",
@@ -733,5 +767,7 @@ def link_accept():
 def link_revoke():
     tax_year = _tax_year_from_form_or_context()
     revoke_hicbc_link(g.user_id, tax_year)
-    session["_hicbc_link_message"] = "The link has been removed."
+    session["_hicbc_link_message"] = (
+        "Linked HICBC has been turned off and the accounts have been unlinked."
+    )
     return redirect(url_for("hicbc.link_page"))

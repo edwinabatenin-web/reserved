@@ -6,7 +6,7 @@
     <div>
         <p class="eyebrow">Preview</p>
         <h1>Link accounts for Child Benefit charge</h1>
-        <p>Linking lets Reserved compare income behind the scenes to work out who the High Income Child Benefit Charge applies to. Neither of you will see the other's income.</p>
+        <p>Linking creates the connection only. Each person must then separately choose whether Reserved may use linked information for Child Benefit charge.</p>
     </div>
 </section>
 
@@ -20,10 +20,42 @@
     <h2>Link status</h2>
     {% if view.linked %}
         <p>Your accounts are linked for the {{ view.tax_year }} tax year.</p>
+        {% if view.mutual_permission %}
+            <p>Linked HICBC is enabled. Reserved may use linked information only for each person's own Child Benefit charge position.</p>
+        {% elif view.own_permission %}
+            <p>Your permission is recorded. Linked HICBC operates only after both people separately enable it.</p>
+        {% else %}
+            <p>Linked HICBC is not enabled for you. Linking or accepting an invitation does not give permission.</p>
+        {% endif %}
+
+        {% if not view.own_permission and view.permission_binding %}
+        <form method="post" action="{{ url_for('hicbc.link_page') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="permission_binding" value="{{ view.permission_binding }}">
+            <fieldset>
+                <legend>Enable linked HICBC</legend>
+                <p>Before choosing, please read and agree that:</p>
+                <ul>
+                    <li>Reserved will use the limited relevant information available in both linked accounts to calculate each user's own HICBC position.</li>
+                    <li>Neither person will see the other's income or financial details.</li>
+                    <li>Either person may nevertheless see that their own estimate changed after linked information was considered.</li>
+                    <li>Either person may turn off linked HICBC and unlink the accounts.</li>
+                </ul>
+                <label>
+                    <input type="checkbox" name="acknowledgement" value="yes">
+                    I have read this explanation and choose to enable linked HICBC.
+                </label>
+            </fieldset>
+            <button type="submit">Enable linked HICBC</button>
+        </form>
+        {% elif not view.own_permission %}
+            <p>We cannot safely record permission right now. Please reload this page before trying again.</p>
+        {% endif %}
+
         <form method="post" action="{{ url_for('hicbc.link_revoke') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="tax_year" value="{{ view.tax_year }}">
-            <button type="submit" class="button-secondary">Remove link</button>
+            <button type="submit" class="button-secondary">Turn off linked HICBC and unlink accounts</button>
         </form>
     {% else %}
         <p>Your accounts are not linked.</p>

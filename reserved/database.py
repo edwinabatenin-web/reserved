@@ -296,6 +296,7 @@ CREATE TABLE IF NOT EXISTS hicbc_links (
     accepted_at             TEXT    NOT NULL,
     revoked_at              TEXT,
     revoked_by              INTEGER,
+    permission_cycle        INTEGER NOT NULL DEFAULT 1 CHECK(permission_cycle >= 1),
     UNIQUE(user_low_id, user_high_id, tax_year)
 );
 
@@ -330,6 +331,34 @@ CREATE TABLE IF NOT EXISTS hicbc_link_consents (
     consented_at   TEXT    NOT NULL,
     withdrawn_at   TEXT,
     UNIQUE(link_id, user_id)
+);
+
+-- Append-only audit evidence for the bounded linked-HICBC permission lifecycle.
+-- Current authority continues to live in hicbc_links + hicbc_link_consents;
+-- these events are history only and must never revive permission.
+CREATE TABLE IF NOT EXISTS hicbc_permission_events (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    link_id        INTEGER NOT NULL REFERENCES hicbc_links(id) ON DELETE CASCADE,
+    permission_cycle INTEGER NOT NULL CHECK(permission_cycle >= 1),
+    event_type     TEXT    NOT NULL CHECK(event_type IN ('consent', 'withdraw', 'unlink', 'relink')),
+    actor_user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    occurred_at    TEXT    NOT NULL,
+    notice_version TEXT    NOT NULL,
+    UNIQUE(link_id, permission_cycle, event_type, actor_user_id, notice_version)
+);
+
+-- Short-lived opaque bindings between a rendered permission form and the exact
+-- active link cycle/participant/tax year/notice it represented.  Only a hash of
+-- the browser token is stored.
+CREATE TABLE IF NOT EXISTS hicbc_permission_form_bindings (
+    token_hash       TEXT    PRIMARY KEY,
+    link_id          INTEGER NOT NULL REFERENCES hicbc_links(id) ON DELETE CASCADE,
+    permission_cycle INTEGER NOT NULL CHECK(permission_cycle >= 1),
+    user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tax_year         TEXT    NOT NULL,
+    notice_version   TEXT    NOT NULL,
+    created_at       TEXT    NOT NULL,
+    expires_at       TEXT    NOT NULL
 );
 
 -- ── Tax optimisation saved scenarios ─────────────────────────────────────────
@@ -451,7 +480,7 @@ CREATE TABLE IF NOT EXISTS invoice_matches (
 # - The DDL block above always reflects the full target schema; migrations
 #   handle upgrade paths for databases created before the current DDL.
 #
-_SCHEMA_VERSION = 10   # increment when adding new migration entries below
+_SCHEMA_VERSION = 11   # increment when adding new migration entries below
 
 _MIGRATIONS: dict[int, list[str]] = {
     # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
@@ -591,6 +620,32 @@ _MIGRATIONS: dict[int, list[str]] = {
     # answer was true for the whole tax year.
     10: [
         "ALTER TABLE hicbc_estimates ADD COLUMN partner_status_period_semantics TEXT",
+    ],
+    # Version 11 — linked-HICBC permission cycles and append-only lifecycle
+    # evidence.  A cycle advances on re-link so permission from an earlier link
+    # cannot silently revive.
+    11: [
+        "ALTER TABLE hicbc_links ADD COLUMN permission_cycle INTEGER NOT NULL DEFAULT 1 CHECK(permission_cycle >= 1)",
+        """CREATE TABLE IF NOT EXISTS hicbc_permission_events (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            link_id          INTEGER NOT NULL REFERENCES hicbc_links(id) ON DELETE CASCADE,
+            permission_cycle INTEGER NOT NULL CHECK(permission_cycle >= 1),
+            event_type       TEXT    NOT NULL CHECK(event_type IN ('consent', 'withdraw', 'unlink', 'relink')),
+            actor_user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            occurred_at      TEXT    NOT NULL,
+            notice_version   TEXT    NOT NULL,
+            UNIQUE(link_id, permission_cycle, event_type, actor_user_id, notice_version)
+        )""",
+        """CREATE TABLE IF NOT EXISTS hicbc_permission_form_bindings (
+            token_hash       TEXT    PRIMARY KEY,
+            link_id          INTEGER NOT NULL REFERENCES hicbc_links(id) ON DELETE CASCADE,
+            permission_cycle INTEGER NOT NULL CHECK(permission_cycle >= 1),
+            user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tax_year         TEXT    NOT NULL,
+            notice_version   TEXT    NOT NULL,
+            created_at       TEXT    NOT NULL,
+            expires_at       TEXT    NOT NULL
+        )""",
     ],
 }
 
@@ -1608,6 +1663,56 @@ _INVITATION_STATUS_REVOKED = "revoked"
 # Invitations are short-lived and single-use.
 _INVITATION_TTL_MINUTES = 60
 
+# Display-to-submit permission bindings are short-lived and capped per user/link
+# cycle so GET refreshes cannot grow durable state without bound.
+_PERMISSION_FORM_TTL_MINUTES = 120
+_MAX_PERMISSION_FORM_BINDINGS = 5
+
+# Single authoritative linked-HICBC consent-notice version.  Mutual permission is
+# established only when *both* participants have recorded this recognised version;
+# an arbitrary or incompatible notice version must never satisfy consent.
+HICBC_NOTICE_VERSION = "hicbc-notice-v1"
+
+_PERMISSION_EVENT_CONSENT = "consent"
+_PERMISSION_EVENT_WITHDRAW = "withdraw"
+_PERMISSION_EVENT_UNLINK = "unlink"
+_PERMISSION_EVENT_RELINK = "relink"
+
+
+def _record_hicbc_permission_event(
+    conn,
+    *,
+    link_id: int,
+    permission_cycle: int,
+    event_type: str,
+    actor_user_id: int,
+    occurred_at: str,
+    notice_version: str,
+) -> None:
+    """Append one idempotent permission-lifecycle event inside a transaction.
+
+    The uniqueness key is a state transition, not a request timestamp.  A retry
+    can therefore never create a duplicate event, while a later re-link cycle
+    retains its own complete history.  Events are evidence only: current access
+    is always determined from ``hicbc_links`` and ``hicbc_link_consents``.
+    """
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO hicbc_permission_events
+            (link_id, permission_cycle, event_type, actor_user_id,
+             occurred_at, notice_version)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            link_id,
+            permission_cycle,
+            event_type,
+            actor_user_id,
+            occurred_at,
+            notice_version,
+        ),
+    )
+
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -1712,21 +1817,47 @@ def accept_hicbc_link_invitation(user_id: int, token: str, tax_year: str) -> dic
                 """
                 INSERT INTO hicbc_links
                     (user_low_id, user_high_id, tax_year, purpose, status, initiator_id,
-                     relationship_started_at, created_at, accepted_at)
-                VALUES (?, ?, ?, 'hicbc_responsibility', ?, ?, NULL, ?, ?)
+                     relationship_started_at, created_at, accepted_at, permission_cycle)
+                VALUES (?, ?, ?, 'hicbc_responsibility', ?, ?, NULL, ?, ?, 1)
                 """,
                 (low, high, tax_year, _LINK_STATUS_ACTIVE, creator_id, now, now),
             )
             link_id = cur.lastrowid
         else:
             link_id = existing["id"]
+            next_cycle = int(existing["permission_cycle"] or 1) + 1
+            # A revoked legacy row may still contain apparently current consent.
+            # Invalidate every such row before reactivation; both participants
+            # must affirm the current notice again for this new cycle.
+            conn.execute(
+                """
+                UPDATE hicbc_link_consents
+                SET withdrawn_at = COALESCE(withdrawn_at, ?)
+                WHERE link_id = ?
+                """,
+                (now, link_id),
+            )
             conn.execute(
                 """
                 UPDATE hicbc_links
-                SET status = ?, initiator_id = ?, accepted_at = ?, revoked_at = NULL, revoked_by = NULL
+                SET status = ?, initiator_id = ?, accepted_at = ?, revoked_at = NULL,
+                    revoked_by = NULL, permission_cycle = ?
                 WHERE id = ?
                 """,
-                (_LINK_STATUS_ACTIVE, creator_id, now, existing["id"]),
+                (_LINK_STATUS_ACTIVE, creator_id, now, next_cycle, link_id),
+            )
+            _record_hicbc_permission_event(
+                conn,
+                link_id=link_id,
+                permission_cycle=next_cycle,
+                event_type=_PERMISSION_EVENT_RELINK,
+                actor_user_id=user_id,
+                occurred_at=now,
+                notice_version=HICBC_NOTICE_VERSION,
+            )
+            conn.execute(
+                "DELETE FROM hicbc_permission_form_bindings WHERE link_id = ?",
+                (link_id,),
             )
 
         conn.execute(
@@ -1782,45 +1913,217 @@ def revoke_hicbc_link(user_id: int, tax_year: str) -> bool:
     """
     now = _now()
     with _connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         rows = conn.execute(
             """
-            SELECT id FROM hicbc_links
+            SELECT * FROM hicbc_links
             WHERE (user_low_id = ? OR user_high_id = ?) AND tax_year = ? AND status = ?
             """,
             (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE),
         ).fetchall()
         if len(rows) != 1:
             return False
+        link = rows[0]
+        active_actor_consent = conn.execute(
+            """
+            SELECT notice_version FROM hicbc_link_consents
+            WHERE link_id = ? AND user_id = ? AND withdrawn_at IS NULL
+            """,
+            (link["id"], user_id),
+        ).fetchone()
+        # Unlinking invalidates all current permission rows atomically.  Only the
+        # participant who acted is recorded as withdrawing; no withdrawal is
+        # attributed to the other person.
+        conn.execute(
+            """
+            UPDATE hicbc_link_consents
+            SET withdrawn_at = COALESCE(withdrawn_at, ?)
+            WHERE link_id = ?
+            """,
+            (now, link["id"]),
+        )
+        conn.execute(
+            "DELETE FROM hicbc_permission_form_bindings WHERE link_id = ?",
+            (link["id"],),
+        )
         conn.execute(
             "UPDATE hicbc_links SET status = ?, revoked_at = ?, revoked_by = ? WHERE id = ?",
-            (_LINK_STATUS_REVOKED, now, user_id, rows[0]["id"]),
+            (_LINK_STATUS_REVOKED, now, user_id, link["id"]),
+        )
+        cycle = int(link["permission_cycle"] or 1)
+        if active_actor_consent is not None:
+            _record_hicbc_permission_event(
+                conn,
+                link_id=link["id"],
+                permission_cycle=cycle,
+                event_type=_PERMISSION_EVENT_WITHDRAW,
+                actor_user_id=user_id,
+                occurred_at=now,
+                # Preserve the immutable notice identity that the participant
+                # actually accepted, even if a later notice is now current.
+                notice_version=active_actor_consent["notice_version"],
+            )
+        _record_hicbc_permission_event(
+            conn,
+            link_id=link["id"],
+            permission_cycle=cycle,
+            event_type=_PERMISSION_EVENT_UNLINK,
+            actor_user_id=user_id,
+            occurred_at=now,
+            notice_version=HICBC_NOTICE_VERSION,
         )
     return True
 
 
-# Single authoritative linked-HICBC consent-notice version.  Mutual permission is
-# established only when *both* participants have recorded this recognised version;
-# an arbitrary or incompatible notice version must never satisfy consent.
-HICBC_NOTICE_VERSION = "hicbc-notice-v1"
+def _issue_hicbc_permission_binding_for_link(
+    conn: sqlite3.Connection,
+    link: sqlite3.Row,
+    user_id: int,
+    tax_year: str,
+    now: str,
+) -> str:
+    """Issue a form binding for an already-validated link in ``conn``.
 
-
-def record_hicbc_link_consent(user_id: int, tax_year: str, notice_version: str) -> bool:
-    """Record one participant's affirmative, versioned linked-HICBC consent.
-
-    ``notice_version`` must be the recognised authoritative version; it is the
-    auditable identifier of the concise explanation the participant was shown.
-    Recording is per-participant: mutual permission is established only once
-    *both* participants have recorded consent for the same active link.  Returns
-    False when there is no unique active link or the notice version is not the
-    recognised version.
+    The caller must hold the same transaction that established the link and
+    consent state it is about to render.  Keeping the lookup, status and token
+    insertion in one snapshot prevents a form for one link/cycle being paired
+    with status from another during an unlink/relink race.
     """
-    if notice_version != HICBC_NOTICE_VERSION:
+    raw_token = secrets.token_urlsafe(32)
+    expires_at = _iso_now_plus_minutes(_PERMISSION_FORM_TTL_MINUTES)
+    cycle = int(link["permission_cycle"] or 1)
+    conn.execute(
+        """
+        DELETE FROM hicbc_permission_form_bindings
+        WHERE user_id = ? AND expires_at <= ?
+        """,
+        (user_id, now),
+    )
+    # Bound all outstanding forms for this participant/link/cycle, rather than
+    # only the current notice version.  This keeps notice-version transitions
+    # from accumulating obsolete form capabilities until expiry.
+    retained = conn.execute(
+        """
+        SELECT token_hash FROM hicbc_permission_form_bindings
+        WHERE link_id = ? AND permission_cycle = ? AND user_id = ?
+          AND tax_year = ?
+        ORDER BY created_at, token_hash
+        """,
+        (link["id"], cycle, user_id, tax_year),
+    ).fetchall()
+    excess = len(retained) - (_MAX_PERMISSION_FORM_BINDINGS - 1)
+    for row in retained[:max(0, excess)]:
+        conn.execute(
+            "DELETE FROM hicbc_permission_form_bindings WHERE token_hash = ?",
+            (row["token_hash"],),
+        )
+    conn.execute(
+        """
+        INSERT INTO hicbc_permission_form_bindings
+            (token_hash, link_id, permission_cycle, user_id, tax_year,
+             notice_version, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            _token_hash(raw_token),
+            link["id"],
+            cycle,
+            user_id,
+            tax_year,
+            HICBC_NOTICE_VERSION,
+            now,
+            expires_at,
+        ),
+    )
+    return raw_token
+
+
+def create_hicbc_link_permission_binding(user_id: int, tax_year: str) -> str | None:
+    """Issue an opaque form token bound to the exact current permission context.
+
+    The raw high-entropy token is returned once and only its SHA-256 hash is
+    stored.  It binds the rendered form to link identity, permission cycle,
+    authenticated participant, tax year and the server-owned notice version.
+    Customer pages should use ``get_hicbc_link_permission_view`` so the status
+    displayed and the binding issued share one atomic database snapshot.
+    """
+    now = _now()
+    with _connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        links = conn.execute(
+            """
+            SELECT * FROM hicbc_links
+            WHERE (user_low_id = ? OR user_high_id = ?)
+              AND tax_year = ? AND status = ?
+            """,
+            (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE),
+        ).fetchall()
+        if len(links) != 1:
+            return None
+        return _issue_hicbc_permission_binding_for_link(
+            conn, links[0], user_id, tax_year, now
+        )
+
+
+def _record_hicbc_link_consent(
+    user_id: int,
+    tax_year: str,
+    notice_version: str,
+    *,
+    permission_binding_token: str | None,
+    require_permission_binding: bool,
+) -> bool:
+    """Transactional implementation for trusted and customer-form entrypoints."""
+    if type(notice_version) is not str or notice_version != HICBC_NOTICE_VERSION:
         return False
-    link = get_active_hicbc_link(user_id, tax_year)
-    if link is None:
+    if require_permission_binding and (
+        type(permission_binding_token) is not str or not permission_binding_token
+    ):
         return False
     now = _now()
     with _connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        links = conn.execute(
+            """
+            SELECT * FROM hicbc_links
+            WHERE (user_low_id = ? OR user_high_id = ?)
+              AND tax_year = ? AND status = ?
+            """,
+            (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE),
+        ).fetchall()
+        if len(links) != 1:
+            return False
+        link = links[0]
+        if require_permission_binding:
+            binding = conn.execute(
+                """
+                SELECT * FROM hicbc_permission_form_bindings
+                WHERE token_hash = ?
+                """,
+                (_token_hash(permission_binding_token),),
+            ).fetchone()
+            if binding is None or not (
+                binding["link_id"] == link["id"]
+                and binding["permission_cycle"] == int(link["permission_cycle"] or 1)
+                and binding["user_id"] == user_id
+                and binding["tax_year"] == tax_year
+                and binding["notice_version"] == HICBC_NOTICE_VERSION
+                and binding["expires_at"] > now
+            ):
+                return False
+        existing = conn.execute(
+            """
+            SELECT notice_version, withdrawn_at FROM hicbc_link_consents
+            WHERE link_id = ? AND user_id = ?
+            """,
+            (link["id"], user_id),
+        ).fetchone()
+        if (
+            existing is not None
+            and existing["notice_version"] == HICBC_NOTICE_VERSION
+            and existing["withdrawn_at"] is None
+        ):
+            return True
         conn.execute(
             """
             INSERT INTO hicbc_link_consents (link_id, user_id, notice_version, consented_at)
@@ -1832,15 +2135,69 @@ def record_hicbc_link_consent(user_id: int, tax_year: str, notice_version: str) 
             """,
             (link["id"], user_id, notice_version, now),
         )
+        _record_hicbc_permission_event(
+            conn,
+            link_id=link["id"],
+            permission_cycle=int(link["permission_cycle"] or 1),
+            event_type=_PERMISSION_EVENT_CONSENT,
+            actor_user_id=user_id,
+            occurred_at=now,
+            notice_version=HICBC_NOTICE_VERSION,
+        )
     return True
+
+
+def record_hicbc_link_consent(user_id: int, tax_year: str, notice_version: str) -> bool:
+    """Record trusted internal linked-HICBC consent against the current link.
+
+    ``notice_version`` must be the recognised authoritative version; it is the
+    auditable identifier of the concise explanation the participant was shown.
+    Recording is per-participant: mutual permission is established only once
+    *both* participants have recorded consent for the same active link.  Returns
+    False when there is no unique active link or the notice version is not the
+    recognised version.  This trusted internal entrypoint is retained for
+    construction/tests; customer requests must use the binding-required
+    ``record_hicbc_link_consent_from_binding`` entrypoint.
+    """
+    return _record_hicbc_link_consent(
+        user_id,
+        tax_year,
+        notice_version,
+        permission_binding_token=None,
+        require_permission_binding=False,
+    )
+
+
+def record_hicbc_link_consent_from_binding(
+    user_id: int,
+    tax_year: str,
+    notice_version: str,
+    permission_binding_token: str,
+) -> bool:
+    """Record customer consent only after exact atomic form-binding validation."""
+    return _record_hicbc_link_consent(
+        user_id,
+        tax_year,
+        notice_version,
+        permission_binding_token=permission_binding_token,
+        require_permission_binding=True,
+    )
 
 
 def has_mutual_hicbc_link_consent(user_id: int, tax_year: str) -> bool:
     """True iff both participants recorded the recognised, non-withdrawn consent."""
-    link = get_active_hicbc_link(user_id, tax_year)
-    if link is None:
-        return False
     with _connection() as conn:
+        links = conn.execute(
+            """
+            SELECT * FROM hicbc_links
+            WHERE (user_low_id = ? OR user_high_id = ?)
+              AND tax_year = ? AND status = ?
+            """,
+            (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE),
+        ).fetchall()
+        if len(links) != 1:
+            return False
+        link = links[0]
         rows = conn.execute(
             """
             SELECT user_id FROM hicbc_link_consents
@@ -1851,6 +2208,93 @@ def has_mutual_hicbc_link_consent(user_id: int, tax_year: str) -> bool:
         ).fetchall()
     consented = {row["user_id"] for row in rows}
     return consented == {link["user_low_id"], link["user_high_id"]}
+
+
+def get_hicbc_link_permission_status(user_id: int, tax_year: str) -> dict:
+    """Return the minimum owner-scoped status needed by the linked-HICBC page.
+
+    The result intentionally contains no partner identity, financial value,
+    event history or timing.  It is not an authority source: calculations still
+    call ``has_mutual_hicbc_link_consent`` against current rows.
+    """
+    with _connection() as conn:
+        links = conn.execute(
+            """
+            SELECT * FROM hicbc_links
+            WHERE (user_low_id = ? OR user_high_id = ?)
+              AND tax_year = ? AND status = ?
+            """,
+            (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE),
+        ).fetchall()
+        if len(links) != 1:
+            return {"linked": False, "own_permission": False, "mutual_permission": False}
+        link = links[0]
+        rows = conn.execute(
+            """
+            SELECT user_id FROM hicbc_link_consents
+            WHERE link_id = ? AND withdrawn_at IS NULL
+              AND notice_version = ?
+            """,
+            (link["id"], HICBC_NOTICE_VERSION),
+        ).fetchall()
+    consented = {row["user_id"] for row in rows}
+    participants = {link["user_low_id"], link["user_high_id"]}
+    return {
+        "linked": True,
+        "own_permission": user_id in consented,
+        "mutual_permission": consented == participants,
+    }
+
+
+def get_hicbc_link_permission_view(user_id: int, tax_year: str) -> dict:
+    """Return minimal page state and, when needed, its exact form binding.
+
+    Link selection, current-consent inspection and binding issuance happen in
+    one immediate transaction.  The returned object deliberately contains no
+    link ID, permission-cycle value, partner identity or financial data; those
+    facts remain server-side in the hashed binding record.
+    """
+    now = _now()
+    with _connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        links = conn.execute(
+            """
+            SELECT * FROM hicbc_links
+            WHERE (user_low_id = ? OR user_high_id = ?)
+              AND tax_year = ? AND status = ?
+            """,
+            (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE),
+        ).fetchall()
+        if len(links) != 1:
+            return {
+                "linked": False,
+                "own_permission": False,
+                "mutual_permission": False,
+                "permission_binding": None,
+            }
+        link = links[0]
+        rows = conn.execute(
+            """
+            SELECT user_id FROM hicbc_link_consents
+            WHERE link_id = ? AND withdrawn_at IS NULL
+              AND notice_version = ?
+            """,
+            (link["id"], HICBC_NOTICE_VERSION),
+        ).fetchall()
+        consented = {row["user_id"] for row in rows}
+        participants = {link["user_low_id"], link["user_high_id"]}
+        own_permission = user_id in consented
+        permission_binding = None
+        if not own_permission:
+            permission_binding = _issue_hicbc_permission_binding_for_link(
+                conn, link, user_id, tax_year, now
+            )
+        return {
+            "linked": True,
+            "own_permission": own_permission,
+            "mutual_permission": consented == participants,
+            "permission_binding": permission_binding,
+        }
 
 
 def delete_all_hicbc_links_for_user(user_id: int) -> int:

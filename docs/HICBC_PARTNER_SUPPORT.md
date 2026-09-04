@@ -144,24 +144,68 @@ not-applicable remain distinct.
 
 ## Linked-account consent
 
-`reserved/database.py` adds two HICBC-only tables, `hicbc_links` and
-`hicbc_link_invitations` (schema version 7).  The flow is:
+`reserved/database.py` provides the HICBC-only link, invitation, current
+permission and permission-history tables.  The link/invitation foundation was
+introduced in schema version 7, versioned participant permission in version 8,
+and permission cycles plus lifecycle evidence in version 11.  The flow is:
 
 1. A signed-in user creates a single-use invitation.  Only the SHA-256 hash of a
    high-entropy token is stored; the raw token is returned to the creator once
    for out-of-band sharing.
 2. The other user accepts the invitation while signed in to their own account.
    Acceptance establishes (or re-activates after revocation) one normalised,
-   active `hicbc_links` row for the pair and tax year.
-3. Either participant may revoke/unlink at any time; the row is retained as
-   minimal audit evidence (`status='revoked'`) and never used again for
-   cross-account access.
+   active `hicbc_links` row for the pair and tax year.  Acceptance alone never
+   grants linked-HICBC permission.
+3. Each participant visits the same authenticated `/v2/hicbc/link` endpoint,
+   reads the four Founder-approved disclosures and submits a separate,
+   unchecked affirmative control.  The POST is CSRF protected and carries a
+   short-lived opaque token whose stored hash binds the displayed active link,
+   permission cycle, participant, tax year and server-owned
+   `HICBC_NOTICE_VERSION`.
+4. Linked evidence remains disabled until both current permission rows match
+   that exact notice version for the active link cycle.
+5. Either participant may turn off linked HICBC and unlink at any time.  The
+   link and all current permission rows are revoked atomically before any later
+   calculation can use linked evidence.
 
-Consent is mutual, purpose-limited to `hicbc_responsibility`, short-lived and
-single-use.  Self-links, duplicate active links, expired tokens and invalid
-tokens all fail closed.  No partner financial value is stored in a link row; the
-linked partner's ANI is derived from their own profile at read time and held
-only inside the internal comparison.
+Permission is mutual and purpose-limited to `hicbc_responsibility`; invitations
+are short-lived and single-use.  Self-links, duplicate active links, expired
+tokens and invalid tokens all fail closed.  No partner financial value is
+stored in a link or permission row; the linked partner's ANI is derived from
+their own profile at read time and held only inside the internal comparison.
+
+The page presents exactly these four points before either participant may opt
+in:
+
+1. Reserved will use the limited relevant information available in both linked
+   accounts to calculate each user's own HICBC position.
+2. Neither person will see the other's income or financial details.
+3. Either person may nevertheless see that their own estimate changed after
+   linked information was considered.
+4. Either person may turn off linked HICBC and unlink the accounts.
+
+The checkbox is never preselected.  A missing acknowledgement, stale-cycle,
+cross-link, cross-user, cross-tax-year, expired or tampered binding,
+unauthenticated request or failed CSRF check cannot create permission.  Only
+token hashes are stored and outstanding tokens are time-limited and capped.
+Customer status is deliberately minimal and does not contain the partner's
+identity, income, consent timestamp or financial information.
+
+### Permission lifecycle and re-link safety
+
+`hicbc_links.permission_cycle` advances whenever a revoked pair is re-linked.
+Reactivation first invalidates every legacy/current unwithdrawn permission row
+inside the same write transaction.  Both participants must therefore opt in
+again; consent from an earlier cycle can never revive silently.
+
+`hicbc_permission_events` is append-only through the application API and keeps
+bounded events for `consent`, `withdraw`, `unlink` and `relink`, recording the
+link identity, cycle, actor, timestamp and authoritative notice version.  Its
+state-transition key includes the immutable notice version: retries of the same
+acceptance are idempotent, while acceptance of a later authoritative notice in
+the same cycle retains a distinct event.  Events are audit evidence only.  They
+cannot grant access: current `hicbc_links` and `hicbc_link_consents` rows remain
+the fail-closed authority.
 
 ### Manual vs linked evidence
 
@@ -179,9 +223,15 @@ the partner and the partner's own ANI supplies the comparison.
   marker distinguishes reconfirmed rows from legacy ambiguous rows; money/ANI
   values are stored as canonical Decimal strings (TEXT), never binary floating
   point.
-- `hicbc_links` and `hicbc_link_invitations` store identity, consent state,
-  purpose, relationship-period facts and timestamps only — no partner financial
-  value.
+- `hicbc_links`, `hicbc_link_invitations`, `hicbc_link_consents` and
+  `hicbc_permission_events` store only the minimum identity, purpose, version,
+  lifecycle and timing facts needed for current authority and audit history —
+  no partner financial value.
+- `hicbc_permission_form_bindings` stores only a short-lived token hash plus the
+  exact owner-scoped context required to reject stale or cross-context form
+  replay. The page's minimal status and binding are derived in one database
+  transaction, so an unlink/re-link race cannot mix state from different
+  cycles; unlink/re-link clears outstanding bindings.
 - Reads and writes are scoped to the authenticated user; cross-account access is
   available only through an active, mutually consented link and only for the
   internal comparison.
@@ -226,8 +276,9 @@ into an actionable total, reserve or payment figure.
 
 - production activation of the manual path (privacy notice, retention and legal
   review outstanding);
-- production activation of the linked path (consent, cross-account
-  authorisation, privacy and security review outstanding);
+- production activation of the linked path (the mutual-permission journey is
+  implemented, but cross-account authorisation, privacy/retention and security
+  assurance remain outstanding);
 - independent assurance of HICBC annual-total/reserve/payment integration;
 - HICBC payment initiation (PIS/VRP) integration — not connected here;
 - relationship history, split-year and multiple-partner cases.
