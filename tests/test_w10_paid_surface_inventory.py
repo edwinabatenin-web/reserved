@@ -223,17 +223,19 @@ def decorated_endpoints(relative_path, blueprint_name, decorator):
 
 def test_inventory_metadata_is_non_authorising_and_s5_remains_incomplete():
     data = inventory()
-    assert data["schema_version"] == "W10-S5A/2026-09-04/v2"
+    assert data["schema_version"] == "W10-S5A/2026-09-04/v3"
     assert data["integration_commit"] == (
-        "c5e560045ed3d62f02c894e931464c3d7294e99f"
+        "91cb4c2f14bce089db1f92f656c8cbc1d85639b7"
     )
-    assert data["integration_tree"] == "bcdbec9108c3c0904139eca278c03fe0f6914db2"
-    assert data["inventory_status"] == "evidence_only_no_paid_boundary_decision"
+    assert data["integration_tree"] == "a68a1120dfcc98295839bbea1f1c65c223376ec0"
+    assert data["inventory_status"] == "evidence_only_paid_boundary_settled_elsewhere"
     assert data["s5_status"] == (
-        "incomplete_prerequisite_route_hardening_implemented"
+        "incomplete_guard_kernel_implemented_route_enforcement_not_started"
     )
-    assert data["paid_boundary_status"] == "unresolved_founder_decision"
-    assert data["paid_entitlement_enforcement_status"] == "not_started"
+    assert data["paid_boundary_status"] == "settled_by_w10_s2f"
+    assert data["paid_entitlement_enforcement_status"] == (
+        "guard_kernel_only_runtime_adapter_and_route_wiring_not_started"
+    )
     assert data["route_hardening_changes"] is True
 
 
@@ -423,17 +425,16 @@ def test_internal_and_legacy_class_membership_remains_exact_after_reconciliation
     }
 
 
-def test_evidence_contains_exact_minimal_founder_question_and_no_boundary_claim():
+def test_evidence_contains_settled_policy_and_no_live_enforcement_claim():
     text = EVIDENCE.read_text(encoding="utf-8")
-    assert "The exact minimal question is:" in text
-    assert "If not, identify the" in text
-    assert "exact route exceptions and intended treatment." in text
-    assert "It does not decide which customer" in text
-    assert "paid-entitlement enforcement remain **not" in text
-    assert "started**, and W10-S5 remains incomplete" in text
+    assert "That Founder question is closed." in text
+    assert "The accepted S5D kernel represents the policy" in text
+    assert "itself does not decide which customer" in text
+    assert "live paid-entitlement enforcement remain **not started**" in text
+    assert "W10-S5\nremains incomplete" in text
     assert "S5C prerequisite route hardening is implemented" in text
     assert "no registered subscription checkout" in text
-    assert "does not approve the recommended default" in text
+    assert "does not independently settle policy" in text
 
 
 @pytest.mark.parametrize(

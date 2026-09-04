@@ -2,15 +2,20 @@
 
 ## Status and boundary
 
-This is an exact live route inventory refreshed at accepted integration commit
-`c5e560045ed3d62f02c894e931464c3d7294e99f` (tree
-`bcdbec9108c3c0904139eca278c03fe0f6914db2`). It is evidence for the still
-unresolved W10 paid-access-surface decision. It does not decide which customer
-product surfaces require paid entitlement or implement an entitlement gate.
+This is an exact live route inventory refreshed after the accepted linked-HICBC
+mutual-permission lifecycle at integration commit
+`91cb4c2f14bce089db1f92f656c8cbc1d85639b7` (tree
+`a68a1120dfcc98295839bbea1f1c65c223376ec0`). It preserves the historical
+inventory classification while recording the exact current route surface. The
+later accepted W10-S2F policy settles the paid-access class. This inventory
+itself does not decide which customer product surfaces require paid entitlement
+or implement an entitlement gate.
 The S5C prerequisite route hardening is implemented and remains pinned to its
 historical product checkpoint `3c63e64e478957ce04ee1154363c2eae94b82b30`;
-the paid-boundary decision and paid-entitlement enforcement remain **not
-started**, and W10-S5 remains incomplete. S5A is inventory evidence only.
+the paid-boundary policy is settled by accepted W10-S2F and the route-less S5D
+guard kernel is implemented. The authoritative runtime adapter, route wiring
+and live paid-entitlement enforcement remain **not started**, and W10-S5
+remains incomplete. S5A is inventory evidence only.
 
 The registry has 44 always-registered rules. Enabling the disabled-by-default
 HICBC feature gate adds 8 owner-authenticated rules, producing 52 total. Flask's
@@ -34,7 +39,7 @@ Every rule is assigned exactly one provisional evidence class:
   S5A class for privileged/internal, dormant or legacy product behavior. S5B
   has now reconciled all eleven entries and S5C hardened the five affected
   routes, but the class name and membership remain fixed so this refresh does
-  not silently recategorise any route against unresolved Founder Q2.
+  not silently recategorise any route after the accepted W10-S2F policy closure.
 
 `guard` records the observed route-level access mechanism. `csrf` records the
 global state-changing-request protection or an explicit exemption; it is not an
@@ -46,13 +51,13 @@ only when `HICBC_ENABLED` is explicitly enabled.
 <!-- W10-S5A-INVENTORY-BEGIN -->
 ```json
 {
-  "schema_version": "W10-S5A/2026-09-04/v2",
-  "integration_commit": "c5e560045ed3d62f02c894e931464c3d7294e99f",
-  "integration_tree": "bcdbec9108c3c0904139eca278c03fe0f6914db2",
-  "inventory_status": "evidence_only_no_paid_boundary_decision",
-  "s5_status": "incomplete_prerequisite_route_hardening_implemented",
-  "paid_boundary_status": "unresolved_founder_decision",
-  "paid_entitlement_enforcement_status": "not_started",
+  "schema_version": "W10-S5A/2026-09-04/v3",
+  "integration_commit": "91cb4c2f14bce089db1f92f656c8cbc1d85639b7",
+  "integration_tree": "a68a1120dfcc98295839bbea1f1c65c223376ec0",
+  "inventory_status": "evidence_only_paid_boundary_settled_elsewhere",
+  "s5_status": "incomplete_guard_kernel_implemented_route_enforcement_not_started",
+  "paid_boundary_status": "settled_by_w10_s2f",
+  "paid_entitlement_enforcement_status": "guard_kernel_only_runtime_adapter_and_route_wiring_not_started",
   "route_hardening_changes": true,
   "route_counts": {
     "always": 44,
@@ -72,7 +77,7 @@ only when `HICBC_ENABLED` is explicitly enabled.
     "reserved/config.py": "707e8fedb9b647fe86eff3158befed28d837640b46e84636369d9cdeffb9194a",
     "reserved/extensions.py": "ef35d3ec969e299a1c8221b5636bcf44590189175b0ad0c83e88d38ded35b2a0",
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
-    "reserved/web/hicbc.py": "5eb230d3a894a70881b3d46e66c26eee67c1cd077529179229375ebb0ec2efa0",
+    "reserved/web/hicbc.py": "5f653d3d0567bbc2ec8ecf642128248bce666b541197b8908b10a12a518fb5fc",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
     "reserved/web/v2.py": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228"
   },
@@ -550,12 +555,12 @@ only when `HICBC_ENABLED` is explicitly enabled.
     {
       "endpoint": "hicbc.link_page",
       "rule": "/v2/hicbc/link",
-      "methods": ["GET"],
+      "methods": ["GET", "POST"],
       "registration": "hicbc_feature_enabled",
       "guard": "customer_session",
-      "csrf": "not_applicable",
+      "csrf": "global",
       "classification": "authenticated_product_candidate_pending_founder_decision",
-      "note": "Feature-gated authenticated linked-account product candidate."
+      "note": "Feature-gated authenticated linked-account display and mutual-permission submission; the state-changing POST remains globally CSRF-protected."
     },
     {
       "endpoint": "hicbc.link_accept",
@@ -627,10 +632,10 @@ This retained class does not expose or paid-gate those routes. It prevents them
 from becoming an accidental exception by omission and is not a paid-boundary
 decision.
 
-## Minimal Founder decision
+## Settled paid-boundary policy and remaining engineering boundary
 
-**Recommended default:** once a paid-entitlement boundary exists, enforce it
-server-side on every route classified
+The formerly proposed default is now settled by accepted W10-S2F: enforce paid
+entitlement server-side on every route classified
 `authenticated_product_candidate_pending_founder_decision`, including the HICBC
 routes whenever their separate feature gate is enabled. Keep
 `public_infrastructure_auth_legal_support` and
@@ -648,16 +653,11 @@ purchase/return/recovery paths would remain reachable enough to authenticate,
 buy or recover, but would not gain product entitlement. Client-side hiding would
 never substitute for server enforcement.
 
-The exact minimal question is:
-
-> For the October launch, approve server-side paid-entitlement enforcement on
-> every route in `authenticated_product_candidate_pending_founder_decision`,
-> while routes in `public_infrastructure_auth_legal_support` and
-> `billing_purchase_return_recovery_candidate` remain outside that gate but keep
-> their existing controls, and
-> `internal_admin_unknown_requiring_reconciliation` remains governed by its
-> accepted S5B/S5C route-specific fail-closed treatment? If not, identify the
-> exact route exceptions and intended treatment.
+That Founder question is closed. The accepted S5D kernel represents the policy
+without route authority. Remaining work is engineering: supply an authoritative
+runtime-entitlement adapter and wire the guard to this exact paid route set,
+with independent review and integrated assurance. No live enforcement claim is
+made here.
 
 ## Assurance and limits
 
@@ -671,5 +671,6 @@ database, provider, network or credential path.
 This inventory was regenerated after S5C because its bound route sources and
 guards changed. It must be regenerated and reviewed again whenever any bound
 source or registered route changes. Passing its tests proves inventory
-freshness only. It does not approve the recommended default, decide entitlement,
-implement a paid-access gate, complete W10-S5, or provide launch evidence.
+freshness only. It does not independently settle policy, supply the runtime
+adapter, wire or activate a paid-access gate, complete W10-S5, or provide launch
+evidence.
