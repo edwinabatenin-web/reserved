@@ -1,0 +1,716 @@
+"""Route-less W10-S3C admission of owner-bound billing facts.
+
+This provider-neutral adapter is deliberately not a billing-fact source.  A
+future composition root must bind two distinct functions belonging to an
+independently authenticated, admitted billing-fact authority.  Both functions
+must accept the same live fact and return one exact canonical projection.
+
+Only this adapter can issue the opaque runtime-entitlement handles accepted by
+its validator/projector pair.  The projected primitive protocol is the exact
+``reserved-runtime-entitlement-decision/1.0`` seam consumed by W10-S5D.  No
+provider observation, detached S3A/S3B tuple, route, datastore or caller-made
+tuple is itself runtime access authority.
+"""
+
+from __future__ import annotations
+
+import hashlib as _hashlib
+import json as _json
+import re as _re
+import types as _types
+import weakref as _weakref
+from datetime import date as _date
+from datetime import datetime as _datetime
+from datetime import time as _time
+from datetime import timedelta as _timedelta
+from datetime import timezone as _timezone
+
+
+CONTRACT_VERSION = "reserved-w10-runtime-entitlement-admission/1.0"
+BILLING_FACT_PROTOCOL_VERSION = "reserved-owner-bound-billing-fact/1.0"
+BILLING_FACT_ADMISSION_STATUS = "authoritative_owner_bound_billing_fact_admitted"
+RUNTIME_DECISION_PROTOCOL_VERSION = "reserved-runtime-entitlement-decision/1.0"
+RUNTIME_ADMISSION_STATUS = "authoritative_runtime_entitlement_admitted"
+FD_W10_003 = "FD-W10-003"
+FD_W10_004 = "FD-W10-004"
+RECOVERY_DAYS = 7
+
+
+class RuntimeEntitlementAdmissionError(ValueError):
+    """The admission binding, billing fact or runtime handle failed closed."""
+
+
+def _build_admission_kernel():
+    typ, object_new = type, object.__new__
+    T, S, I, B, D = tuple, str, int, bool, dict
+    length, id_fn, zip_fn, any_fn = len, id, zip, any
+    function_type = _types.FunctionType
+    date_type, datetime_type, time_type = _date, _datetime, _time
+    timedelta_type, utc = _timedelta, _timezone.utc
+    sha256, dumps = _hashlib.sha256, _json.dumps
+    weakref_ref = _weakref.ref
+    compile_re = _re.compile
+    error, type_error, value_error, exception_type = (
+        RuntimeEntitlementAdmissionError,
+        TypeError,
+        ValueError,
+        Exception,
+    )
+
+    contract_version = CONTRACT_VERSION
+    billing_protocol = BILLING_FACT_PROTOCOL_VERSION
+    billing_admission = BILLING_FACT_ADMISSION_STATUS
+    runtime_protocol = RUNTIME_DECISION_PROTOCOL_VERSION
+    runtime_admission = RUNTIME_ADMISSION_STATUS
+    recovery_days = RECOVERY_DAYS
+
+    identifier_rx = compile_re(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,159}\Z")
+    fact_identity_rx = compile_re(r"billing-fact:sha256-[0-9a-f]{64}\Z")
+    runtime_identity_rx = compile_re(r"runtime-entitlement:sha256-[0-9a-f]{64}\Z")
+    secret_markers = (
+        "secret",
+        "token",
+        "password",
+        "credential",
+        "api_key",
+        "apikey",
+        "private_key",
+        "sk_live",
+        "sk_test",
+        "bearer",
+    )
+
+    fact_keys = (
+        "protocol_version",
+        "fact_identity",
+        "admission_status",
+        "authenticated",
+        "billing_fact_authority",
+        "provider_observation_direct_authority",
+        "owner_id",
+        "billing_account_id",
+        "subscription_id",
+        "decision_sequence",
+        "predecessor_fact_identity",
+        "state",
+        "valid_from_inclusive",
+        "valid_until_exclusive",
+        "transition_effective_at_utc",
+        "recovery_deadline_exclusive_at_utc",
+        "derivation_kind",
+        "withdrawal_attribution",
+    )
+    runtime_keys = (
+        "protocol_version",
+        "decision_identity",
+        "admission_status",
+        "authenticated",
+        "runtime_access_authority",
+        "owner_id",
+        "decision_sequence",
+        "predecessor_identity",
+        "state",
+        "ordinary_access",
+        "valid_from_inclusive",
+        "valid_until_exclusive",
+        "transition_effective_at_utc",
+        "recovery_deadline_exclusive_at_utc",
+        "predecessor_entitled_access",
+        "predecessor_owner_id",
+        "derivation_kind",
+        "withdrawal_attribution",
+    )
+
+    allowed_states = frozenset(("paid", "payment_recovery"))
+    uncertain_withdrawals = frozenset(
+        (
+            "withdrawal_open",
+            "withdrawal_partial",
+            "withdrawal_ambiguous",
+            "withdrawal_contradictory",
+            "withdrawal_unresolved",
+        )
+    )
+    preservation_kinds = uncertain_withdrawals | {"existing_derived_access"}
+    restoration_kinds = frozenset(
+        (
+            "verified_reinstatement",
+            "verified_reversal_success",
+            "verified_replacement_payment",
+        )
+    )
+    ordinary_kinds = frozenset(
+        (
+            "verified_initial_payment",
+            "verified_renewal_payment",
+            "verified_renewal_failure",
+        )
+    )
+    derivation_kinds = (
+        preservation_kinds
+        | restoration_kinds
+        | ordinary_kinds
+        | {"verified_full_withdrawal"}
+    )
+    withdrawal_attributions = frozenset(
+        ("not_applicable", "current_subscription_period", "other_period", "unknown")
+    )
+
+    admission_registry = {}
+    runtime_registry = {}
+
+    class RuntimeEntitlementAdmissionHandle:
+        """Opaque binding to one independently supplied billing-fact authority."""
+
+        __slots__ = ("__weakref__",)
+
+        def __new__(cls, *args, **kwargs):
+            raise type_error("runtime-entitlement admission handles are binder-issued only")
+
+        def __copy__(self):
+            raise type_error("runtime-entitlement admission handles are not copyable")
+
+        def __deepcopy__(self, memo):
+            raise type_error("runtime-entitlement admission handles are not copyable")
+
+        def __reduce__(self):
+            raise type_error("runtime-entitlement admission handles are not serialisable")
+
+    AdmissionHandle = RuntimeEntitlementAdmissionHandle
+
+    class RuntimeEntitlementHandle:
+        """Opaque admitted runtime entitlement; primitive tuples have no authority."""
+
+        __slots__ = ("__weakref__",)
+
+        def __new__(cls, *args, **kwargs):
+            raise type_error("runtime-entitlement handles are adapter-issued only")
+
+        def __copy__(self):
+            raise type_error("runtime-entitlement handles are not copyable")
+
+        def __deepcopy__(self, memo):
+            raise type_error("runtime-entitlement handles are not copyable")
+
+        def __reduce__(self):
+            raise type_error("runtime-entitlement handles are not serialisable")
+
+    RuntimeHandle = RuntimeEntitlementHandle
+
+    def bounded_identifier(value, label):
+        if typ(value) is not S or identifier_rx.fullmatch(value) is None:
+            raise error(f"{label} is invalid")
+        lowered = value.casefold()
+        if any_fn(marker in lowered for marker in secret_markers):
+            raise error(f"{label} is secret-shaped")
+        return value
+
+    def exact_pairs(value, keys, label):
+        if typ(value) is not T or length(value) != length(keys):
+            raise error(f"{label} must be an exact ordered tuple")
+        parsed = []
+        for index, expected_key in enumerate(keys):
+            pair = value[index]
+            if (
+                typ(pair) is not T
+                or length(pair) != 2
+                or typ(pair[0]) is not S
+                or pair[0] != expected_key
+            ):
+                raise error(f"{label} field boundary is invalid")
+            parsed.append(pair[1])
+        return D(zip_fn(keys, parsed, strict=True))
+
+    def exact_utc(value, label):
+        if (
+            typ(value) is not datetime_type
+            or value.tzinfo is not utc
+            or value.utcoffset() != timedelta_type(0)
+        ):
+            raise error(f"{label} must be an exact timezone-aware UTC datetime")
+        return value
+
+    def canonical_fact_identity(values):
+        material = (
+            values["protocol_version"],
+            values["admission_status"],
+            values["authenticated"],
+            values["billing_fact_authority"],
+            values["provider_observation_direct_authority"],
+            values["owner_id"],
+            values["billing_account_id"],
+            values["subscription_id"],
+            values["decision_sequence"],
+            values["predecessor_fact_identity"],
+            values["state"],
+            values["valid_from_inclusive"].isoformat(),
+            values["valid_until_exclusive"].isoformat(),
+            values["transition_effective_at_utc"].isoformat(),
+            (
+                None
+                if values["recovery_deadline_exclusive_at_utc"] is None
+                else values["recovery_deadline_exclusive_at_utc"].isoformat()
+            ),
+            values["derivation_kind"],
+            values["withdrawal_attribution"],
+        )
+        payload = dumps(material, ensure_ascii=True, separators=(",", ":"))
+        return "billing-fact:sha256-" + sha256(payload.encode("ascii")).hexdigest()
+
+    def canonical_runtime_identity(values):
+        material = (
+            values["protocol_version"],
+            values["admission_status"],
+            values["authenticated"],
+            values["runtime_access_authority"],
+            values["owner_id"],
+            values["decision_sequence"],
+            values["predecessor_identity"],
+            values["state"],
+            values["ordinary_access"],
+            values["valid_from_inclusive"].isoformat(),
+            values["valid_until_exclusive"].isoformat(),
+            values["transition_effective_at_utc"].isoformat(),
+            (
+                None
+                if values["recovery_deadline_exclusive_at_utc"] is None
+                else values["recovery_deadline_exclusive_at_utc"].isoformat()
+            ),
+            values["predecessor_entitled_access"],
+            values["predecessor_owner_id"],
+            values["derivation_kind"],
+            values["withdrawal_attribution"],
+        )
+        payload = dumps(material, ensure_ascii=True, separators=(",", ":"))
+        return "runtime-entitlement:sha256-" + sha256(payload.encode("ascii")).hexdigest()
+
+    def parse_fact(value):
+        values = exact_pairs(value, fact_keys, "owner-bound billing fact")
+        if values["protocol_version"] != billing_protocol:
+            raise error("billing-fact protocol is invalid")
+        if values["admission_status"] != billing_admission:
+            raise error("billing fact is not authoritatively admitted")
+        if typ(values["authenticated"]) is not B or values["authenticated"] is not True:
+            raise error("billing fact is not authenticated")
+        if (
+            typ(values["billing_fact_authority"]) is not B
+            or values["billing_fact_authority"] is not True
+        ):
+            raise error("billing-fact authority is absent")
+        if (
+            typ(values["provider_observation_direct_authority"]) is not B
+            or values["provider_observation_direct_authority"] is not False
+        ):
+            raise error("provider observations cannot directly authorise entitlement")
+        for name in ("owner_id", "billing_account_id", "subscription_id"):
+            bounded_identifier(values[name], f"billing-fact {name}")
+        if typ(values["decision_sequence"]) is not I or values["decision_sequence"] <= 0:
+            raise error("billing-fact decision sequence is invalid")
+        predecessor = values["predecessor_fact_identity"]
+        if predecessor is not None and (
+            typ(predecessor) is not S or fact_identity_rx.fullmatch(predecessor) is None
+        ):
+            raise error("billing-fact predecessor identity is invalid")
+        if typ(values["state"]) is not S or values["state"] not in (
+            "paid",
+            "payment_recovery",
+            "suspended",
+        ):
+            raise error("billing-fact state is invalid")
+        if (
+            typ(values["valid_from_inclusive"]) is not date_type
+            or typ(values["valid_until_exclusive"]) is not date_type
+            or values["valid_from_inclusive"] >= values["valid_until_exclusive"]
+        ):
+            raise error("billing-fact validity interval is invalid")
+        exact_utc(values["transition_effective_at_utc"], "billing-fact transition")
+        deadline = values["recovery_deadline_exclusive_at_utc"]
+        if deadline is not None:
+            exact_utc(deadline, "billing-fact recovery deadline")
+        derivation = values["derivation_kind"]
+        if typ(derivation) is not S or derivation not in derivation_kinds:
+            raise error("billing-fact derivation is invalid")
+        attribution = values["withdrawal_attribution"]
+        if typ(attribution) is not S or attribution not in withdrawal_attributions:
+            raise error("billing-fact withdrawal attribution is invalid")
+        if typ(values["fact_identity"]) is not S or fact_identity_rx.fullmatch(
+            values["fact_identity"]
+        ) is None:
+            raise error("billing-fact identity is invalid")
+        if values["fact_identity"] != canonical_fact_identity(values):
+            raise error("billing-fact identity does not match its content")
+        return values
+
+    def function_snapshot(fn):
+        if typ(fn) is not function_type:
+            raise type_error("billing-fact dependencies must be exact functions")
+        cells = []
+        for cell in fn.__closure__ or ():
+            try:
+                value = cell.cell_contents
+            except value_error:
+                value = cell
+            cells.append((cell, value))
+        return (fn, fn.__code__, fn.__defaults__, fn.__kwdefaults__, T(cells))
+
+    def function_unchanged(snapshot):
+        fn, code, defaults, kwdefaults, contents = snapshot
+        if (
+            typ(fn) is not function_type
+            or fn.__code__ is not code
+            or fn.__defaults__ is not defaults
+            or fn.__kwdefaults__ is not kwdefaults
+        ):
+            return False
+        cells = fn.__closure__ or ()
+        if length(cells) != length(contents):
+            return False
+        for cell, expected in zip_fn(cells, contents, strict=True):
+            expected_cell, expected_value = expected
+            if cell is not expected_cell:
+                return False
+            try:
+                value = cell.cell_contents
+            except value_error:
+                value = cell
+            if value is not expected_value:
+                return False
+        return True
+
+    def admission_state(handle):
+        if typ(handle) is not AdmissionHandle:
+            raise error("value must be an exact runtime-entitlement admission handle")
+        state = admission_registry.get(id_fn(handle))
+        if typ(state) is not T or length(state) != 3 or state[2]() is not handle:
+            raise error("runtime-entitlement admission handle was not issued here")
+        if not function_unchanged(state[0]) or not function_unchanged(state[1]):
+            raise error("bound billing-fact authority changed")
+        return state[0], state[1]
+
+    def runtime_state(handle):
+        if typ(handle) is not RuntimeHandle:
+            raise error("value must be an exact runtime-entitlement handle")
+        state = runtime_registry.get(id_fn(handle))
+        if typ(state) is not T or length(state) != 8 or state[7]() is not handle:
+            raise error("runtime-entitlement handle was not issued here")
+        projection = exact_pairs(state[0], runtime_keys, "runtime-entitlement decision")
+        if projection["decision_identity"] != canonical_runtime_identity(projection):
+            raise error("runtime-entitlement registry identity is inconsistent")
+        return state
+
+    def bind_runtime_entitlement_admission(
+        *, validate_admitted_billing_fact, project_admitted_billing_fact
+    ):
+        validator = function_snapshot(validate_admitted_billing_fact)
+        projector = function_snapshot(project_admitted_billing_fact)
+        if validate_admitted_billing_fact is project_admitted_billing_fact:
+            raise value_error("billing-fact validator and projector must be distinct")
+        handle = object_new(AdmissionHandle)
+        identity = id_fn(handle)
+
+        def remove(reference, expected=identity):
+            current = admission_registry.get(expected)
+            if typ(current) is T and length(current) == 3 and current[2] is reference:
+                admission_registry.pop(expected, None)
+
+        reference = weakref_ref(handle, remove)
+        admission_registry[identity] = (validator, projector, reference)
+        return handle
+
+    def issue_runtime(projection, fact, admission):
+        handle = object_new(RuntimeHandle)
+        identity = id_fn(handle)
+
+        def remove(reference, expected=identity):
+            current = runtime_registry.get(expected)
+            if typ(current) is T and length(current) == 8 and current[7] is reference:
+                runtime_registry.pop(expected, None)
+
+        reference = weakref_ref(handle, remove)
+        runtime_registry[identity] = (
+            projection,
+            fact["billing_account_id"],
+            fact["subscription_id"],
+            fact["fact_identity"],
+            fact["decision_sequence"],
+            fact["transition_effective_at_utc"],
+            admission,
+            reference,
+        )
+        return handle
+
+    def admit_runtime_entitlement(
+        admission,
+        *,
+        authenticated_owner_id,
+        billing_account_id,
+        subscription_id,
+        prior_runtime_entitlement,
+        admitted_billing_fact,
+        evaluated_at_utc,
+    ):
+        owner = bounded_identifier(authenticated_owner_id, "authenticated owner")
+        account = bounded_identifier(billing_account_id, "billing account")
+        subscription = bounded_identifier(subscription_id, "subscription")
+        evaluated_at = exact_utc(evaluated_at_utc, "runtime-entitlement evaluation")
+        validator_snapshot, projector_snapshot = admission_state(admission)
+        validator, projector = validator_snapshot[0], projector_snapshot[0]
+        try:
+            validated_projection = validator(admitted_billing_fact)
+            projected_projection = projector(admitted_billing_fact)
+            validated = parse_fact(validated_projection)
+            projected = parse_fact(projected_projection)
+        except exception_type as exc:
+            if typ(exc) is error:
+                raise
+            raise error("billing-fact validation failed") from exc
+        if not function_unchanged(validator_snapshot) or not function_unchanged(
+            projector_snapshot
+        ):
+            raise error("bound billing-fact authority changed during admission")
+        if validated_projection != projected_projection or validated != projected:
+            raise error("billing-fact validator and projector disagree")
+        fact = projected
+        if fact["owner_id"] != owner:
+            raise error("billing fact crossed the authenticated owner boundary")
+        if (
+            fact["billing_account_id"] != account
+            or fact["subscription_id"] != subscription
+        ):
+            raise error("billing fact crossed the selected account or subscription boundary")
+        if fact["transition_effective_at_utc"] > evaluated_at:
+            raise error("future billing facts cannot be admitted")
+        if not (
+            fact["valid_from_inclusive"]
+            <= fact["transition_effective_at_utc"].date()
+            < fact["valid_until_exclusive"]
+        ):
+            raise error("billing-fact transition is outside its validity interval")
+        if not (
+            fact["valid_from_inclusive"]
+            <= evaluated_at.date()
+            < fact["valid_until_exclusive"]
+        ):
+            raise error("stale billing facts cannot be admitted")
+
+        if prior_runtime_entitlement is None:
+            prior_state = None
+            if fact["decision_sequence"] != 1 or fact["predecessor_fact_identity"] is not None:
+                raise error("originless billing-fact sequence is invalid")
+        else:
+            prior_state = runtime_state(prior_runtime_entitlement)
+            if prior_state[6] is not admission:
+                raise error("runtime-entitlement lineage crossed admission authority")
+            prior_projection = exact_pairs(
+                prior_state[0], runtime_keys, "prior runtime-entitlement decision"
+            )
+            if (
+                prior_projection["owner_id"] != owner
+                or prior_state[1] != account
+                or prior_state[2] != subscription
+            ):
+                raise error("billing fact crossed owner, account or subscription lineage")
+            if (
+                fact["decision_sequence"] != prior_state[4] + 1
+                or fact["predecessor_fact_identity"] != prior_state[3]
+            ):
+                raise error("billing-fact predecessor or sequence is invalid")
+            if fact["transition_effective_at_utc"] < prior_state[5]:
+                raise error("out-of-order billing facts cannot be admitted")
+
+        derivation = fact["derivation_kind"]
+        attribution = fact["withdrawal_attribution"]
+        deadline = fact["recovery_deadline_exclusive_at_utc"]
+        if derivation == "verified_renewal_failure":
+            if (
+                deadline is None
+                or fact["transition_effective_at_utc"].time() != time_type.min
+                or deadline.time() != time_type.min
+                or deadline
+                != fact["transition_effective_at_utc"]
+                + timedelta_type(days=recovery_days)
+                or fact["valid_until_exclusive"] != deadline.date()
+            ):
+                raise error("payment recovery must be exactly seven UTC calendar days")
+        elif deadline is not None:
+            raise error("non-recovery billing facts cannot carry a recovery deadline")
+
+        prior_projection = None if prior_state is None else exact_pairs(
+            prior_state[0], runtime_keys, "prior runtime-entitlement decision"
+        )
+        prior_structurally_entitled = (
+            prior_projection is not None
+            and prior_projection["state"] in allowed_states
+            and prior_projection["ordinary_access"] is True
+        )
+        prior_entitled_at_transition = (
+            prior_structurally_entitled
+            and prior_projection["valid_from_inclusive"]
+            <= fact["transition_effective_at_utc"].date()
+            <= prior_projection["valid_until_exclusive"]
+        )
+        prior_entitled_now = (
+            prior_structurally_entitled
+            and prior_projection["valid_from_inclusive"]
+            <= evaluated_at.date()
+            < prior_projection["valid_until_exclusive"]
+        )
+
+        if derivation == "verified_initial_payment":
+            if prior_projection is not None or fact["state"] != "paid":
+                raise error("initial payment cannot replace or derive from an entitlement")
+            ordinary_access = True
+        elif derivation == "verified_renewal_payment":
+            if (
+                not prior_structurally_entitled
+                or fact["state"] != "paid"
+                or fact["valid_from_inclusive"] != prior_projection["valid_from_inclusive"]
+                or fact["valid_until_exclusive"] <= prior_projection["valid_until_exclusive"]
+            ):
+                raise error("renewal payment must advance an admitted entitlement")
+            ordinary_access = True
+        elif derivation == "verified_renewal_failure":
+            if (
+                not prior_entitled_at_transition
+                or prior_projection["state"] != "paid"
+                or fact["state"] != "payment_recovery"
+                or fact["transition_effective_at_utc"].date()
+                != prior_projection["valid_until_exclusive"]
+                or fact["valid_from_inclusive"] != prior_projection["valid_from_inclusive"]
+            ):
+                raise error("renewal failure cannot create or extend originless recovery")
+            ordinary_access = True
+        elif derivation in preservation_kinds:
+            if not prior_entitled_now:
+                raise error("preservation requires a currently valid entitled predecessor")
+            if (
+                fact["state"] != prior_projection["state"]
+                or fact["valid_from_inclusive"] < prior_projection["valid_from_inclusive"]
+                or fact["valid_until_exclusive"] > prior_projection["valid_until_exclusive"]
+                or deadline != prior_projection["recovery_deadline_exclusive_at_utc"]
+            ):
+                raise error("preservation cannot create, extend or strengthen entitlement")
+            if derivation == "existing_derived_access":
+                if attribution != "not_applicable":
+                    raise error("ordinary preservation cannot carry withdrawal attribution")
+            elif attribution == "not_applicable":
+                raise error("uncertain withdrawal evidence requires explicit attribution")
+            ordinary_access = True
+        elif derivation == "verified_full_withdrawal":
+            if not prior_entitled_at_transition:
+                raise error("withdrawal cannot operate without a valid predecessor")
+            if attribution == "current_subscription_period":
+                if fact["state"] != "suspended":
+                    raise error("verified current-period full withdrawal must suspend")
+                ordinary_access = False
+            elif attribution == "other_period":
+                if (
+                    fact["state"] != prior_projection["state"]
+                    or fact["valid_from_inclusive"] < prior_projection["valid_from_inclusive"]
+                    or fact["valid_until_exclusive"] > prior_projection["valid_until_exclusive"]
+                ):
+                    raise error("other-period withdrawal cannot change current entitlement")
+                ordinary_access = True
+            else:
+                raise error("full withdrawal requires exact current/other-period attribution")
+        elif derivation in restoration_kinds:
+            if (
+                prior_projection is None
+                or prior_projection["state"] != "suspended"
+                or prior_projection["ordinary_access"] is not False
+                or prior_projection["derivation_kind"] != "verified_full_withdrawal"
+                or prior_projection["withdrawal_attribution"]
+                != "current_subscription_period"
+                or prior_projection["predecessor_entitled_access"] is not True
+                or fact["state"] != "paid"
+                or attribution != "not_applicable"
+            ):
+                raise error("restoration requires an admitted verified withdrawal lineage")
+            ordinary_access = True
+        else:
+            raise error("billing-fact derivation is unsupported")
+
+        if derivation not in uncertain_withdrawals | {"verified_full_withdrawal"}:
+            if attribution != "not_applicable":
+                raise error("non-withdrawal facts cannot carry withdrawal attribution")
+
+        decision_sequence = 1 if prior_projection is None else prior_projection[
+            "decision_sequence"
+        ] + 1
+        predecessor_identity = (
+            None if prior_projection is None else prior_projection["decision_identity"]
+        )
+        predecessor_entitled_access = bool(
+            prior_projection is not None
+            and prior_projection["state"] in allowed_states
+            and prior_projection["ordinary_access"] is True
+        )
+        predecessor_owner = owner if predecessor_entitled_access else None
+        runtime_values = {
+            "protocol_version": runtime_protocol,
+            "decision_identity": "",
+            "admission_status": runtime_admission,
+            "authenticated": True,
+            "runtime_access_authority": True,
+            "owner_id": owner,
+            "decision_sequence": decision_sequence,
+            "predecessor_identity": predecessor_identity,
+            "state": fact["state"],
+            "ordinary_access": ordinary_access,
+            "valid_from_inclusive": fact["valid_from_inclusive"],
+            "valid_until_exclusive": fact["valid_until_exclusive"],
+            "transition_effective_at_utc": fact["transition_effective_at_utc"],
+            "recovery_deadline_exclusive_at_utc": deadline,
+            "predecessor_entitled_access": predecessor_entitled_access,
+            "predecessor_owner_id": predecessor_owner,
+            "derivation_kind": derivation,
+            "withdrawal_attribution": attribution,
+        }
+        runtime_values["decision_identity"] = canonical_runtime_identity(runtime_values)
+        projection = T((key, runtime_values[key]) for key in runtime_keys)
+        return issue_runtime(projection, fact, admission)
+
+    def validate_runtime_entitlement(value):
+        return runtime_state(value)[0]
+
+    def project_runtime_entitlement(value):
+        return runtime_state(value)[0]
+
+    return (
+        RuntimeEntitlementAdmissionHandle,
+        RuntimeEntitlementHandle,
+        bind_runtime_entitlement_admission,
+        admit_runtime_entitlement,
+        validate_runtime_entitlement,
+        project_runtime_entitlement,
+    )
+
+
+(
+    RuntimeEntitlementAdmissionHandle,
+    RuntimeEntitlementHandle,
+    bind_runtime_entitlement_admission,
+    admit_runtime_entitlement,
+    validate_runtime_entitlement,
+    project_runtime_entitlement,
+) = _build_admission_kernel()
+del _build_admission_kernel
+
+
+__all__ = (
+    "BILLING_FACT_ADMISSION_STATUS",
+    "BILLING_FACT_PROTOCOL_VERSION",
+    "CONTRACT_VERSION",
+    "FD_W10_003",
+    "FD_W10_004",
+    "RECOVERY_DAYS",
+    "RUNTIME_ADMISSION_STATUS",
+    "RUNTIME_DECISION_PROTOCOL_VERSION",
+    "RuntimeEntitlementAdmissionError",
+    "RuntimeEntitlementAdmissionHandle",
+    "RuntimeEntitlementHandle",
+    "admit_runtime_entitlement",
+    "bind_runtime_entitlement_admission",
+    "project_runtime_entitlement",
+    "validate_runtime_entitlement",
+)
