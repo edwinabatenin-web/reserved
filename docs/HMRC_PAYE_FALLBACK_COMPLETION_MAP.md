@@ -7,6 +7,8 @@ integration, independent review, or launch readiness.
 |---|---:|---:|---:|---:|---|
 | S1 structured capture/minimisation boundary | Yes | Yes | Yes | No | Privacy/security controls, usability and launch assurance remain |
 | S2A extraction-confirmation contract (pure, network-inert) | Yes | Yes | Yes | No | Document-processing integration plus privacy/security controls remain |
+| PAYE reconciliation trust, explicit-policy issuance and authoritative projection | Yes | Yes | Yes | No | Integrated at `c23d343`; customer orchestration, persistence, UX/security evidence and launch assurance remain |
+| Customer-safe PAYE reconciliation evidence presentation (route-less) | Yes | No | No | No | Fresh independent review, controlled integration, route/auth binding and target UX/security evidence remain |
 | Upload, extraction, customer confirmation, and secure raw-document deletion | No | No | No | No | Document-processing integration plus privacy/security controls |
 | Customer journey, persistence, replacement/deletion actions, structured retention, account deletion, and backups | No | No | No | No | Product, data, privacy, legal, and platform implementation |
 | Independently reviewed usability of the payslip/manual journey | No | No | No | No | Representative journey implementation and independent usability evidence |
@@ -55,3 +57,22 @@ local integration lineage at
 affected PAYE/consumer tests, refreshed canonical release gate and complete
 repository suite. Neither checkpoint is merged to main, pushed, released,
 deployed, activated or launch-ready.
+
+## Reconciliation trust and presentation sub-boundaries
+
+The independently reviewed reconciliation trust boundary is integrated at
+local checkpoint `c23d343032a3bfd94e8ba1bda45cc5361b3fff40`. It requires an
+explicit factory-issued policy, validates source-neutral evidence, preserves
+missing-versus-zero and aggregate anti-double-counting semantics, and exposes
+closure-bound immutable projectors as the authoritative read surface. It does
+not acquire evidence, set a universal operating policy, forecast payroll,
+persist state, render customer copy or establish release readiness.
+
+The route-less presentation candidate consumes only the captured authoritative
+`project_paye_reconciliation` output from an exact live result. It validates
+the current ordered projection, suppresses unsafe point values for bank
+inference and conflicts, and renders fixed autoescaped customer HTML. It adds
+no route, authentication, source orchestration, upload/deletion, persistence,
+provider access, payment action, activation or launch claim. Until fresh
+independent review and controlled integration, its table state remains
+implemented-only.

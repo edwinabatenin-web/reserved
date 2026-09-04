@@ -1,0 +1,24 @@
+<section role="status" aria-live="polite" aria-atomic="true" aria-labelledby="paye-evidence-heading">
+  <h2 id="paye-evidence-heading">{{ model[0] }}</h2>
+  <p><strong>{{ model[1] }}</strong></p>
+  <p>{{ model[2] }}</p>
+  <p>{{ model[3] }}</p>
+  <dl>
+    <dt>Evidence status</dt><dd>{{ model[4] }}</dd>
+{% if model[5] %}    <dt>Tax year</dt><dd>{{ model[5] }}</dd>
+{% endif %}{% if model[6] %}    <dt>Source categories</dt><dd>{% for source in model[6] %}{{ source }}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+{% endif %}{% if model[7] %}    <dt>Evidence date</dt><dd>{{ model[7] }}</dd>
+{% endif %}  </dl>
+{% if model[8] %}  <p>These figures use the annual estimate supplied to us and tax currently evidenced as deducted. They are before future payroll deductions.</p>
+{% endif %}{% if model[9] %}  <dl>
+    <dt>Tax currently evidenced as deducted</dt><dd>{{ model[9] }}</dd>
+    <dt>Supplied annual estimate less tax currently evidenced as deducted</dt><dd>{{ model[10] }}</dd>
+  </dl>
+{% endif %}{% if model[11] %}  <dl>
+    <dt>Lower figure from the supplied annual estimate</dt><dd>{{ model[12] }}</dd>
+    <dt>Higher figure from the supplied annual estimate</dt><dd>{{ model[13] }}</dd>
+  </dl>
+{% endif %}{% if model[14] %}  <p>The evidence may be out of date or may not cover the full period.</p>
+{% endif %}{% if model[15] %}  <p>Direct PAYE evidence is needed before amounts can be shown.</p>
+{% endif %}{% if model[16] %}  <p>Possible difference above the supplied annual estimate: {{ model[16] }}. This possible difference is provisional and is not a confirmed or available refund.</p>
+{% endif %}</section>
