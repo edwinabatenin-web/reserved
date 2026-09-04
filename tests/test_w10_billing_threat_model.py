@@ -22,6 +22,8 @@ S5C_PRODUCT = "3c63e64e478957ce04ee1154363c2eae94b82b30"
 S5C_EVIDENCE = "e3959964ca08bd5afb6f75feab4ec0fdc83a9423"
 CURRENT_ROUTES_COMMIT = "c5e560045ed3d62f02c894e931464c3d7294e99f"
 PAYE_V2_COMMIT = "f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b"
+PAYE_V2_SHA256 = "be6247e5f9aa91cfbdc3a4d028fbf4b3c4911eaf98dcd1f7b383b28998838236"
+MTD_V2_COMMIT = "730db03e9d952a43df2f6d7b638b5a893600ec89"
 
 EXPECTED_SOURCES = {
     "SRC-01": (
@@ -116,8 +118,8 @@ EXPECTED_SOURCES = {
     ),
     "SRC-16": (
         "reserved/web/v2.py",
-        PAYE_V2_COMMIT,
-        "be6247e5f9aa91cfbdc3a4d028fbf4b3c4911eaf98dcd1f7b383b28998838236",
+        MTD_V2_COMMIT,
+        "15b0893514d4e6a5daab935d602aa1d2aa899617f401ed7dbabc704ab91ef563",
         "live",
     ),
     "SRC-17": (
@@ -322,9 +324,9 @@ def assert_exact_source_register(data):
     assert sources == EXPECTED_SOURCES
 
     for source_id, (path, accepted_commit, expected_hash, binding) in sources.items():
-        # PAYE v2 and legacy routes have independent accepted live anchors;
+        # MTD v2 and legacy routes have independent accepted live anchors;
         # neither is relabelled as assurance from the other's checkpoint.
-        descendant = (PAYE_V2_COMMIT if source_id == "SRC-16" else CURRENT_ROUTES_COMMIT) if binding == "live" else HEAD
+        descendant = (MTD_V2_COMMIT if source_id == "SRC-16" else CURRENT_ROUTES_COMMIT) if binding == "live" else HEAD
         assert is_ancestor(
             accepted_commit, descendant
         ), f"non-ancestor evidence source: {source_id}"
@@ -343,12 +345,14 @@ def test_exact_source_commit_hash_and_binding_register_is_not_substitutable():
     assert_exact_source_register(register())
 
 
-def test_paye_live_register_rejects_substituted_hash_commit_and_binding():
+def test_mtd_live_register_rejects_substituted_hash_commit_and_binding():
     for field, value in (
         ("sha256", "0" * 64),
         ("sha256", "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228"),
+        ("sha256", PAYE_V2_SHA256),
         ("accepted_commit", S5C_PRODUCT),
         ("accepted_commit", CURRENT_ROUTES_COMMIT),
+        ("accepted_commit", PAYE_V2_COMMIT),
         ("binding", "historical_at_cutoff"),
     ):
         changed = register()
@@ -358,7 +362,39 @@ def test_paye_live_register_rejects_substituted_hash_commit_and_binding():
         except AssertionError:
             pass
         else:  # pragma: no cover
-            raise AssertionError(f"substituted PAYE source {field} was accepted")
+            raise AssertionError(f"substituted MTD source {field} was accepted")
+
+
+def test_mtd_binding_is_the_only_register_delta_from_accepted_paye_binding():
+    previous = register_from_text(subprocess.run(
+        ["git", "show", f"{MTD_V2_COMMIT}:docs/W10_S7A_BILLING_THREAT_MODEL.md"],
+        cwd=ROOT, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    ).stdout)
+    current = register()
+    row = next(item for item in current["sources"] if item["id"] == "SRC-16")
+    assert row["accepted_commit"] == MTD_V2_COMMIT
+    assert row["sha256"] == EXPECTED_SOURCES["SRC-16"][2]
+    row.update(accepted_commit=PAYE_V2_COMMIT, sha256=PAYE_V2_SHA256)
+    assert current == previous  # Every other source, topology, threat and gate is unchanged.
+
+
+def test_valid_historical_pairs_cannot_substitute_for_current_or_legacy_source():
+    for source_id, commit, digest in (
+        ("SRC-16", PAYE_V2_COMMIT, PAYE_V2_SHA256),
+        ("SRC-16", S5C_PRODUCT, "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228"),
+        ("SRC-24", MTD_V2_COMMIT, EXPECTED_SOURCES["SRC-24"][2]),
+    ):
+        changed = register()
+        row = next(item for item in changed["sources"] if item["id"] == source_id)
+        # Each pair really identifies that path's blob, but it is not its approved anchor.
+        assert_git_blob_sha256(commit, row["path"], digest)
+        row.update(accepted_commit=commit, sha256=digest)
+        try:
+            assert_exact_source_register(changed)
+        except AssertionError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError("a genuine but wrong source checkpoint was accepted")
 
 
 def test_live_routes_binding_does_not_rewrite_historical_s5c_provenance():
@@ -399,21 +435,26 @@ def test_historical_binding_survives_descendant_change_and_rejects_wrong_provena
         raise AssertionError("a wrong historical source digest was accepted")
 
 
-def test_paye_live_v2_preserves_distinct_historical_s5c_and_preview_blobs():
+def test_mtd_live_v2_preserves_distinct_historical_paye_s5c_and_preview_blobs():
     path = "reserved/web/v2.py"
     expected = EXPECTED_SOURCES["SRC-16"][2]
     old_preview_commit = "46e2141c421fa80e39b60cd5b6bb955f44dfd863"
 
     historical_hash = "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228"
-    assert EXPECTED_SOURCES["SRC-16"][1] == PAYE_V2_COMMIT
+    assert EXPECTED_SOURCES["SRC-16"][1] == MTD_V2_COMMIT
     assert_git_blob_sha256(S5C_PRODUCT, path, historical_hash)
     assert historical_hash != expected
-    assert_git_blob_sha256(PAYE_V2_COMMIT, path, expected)
+    assert_git_blob_sha256(PAYE_V2_COMMIT, path, PAYE_V2_SHA256)
+    assert_git_blob_sha256(MTD_V2_COMMIT, path, expected)
+    assert PAYE_V2_SHA256 not in (historical_hash, expected)
     assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == expected
     assert git_blob_sha256(old_preview_commit, path) != expected
     assert is_ancestor(S5C_PRODUCT, PAYE_V2_COMMIT)
     assert is_ancestor(CURRENT_ROUTES_COMMIT, PAYE_V2_COMMIT)
-    for commit, digest in ((S5C_PRODUCT, expected), (PAYE_V2_COMMIT, historical_hash)):
+    assert is_ancestor(PAYE_V2_COMMIT, MTD_V2_COMMIT)
+    assert_git_blob_sha256(old_preview_commit, path, "d91434e2fcf804c74a4154716cab5b1f4ac1642b8f3c90f895a7cf23428b0ca0")
+    for commit, digest in ((S5C_PRODUCT, expected), (PAYE_V2_COMMIT, historical_hash),
+                           (PAYE_V2_COMMIT, expected), (MTD_V2_COMMIT, PAYE_V2_SHA256)):
         try:
             assert_git_blob_sha256(commit, path, digest)
         except AssertionError:
