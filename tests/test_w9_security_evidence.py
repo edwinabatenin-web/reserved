@@ -42,6 +42,12 @@ LIVE_PROVENANCE_RECONCILIATION_PATHS = {
     "tests/test_w10_paid_surface_inventory.py",
     "tests/test_w9_security_evidence.py",
 }
+LIVE_PROVENANCE_RECONCILIATION_COMMIT = (
+    "794fd29481ac40e54fd07406601736d5f1e038e8"
+)
+LIVE_PROVENANCE_RECONCILIATION_PARENT = (
+    "c5e560045ed3d62f02c894e931464c3d7294e99f"
+)
 S5C_EVIDENCE_REFRESH_PARENT = "3c63e64e478957ce04ee1154363c2eae94b82b30"
 CURRENT_ROUTES_COMMIT = "c5e560045ed3d62f02c894e931464c3d7294e99f"
 CURRENT_ROUTES_TREE = "bcdbec9108c3c0904139eca278c03fe0f6914db2"
@@ -927,6 +933,40 @@ def test_reconciliation_scope_truthfully_includes_the_gap_register():
         assert "does not convert" in text
 
 
+def _is_exact_live_provenance_reconciliation(
+    commit: str, changed: set[str], identity: list[str]
+) -> bool:
+    return (
+        commit == LIVE_PROVENANCE_RECONCILIATION_COMMIT
+        and changed == LIVE_PROVENANCE_RECONCILIATION_PATHS
+        and identity
+        == [
+            LIVE_PROVENANCE_RECONCILIATION_COMMIT,
+            LIVE_PROVENANCE_RECONCILIATION_PARENT,
+        ]
+    )
+
+
+def test_live_provenance_generation_allowance_rejects_scope_or_topology_drift():
+    commit = LIVE_PROVENANCE_RECONCILIATION_COMMIT
+    paths = set(LIVE_PROVENANCE_RECONCILIATION_PATHS)
+    identity = [commit, LIVE_PROVENANCE_RECONCILIATION_PARENT]
+
+    assert _is_exact_live_provenance_reconciliation(commit, paths, identity)
+    assert not _is_exact_live_provenance_reconciliation(
+        commit, paths - {"docs/W10_S5A_PAID_SURFACE_INVENTORY.md"}, identity
+    )
+    assert not _is_exact_live_provenance_reconciliation(
+        commit, paths | {"reserved/web/routes.py"}, identity
+    )
+    assert not _is_exact_live_provenance_reconciliation(
+        commit, paths, [commit, "0" * 40]
+    )
+    assert not _is_exact_live_provenance_reconciliation(
+        "0" * 40, paths, identity
+    )
+
+
 def test_no_scope_drift_across_package_history():
     """Every package-touching commit stays inside authorised evidence paths.
 
@@ -957,9 +997,17 @@ def test_no_scope_drift_across_package_history():
                 ENTITLEMENT_EVIDENCE_RECONCILIATION_PARENT,
             ]
         )
-        assert is_s5c_refresh or is_entitlement_reconciliation, (
+        is_live_provenance_reconciliation = _is_exact_live_provenance_reconciliation(
+            commit, changed, identity
+        )
+        assert (
+            is_s5c_refresh
+            or is_entitlement_reconciliation
+            or is_live_provenance_reconciliation
+        ), (
             f"scope drift in package commit {commit}: {drift}; expected either "
             f"W9 evidence-only paths {sorted(S1_EVIDENCE_PATHS)} or the exact "
             "one-generation S5C evidence-dependency refresh or the exact "
-            "accepted W9/W10 entitlement evidence reconciliation"
+            "accepted W9/W10 entitlement evidence reconciliation or the exact "
+            "accepted live provenance reconciliation"
         )
