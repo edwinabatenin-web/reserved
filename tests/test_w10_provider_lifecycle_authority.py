@@ -434,8 +434,11 @@ def test_completion_map_preserves_denominator_and_records_s2_partial_only():
     text = MAP.read_text(encoding="utf-8")
     assert "0/8 slices complete" in text
     assert "0/8 (0%)" in text
+    assert "0/13 terminal" in text
     assert "S2 partially implemented" in text
-    assert "six settled policy keys" in text
-    assert "nine policy keys" in text
+    assert "Six Founder-settled policy keys are explicit" in text
+    assert "six settled\npolicy keys and nine policy keys unresolved" in text
+    assert "closes Q1 and\nQ2 as bounded ordinary engineering policies" in text
+    assert "is the sole genuine current Founder choice" in text
     assert "S2 remains incomplete" in text
     assert "not launch-ready" in text
