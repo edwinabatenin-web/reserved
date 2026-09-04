@@ -1,0 +1,46 @@
+<section class="panel" aria-labelledby="annual-preview-heading">
+    <h2 id="annual-preview-heading">Preview from your annual information</h2>
+    <p>For tax year {{ tax_year }}. This separate preview uses the annual information you enter here and your saved Child Benefit and manual partner information below. It does not update the profile-based current estimate below.</p>
+    <p>These entries are not saved as an annual position. This is not your total tax, a recommendation about money to put aside, or payment or filing guidance. A linked account cannot use this manual preview.</p>
+    <p id="annual-input-help">Enter full-tax-year amounts, including known future amounts, for your own share only. Enter 0 explicitly when a category does not apply. Leave an amount blank if unsure: we cannot calculate this preview until the required facts are known. Do not enter your partner's income here.</p>
+    <noscript><p>This separate annual preview needs JavaScript to submit securely. No annual information will be submitted without it.</p></noscript>
+    <form id="hicbc-annual-form" data-tax-year="{{ tax_year }}" autocomplete="off" novalidate aria-describedby="annual-input-help">
+        <fieldset>
+            <legend>Your annual income and adjustments</legend>
+            {% for name, label in [
+                ('employment_income', 'Taxable employment income from all jobs, after salary sacrifice and net-pay pension deductions'),
+                ('sole_trade_profit', 'Sole-trader profit'),
+                ('savings_interest', 'Savings interest'),
+                ('dividends', 'Dividends'),
+                ('uk_property_receipts', 'UK property receipts — your share'),
+                ('uk_property_allowable_expenses', 'UK property allowable expenses — your share'),
+                ('brought_forward_uk_property_loss', 'UK property loss brought forward'),
+                ('foreign_property_gross_receipts', 'Foreign property gross receipts — your share'),
+                ('foreign_property_allowable_expenses', 'Foreign property allowable expenses — your share'),
+                ('gross_ras_pension', 'Gross relief-at-source pension contributions, including basic-rate tax relief'),
+                ('residential_finance_costs', 'Residential finance costs as an individual residential landlord'),
+                ('foreign_tax_paid', 'Foreign tax paid')
+            ] %}
+            <label for="annual-{{ name }}">{{ label }} (£)</label>
+            <input id="annual-{{ name }}" name="{{ name }}" type="text" inputmode="decimal" maxlength="11" value="" required aria-describedby="annual-input-help">
+            {% endfor %}
+        </fieldset>
+        <fieldset>
+            <legend>Confirm what these figures cover</legend>
+            <label for="annual-country">Where do you live for this tax estimate?</label>
+            <select id="annual-country" name="country" required>
+                <option value="">Choose, or leave blank if unsure</option>
+                <option>England</option><option>Wales</option><option>Northern Ireland</option>
+                <option value="unsupported">Scotland or elsewhere — not supported by this preview</option>
+            </select>
+            <label><input type="checkbox" name="full_tax_year_including_known_future"> These figures cover the whole {{ tax_year }} tax year, including known future amounts, not just income to date.</label>
+            <label><input type="checkbox" name="uk_resident"> I am UK resident for this tax year.</label>
+            <label><input type="checkbox" name="employment_basis"> Employment income includes all jobs after salary sacrifice and net-pay pension deductions. Relief-at-source pension is entered separately as a gross amount, not deducted again from employment income.</label>
+            <label><input type="checkbox" name="other_ani_adjustments"> I have no other adjusted-net-income adjustments or unresolved reliefs, such as Gift Aid or other loss relief. My residential finance entry, if any, is for an individual residential landlord.</label>
+            <p>If any statement is uncertain or does not apply, leave it unticked. This preview cannot calculate that situation yet.</p>
+        </fieldset>
+        <button type="submit" disabled id="annual-submit">Preview my Child Benefit charge</button>
+    </form>
+    <div id="annual-error" class="flash flash-error" role="alert" tabindex="-1" hidden></div>
+    <div id="annual-result" aria-live="polite" aria-atomic="true"></div>
+</section>

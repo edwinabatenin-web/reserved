@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Child Benefit charge — Reserved{% endblock %}
-{% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex, nofollow">
+{% if annual_preview_available %}<script defer src="{{ url_for('static', filename='js/hicbc_annual_preview.js') }}"></script>{% endif %}
+{% endblock %}
 {% block content %}
 <section class="page-heading">
     <div>
@@ -9,6 +11,8 @@
         <p>This is a limited preview. It is separate from your main tax estimate, your amount to put aside and any payment or filing guidance.</p>
     </div>
 </section>
+
+{% if annual_preview_available %}{% include "v2/_hicbc_annual_preview.html" %}{% endif %}
 
 <section class="panel" aria-live="polite">
     <h2>Current estimate</h2>
