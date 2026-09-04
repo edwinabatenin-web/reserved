@@ -809,6 +809,41 @@ promotion/discount mechanics; partner offers; invoice/VAT implementation; or
 the exact inventory of paid surfaces. Those remain explicit later policies or
 external/legal/engineering gates as applicable.
 
+## FD-W10-004 — Resolved: verified full withdrawal of current-period payment (4 September 2026)
+
+A verified full withdrawal of the payment funding the customer's current
+subscription period must suspend ordinary paid-product access at the next
+authoritative entitlement evaluation.
+
+Suspension occurs only when the full withdrawal is verified, admitted through
+the authoritative evidence pipeline and attributable to the payment funding
+the current subscription period. "Immediate" means that the authoritative
+entitlement state changes without an additional grace period once that verified
+fact is admitted. It does not mean deleting the customer's account, data,
+billing history or subscription record.
+
+Public, authentication, legal, privacy, data-access/export, billing-recovery,
+cancellation and appropriate support surfaces remain available under their
+existing controls. Only ordinary paid-product access is suspended.
+
+Open, partial, ambiguous, contradictory, stale or unresolved withdrawal
+evidence must not suspend valid existing derived access solely on that basis.
+Such evidence must also never create, restore, extend, prolong or strengthen
+entitlement. Provider observations remain evidence inputs and must not directly
+determine entitlement or access. Forged, replayed, duplicated, stale,
+mismatched or out-of-order events must not create or preserve access.
+
+Restoration may occur only after authoritative verification and admission of an
+applicable reinstatement, provider-reversal outcome, successful replacement
+payment or other already-authorised entitlement-establishing fact. A provider
+observation alone is insufficient.
+
+This decision does not settle discretionary refunds, exceptional-support
+remedies, statutory or consumer-rights outcomes, wider dispute policy, data
+retention or account closure except where strictly necessary to implement this
+access rule. It does not authorise provider activation, production access,
+credentials, real payments, release or go-live.
+
 ## FD-OA-001 — Resolved: routine bounded engineering authority (2 September 2026)
 
 During the active Reserved build, an already-authorised OA agent may carry out
