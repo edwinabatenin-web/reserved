@@ -9,8 +9,12 @@ evidence. It does not implement controls, select vendors or policies, create
 another readiness authority, or alter production/readiness state.
 
 - Base commit: `dd98c4421707f54eb0b564a85ee77d3ed286d79d`
-- Evidence cut-off: 4 September 2026 (current integration reconciliation point
-  `10fb93e2e6ab567a72d2370c1603768a7ac04bb5`).
+- Evidence cut-off: 4 September 2026 at exact integration commit
+  `81ae02044cccd921d98a0d1fc2360e1c4a983ab1`, tree
+  `ac5922e7aae0016a54f78a8645a244ac83eae0d2`.
+- [W9-S1 independent-review evidence](W9_S1_INDEPENDENT_REVIEW_EVIDENCE.md)
+  is used only as findings evidence for this reconciliation. It is not
+  assurance authority, human acceptance, or proof that W9-S1 is complete.
 - Authoritative planning inputs: [W9 completion map](W9_COMPLETION_MAP.md),
   [W9 security and operations gap register](W9_SECURITY_OPERATIONS_GAP_REGISTER.md),
   [W10 billing authority and policy contract](W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md),
@@ -24,6 +28,29 @@ another readiness authority, or alter production/readiness state.
   activation gates recorded below.
 - State vocabulary: **implemented**, **integrated**, **externally evidenced**,
   **launch-ready** are distinct and are never conflated below.
+
+### Exact current-state source binding
+
+The evidence statements newly reconciled below are bound to these exact
+repository-local sources at the commit/tree above. SHA-256 is over file bytes.
+The binding proves only which local evidence was inspected.
+
+| Evidence boundary | Source | SHA-256 |
+| --- | --- | --- |
+| W9-S3A admitted projection | `reserved/annual_position_persistence_contract.py` | `da68058811e1f1f3974851f3f85703c7b2d79e05695ed88c2980251a3c649469` |
+| W9-S3B detached repository contract | `reserved/annual_position_repository_contract.py` | `fa033039500b97bab04f3a047c07ad661c14c49d6167d65396d4d9ab0227053e` |
+| W9-S4A outage/recovery contract | `reserved/providers/operational_resilience.py` | `2ce9c42402fd79bbada2c2e28bc0594d377fe1cbec8825e4d44967c34d2739de` |
+| W9-S4B local presentation | `reserved/services/provider_outage_presentation.py` | `bd16596d6d63cffead6539e8e810949863b3902affb018b75b913e56e7d6192f` |
+| W9-S4C local coordination | `reserved/services/provider_outage_coordination.py` | `aa91dcb6aa24a63aeb8c3248e08478d5c0b3b612c879d6cfc2cdaac4582419af` |
+| W9-S4D local coordinated presentation | `reserved/services/provider_outage_coordination_presentation.py` | `93679ad3daac25de54fa60dc980a574a0859e1352b71bd8b59b79ceaba3c8f1a` |
+| W9-S4E synthetic exercise | `reserved/assurance/provider_outage_exercise.py` | `4f6acc2e688fdd20e7e723bb8eeaf5e8d6928baa10acc69503489f6d4d4cc61f` |
+| W10-S2A lifecycle authority | `reserved/billing/provider_lifecycle_authority.py` | `fc21c3a0f9d8d7eeb9a06bcbf5fc4a418568fe06aa5f65f47c325d8ecfde834a` |
+| W10-S2B fail-closed launch defaults | `reserved/billing/fail_closed_launch_defaults.py` | `cd72be19d8180a52f2e09fec56cc3219347059b025ceb3f12086d7d8dde40715` |
+| W10-S3A entitlement core | `reserved/billing/entitlement_core.py` | `b46b797614b57047e64f6f6597b1c788b9ab15db90653b07add31b4bbb03cb3b` |
+| W10-S3B event-inbox contract | `reserved/billing/event_inbox_contract.py` | `4dc0b6bb8b109854531dc1b9d492255e98dca805822cd5e0257f0fdf9b0ca8ed` |
+| W10-S4A disabled-first Stripe contract | `reserved/billing/stripe_disabled_first_contract.py` | `87a84c5ec77f25e12667b5466052b4a84ee6e01a6b075df643202d95aec98638` |
+| W10-S5A paid-surface inventory findings | `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `abf7b01158993f404d28eb29f7cd62b38f6f3d86b4ebdd3be9174c342bf198f8` |
+| W9-S1 review findings input (non-authority) | `docs/W9_S1_INDEPENDENT_REVIEW_EVIDENCE.md` | `b824cdd5d493fadcb3c3cb476da78fd12265fe9b6d5fb0b3de4051cd569f663b` |
 
 ## Mandatory October flow coverage
 
@@ -130,14 +157,14 @@ canonical blocker/reference.
 | Data class | Canonical accounting evidence, provenance and uncertainty metadata, annual-position result |
 | Subject/owner | Customer |
 | Source | Provider-neutral normalised evidence and tax engines |
-| Trust boundary crossed | Application ↔ database/persistence (currently non-persistent) |
+| Trust boundary crossed | Application ↔ detached persistence-contract boundary; no physical database/persistence boundary is crossed |
 | Processing purpose | Compute the annual tax position with provenance and uncertainty attached |
-| Allowed destination | Ephemeral internal contracts only |
-| Present storage behaviour | Annual calculations, provenance and uncertainty remain intentionally ephemeral pending the approved field inventory; `FD-W9-001` settles that October should persist a minimised owner-bound structured annual tax/cash position with evidence references, provenance and uncertainty, but no durable write exists yet because the field inventory is gated |
+| Allowed destination | The W9-S3A minimised owner/business/year/nation/purpose-bound admitted projection and W9-S3B detached structural candidate; neither is authority for a physical datastore write |
+| Present storage behaviour | W9-S3A (`c489c25bab669c64e1c11d28caf29fcde9678fdd`) and W9-S3B (`110a90043dfc770c70059482be9d7b7e237749a6`) are integrated contract evidence. S3A admits an exact minimised projection; S3B models logical records and in-memory create/CAS/deletion decisions while explicitly denying upstream-admission and persistence authority. There is no physical schema, migration, durable repository or database I/O |
 | Unresolved target storage/retention/deletion | Exact field inventory, lawful basis, retention periods, legal-hold exceptions, backup-expiry schedule, datastore, encryption/key custody, migration, production access and activation remain unresolved (`FD-W9-001`) |
-| Existing control | `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md` records the `tax_calculations` stub as unsuitable; strict snapshot codec rejects unknown shape and weakened prohibitions |
+| Existing control | `reserved/annual_position_persistence_contract.py`, `reserved/annual_position_repository_contract.py` and their tests bind minimisation, exact money identity, owner scope, supersession structure and fail-closed reads; `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md` still records the `tax_calculations` stub as unsuitable |
 | Threat/failure mode | Stale data and false certainty; evidence tampering; cross-owner/tenant leakage; injection/schema drift |
-| Current fail-closed state | Annual-position non-persistence remains the correct safe state until the `FD-W9-001` field inventory, lawful basis, retention, backup, datastore, custody, migration and activation gates are satisfied |
+| Current fail-closed state | No durable annual-position write is authorised. S3B's upstream admission and persistence authority remain false until field lifecycle, lawful basis, retention, backup, datastore, custody, migration and activation gates are satisfied |
 | Exact closure evidence | Approved minimised field inventory, purpose, provenance/uncertainty representation, owner schema, datastore/encryption and migration rules |
 | Canonical blocker/reference | `FD-W9-001`; `PERSIST-01`, `PERSIST-02`; `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md`; `reserved_west/release_gate.py` `evidence_persistence_and_deletion` |
 
@@ -150,8 +177,8 @@ canonical blocker/reference.
 | Source | Annual tax computation and cash/reconciliation engines |
 | Trust boundary crossed | Browser/customer device ↔ Reserved application |
 | Processing purpose | Convert annual liability into a dated cash obligation and present reserve gap/surplus |
-| Allowed destination | Customer presentation only |
-| Present storage behaviour | Results remain ephemeral; presentation is bounded and does not persist a durable position |
+| Allowed destination | Bounded customer presentation and, structurally, only the admitted S3A/S3B annual/cash contract boundary; no durable repository |
+| Present storage behaviour | Results remain non-durable. The integrated S3A/S3B contracts can represent minimised annual/cash identity and logical repository decisions, but perform no database I/O and do not authorise storage |
 | Unresolved target storage/retention/deletion | No approved durable cash/obligation record or retention schedule |
 | Existing control | `cash_obligation_reconciliation.py`, `cash_ready_annual_position.py` and `cash_funding_position.py` compute without a money-movement side effect |
 | Threat/failure mode | Stale data and false certainty; payment/cash misdirection; cross-owner/tenant leakage |
@@ -186,13 +213,13 @@ canonical blocker/reference.
 | Source | Customer plan selection and the billing provider checkout/webhook |
 | Trust boundary crossed | Application ↔ provisional billing provider; browser/customer device ↔ Reserved application |
 | Processing purpose | Sell, grant and administer access under the paid-subscription model established by `FD-W10-001`, the provisional Stripe baseline of `FD-W10-002` and the paid-entitlement lifecycle of `FD-W10-003` |
-| Allowed destination | Provider-neutral W10 contracts (the W10-S1A authority contract in `reserved/billing/contracts.py` exists and is provider-neutral); no provider-specific billing/entitlement write exists |
-| Present storage behaviour | The provider-neutral W10-S1A authority contract encodes the three initial plans and a fifteen-key required-policy inventory, network-inert and persistence-free. Stripe Billing, Checkout and Customer Portal are a provisional disabled-first baseline, not Stripe Connect; no checkout, entitlement grant, charge or provider credential is wired |
-| Unresolved target storage/retention/deletion | Provider terms/DPA/fees, credentials, sandbox/production access, VAT/invoice treatment, charging, entitlement/access policy, provider implementation/evidence, refunds/disputes/chargebacks/reversals, overrides, account recovery, offers and the paid-surface inventory remain unresolved; renewal, cancellation, recovery and suspension are settled policy (`FD-W10-003`), not open |
-| Existing control | `reserved/billing/contracts.py` (W10-S1A) and `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md`; `reserved/providers/payments/stripe_connect.py` remains the historical customer-money-movement placeholder, explicitly not subscription authority; `STRIPE_CONNECT_SPEC.md` records Stripe Connect as not selected |
+| Allowed destination | Provider-neutral W10 S1/S2A/S2B/S3A/S3B contracts, the disabled S4A boundary and S5A route-inventory evidence; none authorises a provider-specific write, entitlement mutation or paid-surface enforcement |
+| Present storage behaviour | W10-S2A (`5464bfac7bec6b3456d1895b2355a7e8ce86859b`) binds the settled lifecycle; S2B (`1033c9fbef008dcd33125a0b14e7fb18b8846d19`) closes only four fail-closed engineering defaults; S3A (`94bd87f019dc226ec8c73f32515229189500cf06`) is a non-durable entitlement transition contract; S3B (`5bc29bcb30c95ea7a5a9430104653b366d709eb6`) is a detached event-inbox contract with no provider authenticity, persistence or entitlement authority; S4A (`2ad4a63dd1f10ba38859050b47245c28390667d8`) is disabled-first; S5A (`9c0760192bb2420b90e57ec7313f69bbe52cbf74`) is route-inventory evidence only. Stripe Billing, Checkout and Customer Portal remain a provisional baseline, not Stripe Connect; no checkout, entitlement grant, charge, credential or durable billing inbox is wired |
+| Unresolved target storage/retention/deletion | Provider terms/DPA/fees, credentials, sandbox/production access and five exact policy keys remain open: refunds; tax invoicing/additional VAT presentation; exact paid-access surface; billing-account recovery; post-settlement dispute/chargeback/reversal consequences. Provider implementation/authenticity, durable billing persistence, retention/deletion and access enforcement are also unresolved. Promotions/discounts, partner offers, mid-cycle plan changes/proration and manual entitlement override are closed only as inactive/disabled fail-closed launch defaults; lifecycle semantics settled by `FD-W10-003` remain subject to mandatory statutory and consumer-rights overrides |
+| Existing control | `reserved/billing/contracts.py`, `provider_lifecycle_authority.py`, `fail_closed_launch_defaults.py`, `entitlement_core.py`, `event_inbox_contract.py`, `stripe_disabled_first_contract.py`, `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md` and `W10_S5A_PAID_SURFACE_INVENTORY.md`; the historical `reserved/providers/payments/stripe_connect.py` remains explicitly outside subscription authority |
 | Threat/failure mode | Callback/order manipulation; webhook/replay/idempotency errors; payment/cash misdirection; cross-owner/tenant leakage; unsafe activation; provider status copied into entitlement |
 | Current fail-closed state | No checkout/tokenisation, credential, charge or entitlement grant is wired; Stripe identifiers/statuses are observations, not entitlement authority; `payment_recovery` is a bounded non-extendable state, not provider-default behaviour |
-| Exact closure evidence | Reviewed provider-neutral W10 contract (exists), accepted provider terms/DPA/fees, sandbox evidence, and an exact custody/webhook/entitlement-evidence decision |
+| Exact closure evidence | Accepted provider terms/DPA/fees; exact decisions/evidence for the five open policy keys; custody, signature/authenticity, webhook, durable-inbox, reconciliation and entitlement evidence design; sandbox/target execution; final paid-surface acceptance and enforcement tests |
 | Canonical blocker/reference | `FD-W10-001`, `FD-W10-002`, `FD-W10-003`; `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md`; `STRIPE_CONNECT_SPEC.md`; decision dossier `W9-DEC-11` |
 
 ### FLOW-10 — Intended persistence, evidence references, logs, monitoring, support access and incident handling
@@ -323,8 +350,12 @@ Reserved verifies the Clerk session token against Clerk's JWKS and validates
 ### TB-03 — Application ↔ database/persistence
 
 SQLite accessed through a module-level repository with foreign keys and WAL.
-Annual-position and source-evidence persistence is intentionally non-durable
-until the lifecycle design is approved (`PERSIST-01`, `PERSIST-02`, `DATA-01`).
+W9-S3A supplies a minimised admitted projection and W9-S3B supplies a detached
+structural/in-memory repository contract. Neither crosses into a physical
+schema, migration, durable repository or database I/O; S3B explicitly lacks
+upstream-admission and persistence authority. Durable annual-position and
+source-evidence storage therefore remains blocked (`PERSIST-01`, `PERSIST-02`,
+`DATA-01`).
 
 ### TB-04 — Application ↔ unresolved secret/token custody boundary
 
@@ -351,11 +382,13 @@ AIS read-only flow separated from payment initiation. Live methods raise
 
 ### TB-08 — Application ↔ provisional billing provider
 
-Provider-neutral W10 boundary exists (the W10-S1A authority contract in
-`reserved/billing/contracts.py`). Stripe Billing, Checkout and Customer Portal
-are the provisional disabled-first subscription baseline (`FD-W10-002`), not
-Stripe Connect. Subordinate billing policy and activation remain unresolved
-(`FD-W10-001`, `FD-W10-002`, `FD-W10-003`, decision dossier `W9-DEC-11`).
+Provider-neutral W10 S1/S2A/S2B/S3A/S3B contract layers, a disabled S4A Stripe
+boundary and S5A route-inventory evidence exist. They provide no provider
+authenticity, SDK/network access, credentials, durable billing inbox,
+entitlement mutation or paid-surface enforcement. Stripe Billing, Checkout and
+Customer Portal remain the provisional disabled-first subscription baseline
+(`FD-W10-002`), not Stripe Connect. The five exact policy keys and all provider,
+target and activation gates remain open (`W9-DEC-11`).
 
 ### TB-09 — Runtime ↔ logs/monitoring/support operators
 
@@ -428,8 +461,11 @@ target provider schema execution (`OUTAGE-01`).
 
 ### TH-06 — Stale data and false certainty
 
-Mitigation: annual-position non-persistence and `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md`
-reject the `tax_calculations` stub; provenance/uncertainty remain ephemeral.
+Mitigation: W9-S3A's minimised admitted projection and W9-S3B's detached
+structural contract bind provenance/uncertainty and fail-closed reads without
+authorising persistence. No physical schema, durable repository or database I/O
+exists; `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md` still rejects the
+`tax_calculations` stub.
 
 ### TH-07 — Credential/token exposure
 
@@ -444,8 +480,12 @@ client-supplied ID trust; missing whole-account erasure (`DATA-02`, `AUTH-03`).
 
 ### TH-09 — Webhook/replay/idempotency errors
 
-Mitigation: none deployed; W10 and Yapily webhook/idempotency contracts are
-unresolved (`W9-DEC-11`, `YAPILY_COMPLETION_MAP.md`).
+Mitigation: W10-S3B models immutable event identity, exact replay versus
+identity conflict, ordering/reconciliation and zero direct entitlement effect;
+W10-S4A remains disabled-first. No webhook ingress, signature verification,
+provider authenticity, durable inbox or persistence is deployed. Yapily
+webhook/idempotency remains unresolved (`W9-DEC-11`,
+`YAPILY_COMPLETION_MAP.md`).
 
 ### TH-10 — Evidence tampering
 
@@ -468,12 +508,17 @@ Mitigation: none deployed; backups/restore are unresolved (`REC-01`, `DATA-03`).
 
 ### TH-14 — Availability/provider outage
 
-Mitigation: integrated W9-S4A–E fail-closed provider outage/recovery contract,
-local/synthetic single- and multi-provider presentation and coordination, and a
-synthetic outage exercise exist (`W9_PROVIDER_OUTAGE_DEGRADATION_CONTRACT.md`,
-`W9_S4C_MULTI_PROVIDER_OUTAGE_EVIDENCE.md`, `W9_S4D_*`, `W9_S4E_*`). Missing:
-target/sandbox/real-provider outage and degraded-customer exercise acceptance
-(`OUTAGE-01`).
+Mitigation: integrated W9-S4A–E (`58fb28267afb5a7b766d8f1e7bbcdbda8d517e81`,
+`2cb3d43fbc59d75226c7b5d1a4f5f77addd24319`,
+`43e4671a3ac59edd3620a950157b2f483e8e209a`,
+`8f26ee74138432f00398eaa4297f8a7ef5817734`,
+`1a277b60f3bc9da02d52fd1a869f91a35ce303fe`) supplies a fail-closed
+provider outage/recovery contract, local/synthetic single- and multi-provider
+presentation/coordination, and a synthetic exercise. Missing: intended-target
+monitoring and alert routing, named ownership, an accepted production runbook,
+tabletop evidence, and sandbox/real-provider outage and degraded-customer
+exercise acceptance (`W9_PROVIDER_OUTAGE_DEGRADATION_CONTRACT.md`,
+`W9_S4C_MULTI_PROVIDER_OUTAGE_EVIDENCE.md`, `OUTAGE-01`).
 
 ### TH-15 — Privilege escalation
 
@@ -523,6 +568,8 @@ Missing: target provenance handoff acceptance.
 This package does not activate a provider, permit credentials, prove target
 operation, close W9, declare launch readiness, or authorise
 merge/release/go-live. It does not amend Founder Decisions, the W9 completion
-map, the gap register, or the canonical release gate. Implemented, integrated,
-externally evidenced and launch-ready remain distinct states and are not
-conflated here.
+map or the canonical release gate. It amends the gap register only for this
+authorised evidence-only current-state reconciliation; it does not convert
+local/synthetic evidence into external or launch assurance. Implemented,
+integrated, externally evidenced and launch-ready remain distinct states and
+are not conflated here.

@@ -1,9 +1,9 @@
-"""Evidence-contract test for the W9-S1A package.
+"""Evidence-contract test for the W9-S1A model and W9-S1B reconciliation.
 
 This test is deterministic and repository-local. It fails when any mandatory
 October flow, trust boundary, threat class, unresolved decision owner field,
-canonical blocker reference, current safe-default field, or explicit
-non-activation statement disappears from the two package documents. It also
+canonical blocker reference, current safe-default field, exact source binding,
+or explicit non-activation statement disappears from the evidence documents. It also
 proves the package does not modify readiness, release, configuration,
 credential, persistence, adapter, route or template files.
 
@@ -12,6 +12,7 @@ boundaries — never brittle prose-wide snapshots.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 from pathlib import Path
@@ -20,12 +21,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCS = REPO_ROOT / "docs"
 DATA_FLOW_DOC = DOCS / "W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md"
 DECISION_DOC = DOCS / "W9_SECURITY_DECISION_DOSSIER.md"
+GAP_DOC = DOCS / "W9_SECURITY_OPERATIONS_GAP_REGISTER.md"
 TEST_FILE = Path(__file__).resolve()
 
-ALLOWED_NEW_PATHS = {
+S1A_INTRODUCING_PATHS = {
     "docs/W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md",
     "docs/W9_SECURITY_DECISION_DOSSIER.md",
     "tests/test_w9_security_evidence.py",
+}
+S1_EVIDENCE_PATHS = S1A_INTRODUCING_PATHS | {
+    "docs/W9_SECURITY_OPERATIONS_GAP_REGISTER.md",
 }
 
 # ── Mandatory structured IDs ──────────────────────────────────────────────────
@@ -109,12 +114,49 @@ CANONICAL_BLOCKER_REFERENCES = [
     "RELEASE-01",
 ]
 
-# Immutable reconciliation base and its stale ancestor.  The correction must
-# reconcile both documents to the actual immutable candidate base without
+# Immutable reconciliation base and its stale ancestors.  The correction must
+# reconcile all three evidence documents to the exact current integration without
 # rewriting the historical W9-S1A introducing base.
-RECONCILIATION_BASE = "10fb93e2e6ab567a72d2370c1603768a7ac04bb5"
-STALE_RECONCILIATION_BASE = "79351eb02c0b82b19063689d5da460f3f07394b4"
+RECONCILIATION_BASE = "81ae02044cccd921d98a0d1fc2360e1c4a983ab1"
+RECONCILIATION_TREE = "ac5922e7aae0016a54f78a8645a244ac83eae0d2"
+STALE_RECONCILIATION_BASES = (
+    "10fb93e2e6ab567a72d2370c1603768a7ac04bb5",
+    "79351eb02c0b82b19063689d5da460f3f07394b4",
+)
 INTRODUCING_BASE = "dd98c4421707f54eb0b564a85ee77d3ed286d79d"
+
+INTEGRATED_COMMIT_IDENTITIES = {
+    "W9-S3A": "c489c25bab669c64e1c11d28caf29fcde9678fdd",
+    "W9-S3B": "110a90043dfc770c70059482be9d7b7e237749a6",
+    "W9-S4A": "58fb28267afb5a7b766d8f1e7bbcdbda8d517e81",
+    "W9-S4B": "2cb3d43fbc59d75226c7b5d1a4f5f77addd24319",
+    "W9-S4C": "43e4671a3ac59edd3620a950157b2f483e8e209a",
+    "W9-S4D": "8f26ee74138432f00398eaa4297f8a7ef5817734",
+    "W9-S4E": "1a277b60f3bc9da02d52fd1a869f91a35ce303fe",
+    "W10-S2A": "5464bfac7bec6b3456d1895b2355a7e8ce86859b",
+    "W10-S2B": "1033c9fbef008dcd33125a0b14e7fb18b8846d19",
+    "W10-S3A": "94bd87f019dc226ec8c73f32515229189500cf06",
+    "W10-S3B": "5bc29bcb30c95ea7a5a9430104653b366d709eb6",
+    "W10-S4A": "2ad4a63dd1f10ba38859050b47245c28390667d8",
+    "W10-S5A": "9c0760192bb2420b90e57ec7313f69bbe52cbf74",
+}
+
+SOURCE_SHA256 = {
+    "reserved/annual_position_persistence_contract.py": "da68058811e1f1f3974851f3f85703c7b2d79e05695ed88c2980251a3c649469",
+    "reserved/annual_position_repository_contract.py": "fa033039500b97bab04f3a047c07ad661c14c49d6167d65396d4d9ab0227053e",
+    "reserved/providers/operational_resilience.py": "2ce9c42402fd79bbada2c2e28bc0594d377fe1cbec8825e4d44967c34d2739de",
+    "reserved/services/provider_outage_presentation.py": "bd16596d6d63cffead6539e8e810949863b3902affb018b75b913e56e7d6192f",
+    "reserved/services/provider_outage_coordination.py": "aa91dcb6aa24a63aeb8c3248e08478d5c0b3b612c879d6cfc2cdaac4582419af",
+    "reserved/services/provider_outage_coordination_presentation.py": "93679ad3daac25de54fa60dc980a574a0859e1352b71bd8b59b79ceaba3c8f1a",
+    "reserved/assurance/provider_outage_exercise.py": "4f6acc2e688fdd20e7e723bb8eeaf5e8d6928baa10acc69503489f6d4d4cc61f",
+    "reserved/billing/provider_lifecycle_authority.py": "fc21c3a0f9d8d7eeb9a06bcbf5fc4a418568fe06aa5f65f47c325d8ecfde834a",
+    "reserved/billing/fail_closed_launch_defaults.py": "cd72be19d8180a52f2e09fec56cc3219347059b025ceb3f12086d7d8dde40715",
+    "reserved/billing/entitlement_core.py": "b46b797614b57047e64f6f6597b1c788b9ab15db90653b07add31b4bbb03cb3b",
+    "reserved/billing/event_inbox_contract.py": "4dc0b6bb8b109854531dc1b9d492255e98dca805822cd5e0257f0fdf9b0ca8ed",
+    "reserved/billing/stripe_disabled_first_contract.py": "87a84c5ec77f25e12667b5466052b4a84ee6e01a6b075df643202d95aec98638",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "abf7b01158993f404d28eb29f7cd62b38f6f3d86b4ebdd3be9174c342bf198f8",
+    "docs/W9_S1_INDEPENDENT_REVIEW_EVIDENCE.md": "b824cdd5d493fadcb3c3cb476da78fd12265fe9b6d5fb0b3de4051cd569f663b",
+}
 
 # Structured semantic invariants that must survive the correction.  These are
 # checked as stable tokens/fragments, not incidental prose, so the test fails on
@@ -131,7 +173,9 @@ REQUIRED_SEMANTIC_MARKERS = [
     "not provider-default behaviour",
     "observations, not entitlement authority",
     "W9-S4A",
-    "provider-neutral W10",
+    "W9-S3A",
+    "W9-S3B",
+    "Provider-neutral W10",
     "FD-W9-001",
     "FD-W10-002",
     "FD-W10-003",
@@ -157,6 +201,10 @@ REQUIRED_SEMANTIC_MARKERS = [
     "E/W/NI",
     "Scotland and Ireland",
     "England, Wales and Northern Ireland",
+    "five exact policy keys",
+    "provider authenticity",
+    "no physical schema",
+    "W10_S5A_PAID_SURFACE_INVENTORY.md",
 ]
 
 # Bind the newly reconciled semantics to the exact structured sections that
@@ -164,6 +212,39 @@ REQUIRED_SEMANTIC_MARKERS = [
 # replaced with plausible placeholder prose while the same words survived in
 # another part of either document.
 SECTION_SEMANTIC_MARKERS = {
+    "FLOW-06": [
+        "reserved/annual_position_persistence_contract.py",
+        "reserved/annual_position_repository_contract.py",
+        "upstream-admission and persistence authority",
+        "physical schema, migration, durable repository or database I/O",
+    ],
+    "FLOW-07": [
+        "admitted S3A/S3B annual/cash contract boundary",
+        "no durable repository",
+        "do not authorise storage",
+    ],
+    "FLOW-09": [
+        "S2B",
+        "S3B",
+        "S5A",
+        "five exact policy keys",
+        "no provider authenticity, persistence or entitlement authority",
+        "route-inventory evidence only",
+        "billing-account recovery",
+        "post-settlement dispute/chargeback/reversal consequences",
+    ],
+    "TB-03": [
+        "W9-S3A",
+        "W9-S3B",
+        "physical schema, migration, durable repository or database I/O",
+        "upstream-admission and persistence authority",
+    ],
+    "TB-08": [
+        "W10 S1/S2A/S2B/S3A/S3B",
+        "provider authenticity",
+        "durable billing inbox",
+        "paid-surface enforcement",
+    ],
     "FLOW-13": [
         "version, who, when",
         "Two authenticated customers separately enabling linked HICBC",
@@ -220,6 +301,75 @@ SECTION_SEMANTIC_MARKERS = {
         "Scotland and Ireland excluded",
         "foreign income/SEPA-ready models do not imply geography support",
     ],
+    "TH-06": [
+        "W9-S3A",
+        "W9-S3B",
+        "No physical schema, durable repository or database I/O",
+    ],
+    "TH-09": [
+        "immutable event identity",
+        "exact replay versus identity conflict",
+        "zero direct entitlement effect",
+        "No webhook ingress, signature verification",
+    ],
+    "TH-14": [
+        "integrated W9-S4A–E",
+        "local/synthetic",
+        "named ownership",
+        "accepted production runbook",
+        "tabletop evidence",
+        "sandbox/real-provider outage",
+    ],
+}
+
+DECISION_SEMANTIC_MARKERS = {
+    "DEC-03": [
+        "W9-S3A",
+        "W9-S3B",
+        "No physical schema, database I/O or durable annual-position write",
+        "denies upstream-admission and persistence authority",
+    ],
+    "DEC-04": [
+        "S3B's in-memory deletion decision is not a deletion executor",
+        "legal-hold exceptions",
+        "backup expiry",
+    ],
+    "DEC-11": [
+        "S2B closes four ordinary defaults only",
+        "Five exact keys remain unresolved",
+        "tax invoicing/additional VAT presentation",
+        "exact paid-access surface",
+        "billing-account recovery",
+        "post-settlement dispute/chargeback/reversal consequences",
+        "S5A `W10_S5A_PAID_SURFACE_INVENTORY.md`",
+    ],
+}
+
+GAP_SEMANTIC_MARKERS = {
+    "PERSIST-01": [
+        "W9-S3A integrates",
+        "not an approved field-by-field lifecycle",
+        "physical schema",
+    ],
+    "PERSIST-02": [
+        "W9-S3B integrates a detached structural candidate",
+        "no physical schema/migration",
+        "durable repository/database I/O",
+        "deletion executor",
+    ],
+    "ACT-01": [
+        "W9-S1B evidence-only reconciliation",
+        "not assurance authority",
+        "fresh independent acceptance",
+    ],
+    "OUTAGE-01": [
+        "W9-S4A–E are integrated",
+        "local/synthetic",
+        "named ownership",
+        "accepted production runbook",
+        "tabletop evidence",
+        "sandbox/real-provider",
+    ],
 }
 
 # Stale local-evidence claims that must never reappear after this correction.
@@ -232,7 +382,7 @@ STALE_CLAIM_FRAGMENTS = [
     "unresolved billing provider",
     "disabled placeholder",
     # Stale reconciliation ancestor and false current-state claims.
-    STALE_RECONCILIATION_BASE,
+    *STALE_RECONCILIATION_BASES,
     "No linked-HICBC persistence is wired",
     "lifecycle policy (renewal, cancellation, recovery, suspension)",
     "unresolved lifecycle policies",
@@ -281,7 +431,7 @@ def _read(path: Path) -> str:
 
 
 def _combined() -> str:
-    return _read(DATA_FLOW_DOC) + "\n" + _read(DECISION_DOC)
+    return _read(DATA_FLOW_DOC) + "\n" + _read(DECISION_DOC) + "\n" + _read(GAP_DOC)
 
 
 def _section_ids(text: str, prefix: str) -> list[str]:
@@ -307,10 +457,18 @@ def _field_value(block: str, label: str) -> str | None:
     return match.group(1).strip()
 
 
+def _gap_row(text: str, gap_id: str) -> str:
+    match = re.search(
+        rf"^\|\s*{re.escape(gap_id)}\s*\|.*$", text, flags=re.MULTILINE
+    )
+    assert match is not None, f"missing gap row: {gap_id}"
+    return match.group(0)
+
+
 # ── Document presence and structure ───────────────────────────────────────────
 
-def test_package_files_exist_and_are_the_only_new_paths():
-    for path in ALLOWED_NEW_PATHS:
+def test_package_evidence_files_exist():
+    for path in S1_EVIDENCE_PATHS:
         assert (REPO_ROOT / path).exists(), f"missing package file: {path}"
 
 
@@ -404,12 +562,42 @@ def test_new_reconciled_sections_bind_their_own_semantics():
 
     for section_id, required_markers in SECTION_SEMANTIC_MARKERS.items():
         assert section_id in blocks, f"missing reconciled section: {section_id}"
+        block = _normalise_whitespace(blocks[section_id])
         missing = [
-            marker for marker in required_markers if marker not in blocks[section_id]
+            marker for marker in required_markers if marker not in block
         ]
         assert not missing, (
             f"{section_id} lost section-bound semantic marker(s): {missing}"
         )
+
+
+def test_reconciled_decisions_bind_contract_evidence_without_closing_gates():
+    blocks = _section_blocks(_read(DECISION_DOC), "DEC")
+    for section_id, required_markers in DECISION_SEMANTIC_MARKERS.items():
+        block = _normalise_whitespace(blocks[section_id])
+        missing = [
+            marker for marker in required_markers if marker not in block
+        ]
+        assert not missing, (
+            f"{section_id} lost decision-bound semantic marker(s): {missing}"
+        )
+
+
+def test_reconciled_gap_rows_preserve_exact_remaining_gates():
+    text = _read(GAP_DOC)
+    for gap_id, required_markers in GAP_SEMANTIC_MARKERS.items():
+        row = _gap_row(text, gap_id)
+        missing = [marker for marker in required_markers if marker not in row]
+        assert not missing, f"{gap_id} lost gap-bound marker(s): {missing}"
+
+
+def test_all_preexisting_unnamed_decision_owners_remain_unnamed():
+    blocks = _section_blocks(_read(DECISION_DOC), "DEC")
+    owners = [
+        _field_value(blocks[decision_id], "Accountable decision owner/authority")
+        for decision_id in DECISION_IDS
+    ]
+    assert sum("to be named" in (owner or "") for owner in owners) == 13
 
 
 def test_stale_local_evidence_claims_are_absent():
@@ -420,21 +608,63 @@ def test_stale_local_evidence_claims_are_absent():
     )
 
 
-def test_reconciliation_base_is_the_immutable_candidate_base():
-    for path in (DATA_FLOW_DOC, DECISION_DOC):
+def test_reconciliation_base_and_tree_are_the_exact_current_integration_identity():
+    for path in (DATA_FLOW_DOC, DECISION_DOC, GAP_DOC):
         text = _read(path)
         assert RECONCILIATION_BASE in text, (
             f"{path.name} is not reconciled to the immutable candidate base "
             f"{RECONCILIATION_BASE}"
         )
-        assert STALE_RECONCILIATION_BASE not in text, (
-            f"{path.name} still reconciles to the stale ancestor "
-            f"{STALE_RECONCILIATION_BASE}"
+        assert RECONCILIATION_TREE in text, (
+            f"{path.name} is not bound to exact tree {RECONCILIATION_TREE}"
         )
-        assert INTRODUCING_BASE in text, (
-            f"{path.name} lost the historical W9-S1A introducing base "
-            f"{INTRODUCING_BASE}"
+        for stale_base in STALE_RECONCILIATION_BASES:
+            assert stale_base not in text, (
+                f"{path.name} still reconciles to stale ancestor {stale_base}"
+            )
+    for path in (DATA_FLOW_DOC, DECISION_DOC):
+        assert INTRODUCING_BASE in _read(path), (
+            f"{path.name} lost historical W9-S1A base {INTRODUCING_BASE}"
         )
+
+
+def test_exact_current_source_hashes_match_and_are_recorded():
+    data_flow = _read(DATA_FLOW_DOC)
+    for relative_path, expected_hash in SOURCE_SHA256.items():
+        actual_hash = hashlib.sha256((REPO_ROOT / relative_path).read_bytes()).hexdigest()
+        assert actual_hash == expected_hash, (
+            f"source drift for {relative_path}: {actual_hash} != {expected_hash}"
+        )
+        assert relative_path in data_flow, f"missing source binding: {relative_path}"
+        assert expected_hash in data_flow, f"missing SHA-256 binding: {relative_path}"
+
+
+def test_integrated_slice_identities_are_exactly_bound():
+    data_flow = _read(DATA_FLOW_DOC)
+    for slice_name, commit in INTEGRATED_COMMIT_IDENTITIES.items():
+        assert commit in data_flow, f"missing exact {slice_name} identity: {commit}"
+
+
+def test_independent_review_is_findings_input_not_assurance_authority():
+    for path in (DATA_FLOW_DOC, DECISION_DOC, GAP_DOC):
+        text = _normalise_whitespace(_read(path))
+        assert "findings" in text
+        assert "not assurance authority" in text
+        assert "W9-S1" in text
+
+
+def test_reconciliation_does_not_claim_missing_completion_or_acceptance():
+    gap_register = _normalise_whitespace(_read(GAP_DOC))
+    required_non_claims = [
+        "does not prove target/provider operation",
+        "human acceptance",
+        "durable annual-position storage",
+        "billing activation",
+        "W9-S1 completion",
+        "launch readiness",
+    ]
+    missing = [marker for marker in required_non_claims if marker not in gap_register]
+    assert not missing, f"missing explicit non-authority boundary(ies): {missing}"
 
 
 def test_explicit_non_activation_statement_is_present_in_both_documents():
@@ -505,6 +735,28 @@ def _git_changed_paths() -> list[str]:
     return _changed_paths_for_commit(commit)
 
 
+def _worktree_changed_paths() -> set[str]:
+    """Return tracked and untracked candidate paths relative to the worktree."""
+    tracked = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "diff", "--name-only", "-z", "HEAD"],
+        capture_output=True,
+        check=True,
+    ).stdout
+    untracked = subprocess.run(
+        [
+            "git", "-C", str(REPO_ROOT), "ls-files", "--others",
+            "--exclude-standard", "-z",
+        ],
+        capture_output=True,
+        check=True,
+    ).stdout
+    return {
+        raw.decode("utf-8", errors="strict")
+        for raw in (tracked + untracked).split(b"\0")
+        if raw
+    }
+
+
 def _package_history_commits() -> list[str]:
     """Return every commit that touched the package since its introduction.
 
@@ -519,7 +771,7 @@ def _package_history_commits() -> list[str]:
             "git", "-C", str(REPO_ROOT), "log", "--format=%H",
             f"{introduced}..HEAD", "--",
         ]
-        + sorted(ALLOWED_NEW_PATHS),
+        + sorted(S1_EVIDENCE_PATHS),
         capture_output=True,
         text=True,
         check=True,
@@ -531,7 +783,7 @@ def _package_history_commits() -> list[str]:
 
 
 def _is_protected(path: str) -> bool:
-    if path in ALLOWED_NEW_PATHS:
+    if path in S1_EVIDENCE_PATHS:
         return False
     if path.startswith(_PROTECTED_PREFIXES):
         return True
@@ -541,8 +793,8 @@ def _is_protected(path: str) -> bool:
 
 def test_package_does_not_modify_readiness_release_config_or_source_files():
     changed = set(_git_changed_paths())
-    missing = sorted(ALLOWED_NEW_PATHS - changed)
-    unexpected = sorted(changed - ALLOWED_NEW_PATHS)
+    missing = sorted(S1A_INTRODUCING_PATHS - changed)
+    unexpected = sorted(changed - S1A_INTRODUCING_PATHS)
     assert not missing and not unexpected, (
         "W9-S1A package path boundary mismatch: "
         f"missing={missing}, unexpected={unexpected}"
@@ -555,8 +807,24 @@ def test_package_does_not_touch_protected_files():
     assert not protected, f"W9-S1A package touched protected files: {protected}"
 
 
+def test_current_candidate_has_no_scope_drift():
+    drift = sorted(_worktree_changed_paths() - S1_EVIDENCE_PATHS)
+    assert not drift, f"current W9-S1B candidate changed unauthorised paths: {drift}"
+
+
+def test_reconciliation_scope_truthfully_includes_the_gap_register():
+    obsolete = "the gap register, or the canonical release gate"
+    required = "It amends the gap register only for this"
+    for path in (DATA_FLOW_DOC, DECISION_DOC):
+        text = path.read_text(encoding="utf-8")
+        assert obsolete not in text
+        assert required in text
+        assert "authorised evidence-only current-state reconciliation" in text
+        assert "does not convert" in text
+
+
 def test_no_scope_drift_across_package_history():
-    """Every package-touching commit stays inside the three authorised paths.
+    """Every package-touching commit stays inside authorised evidence paths.
 
     A correction commit that touches a readiness/release/completion map or a
     source/configuration file is scope drift and must fail the package, even if
@@ -564,8 +832,8 @@ def test_no_scope_drift_across_package_history():
     """
     for commit in _package_history_commits():
         changed = set(_changed_paths_for_commit(commit))
-        drift = sorted(changed - ALLOWED_NEW_PATHS)
+        drift = sorted(changed - S1_EVIDENCE_PATHS)
         assert not drift, (
             f"scope drift in package commit {commit}: {drift}; "
-            f"only {sorted(ALLOWED_NEW_PATHS)} may change"
+            f"only {sorted(S1_EVIDENCE_PATHS)} may change"
         )

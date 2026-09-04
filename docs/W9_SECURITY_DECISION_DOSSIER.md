@@ -11,8 +11,15 @@ legal/privacy advice, name an owner not already established, or turn a standard
 engineering suggestion into Founder authority.
 
 - Base commit: `dd98c4421707f54eb0b564a85ee77d3ed286d79d`
-- Evidence cut-off: 4 September 2026 (current integration reconciliation point
-  `10fb93e2e6ab567a72d2370c1603768a7ac04bb5`).
+- Evidence cut-off: 4 September 2026 at exact integration commit
+  `81ae02044cccd921d98a0d1fc2360e1c4a983ab1`, tree
+  `ac5922e7aae0016a54f78a8645a244ac83eae0d2`.
+- [W9-S1 independent-review evidence](W9_S1_INDEPENDENT_REVIEW_EVIDENCE.md)
+  supplies findings for this reconciliation only. It is not assurance
+  authority, human acceptance, or evidence that W9-S1 is complete.
+- Exact source SHA-256 bindings for the reconciled W9-S3A/S3B, W9-S4A–E and
+  W10 S2A/S2B/S3A/S3B/S4A/S5A-related evidence are recorded in the companion
+  [data-flow and threat model](W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md#exact-current-state-source-binding).
 - Companion document: [W9 launch data-flow and threat model](W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md)
 - Authoritative inputs: [W9 completion map](W9_COMPLETION_MAP.md),
   [W9 gap register](W9_SECURITY_OPERATIONS_GAP_REGISTER.md),
@@ -62,11 +69,11 @@ engineering suggestion into Founder authority.
 | --- | --- |
 | Decision ID | W9-DEC-03 |
 | Accountable decision owner/authority | Privacy/security owner (to be named under W9-S4); Founder authorisation for the durable schema |
-| Why it blocks implementation or activation | `FD-W9-001` settles a durable minimised owner-bound structured annual tax/cash position with evidence references, provenance and uncertainty, but exact field inventory, lawful basis, retention, backups, datastore, key custody, migration and activation remain gated; durable persistence still cannot be built |
-| Current safe default | Annual-position and evidence remain ephemeral; the `tax_calculations` stub is not used; `FD-W9-001` is settled policy, not an approved field inventory |
+| Why it blocks implementation or activation | `FD-W9-001` settles a durable minimised owner-bound structured annual tax/cash position with evidence references, provenance and uncertainty. W9-S3A provides an exact minimised admitted projection and W9-S3B provides a detached structural/in-memory repository contract, but the field-by-field lifecycle, lawful basis, physical datastore/schema, key custody, migration and activation remain gated; durable persistence still cannot be built or activated |
+| Current safe default | No physical schema, database I/O or durable annual-position write. S3A/S3B remain contract evidence only; S3B denies upstream-admission and persistence authority, the `tax_calculations` stub is not used, and `FD-W9-001` is settled policy rather than an approved lifecycle |
 | Options | Minimised owner-bound schema with provenance/integrity markers and immutable audit (now the settled policy direction); or continue ephemeral-only until the gated inventory is approved |
 | Trade-offs/risks | Persisting too much enlarges the privacy surface; persisting too little breaks cross-session continuity |
-| Existing constraints/evidence | `FD-W9-001`; `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md`; gaps `PERSIST-01`, `PERSIST-02` |
+| Existing constraints/evidence | `FD-W9-001`; integrated `reserved/annual_position_persistence_contract.py` (W9-S3A, `c489c25bab669c64e1c11d28caf29fcde9678fdd`) and `reserved/annual_position_repository_contract.py` (W9-S3B, `110a90043dfc770c70059482be9d7b7e237749a6`); `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md`; gaps `PERSIST-01`, `PERSIST-02` |
 | Exact evidence required to decide | Approved field-by-field purpose, provenance/uncertainty representation, owner schema, datastore/encryption and migration rules |
 | Downstream packages affected | W9-S3 persistence; W9-S5 privacy/security acceptance |
 | Gating | Implementation-gating and production-gating |
@@ -77,8 +84,8 @@ engineering suggestion into Founder authority.
 | --- | --- |
 | Decision ID | W9-DEC-04 |
 | Accountable decision owner/authority | Privacy/legal owner (to be named under W9-S4); Founder authorisation for legal-hold exceptions |
-| Why it blocks implementation or activation | Field inventory, lawful purpose, retention periods, supersession, legal-hold exceptions, backup expiry and whole-account erasure are all unresolved; `FD-W9-001` adds a durable minimised structured position to the erasure surface but does not settle its retention/backup rules |
-| Current safe default | No durable annual-position or raw-document payload is stored; feature-level owner deletion and HICBC hooks only; raw payslip originals remain transient (`FD-W9-001`) |
+| Why it blocks implementation or activation | W9-S3A/S3B now model a minimised admitted projection, supersession structure and in-memory deletion decisions, but lawful purpose, retention periods, legal-hold exceptions, backup expiry and whole-account erasure remain unresolved; `FD-W9-001` adds a durable minimised structured position to the intended erasure surface without settling those lifecycle rules |
+| Current safe default | No durable annual-position or raw-document payload is stored. S3B's in-memory deletion decision is not a deletion executor or proof of erasure; feature-level owner deletion and HICBC hooks remain partial, and raw payslip originals remain transient (`FD-W9-001`) |
 | Options | Field-by-field retention register with legal exceptions and backup-expiry schedule; or retain ephemeral-only and defer durable storage |
 | Trade-offs/risks | A legal-hold exception without ownership could block erasure indefinitely; under-specified retention risks over-collection |
 | Existing constraints/evidence | Founder Decisions establish minimisation and deletion principles; `FD-W9-001`; gaps `DATA-01`, `DATA-02`, `DATA-03`, `AUTH-03` |
@@ -182,12 +189,12 @@ engineering suggestion into Founder authority.
 | --- | --- |
 | Decision ID | W9-DEC-11 |
 | Accountable decision owner/authority | Founder (provisional provider and paid-entitlement lifecycle); security owner for custody/webhook model |
-| Why it blocks implementation or activation | `FD-W10-002` selects Stripe Billing, Checkout and Customer Portal as the provisional disabled-first subscription baseline (not Stripe Connect), but terms/DPA/fees, credentials, sandbox/production, VAT/invoice treatment, charging and activation remain gated; `FD-W10-003` settles verified-initial-payment access, automatic renewal, end-of-paid-period cancellation, the seven-day failed-renewal recovery period, suspension after unresolved expiry and no launch trial, but refunds/disputes/chargebacks/reversals, overrides, account recovery, offers, VAT/invoices and the paid-surface inventory remain unresolved |
+| Why it blocks implementation or activation | `FD-W10-002` selects Stripe Billing, Checkout and Customer Portal as the provisional disabled-first subscription baseline (not Stripe Connect), while terms/DPA/fees, credentials, sandbox/production, charging and activation remain gated. S2A binds the `FD-W10-003` lifecycle and S2B closes four ordinary defaults only: promotions/discount mechanics inactive, partner offers disabled, mid-cycle plan changes/proration disabled, and no manual entitlement override. Five exact keys remain unresolved: refunds; tax invoicing/additional VAT presentation; exact paid-access surface; billing-account recovery; and post-settlement dispute/chargeback/reversal consequences. S3A/S3B/S4A and S5A are non-durable, disabled or inventory-only evidence, not provider authenticity, persistence, entitlement mutation or enforcement |
 | Current safe default | No checkout, entitlement grant, charge or provider credential is wired; Stripe identifiers/statuses are observations, not entitlement authority; `payment_recovery` is a canonical bounded state with a non-extendable seven-day deadline and continuing access, not normally paid and not provider-default behaviour |
-| Options | Accept the provisional Stripe baseline and define tokenisation/webhook/entitlement evidence plus refund/dispute/chargeback/reversal/VAT policies; or replace the provisional provider before activation |
-| Trade-offs/risks | A provider with weak webhook/idempotency could mis-grant entitlement; provider-specific configuration grows migration cost; unresolved refund/VAT policy risks mis-pricing |
-| Existing constraints/evidence | `FD-W10-001`, `FD-W10-002`, `FD-W10-003`; `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md`; `STRIPE_CONNECT_SPEC.md`; `reserved/billing/contracts.py`; `reserved/providers/payments/stripe_connect.py` |
-| Exact evidence required to decide | Accepted provider terms/DPA/fees, sandbox evidence, an exact custody/webhook/entitlement-evidence decision, and explicit refund/dispute/chargeback/reversal/VAT policies |
+| Options | Keep the provisional Stripe baseline disabled while specialist/Founder evidence settles the five exact open keys and engineering defines custody/authenticity/webhook/durable-inbox/entitlement boundaries; or replace the provisional provider before activation |
+| Trade-offs/risks | Weak authenticity, idempotency or reconciliation could mis-grant entitlement; provider-specific configuration grows migration cost; silently choosing refund/VAT/post-settlement/access policy creates legal, price and access risk |
+| Existing constraints/evidence | `FD-W10-001`, `FD-W10-002`, `FD-W10-003`; `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md`; `STRIPE_CONNECT_SPEC.md`; `reserved/billing/contracts.py`; S2A `provider_lifecycle_authority.py`; S2B `fail_closed_launch_defaults.py`; S3A `entitlement_core.py`; S3B `event_inbox_contract.py`; S4A `stripe_disabled_first_contract.py`; S5A `W10_S5A_PAID_SURFACE_INVENTORY.md`; `reserved/providers/payments/stripe_connect.py` remains outside subscription authority |
+| Exact evidence required to decide | Accepted provider terms/DPA/fees and sandbox/target evidence; exact custody, signature/authenticity, webhook, durable-inbox/reconciliation and entitlement-evidence design; specialist/Founder resolution of the five open keys; final paid-surface acceptance and enforcement tests |
 | Downstream packages affected | W10 subscription plumbing; W9-S2/S3 custody and lifecycle integration |
 | Gating | Implementation-gating and production-gating |
 
@@ -242,6 +249,8 @@ engineering suggestion into Founder authority.
 This package does not activate a provider, permit credentials, prove target
 operation, close W9, declare launch readiness, or authorise
 merge/release/go-live. It does not amend Founder Decisions, the W9 completion
-map, the gap register, or the canonical release gate. Implemented, integrated,
-externally evidenced and launch-ready remain distinct states and are not
-conflated here.
+map or the canonical release gate. It amends the gap register only for this
+authorised evidence-only current-state reconciliation; it does not convert
+local/synthetic evidence into external or launch assurance. Implemented,
+integrated, externally evidenced and launch-ready remain distinct states and
+are not conflated here.
