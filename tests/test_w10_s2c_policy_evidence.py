@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -47,6 +48,8 @@ REPO_SOURCES = {
     "docs/W10_S4A_STRIPE_DISABLED_FIRST_CONTRACT_EVIDENCE.md": (
         "da9881c5625cf1f338b8f2626d0b6c4806594508784f84c64a0160c94706111a"
     ),
+}
+HISTORICAL_S5A_SOURCES = {
     "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": (
         "abf7b01158993f404d28eb29f7cd62b38f6f3d86b4ebdd3be9174c342bf198f8"
     ),
@@ -73,6 +76,27 @@ def test_exact_integrated_repository_sources_remain_hash_bound():
         assert hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest() == (
             expected_hash
         )
+
+
+def test_accepted_s5a_sources_are_verified_from_the_exact_historical_commit():
+    assert S5A_COMMIT == "9c0760192bb2420b90e57ec7313f69bbe52cbf74"
+    assert S5A_TREE == "9b6c8891d0ab91e703f55a6a92b9d47b1f62aeac"
+    resolved_tree = subprocess.run(
+        ["git", "-C", str(ROOT), "rev-parse", f"{S5A_COMMIT}^{{tree}}"],
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
+    assert resolved_tree == S5A_TREE
+    for relative_path, expected_hash in HISTORICAL_S5A_SOURCES.items():
+        assert relative_path in TEXT
+        assert expected_hash in TEXT
+        blob = subprocess.run(
+            ["git", "-C", str(ROOT), "show", f"{S5A_COMMIT}:{relative_path}"],
+            capture_output=True,
+            check=True,
+        ).stdout
+        assert hashlib.sha256(blob).hexdigest() == expected_hash
 
 
 def test_exact_five_key_denominator_and_one_section_per_key():

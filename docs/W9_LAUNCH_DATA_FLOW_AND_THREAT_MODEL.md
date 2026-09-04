@@ -12,6 +12,15 @@ another readiness authority, or alter production/readiness state.
 - Evidence cut-off: 4 September 2026 at exact integration commit
   `81ae02044cccd921d98a0d1fc2360e1c4a983ab1`, tree
   `ac5922e7aae0016a54f78a8645a244ac83eae0d2`.
+- Narrow live-current W10 route-evidence refresh: accepted S5C product
+  checkpoint `3c63e64e478957ce04ee1154363c2eae94b82b30`, tree
+  `ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7`. This records fail-closed
+  legacy/internal route hardening only; it is not W9-S1 completion, a paid-
+  boundary decision, entitlement enforcement or launch assurance.
+  The paid-boundary decision and paid-entitlement enforcement remain **not started**;
+  W10-S5 is incomplete. Strict W9 completion remains **0/5**; all existing
+  evidence, ownership, provider, target, legal, privacy and operations gates
+  remain open.
 - [W9-S1 independent-review evidence](W9_S1_INDEPENDENT_REVIEW_EVIDENCE.md)
   is used only as findings evidence for this reconciliation. It is not
   assurance authority, human acceptance, or proof that W9-S1 is complete.
@@ -49,7 +58,11 @@ The binding proves only which local evidence was inspected.
 | W10-S3A entitlement core | `reserved/billing/entitlement_core.py` | `b46b797614b57047e64f6f6597b1c788b9ab15db90653b07add31b4bbb03cb3b` |
 | W10-S3B event-inbox contract | `reserved/billing/event_inbox_contract.py` | `4dc0b6bb8b109854531dc1b9d492255e98dca805822cd5e0257f0fdf9b0ca8ed` |
 | W10-S4A disabled-first Stripe contract | `reserved/billing/stripe_disabled_first_contract.py` | `87a84c5ec77f25e12667b5466052b4a84ee6e01a6b075df643202d95aec98638` |
-| W10-S5A paid-surface inventory findings | `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `abf7b01158993f404d28eb29f7cd62b38f6f3d86b4ebdd3be9174c342bf198f8` |
+| W10-S5A current paid-surface inventory findings | `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `5d1d957f53edf04898df8064ee5825a5ab9a55091daf2fed8b292f54db596601` |
+| W10-S5B current internal-route reconciliation | `docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md` | `4ba7324883e6aa27081e47ffa6f1c0a1fde99a5f175375a4aae289ce5b7a5917` |
+| W10-S5C route-hardening evidence candidate | `docs/W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md` | `221b244e687611dfa3e55e67051cb9ffab59ef6fcd9f02d8c5c865611439d1f5` |
+| W10-S5C legacy/internal route source | `reserved/web/routes.py` | `f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed` |
+| W10-S5C V2 production-gate source | `reserved/web/v2.py` | `dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228` |
 | W9-S1 review findings input (non-authority) | `docs/W9_S1_INDEPENDENT_REVIEW_EVIDENCE.md` | `b824cdd5d493fadcb3c3cb476da78fd12265fe9b6d5fb0b3de4051cd569f663b` |
 
 ## Mandatory October flow coverage
@@ -213,12 +226,12 @@ canonical blocker/reference.
 | Source | Customer plan selection and the billing provider checkout/webhook |
 | Trust boundary crossed | Application ↔ provisional billing provider; browser/customer device ↔ Reserved application |
 | Processing purpose | Sell, grant and administer access under the paid-subscription model established by `FD-W10-001`, the provisional Stripe baseline of `FD-W10-002` and the paid-entitlement lifecycle of `FD-W10-003` |
-| Allowed destination | Provider-neutral W10 S1/S2A/S2B/S3A/S3B contracts, the disabled S4A boundary and S5A route-inventory evidence; none authorises a provider-specific write, entitlement mutation or paid-surface enforcement |
-| Present storage behaviour | W10-S2A (`5464bfac7bec6b3456d1895b2355a7e8ce86859b`) binds the settled lifecycle; S2B (`1033c9fbef008dcd33125a0b14e7fb18b8846d19`) closes only four fail-closed engineering defaults; S3A (`94bd87f019dc226ec8c73f32515229189500cf06`) is a non-durable entitlement transition contract; S3B (`5bc29bcb30c95ea7a5a9430104653b366d709eb6`) is a detached event-inbox contract with no provider authenticity, persistence or entitlement authority; S4A (`2ad4a63dd1f10ba38859050b47245c28390667d8`) is disabled-first; S5A (`9c0760192bb2420b90e57ec7313f69bbe52cbf74`) is route-inventory evidence only. Stripe Billing, Checkout and Customer Portal remain a provisional baseline, not Stripe Connect; no checkout, entitlement grant, charge, credential or durable billing inbox is wired |
+| Allowed destination | Provider-neutral W10 S1/S2A/S2B/S3A/S3B contracts, the disabled S4A boundary and S5A/S5B/S5C route evidence; none authorises a provider-specific write, entitlement mutation or paid-surface enforcement |
+| Present storage behaviour | W10-S2A (`5464bfac7bec6b3456d1895b2355a7e8ce86859b`) binds the settled lifecycle; S2B (`1033c9fbef008dcd33125a0b14e7fb18b8846d19`) closes only four fail-closed engineering defaults; S3A (`94bd87f019dc226ec8c73f32515229189500cf06`) is a non-durable entitlement transition contract; S3B (`5bc29bcb30c95ea7a5a9430104653b366d709eb6`) is a detached event-inbox contract with no provider authenticity, persistence or entitlement authority; S4A (`2ad4a63dd1f10ba38859050b47245c28390667d8`) is disabled-first; S5A (`9c0760192bb2420b90e57ec7313f69bbe52cbf74`) remains inventory evidence; S5B (`051ae665a0cc94f6e9cdbbc728c621825c7769fe`) reconciles the internal/legacy class; and accepted S5C (`3c63e64e478957ce04ee1154363c2eae94b82b30`, tree `ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7`) closes or redirects the reviewed legacy/internal paths without paid-entitlement enforcement. Stripe Billing, Checkout and Customer Portal remain a provisional baseline, not Stripe Connect; no checkout, entitlement grant, charge, credential or durable billing inbox is wired |
 | Unresolved target storage/retention/deletion | Provider terms/DPA/fees, credentials, sandbox/production access and five exact policy keys remain open: refunds; tax invoicing/additional VAT presentation; exact paid-access surface; billing-account recovery; post-settlement dispute/chargeback/reversal consequences. Provider implementation/authenticity, durable billing persistence, retention/deletion and access enforcement are also unresolved. Promotions/discounts, partner offers, mid-cycle plan changes/proration and manual entitlement override are closed only as inactive/disabled fail-closed launch defaults; lifecycle semantics settled by `FD-W10-003` remain subject to mandatory statutory and consumer-rights overrides |
-| Existing control | `reserved/billing/contracts.py`, `provider_lifecycle_authority.py`, `fail_closed_launch_defaults.py`, `entitlement_core.py`, `event_inbox_contract.py`, `stripe_disabled_first_contract.py`, `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md` and `W10_S5A_PAID_SURFACE_INVENTORY.md`; the historical `reserved/providers/payments/stripe_connect.py` remains explicitly outside subscription authority |
+| Existing control | `reserved/billing/contracts.py`, `provider_lifecycle_authority.py`, `fail_closed_launch_defaults.py`, `entitlement_core.py`, `event_inbox_contract.py`, `stripe_disabled_first_contract.py`, `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md`, `W10_S5A_PAID_SURFACE_INVENTORY.md`, `W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md` and `W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md`; S5C hard-404s retired mutation/internal routes, redirects only exact legacy GET aliases to authenticated V2 routes, and production-404s the sandbox checklist before customer authentication/provider construction; the historical `reserved/providers/payments/stripe_connect.py` remains explicitly outside subscription authority |
 | Threat/failure mode | Callback/order manipulation; webhook/replay/idempotency errors; payment/cash misdirection; cross-owner/tenant leakage; unsafe activation; provider status copied into entitlement |
-| Current fail-closed state | No checkout/tokenisation, credential, charge or entitlement grant is wired; Stripe identifiers/statuses are observations, not entitlement authority; `payment_recovery` is a bounded non-extendable state, not provider-default behaviour |
+| Current fail-closed state | No checkout/tokenisation, credential, charge or entitlement grant is wired; Stripe identifiers/statuses are observations, not entitlement authority; `payment_recovery` is a bounded non-extendable state, not provider-default behaviour; reviewed legacy/internal routes no longer provide a public product or future paid-gate bypass, while Founder and Capital Gains boundaries remain unchanged |
 | Exact closure evidence | Accepted provider terms/DPA/fees; exact decisions/evidence for the five open policy keys; custody, signature/authenticity, webhook, durable-inbox, reconciliation and entitlement evidence design; sandbox/target execution; final paid-surface acceptance and enforcement tests |
 | Canonical blocker/reference | `FD-W10-001`, `FD-W10-002`, `FD-W10-003`; `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md`; `STRIPE_CONNECT_SPEC.md`; decision dossier `W9-DEC-11` |
 
@@ -383,9 +396,10 @@ AIS read-only flow separated from payment initiation. Live methods raise
 ### TB-08 — Application ↔ provisional billing provider
 
 Provider-neutral W10 S1/S2A/S2B/S3A/S3B contract layers, a disabled S4A Stripe
-boundary and S5A route-inventory evidence exist. They provide no provider
-authenticity, SDK/network access, credentials, durable billing inbox,
-entitlement mutation or paid-surface enforcement. Stripe Billing, Checkout and
+boundary and S5A/S5B/S5C route evidence exist. S5C closes or redirects the
+reviewed legacy/internal route bypasses but provides no provider authenticity,
+SDK/network access, credentials, durable billing inbox, entitlement mutation or
+paid-surface enforcement. Stripe Billing, Checkout and
 Customer Portal remain the provisional disabled-first subscription baseline
 (`FD-W10-002`), not Stripe Connect. The five exact policy keys and all provider,
 target and activation gates remain open (`W9-DEC-11`).

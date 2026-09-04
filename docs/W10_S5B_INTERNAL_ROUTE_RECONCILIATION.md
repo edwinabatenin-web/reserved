@@ -4,24 +4,31 @@
 
 **Evidence cut-off:** 4 September 2026
 
-**Repository HEAD:** `5612f7a33f27f09d1fa988f15dfdffbe77a72705`
+**Accepted S5C product checkpoint:**
+`3c63e64e478957ce04ee1154363c2eae94b82b30`
 
-**Repository tree:** `4786614d7ea428e3aea1d61a72dc74d9aad6bd92`
+**Accepted S5C product tree:**
+`ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7`
 
-**Disposition:** local evidence candidate; independent review and integration
-required.
+**Product disposition:** independently accepted and integrated. This evidence
+refresh remains a local candidate requiring its own independent review and
+integration.
 
 This package reconciles the eleven routes classified
 `internal_admin_unknown_requiring_reconciliation` by the accepted W10-S5A
 inventory. It records their present registration, methods, observed guard, CSRF
 posture, source, reachability, intended October category and smallest
-fail-closed treatment. It changes no route or runtime behavior.
+fail-closed treatment, including its exact current implementation as the
+accepted S5C fail-closed cleanup at the
+accepted S5C product checkpoint. This evidence refresh changes no route or
+runtime behavior.
 
 This is not a paid-surface decision, entitlement design or access-control
 implementation. It does not expose a route, approve a current guard, weaken
 authentication or CSRF, activate a provider, access credentials or data, or
-make W10-S5 started or complete. The strict W10 completion denominator remains
-0/8 and W10-S5 implementation remains **not started**.
+make a paid-boundary decision or complete W10-S5. The prerequisite route
+hardening is implemented; the paid-boundary decision and paid-entitlement
+enforcement remain **not started**, and W10-S5 remains incomplete.
 
 ## Result
 
@@ -40,22 +47,26 @@ No additional Founder question is created by these eleven reconciliations:
 The accepted S5A Founder question still governs which authenticated customer
 product surfaces are paid. This evidence neither answers nor restates that
 question. None of the routes below becomes a free or paid customer product by
-this reconciliation.
+this reconciliation or by S5C hardening.
 
 ## Exact accepted evidence
 
 W10-S5A was introduced and independently accepted at
 `9c0760192bb2420b90e57ec7313f69bbe52cbf74`. Its inventory is an exact snapshot
 of integration commit `6edf3cd6b96090f25036688e83da1d3b5295b098`, tree
-`0d77f1853cc22a8c1e923552425478b7b9155cb2`. The present integration
-reconciliation at `5612f7a...` records S5A as accepted and directs S5B to
-reconcile these eleven entries; it does not change the bound route sources.
+`0d77f1853cc22a8c1e923552425478b7b9155cb2`. The completion-map reconciliation
+at `5612f7a...` records S5A as accepted and directs S5B to reconcile these
+eleven entries. S5B was independently accepted and integrated at
+`051ae665a0cc94f6e9cdbbc728c621825c7769fe`; S5C then implemented and
+independently accepted the bounded route treatment at the exact checkpoint
+above. The historical completion-map reference remains bound to its Git blob
+rather than being silently reinterpreted as current runtime evidence.
 
 | Evidence | SHA-256 | Use |
 |---|---|---|
-| `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `abf7b01158993f404d28eb29f7cd62b38f6f3d86b4ebdd3be9174c342bf198f8` | Exact accepted route/method/guard/CSRF inventory and existing paid-boundary question. |
-| `tests/test_w10_paid_surface_inventory.py` | `0d1bec99ea12496a747906b69619df0d60cd339b870042573b7dc60158c060f6` | Inventory/source/registry freshness assurance. |
-| `docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md` | `7af205f420c2cf3a9039fff7aad1af65e55221005231b2fabe3bd99c94f96c4d` | Current W10 state and explicit S5B next action. |
+| `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `5d1d957f53edf04898df8064ee5825a5ab9a55091daf2fed8b292f54db596601` | Refreshed exact route/method/guard/CSRF inventory; preserves the existing paid-boundary question. |
+| `tests/test_w10_paid_surface_inventory.py` | `adf2044d4c72bb7985e4fed90ecb771aa1d88719bb39aac9ce47c70c4371b512` | Refreshed inventory/source/registry freshness assurance. |
+| `5612f7a...:docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md` | `7af205f420c2cf3a9039fff7aad1af65e55221005231b2fabe3bd99c94f96c4d` | Historical W10 state and explicit S5B next action, verified from the Git blob. |
 | `FOUNDER_DECISIONS.md` | `03765242c39354ffe57834da8a4a4e5b0dbbdacf5278731e560dea55ae3722d4` | October scope, paid-subscription authority and ordinary-engineering authority. |
 | `docs/TECHNICAL_ARCHITECTURE.md` | `7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79` | Capital Gains dormant/out-of-scope and launch-layer boundary. |
 | `docs/API_CONTRACT_GAP_REPORT.md` | `b0eeeea6357e88dd1db59dd5ddf2d4e4e712f79f73d3a61c52838cda390ac85f` | Current implementation-derived HTTP classification; Founder area is not a public API. |
@@ -69,20 +80,29 @@ disposition forward by name alone.
 <!-- W10-S5B-RECONCILIATION-BEGIN -->
 ```json
 {
-  "schema_version": "W10-S5B/2026-09-04/v1",
-  "repository_head": "5612f7a33f27f09d1fa988f15dfdffbe77a72705",
-  "repository_tree": "4786614d7ea428e3aea1d61a72dc74d9aad6bd92",
+  "schema_version": "W10-S5B/2026-09-04/v2",
+  "repository_head": "3c63e64e478957ce04ee1154363c2eae94b82b30",
+  "repository_tree": "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7",
   "accepted_s5a_commit": "9c0760192bb2420b90e57ec7313f69bbe52cbf74",
-  "reconciliation_status": "evidence_only_no_runtime_change",
-  "s5_status": "not_started",
+  "accepted_s5b_commit": "051ae665a0cc94f6e9cdbbc728c621825c7769fe",
+  "accepted_s5c_product_checkpoint": "3c63e64e478957ce04ee1154363c2eae94b82b30",
+  "accepted_s5c_product_tree": "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7",
+  "reconciliation_status": "accepted_reconciliation_with_implemented_s5c_treatments",
+  "evidence_refresh_status": "candidate_requires_independent_review",
+  "s5_status": "incomplete_prerequisite_route_hardening_implemented",
   "paid_boundary_status": "unresolved_existing_s5a_founder_question",
+  "paid_entitlement_enforcement_status": "not_started",
   "new_founder_question_required": false,
+  "historical_completion_map_blob": {
+    "commit": "5612f7a33f27f09d1fa988f15dfdffbe77a72705",
+    "path": "docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md",
+    "sha256": "7af205f420c2cf3a9039fff7aad1af65e55221005231b2fabe3bd99c94f96c4d"
+  },
   "source_sha256": {
     "FOUNDER_DECISIONS.md": "03765242c39354ffe57834da8a4a4e5b0dbbdacf5278731e560dea55ae3722d4",
     "docs/API_CONTRACT_GAP_REPORT.md": "b0eeeea6357e88dd1db59dd5ddf2d4e4e712f79f73d3a61c52838cda390ac85f",
     "docs/TECHNICAL_ARCHITECTURE.md": "7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79",
-    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "abf7b01158993f404d28eb29f7cd62b38f6f3d86b4ebdd3be9174c342bf198f8",
-    "docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md": "7af205f420c2cf3a9039fff7aad1af65e55221005231b2fabe3bd99c94f96c4d",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "5d1d957f53edf04898df8064ee5825a5ab9a55091daf2fed8b292f54db596601",
     "reserved/__init__.py": "5f35d6d88542218cd8d5dbdac9662ef6711768ae5a3749a92d779325b42a2f34",
     "reserved/providers/banking/yapily.py": "885d021f20f8a76b5f2d26ed692f1e2cae4a7c9764c885da286a61c1c2b68475",
     "reserved/security.py": "73a5d20f1aa69fafda1ab4a9d6c01668fc9a465686e2d8198f8649364e43ae2b",
@@ -92,9 +112,31 @@ disposition forward by name alone.
     "reserved/templates/tax_assurance.html": "ea7e838a32da6738be947892b6280b6e16367b369c43f85dc9dee74ce007b83e",
     "reserved/templates/v2/sandbox_checklist.html": "dad35c55d8557e114db120e9dfd8108503e3b8d5c834b0a48f5edb2bda1f6d38",
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
-    "reserved/web/routes.py": "cfe006a96c16c781db707bcf5c7e1d55250176a09bb02356ccc51b3abeaf91fa",
-    "reserved/web/v2.py": "d91434e2fcf804c74a4154716cab5b1f4ac1642b8f3c90f895a7cf23428b0ca0",
-    "tests/test_w10_paid_surface_inventory.py": "0d1bec99ea12496a747906b69619df0d60cd339b870042573b7dc60158c060f6"
+    "reserved/web/routes.py": "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed",
+    "reserved/web/v2.py": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228",
+    "tests/test_w10_paid_surface_inventory.py": "adf2044d4c72bb7985e4fed90ecb771aa1d88719bb39aac9ce47c70c4371b512"
+  },
+  "s5c_implemented_treatments": {
+    "web.calculate": {
+      "status": "implemented_at_accepted_s5c_product_checkpoint",
+      "treatment": "registered_post_hard_404_before_profile_calculation_or_render"
+    },
+    "web.connections": {
+      "status": "implemented_at_accepted_s5c_product_checkpoint",
+      "treatment": "get_redirects_exactly_to_customer_session_guarded_v2_connections_with_no_independent_content"
+    },
+    "web.settings": {
+      "status": "implemented_at_accepted_s5c_product_checkpoint",
+      "treatment": "get_redirects_exactly_to_customer_session_guarded_v2_settings_and_valid_csrf_post_hard_404s_before_mutation"
+    },
+    "web.tax_assurance": {
+      "status": "implemented_at_accepted_s5c_product_checkpoint",
+      "treatment": "hard_404_before_metadata_read_or_render_in_all_environments_and_auth_states"
+    },
+    "v2.sandbox_checklist": {
+      "status": "implemented_at_accepted_s5c_product_checkpoint",
+      "treatment": "production_404_before_customer_auth_or_provider_construction_nonproduction_existing_customer_session_guard_preserved"
+    }
   },
   "routes": [
     {
@@ -102,11 +144,11 @@ disposition forward by name alone.
       "rule": "/calculate",
       "methods": ["POST"],
       "registration": "always",
-      "current_guard": "none",
+      "current_guard": "always_404",
       "csrf": "global",
       "source": "reserved/web/routes.py",
       "handler": "calculate",
-      "current_reachability": "public_post_with_valid_csrf_reaches_legacy_calculation",
+      "current_reachability": "valid_csrf_post_is_404_before_profile_calculation_or_render",
       "october_category": "legacy_product_action_not_independent_october_surface",
       "recommended_treatment": "remove_registration_or_production_404_until_separately_authenticated_and_classified",
       "decision_class": "ordinary_fail_closed_engineering_cleanup",
@@ -139,11 +181,11 @@ disposition forward by name alone.
       "rule": "/connections",
       "methods": ["GET"],
       "registration": "always",
-      "current_guard": "none",
+      "current_guard": "redirect_to_customer_session_guarded_v2_equivalent",
       "csrf": "not_applicable",
       "source": "reserved/web/routes.py",
       "handler": "connections",
-      "current_reachability": "public_get_renders_legacy_illustrative_connections",
+      "current_reachability": "public_get_redirects_exactly_to_customer_session_guarded_v2_connections",
       "october_category": "legacy_alias_to_authenticated_connections_product",
       "recommended_treatment": "redirect_get_to_customer_authenticated_v2_connections_no_independent_content",
       "decision_class": "ordinary_fail_closed_engineering_cleanup",
@@ -158,11 +200,11 @@ disposition forward by name alone.
       "rule": "/settings",
       "methods": ["GET", "POST"],
       "registration": "always",
-      "current_guard": "none",
+      "current_guard": "get_redirect_to_customer_session_guarded_v2_equivalent_post_always_404",
       "csrf": "global",
       "source": "reserved/web/routes.py",
       "handler": "settings",
-      "current_reachability": "public_get_and_valid_csrf_post_updates_session_or_authenticated_owner_profile",
+      "current_reachability": "public_get_redirects_exactly_to_customer_session_guarded_v2_settings_and_valid_csrf_post_is_404_before_mutation",
       "october_category": "legacy_alias_to_authenticated_customer_settings_product",
       "recommended_treatment": "redirect_get_to_customer_authenticated_v2_settings_and_disable_legacy_post",
       "decision_class": "ordinary_fail_closed_engineering_cleanup",
@@ -177,11 +219,11 @@ disposition forward by name alone.
       "rule": "/tax-assurance",
       "methods": ["GET"],
       "registration": "always",
-      "current_guard": "none",
+      "current_guard": "always_404",
       "csrf": "not_applicable",
       "source": "reserved/web/routes.py",
       "handler": "tax_assurance",
-      "current_reachability": "public_get_reads_local_assurance_metadata_and_renders_internal_page",
+      "current_reachability": "get_is_404_before_metadata_read_or_render_in_all_environments_and_auth_states",
       "october_category": "internal_assurance_noncustomer_nonproduction",
       "recommended_treatment": "production_404_and_nonproduction_staff_authenticated_only",
       "decision_class": "ordinary_security_engineering_cleanup",
@@ -291,11 +333,11 @@ disposition forward by name alone.
       "rule": "/v2/sandbox-checklist",
       "methods": ["GET"],
       "registration": "always",
-      "current_guard": "customer_session",
+      "current_guard": "production_404_nonproduction_customer_session",
       "csrf": "not_applicable",
       "source": "reserved/web/v2.py",
       "handler": "sandbox_checklist",
-      "current_reachability": "any_authenticated_customer_can_view_provider_mode_and_secret_presence_booleans",
+      "current_reachability": "production_404_before_customer_auth_or_provider_construction_nonproduction_customer_session_required",
       "october_category": "internal_provider_assurance_noncustomer_nonproduction",
       "recommended_treatment": "production_404_and_nonproduction_staff_authenticated_only_not_readiness_authority",
       "decision_class": "ordinary_security_engineering_cleanup",
@@ -314,27 +356,21 @@ disposition forward by name alone.
 
 ### Legacy public product paths
 
-`web.calculate` is an always-registered public POST. Global CSRF protects the
-method, but there is no customer-session guard. The handler accepts an invoice
-amount, resolves the legacy profile/default, calculates and renders the legacy
-dashboard. The current root redirects to the authenticated V2 entry, so this
-orphaned action is not needed as a separate October surface. It is not proven to
-be the separately Founder-authorised Simplified Tax Health Check and must not be
-relabelled as that tool. Remove its registration or make it production-404 until
-it is deliberately authenticated and classified against the paid boundary.
+`web.calculate` remains registered as POST so the route shape is stable, with
+global CSRF still preceding the handler. A valid-CSRF request now hard-404s
+before profile access, calculation or rendering. It is not the separately
+Founder-authorised Simplified Tax Health Check and is not an independent
+October customer surface.
 
-`web.connections` publicly renders hard-coded illustrative connection states,
-including account labels and balances. The separately authenticated
-`v2.connections` is already the canonical product candidate. The legacy GET
-should contain no independent content: redirect it into the authenticated V2
-path, where the still-unresolved paid-surface decision will apply.
+`web.connections` now contains no independent content. Its GET redirects
+exactly to `v2.connections`; that canonical route retains customer-session
+authentication and remains subject to the still-unresolved paid-surface
+decision.
 
-`web.settings` publicly renders and accepts profile fields. A valid-CSRF
-unauthenticated POST writes session state; an authenticated POST may also write
-the current owner's profile. The authenticated `v2.settings_page` is the
-canonical product candidate. Redirect the legacy GET to that authenticated path
-and disable the legacy POST so it cannot bypass later entitlement enforcement or
-maintain a second validation/persistence contract.
+`web.settings` GET now redirects exactly to authenticated `v2.settings_page`.
+The registered legacy POST retains global CSRF and, after a valid token,
+hard-404s before session or owner-profile mutation. The legacy route therefore
+has no second validation, persistence or customer-presentation contract.
 
 These are fail-closed engineering cleanups. They do not decide whether their
 canonical authenticated counterparts require paid entitlement.
@@ -347,20 +383,18 @@ customer-facing scope. Preserve the leading hard-404. Moving the abort or
 reactivating the dormant body requires a later Founder scope decision; keeping
 it closed does not.
 
-`web.tax_assurance` is labelled internal/dev-only in source and presentation,
-but is currently a public GET. It reads local assurance metadata and renders
-test counts, release status, scope assumptions and a reference persona. It is
-not customer product or launch assurance. Return 404 in production. In a
-non-production environment, expose it only through a separately reviewed
-staff/internal authentication boundary; if none exists, keep it 404.
+`web.tax_assurance` is not customer product or launch assurance. Because no
+separately authenticated staff boundary exists, its GET now hard-404s before
+metadata access or rendering in production and non-production, for both
+unauthenticated and customer-authenticated sessions. Its dormant body grants no
+reachability.
 
-`v2.sandbox_checklist` has customer-session authentication but no staff or
-non-production gate. It constructs a network-inert `YapilyClient` for mode and
-credential-presence booleans and presents provider activation steps. It does
-not expose secret values, but customer authentication is not internal-operator
-authorisation. Return 404 in production. Outside production, require separate
-staff/internal access or keep it 404. Never treat this page, a credential-presence
-indicator or its checklist as provider/target readiness authority.
+`v2.sandbox_checklist` now hard-404s in production through the existing
+authoritative production check before customer-session handling or
+`YapilyClient` construction. In non-production it retains its existing
+customer-session guard and network-inert checklist behavior. That retained
+development access is not staff authorisation, provider activation, target
+evidence or readiness authority.
 
 ### Founder-only administration
 
@@ -387,10 +421,11 @@ claim they are launch-ready.
 
 ## Collision and implementation boundaries
 
-The eventual cleanup must preserve one-owner-at-a-time control over the route
-modules and shared templates. In particular:
+The implemented cleanup and any later paid-boundary work must preserve
+one-owner-at-a-time control over route modules and shared templates. In
+particular:
 
-- do not edit the accepted S5A inventory as a substitute for changing code;
+- do not treat refreshed S5A/S5B evidence as product authority;
 - do not add paid entitlement to Founder routes or use customer subscription
   state as Founder authentication;
 - do not implement the unresolved customer paid boundary while retiring legacy
@@ -412,25 +447,26 @@ future proposal sought to put Capital Gains into October scope, make an internal
 assurance route a customer feature, expose Founder administration to customer
 identities, or preserve a legacy route as an independent customer product.
 
-After independent review, the smallest implementation package is a route-only
-fail-closed cleanup: preserve Capital Gains 404 and the five Founder guards;
-retire or redirect the three legacy public routes without creating a paid-
-surface answer; and production-404 the two internal pages. That package must
-enumerate route/template ownership, preserve current security controls, add
-negative runtime tests, and refresh the accepted inventories. It remains
-separate from entitlement enforcement and launch activation.
+The independently accepted route-only S5C package implemented the prerequisite
+cleanup: Capital Gains and all Founder boundaries are unchanged; the three
+legacy paths are retired or redirected without a paid-surface answer;
+`tax-assurance` is closed because no staff boundary exists; and the sandbox
+checklist is production-404 while retaining its non-production customer-session
+guard. The next S5 implementation package is still gated by Founder Q2 and must
+implement server-side paid-entitlement enforcement separately.
 
 ## Assurance method and limits
 
-The accompanying test parses the accepted S5A and S5B JSON records, binds every
-reviewed source hash, requires the exact eleven-entry set, and fixes every
-route/method/guard/CSRF/category/treatment/decision tuple. Static AST/source
-checks confirm the route and guard decorators plus the critical hard-404,
-session, export, no-store and provider-presence behaviors. It imports no Reserved
-runtime module and creates no app or request. No database, network, environment
+The accompanying test parses the refreshed S5A and S5B JSON records, binds every
+reviewed current source hash, verifies the historical completion-map Git blob,
+requires the exact eleven-entry set, and fixes every route/method/guard/CSRF/
+category/recommendation/decision tuple plus the five implemented treatments.
+Static AST/source checks confirm the critical hard-404, redirect, production
+gate, session, export and no-store behavior. It imports no Reserved runtime
+module and creates no app or request. No database, network, environment
 credential or provider code path is exercised.
 
-Passing proves that this evidence still matches the exact source snapshot. It
+Passing proves that this evidence matches the accepted S5C product snapshot. It
 does not prove target reachability, current deployment settings, privileged
-credential custody, a paid-boundary decision, entitlement enforcement, provider
-readiness, customer journey quality or launch readiness.
+credential custody, a paid-boundary decision, paid-entitlement enforcement,
+provider readiness, customer journey quality or launch readiness.

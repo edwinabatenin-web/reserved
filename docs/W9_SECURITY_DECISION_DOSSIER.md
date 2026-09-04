@@ -14,11 +14,19 @@ engineering suggestion into Founder authority.
 - Evidence cut-off: 4 September 2026 at exact integration commit
   `81ae02044cccd921d98a0d1fc2360e1c4a983ab1`, tree
   `ac5922e7aae0016a54f78a8645a244ac83eae0d2`.
+- Narrow live-current W10 route-evidence refresh binds the independently
+  accepted S5C product checkpoint
+  `3c63e64e478957ce04ee1154363c2eae94b82b30`, tree
+  `ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7`. It records only reviewed
+  legacy/internal route hardening; Founder Q2, paid-entitlement enforcement,
+  W10-S5 completion and every W9 gate remain open. Strict W9 completion
+  remains **0/5**, with all 13 previously unnamed accountable decision owners
+  still unnamed.
 - [W9-S1 independent-review evidence](W9_S1_INDEPENDENT_REVIEW_EVIDENCE.md)
   supplies findings for this reconciliation only. It is not assurance
   authority, human acceptance, or evidence that W9-S1 is complete.
 - Exact source SHA-256 bindings for the reconciled W9-S3A/S3B, W9-S4A–E and
-  W10 S2A/S2B/S3A/S3B/S4A/S5A-related evidence are recorded in the companion
+  W10 S2A/S2B/S3A/S3B/S4A/S5A/S5B/S5C-related evidence are recorded in the companion
   [data-flow and threat model](W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md#exact-current-state-source-binding).
 - Companion document: [W9 launch data-flow and threat model](W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md)
 - Authoritative inputs: [W9 completion map](W9_COMPLETION_MAP.md),
@@ -189,11 +197,11 @@ engineering suggestion into Founder authority.
 | --- | --- |
 | Decision ID | W9-DEC-11 |
 | Accountable decision owner/authority | Founder (provisional provider and paid-entitlement lifecycle); security owner for custody/webhook model |
-| Why it blocks implementation or activation | `FD-W10-002` selects Stripe Billing, Checkout and Customer Portal as the provisional disabled-first subscription baseline (not Stripe Connect), while terms/DPA/fees, credentials, sandbox/production, charging and activation remain gated. S2A binds the `FD-W10-003` lifecycle and S2B closes four ordinary defaults only: promotions/discount mechanics inactive, partner offers disabled, mid-cycle plan changes/proration disabled, and no manual entitlement override. Five exact keys remain unresolved: refunds; tax invoicing/additional VAT presentation; exact paid-access surface; billing-account recovery; and post-settlement dispute/chargeback/reversal consequences. S3A/S3B/S4A and S5A are non-durable, disabled or inventory-only evidence, not provider authenticity, persistence, entitlement mutation or enforcement |
-| Current safe default | No checkout, entitlement grant, charge or provider credential is wired; Stripe identifiers/statuses are observations, not entitlement authority; `payment_recovery` is a canonical bounded state with a non-extendable seven-day deadline and continuing access, not normally paid and not provider-default behaviour |
+| Why it blocks implementation or activation | `FD-W10-002` selects Stripe Billing, Checkout and Customer Portal as the provisional disabled-first subscription baseline (not Stripe Connect), while terms/DPA/fees, credentials, sandbox/production, charging and activation remain gated. S2A binds the `FD-W10-003` lifecycle and S2B closes four ordinary defaults only: promotions/discount mechanics inactive, partner offers disabled, mid-cycle plan changes/proration disabled, and no manual entitlement override. Five exact keys remain unresolved: refunds; tax invoicing/additional VAT presentation; exact paid-access surface; billing-account recovery; and post-settlement dispute/chargeback/reversal consequences. S3A/S3B/S4A are non-durable or disabled evidence; S5A/S5B are inventory/reconciliation evidence; S5C hardens only the reviewed legacy/internal routes. None supplies provider authenticity, persistence, entitlement mutation or paid-surface enforcement |
+| Current safe default | No checkout, entitlement grant, charge or provider credential is wired; Stripe identifiers/statuses are observations, not entitlement authority; `payment_recovery` is a canonical bounded state with a non-extendable seven-day deadline and continuing access, not normally paid and not provider-default behaviour. Accepted S5C closes or redirects reviewed legacy/internal product bypasses, production-404s the sandbox checklist and preserves Founder/Capital-Gains separation without deciding paid access |
 | Options | Keep the provisional Stripe baseline disabled while specialist/Founder evidence settles the five exact open keys and engineering defines custody/authenticity/webhook/durable-inbox/entitlement boundaries; or replace the provisional provider before activation |
 | Trade-offs/risks | Weak authenticity, idempotency or reconciliation could mis-grant entitlement; provider-specific configuration grows migration cost; silently choosing refund/VAT/post-settlement/access policy creates legal, price and access risk |
-| Existing constraints/evidence | `FD-W10-001`, `FD-W10-002`, `FD-W10-003`; `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md`; `STRIPE_CONNECT_SPEC.md`; `reserved/billing/contracts.py`; S2A `provider_lifecycle_authority.py`; S2B `fail_closed_launch_defaults.py`; S3A `entitlement_core.py`; S3B `event_inbox_contract.py`; S4A `stripe_disabled_first_contract.py`; S5A `W10_S5A_PAID_SURFACE_INVENTORY.md`; `reserved/providers/payments/stripe_connect.py` remains outside subscription authority |
+| Existing constraints/evidence | `FD-W10-001`, `FD-W10-002`, `FD-W10-003`; `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md`; `STRIPE_CONNECT_SPEC.md`; `reserved/billing/contracts.py`; S2A `provider_lifecycle_authority.py`; S2B `fail_closed_launch_defaults.py`; S3A `entitlement_core.py`; S3B `event_inbox_contract.py`; S4A `stripe_disabled_first_contract.py`; S5A `W10_S5A_PAID_SURFACE_INVENTORY.md`; accepted S5B `W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md`; accepted product checkpoint S5C and its candidate `W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md`; `reserved/providers/payments/stripe_connect.py` remains outside subscription authority |
 | Exact evidence required to decide | Accepted provider terms/DPA/fees and sandbox/target evidence; exact custody, signature/authenticity, webhook, durable-inbox/reconciliation and entitlement-evidence design; specialist/Founder resolution of the five open keys; final paid-surface acceptance and enforcement tests |
 | Downstream packages affected | W10 subscription plumbing; W9-S2/S3 custody and lifecycle integration |
 | Gating | Implementation-gating and production-gating |
