@@ -134,8 +134,11 @@ def client(app):
     return app.test_client()
 
 
-def test_public_settings_renders_configured_tax_year(client):
-    rv = client.get("/settings")
+def test_authenticated_v2_settings_renders_configured_tax_year(client):
+    with client.session_transaction() as sess:
+        sess[_SK_USER_ID] = 1
+        sess[_SK_CLERK_ID] = "user_tax_year"
+    rv = client.get("/v2/settings")
     assert rv.status_code == 200
     assert f"({configured_tax_year()})".encode() in rv.data
 

@@ -349,57 +349,18 @@ def dashboard():
 
 @web.post("/calculate")
 def calculate():
-    raw = request.form.get("invoice_amount", "4800")
-    try:
-        amount = Decimal(raw)
-        if amount <= 0:
-            raise InvalidOperation
-    except (InvalidOperation, ValueError):
-        flash("Enter an invoice amount greater than £0.", "error")
-        return redirect(url_for("web.dashboard"))
-    profile, is_demo = _get_profile()
-    return render_template(
-        "dashboard.html",
-        **build_dashboard(profile, str(amount), is_demo=is_demo),
-        features=FEATURES,
-    )
+    # Retired legacy product action.  Keep the route fail-closed so a direct
+    # POST cannot bypass authentication or a future paid-surface gate.
+    abort(404)
 
 
 @web.route("/settings", methods=["GET", "POST"])
 def settings():
     if request.method == "POST":
-        from reserved.settings_validation import settings_error_values, settings_field_errors
-        settings_error_fields = settings_field_errors(request.form)
-        if settings_error_fields:
-            profile, _ = _get_profile()
-            form_profile = settings_error_values(
-                request.form, _profile_to_form_values(profile)
-            )
-            return render_template(
-                "settings.html", profile=form_profile,
-                settings_errors=list(settings_error_fields.values()),
-                settings_error_fields=settings_error_fields,
-                tax_year=configured_tax_year(),
-            ), 400
-        profile = _normalise_settings(request.form)
-        uid = current_user_id()
-        if uid is not None:
-            # Authenticated user — persist to DB (survives browser restarts and
-            # new devices once the user signs in again).
-            save_profile_by_user(uid, _profile_to_db_data(profile))
-        # Also write to session for fast reads on the same request cycle.
-        session["profile"] = profile
-        session.modified = True
-        flash("Settings saved — your dashboard now reflects your profile.", "success")
-        # If the user has an active V2 session send them to the V2 dashboard;
-        # otherwise fall back to the legacy public dashboard.
-        from reserved.auth import _SK_USER_ID
-        if _SK_USER_ID in session:
-            return redirect("/v2/")
-        return redirect(url_for("web.dashboard"))
-    profile, _ = _get_profile()
-    form_profile = _profile_to_form_values(profile)
-    return render_template("settings.html", profile=form_profile, tax_year=configured_tax_year())
+        # The authenticated V2 route owns all settings mutation.  A legacy POST
+        # must not maintain a second validation/persistence contract.
+        abort(404)
+    return redirect(url_for("v2.settings_page"))
 
 
 @web.route("/capital-gains", methods=["GET", "POST"])
@@ -435,7 +396,7 @@ def capital_gains():
 
 @web.get("/connections")
 def connections():
-    return render_template("connections.html")
+    return redirect(url_for("v2.connections"))
 
 
 @web.get("/about")
@@ -527,6 +488,13 @@ def future():
 @web.get("/tax-assurance")
 def tax_assurance():
     """Internal tax-assurance page showing engine metadata and test status."""
+    # There is no separately authenticated staff boundary in the application.
+    # Customer authentication is not staff authorisation, so this remains
+    # unreachable in every environment.
+    abort(404)
+
+    # Dormant implementation retained for a future separately authorised and
+    # staff-authenticated boundary.
     import json
     from pathlib import Path
 

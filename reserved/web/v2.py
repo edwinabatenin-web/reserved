@@ -89,6 +89,17 @@ log = logging.getLogger(__name__)
 
 v2 = Blueprint("v2", __name__, url_prefix="/v2")
 
+
+@v2.before_request
+def _hide_production_internal_routes():
+    """Hide internal-only routes before customer-session handling."""
+    if (
+        request.endpoint == "v2.sandbox_checklist"
+        and is_production_environment()
+    ):
+        abort(404)
+
+
 # ── Illustrative UK bank roster ───────────────────────────────────────────────
 
 FEATURED_BANKS = [
