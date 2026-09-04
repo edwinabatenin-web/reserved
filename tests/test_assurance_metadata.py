@@ -290,6 +290,70 @@ def test_build_metadata_records_identity_and_october_status(canonical_result):
     assert meta["canonical_result_digest"]
 
 
+def test_build_metadata_scope_matches_founder_october_families(canonical_result):
+    meta = GEN.build_metadata(canonical_result)
+
+    assert meta["scope"] == {
+        "in_scope": [
+            "Income tax — England, Wales and Northern Ireland",
+            "PAYE and multiple employments",
+            "Sole-trade income",
+            "Dividends and savings interest",
+            "UK and foreign property income",
+            "Student and postgraduate loan liability",
+            "Relief-at-Source pension treatment",
+            "High Income Child Benefit Charge (HICBC) — October v1 target (not yet activated)",
+            "Blind Person's Allowance",
+            "Bounded Making Tax Digital indication",
+        ],
+        "out_of_scope": [
+            "Scottish Income Tax — post-v1",
+            "Capital Gains Tax — post-v1",
+            "Full MTD filing — post-v1",
+        ],
+    }
+    assert set(meta["scope"]["in_scope"]).isdisjoint(meta["scope"]["out_of_scope"])
+
+
+def test_build_metadata_rejects_unlabelled_october_family(
+    canonical_result, monkeypatch
+):
+    monkeypatch.setattr(
+        GEN,
+        "OCTOBER_CALCULATION_FAMILIES",
+        [*GEN.OCTOBER_CALCULATION_FAMILIES, "unknown_family"],
+    )
+
+    with pytest.raises(RuntimeError, match="ordered.*unknown_family"):
+        GEN.build_metadata(canonical_result)
+
+
+def test_build_metadata_rejects_reordered_october_families(
+    canonical_result, monkeypatch
+):
+    monkeypatch.setattr(
+        GEN,
+        "OCTOBER_CALCULATION_FAMILIES",
+        list(reversed(GEN.OCTOBER_CALCULATION_FAMILIES)),
+    )
+
+    with pytest.raises(RuntimeError, match="ordered.*projection mismatch"):
+        GEN.build_metadata(canonical_result)
+
+
+def test_build_metadata_rejects_unordered_october_family_set(
+    canonical_result, monkeypatch
+):
+    monkeypatch.setattr(
+        GEN,
+        "OCTOBER_CALCULATION_FAMILIES",
+        set(GEN.OCTOBER_CALCULATION_FAMILIES),
+    )
+
+    with pytest.raises(RuntimeError, match="exact ordered built-in list"):
+        GEN.build_metadata(canonical_result)
+
+
 def test_build_metadata_preserves_subscription_billing_blocker(canonical_result):
     from reserved_west import release_gate as rg
 

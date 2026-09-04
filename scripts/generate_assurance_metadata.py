@@ -47,6 +47,63 @@ RESULT_PATH = ROOT / "dist" / "release_gate_result.json"
 METADATA_PATH = ROOT / "reserved" / "assurance_metadata.json"
 RESULT_SCHEMA = "reserved-canonical-gate-result-1"
 
+# Total projection from every canonical October calculation family to its
+# human-readable scope group.  Some related families intentionally share one
+# label; the separate display order preserves the established metadata order.
+OCTOBER_FAMILY_SCOPE_LABELS = {
+    "paye_multiple_employment": "PAYE and multiple employments",
+    "sole_trade": "Sole-trade income",
+    "uk_property": "UK and foreign property income",
+    "foreign_property": "UK and foreign property income",
+    "dividends": "Dividends and savings interest",
+    "savings": "Dividends and savings interest",
+    "pension_treatment": "Relief-at-Source pension treatment",
+    "student_loan_pgl": "Student and postgraduate loan liability",
+    "evidence_reconciliation": "PAYE and multiple employments",
+    "hicbc": "High Income Child Benefit Charge (HICBC) — October v1 target (not yet activated)",
+    "blind_persons_allowance": "Blind Person's Allowance",
+}
+OCTOBER_SCOPE_LABEL_ORDER = (
+    "PAYE and multiple employments",
+    "Sole-trade income",
+    "Dividends and savings interest",
+    "UK and foreign property income",
+    "Student and postgraduate loan liability",
+    "Relief-at-Source pension treatment",
+    "High Income Child Benefit Charge (HICBC) — October v1 target (not yet activated)",
+    "Blind Person's Allowance",
+)
+
+
+def human_readable_in_scope() -> list[str]:
+    """Project the complete canonical family inventory into stable UI labels."""
+    families = OCTOBER_CALCULATION_FAMILIES
+    if type(families) is not list:
+        raise RuntimeError(
+            "October calculation family inventory must be an exact ordered built-in list"
+        )
+
+    expected_families = list(OCTOBER_FAMILY_SCOPE_LABELS)
+    if families != expected_families:
+        raise RuntimeError(
+            "October calculation family ordered human-readable scope projection mismatch: "
+            f"actual={families!r}, expected={expected_families!r}"
+        )
+
+    projected = {OCTOBER_FAMILY_SCOPE_LABELS[family] for family in families}
+    missing_order = projected - set(OCTOBER_SCOPE_LABEL_ORDER)
+    if missing_order:
+        raise RuntimeError(
+            "October calculation family scope labels lack display order: "
+            f"{sorted(missing_order)}"
+        )
+
+    return [
+        "Income tax — England, Wales and Northern Ireland",
+        *[label for label in OCTOBER_SCOPE_LABEL_ORDER if label in projected],
+        "Bounded Making Tax Digital indication",
+    ]
+
 
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -476,18 +533,8 @@ def build_metadata(result: dict) -> dict:
         },
         "all_tests_passed": gate_passed,
         "scope": {
-            "in_scope": [
-                "Income tax — England, Wales and Northern Ireland",
-                "PAYE and multiple employments",
-                "Sole-trade income",
-                "Dividends and savings interest",
-                "UK and foreign property income",
-                "Student and postgraduate loan liability",
-                "Relief-at-Source pension treatment",
-                "Bounded Making Tax Digital indication",
-            ],
+            "in_scope": human_readable_in_scope(),
             "out_of_scope": [
-                "High Income Child Benefit Charge (HICBC) — October v1 target (not yet activated)",
                 "Scottish Income Tax — post-v1",
                 "Capital Gains Tax — post-v1",
                 "Full MTD filing — post-v1",

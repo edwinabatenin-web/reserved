@@ -22,7 +22,11 @@ from reserved.web.hicbc import (
     _user_ani_from_profile,
     build_responsibility,
 )
-from reserved.web.routes import _db_data_to_profile, _profile_to_db_data
+from reserved.web.routes import (
+    _db_data_to_profile,
+    _missing_assurance_scope,
+    _profile_to_db_data,
+)
 from reserved.engines.hicbc_partner import (
     ANI_COMPONENT_WHOLE,
     CLAIMANT_PERSON,
@@ -460,6 +464,28 @@ def test_metadata_scope_uses_conditional_v1_wording():
     assert "High Income Child Benefit Charge (HICBC) — post-v1" not in gen
     routes = (ROOT / "reserved" / "web" / "routes.py").read_text(encoding="utf-8")
     assert "High Income Child Benefit Charge (HICBC) — October v1 target (not yet activated)" in routes
+
+
+def test_missing_metadata_fallback_has_exact_founder_scope():
+    assert _missing_assurance_scope() == {
+        "in_scope": [
+            "Income tax — England, Wales and Northern Ireland",
+            "PAYE and multiple employments",
+            "Sole-trade income",
+            "Dividends and savings interest",
+            "UK and foreign property income",
+            "Student and postgraduate loan liability",
+            "Relief-at-Source pension treatment",
+            "High Income Child Benefit Charge (HICBC) — October v1 target (not yet activated)",
+            "Blind Person's Allowance",
+            "Bounded Making Tax Digital indication",
+        ],
+        "out_of_scope": [
+            "Scottish Income Tax — post-v1",
+            "Capital Gains Tax — post-v1",
+            "Full MTD filing — post-v1",
+        ],
+    }
 
 
 def test_customer_templates_do_not_declare_post_v1():

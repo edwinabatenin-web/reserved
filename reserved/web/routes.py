@@ -485,6 +485,30 @@ def future():
 # ── Dev-only tax assurance page ───────────────────────────────────────────────
 # Not linked from the main nav. Access via /tax-assurance directly.
 
+
+def _missing_assurance_scope() -> dict[str, list[str]]:
+    """Return truthful scope copy when generated assurance metadata is absent."""
+    return {
+        "in_scope": [
+            "Income tax — England, Wales and Northern Ireland",
+            "PAYE and multiple employments",
+            "Sole-trade income",
+            "Dividends and savings interest",
+            "UK and foreign property income",
+            "Student and postgraduate loan liability",
+            "Relief-at-Source pension treatment",
+            "High Income Child Benefit Charge (HICBC) — October v1 target (not yet activated)",
+            "Blind Person's Allowance",
+            "Bounded Making Tax Digital indication",
+        ],
+        "out_of_scope": [
+            "Scottish Income Tax — post-v1",
+            "Capital Gains Tax — post-v1",
+            "Full MTD filing — post-v1",
+        ],
+    }
+
+
 @web.get("/tax-assurance")
 def tax_assurance():
     """Internal tax-assurance page showing engine metadata and test status."""
@@ -509,24 +533,7 @@ def tax_assurance():
             "generated_on": None,
             "test_counts": None,
             "all_tests_passed": None,
-            "scope": {
-                "in_scope": [
-                    "Income tax — England, Wales and Northern Ireland",
-                    "PAYE and multiple employments",
-                    "Sole-trade income",
-                    "Dividends and savings interest",
-                    "UK and foreign property income",
-                    "Student and postgraduate loan liability",
-                    "Relief-at-Source pension treatment",
-                    "Bounded Making Tax Digital indication",
-                ],
-                "out_of_scope": [
-                    "High Income Child Benefit Charge (HICBC) — October v1 target (not yet activated)",
-                    "Scottish Income Tax — post-v1",
-                    "Capital Gains Tax — post-v1",
-                    "Full MTD filing — post-v1",
-                ],
-            },
+            "scope": _missing_assurance_scope(),
             "assumptions": [
                 "An estimate, not a tax return, filing or professional advice.",
                 "Unknown partner and Child Benefit facts are never treated as zero.",
