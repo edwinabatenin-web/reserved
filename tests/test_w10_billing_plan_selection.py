@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import importlib
+import re
 from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
+from itsdangerous import TimestampSigner, URLSafeTimedSerializer
 from markupsafe import Markup
 
 import reserved.database as db
@@ -34,6 +36,10 @@ KEYS = ("monthly", "six_month", "yearly")
 LABELS = ("£29 per month", "£156 for six months", "£288 per year")
 VAT = "Prices include VAT where applicable."
 CLOSED = "Plan unavailable — review required."
+_CSRF_VALUE = re.compile(
+    r'((?:<meta name="csrf-token" content|'
+    r'<input type="hidden" name="csrf_token" value)=")([^"\r\n]+)(")'
+)
 
 
 class _StringSubclass(str):
@@ -70,6 +76,17 @@ def _render(value: object, key: object) -> str:
 
 def _closed() -> str:
     return _render(None, None)
+
+
+def _csrf_token(body: str) -> str:
+    tokens = _CSRF_VALUE.findall(body)
+    assert len(tokens) == 2
+    assert tokens[0][1] == tokens[1][1]
+    return tokens[0][1]
+
+
+def _without_csrf_token(body: str) -> str:
+    return _CSRF_VALUE.sub(r"\1<csrf-token>\3", body)
 
 
 @pytest.fixture
@@ -335,7 +352,13 @@ def test_registered_route_rejects_decoded_canonical_key_from_encoded_raw_path(ap
     assert LABELS[0] not in body and VAT not in body
 
 
-def test_selection_query_is_inert_and_modifying_methods_are_rejected(client):
+def test_selection_query_is_inert_and_modifying_methods_are_rejected(
+    client, monkeypatch
+):
+    # Flask-WTF signs the otherwise stable per-session CSRF value with the
+    # current second. Freeze only that signing clock so exact response equality
+    # continues to test query inertness rather than wall-clock coincidence.
+    monkeypatch.setattr(TimestampSigner, "get_timestamp", lambda self: 1_700_000_000)
     _login(client)
     baseline = client.get("/v2/plans/monthly").get_data(as_text=True)
     hostile = client.get(
@@ -344,6 +367,32 @@ def test_selection_query_is_inert_and_modifying_methods_are_rejected(client):
     assert hostile == baseline
     for method in ("post", "put", "patch", "delete"):
         assert getattr(client, method)("/v2/plans/monthly").status_code == 405
+
+
+def test_selection_query_is_inert_across_csrf_signing_time_rollover(
+    app, client, monkeypatch
+):
+    clock = {"now": 1_700_000_000}
+    monkeypatch.setattr(
+        TimestampSigner, "get_timestamp", lambda self: clock["now"]
+    )
+    _login(client)
+    baseline = client.get("/v2/plans/monthly").get_data(as_text=True)
+    clock["now"] += 1
+    hostile = client.get(
+        "/v2/plans/monthly?price=1&plan=yearly&checkout=https://evil.invalid"
+    ).get_data(as_text=True)
+
+    baseline_token = _csrf_token(baseline)
+    hostile_token = _csrf_token(hostile)
+    assert baseline_token != hostile_token
+    assert _without_csrf_token(hostile) == _without_csrf_token(baseline)
+
+    with client.session_transaction() as current_session:
+        raw_token = current_session["csrf_token"]
+    signer = URLSafeTimedSerializer(app.secret_key, salt="wtf-csrf-token")
+    assert signer.loads(baseline_token, max_age=60) == raw_token
+    assert signer.loads(hostile_token, max_age=60) == raw_token
 
 
 def test_selection_route_preserves_no_store_and_security_headers(client):
