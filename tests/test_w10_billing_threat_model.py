@@ -21,6 +21,7 @@ S2D_INTEGRATED = "509c5360d453e23a0732e4e9d4637385eef20ef6"
 S5C_PRODUCT = "3c63e64e478957ce04ee1154363c2eae94b82b30"
 S5C_EVIDENCE = "e3959964ca08bd5afb6f75feab4ec0fdc83a9423"
 CURRENT_ROUTES_COMMIT = "c5e560045ed3d62f02c894e931464c3d7294e99f"
+PAYE_V2_COMMIT = "f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b"
 
 EXPECTED_SOURCES = {
     "SRC-01": (
@@ -115,8 +116,8 @@ EXPECTED_SOURCES = {
     ),
     "SRC-16": (
         "reserved/web/v2.py",
-        S5C_PRODUCT,
-        "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228",
+        PAYE_V2_COMMIT,
+        "be6247e5f9aa91cfbdc3a4d028fbf4b3c4911eaf98dcd1f7b383b28998838236",
         "live",
     ),
     "SRC-17": (
@@ -308,7 +309,7 @@ def test_exact_s2d_and_s5c_checkpoint_integration_topology_is_not_flattened():
     assert not is_ancestor(S2D_SOURCE, S2D_INTEGRATED)
 
 
-def test_exact_source_commit_hash_and_binding_register_is_not_substitutable():
+def assert_exact_source_register(data):
     sources = {
         item["id"]: (
             item["path"],
@@ -316,21 +317,48 @@ def test_exact_source_commit_hash_and_binding_register_is_not_substitutable():
             item["sha256"],
             item["binding"],
         )
-        for item in register()["sources"]
+        for item in data["sources"]
     }
     assert sources == EXPECTED_SOURCES
 
     for source_id, (path, accepted_commit, expected_hash, binding) in sources.items():
-        descendant = CURRENT_ROUTES_COMMIT if binding == "live" else HEAD
+        # PAYE v2 and legacy routes have independent accepted live anchors;
+        # neither is relabelled as assurance from the other's checkpoint.
+        descendant = (PAYE_V2_COMMIT if source_id == "SRC-16" else CURRENT_ROUTES_COMMIT) if binding == "live" else HEAD
         assert is_ancestor(
             accepted_commit, descendant
         ), f"non-ancestor evidence source: {source_id}"
+        if binding == "live":
+            assert is_ancestor(descendant, "HEAD")
+            assert_git_blob_sha256(accepted_commit, path, expected_hash)
         actual_hash = (
             hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
             if binding == "live"
             else git_blob_sha256(accepted_commit, path)
         )
         assert actual_hash == expected_hash, f"stale evidence source: {source_id} {path}"
+
+
+def test_exact_source_commit_hash_and_binding_register_is_not_substitutable():
+    assert_exact_source_register(register())
+
+
+def test_paye_live_register_rejects_substituted_hash_commit_and_binding():
+    for field, value in (
+        ("sha256", "0" * 64),
+        ("sha256", "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228"),
+        ("accepted_commit", S5C_PRODUCT),
+        ("accepted_commit", CURRENT_ROUTES_COMMIT),
+        ("binding", "historical_at_cutoff"),
+    ):
+        changed = register()
+        next(item for item in changed["sources"] if item["id"] == "SRC-16")[field] = value
+        try:
+            assert_exact_source_register(changed)
+        except AssertionError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError(f"substituted PAYE source {field} was accepted")
 
 
 def test_live_routes_binding_does_not_rewrite_historical_s5c_provenance():
@@ -371,14 +399,27 @@ def test_historical_binding_survives_descendant_change_and_rejects_wrong_provena
         raise AssertionError("a wrong historical source digest was accepted")
 
 
-def test_s5c_live_v2_binding_uses_product_checkpoint_not_old_preview_blob():
+def test_paye_live_v2_preserves_distinct_historical_s5c_and_preview_blobs():
     path = "reserved/web/v2.py"
     expected = EXPECTED_SOURCES["SRC-16"][2]
     old_preview_commit = "46e2141c421fa80e39b60cd5b6bb955f44dfd863"
 
-    assert git_blob_sha256(S5C_PRODUCT, path) == expected
+    historical_hash = "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228"
+    assert EXPECTED_SOURCES["SRC-16"][1] == PAYE_V2_COMMIT
+    assert_git_blob_sha256(S5C_PRODUCT, path, historical_hash)
+    assert historical_hash != expected
+    assert_git_blob_sha256(PAYE_V2_COMMIT, path, expected)
     assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == expected
     assert git_blob_sha256(old_preview_commit, path) != expected
+    assert is_ancestor(S5C_PRODUCT, PAYE_V2_COMMIT)
+    assert is_ancestor(CURRENT_ROUTES_COMMIT, PAYE_V2_COMMIT)
+    for commit, digest in ((S5C_PRODUCT, expected), (PAYE_V2_COMMIT, historical_hash)):
+        try:
+            assert_git_blob_sha256(commit, path, digest)
+        except AssertionError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError("historical and live v2 source identities were interchangeable")
 
     try:
         assert_git_blob_sha256(old_preview_commit, path, expected)
