@@ -2,7 +2,7 @@
   "schema": "reserved-assurance-metadata-1",
   "status": "deterministic_engine_remediation_gate_passed",
   "october_launch_candidate": {
-    "blocker_count": 16,
+    "blocker_count": 18,
     "blocking_components": [
       {
         "id": "paye_evidence_and_forecasting",
@@ -50,6 +50,11 @@
         "state": "not_executable"
       },
       {
+        "id": "poa_sa_cash_obligation_customer_language",
+        "note": "The Founder-required Payments on Account/Self Assessment cash-obligation capability lacks the representative customer-language/UX evidence required by W2 terminal check 12.",
+        "state": "evidence_missing"
+      },
+      {
         "id": "evidence_persistence_and_deletion",
         "note": "Evidence persistence/deletion controls are not implemented.",
         "state": "not_implemented"
@@ -70,8 +75,13 @@
         "state": "not_implemented"
       },
       {
+        "id": "subscription_billing",
+        "note": "FD-W10-001/002/003 require October subscription billing, but the W10 completion map remains at 0/8 complete slices and 0/13 terminal checks, with provider, policy, persistence, entitlement-enforcement, security, target and release evidence still open.",
+        "state": "not_implemented"
+      },
+      {
         "id": "hicbc_manual_privacy_retention_legal",
-        "note": "HICBC manual partner-estimate privacy notice, lawful basis and retention schedule await founder/legal/privacy approval.",
+        "note": "The mandatory internal privacy/retention review for the HICBC manual partner-estimate journey is not yet accepted; external legal/privacy advice is required only if that review identifies a material unresolved issue.",
         "state": "privacy_retention_review_required"
       },
       {
@@ -95,43 +105,50 @@
       "savings",
       "pension_treatment",
       "student_loan_pgl",
-      "evidence_reconciliation"
+      "evidence_reconciliation",
+      "hicbc",
+      "blind_persons_allowance"
     ]
   },
   "tax_year": "2026/27",
   "rules_version": "uk-2026-27-v4",
   "engine_version": "4.0.0",
   "engine_artefact": {
-    "content_hash": "c2bec7d089887af1a1502b7dc96e0480466f222022dc8cf4d3e0e8bc1eb4db03",
+    "accounting_contracts_sha256": "8dd1da644f7b8356cd0a75ad86228a1adabc623ec3befc02a83eb53fd0823749",
+    "accounting_contracts_source": "reserved/providers/accounting/contracts.py",
+    "content_hash": "f40151625ba4368351564ea6d27861761e2b7c657132df0187244543227141bd",
     "engine_version": "4.0.0",
     "evidence_uncertainty_sha256": "680aa39f6d9345e62d9269813b947611fc169ca926f81b0ec1e74e6fc06c8c1d",
     "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-    "generated_on": "2026-09-01T00:23:24Z",
+    "generated_on": "2026-09-04T18:33:27Z",
     "rules_version": "uk-2026-27-v4",
     "schema": "reserved-engine-artefact-provenance-1",
-    "source_commit": "0f07c28f5899f298291ae8888b4d8c044b258a0d",
+    "source_commit": "6f3cb30d1bedcebe930084d56c64ab83ff719d5a",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
+      "accounting_tax_handoff.py": "1b1e07716db2bc4d07efb503b4d02eea23834f5d9dcf813aef5fad099448d897",
       "allocation.py": "a8859ae01f017b9b18e689d81c9906deac7aac4193c6c748dd60f39b3779fad6",
       "annual_loan_reconciliation.py": "c43bd43f6616fac5b8b0dc197e04851973df9d7b32f266ff5c67aa0270277cef",
       "annual_loan_wp7u.py": "b549b93dddf7a5f1b914c16c0cf991303211f0b58539cfa7b77d66a840fdf169",
       "annual_position_composition.py": "8f6c0864cce23e40cb80072a48bb7cbefeab27ad7beded756a2d5201e2b8ab19",
-      "annual_to_cash_integration.py": "c14b5fffcf1a07d7aa29d12aca93f314639406b633531eb8658e9e61d3ef7456",
+      "annual_to_cash_integration.py": "37d0757387410459f0b2a7c4ca34fa2b1eafad856b8e457c349d830158ea2fbd",
       "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
       "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
       "cash_funding_position.py": "6e550978e1854d6a5022689f0f27478833cb00cd379b8bbee027d6176e82897a",
       "cash_obligation_reconciliation.py": "f26bdcdae81d598913054c700a822e76a7edd6de93f80b771bccb268516ecc98",
-      "cash_ready_annual_position.py": "4023d5104cd72a8a5727ea7b035b5731a9b0d2a0e0119ce68746ceb3327621ed",
+      "cash_ready_annual_position.py": "be8d9e6b83fac55c75b45350bf3757588eb311b584fdd7ebfbf1e41d22821064",
       "hicbc_integration.py": "37d6187c39504a42f4f9ff6ab54ec623ee289f5c61b482091b05f8b24a921fc2",
       "hicbc_partner.py": "4a9845255b43da2793007ad7e1c05422cd885ca58a82695994856086b1bc45be",
       "income_tax.py": "ca824c442f3d58bdc235e3e9e0be543d25d3eda9dc414545b5efde27eabff879",
-      "integrated_annual_position.py": "36d4928bcaa0a815f8c5711e2828ab782bdc60389190c4d6da3b2da35e50f8bd",
+      "integrated_annual_position.py": "fc2fc7b075fe968225f579f70bbfdf90e13cdb918d83a0d0940523ab381051c4",
       "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
       "internal_snapshot.py": "2a9cc98fb5fcb1b5f363ac48c51dabd480a965e70db656cf626ebff310b3b198",
       "mtd_readiness.py": "1051277209aca4f086c4a207f2683fe5e41c85285befcc5cf1dd6e316e501ae2",
       "optimise.py": "47d4c6c4872de0d7d33be4d9a7b1ef43211f6c6c39f3052c70862af0840ca87a",
-      "paye_reconciliation.py": "f57e45280353b760dc037a6480a31a123e582033019655e44b1010f37c25786f",
+      "paye_evidence_capture.py": "f1e0a6830e20887768fee40e345f635d310ba65ca15142b49b647d8116c615e1",
+      "paye_extraction_confirmation.py": "ca707a270ef4462e6e4f0bec3abed569b5b550c21cefd6943dc2590a99a93d12",
+      "paye_reconciliation.py": "db6df119035bacefdcad0205bcad087e7fd3ed3f72daf6f2faaf31f9112403ed",
       "payments_on_account.py": "1fdd24157eac55366ed53732be75785900a8b9e27a33a4a1bf3eea0a8aed4202",
       "poa_reduction_guardrail.py": "7792ab1e1a07b0fc18e48e2832e5fd00037412ff41d4cd677dd404638c9c6bb1",
       "sa_account_reconciliation.py": "52eab2f910b17db125586a7a1583e87eab4103f7c2d52c79d231f291a1653153",
@@ -141,29 +158,32 @@
     "source_path": "reserved/engines"
   },
   "production_source": {
-    "source_commit": "0f07c28f5899f298291ae8888b4d8c044b258a0d",
+    "source_commit": "6f3cb30d1bedcebe930084d56c64ab83ff719d5a",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
+      "accounting_tax_handoff.py": "1b1e07716db2bc4d07efb503b4d02eea23834f5d9dcf813aef5fad099448d897",
       "allocation.py": "a8859ae01f017b9b18e689d81c9906deac7aac4193c6c748dd60f39b3779fad6",
       "annual_loan_reconciliation.py": "c43bd43f6616fac5b8b0dc197e04851973df9d7b32f266ff5c67aa0270277cef",
       "annual_loan_wp7u.py": "b549b93dddf7a5f1b914c16c0cf991303211f0b58539cfa7b77d66a840fdf169",
       "annual_position_composition.py": "8f6c0864cce23e40cb80072a48bb7cbefeab27ad7beded756a2d5201e2b8ab19",
-      "annual_to_cash_integration.py": "c14b5fffcf1a07d7aa29d12aca93f314639406b633531eb8658e9e61d3ef7456",
+      "annual_to_cash_integration.py": "37d0757387410459f0b2a7c4ca34fa2b1eafad856b8e457c349d830158ea2fbd",
       "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
       "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
       "cash_funding_position.py": "6e550978e1854d6a5022689f0f27478833cb00cd379b8bbee027d6176e82897a",
       "cash_obligation_reconciliation.py": "f26bdcdae81d598913054c700a822e76a7edd6de93f80b771bccb268516ecc98",
-      "cash_ready_annual_position.py": "4023d5104cd72a8a5727ea7b035b5731a9b0d2a0e0119ce68746ceb3327621ed",
+      "cash_ready_annual_position.py": "be8d9e6b83fac55c75b45350bf3757588eb311b584fdd7ebfbf1e41d22821064",
       "hicbc_integration.py": "37d6187c39504a42f4f9ff6ab54ec623ee289f5c61b482091b05f8b24a921fc2",
       "hicbc_partner.py": "4a9845255b43da2793007ad7e1c05422cd885ca58a82695994856086b1bc45be",
       "income_tax.py": "ca824c442f3d58bdc235e3e9e0be543d25d3eda9dc414545b5efde27eabff879",
-      "integrated_annual_position.py": "36d4928bcaa0a815f8c5711e2828ab782bdc60389190c4d6da3b2da35e50f8bd",
+      "integrated_annual_position.py": "fc2fc7b075fe968225f579f70bbfdf90e13cdb918d83a0d0940523ab381051c4",
       "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
       "internal_snapshot.py": "2a9cc98fb5fcb1b5f363ac48c51dabd480a965e70db656cf626ebff310b3b198",
       "mtd_readiness.py": "1051277209aca4f086c4a207f2683fe5e41c85285befcc5cf1dd6e316e501ae2",
       "optimise.py": "47d4c6c4872de0d7d33be4d9a7b1ef43211f6c6c39f3052c70862af0840ca87a",
-      "paye_reconciliation.py": "f57e45280353b760dc037a6480a31a123e582033019655e44b1010f37c25786f",
+      "paye_evidence_capture.py": "f1e0a6830e20887768fee40e345f635d310ba65ca15142b49b647d8116c615e1",
+      "paye_extraction_confirmation.py": "ca707a270ef4462e6e4f0bec3abed569b5b550c21cefd6943dc2590a99a93d12",
+      "paye_reconciliation.py": "db6df119035bacefdcad0205bcad087e7fd3ed3f72daf6f2faaf31f9112403ed",
       "payments_on_account.py": "1fdd24157eac55366ed53732be75785900a8b9e27a33a4a1bf3eea0a8aed4202",
       "poa_reduction_guardrail.py": "7792ab1e1a07b0fc18e48e2832e5fd00037412ff41d4cd677dd404638c9c6bb1",
       "sa_account_reconciliation.py": "52eab2f910b17db125586a7a1583e87eab4103f7c2d52c79d231f291a1653153",
@@ -204,8 +224,8 @@
       "path": "reserved-optimise-assurance/tests/"
     }
   ],
-  "assurance_implementation_identity": "5ee1b465102f31d6f9da266f53f1c60943045debf26e4f3103455fb7e59be0b0",
-  "canonical_result_digest": "9ddb66809c8c3d326ea4a2f356b0c85e56887871615d38d353836dfda89c00be",
+  "assurance_implementation_identity": "03ac385db5abe944036c0e19463d7f264d1d319aa116b3b79f824d598ffb87ae",
+  "canonical_result_digest": "0dd62dd90f9fc5b628bf01b1601a5dcf8c76baf6cb2dcd455cd56010df69b1a7",
   "rw3_fixture_gate": {
     "gate_passed": true,
     "classification_complete": true,
@@ -219,36 +239,41 @@
     },
     "corpus_id": "RW3-WP7-DRAFT-CORPUS-1",
     "artefact": {
-      "content_hash": "c2bec7d089887af1a1502b7dc96e0480466f222022dc8cf4d3e0e8bc1eb4db03",
+      "accounting_contracts_sha256": "8dd1da644f7b8356cd0a75ad86228a1adabc623ec3befc02a83eb53fd0823749",
+      "accounting_contracts_source": "reserved/providers/accounting/contracts.py",
+      "content_hash": "f40151625ba4368351564ea6d27861761e2b7c657132df0187244543227141bd",
       "engine_version": "4.0.0",
       "evidence_uncertainty_sha256": "680aa39f6d9345e62d9269813b947611fc169ca926f81b0ec1e74e6fc06c8c1d",
       "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-      "generated_on": "2026-09-01T00:23:24Z",
+      "generated_on": "2026-09-04T18:33:27Z",
       "rules_version": "uk-2026-27-v4",
       "schema": "reserved-engine-artefact-provenance-1",
-      "source_commit": "0f07c28f5899f298291ae8888b4d8c044b258a0d",
+      "source_commit": "6f3cb30d1bedcebe930084d56c64ab83ff719d5a",
       "source_files": {
         "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
         "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
+        "accounting_tax_handoff.py": "1b1e07716db2bc4d07efb503b4d02eea23834f5d9dcf813aef5fad099448d897",
         "allocation.py": "a8859ae01f017b9b18e689d81c9906deac7aac4193c6c748dd60f39b3779fad6",
         "annual_loan_reconciliation.py": "c43bd43f6616fac5b8b0dc197e04851973df9d7b32f266ff5c67aa0270277cef",
         "annual_loan_wp7u.py": "b549b93dddf7a5f1b914c16c0cf991303211f0b58539cfa7b77d66a840fdf169",
         "annual_position_composition.py": "8f6c0864cce23e40cb80072a48bb7cbefeab27ad7beded756a2d5201e2b8ab19",
-        "annual_to_cash_integration.py": "c14b5fffcf1a07d7aa29d12aca93f314639406b633531eb8658e9e61d3ef7456",
+        "annual_to_cash_integration.py": "37d0757387410459f0b2a7c4ca34fa2b1eafad856b8e457c349d830158ea2fbd",
         "capital_gains.py": "4c396e81ce658a806dc49802a7344440faaf0731e1debfb9093827295c0ee1da",
         "capital_gains_config.py": "10105295c663792716384a14fb5198d0569fe3366214eff204a16daa694f7b31",
         "cash_funding_position.py": "6e550978e1854d6a5022689f0f27478833cb00cd379b8bbee027d6176e82897a",
         "cash_obligation_reconciliation.py": "f26bdcdae81d598913054c700a822e76a7edd6de93f80b771bccb268516ecc98",
-        "cash_ready_annual_position.py": "4023d5104cd72a8a5727ea7b035b5731a9b0d2a0e0119ce68746ceb3327621ed",
+        "cash_ready_annual_position.py": "be8d9e6b83fac55c75b45350bf3757588eb311b584fdd7ebfbf1e41d22821064",
         "hicbc_integration.py": "37d6187c39504a42f4f9ff6ab54ec623ee289f5c61b482091b05f8b24a921fc2",
         "hicbc_partner.py": "4a9845255b43da2793007ad7e1c05422cd885ca58a82695994856086b1bc45be",
         "income_tax.py": "ca824c442f3d58bdc235e3e9e0be543d25d3eda9dc414545b5efde27eabff879",
-        "integrated_annual_position.py": "36d4928bcaa0a815f8c5711e2828ab782bdc60389190c4d6da3b2da35e50f8bd",
+        "integrated_annual_position.py": "fc2fc7b075fe968225f579f70bbfdf90e13cdb918d83a0d0940523ab381051c4",
         "internal_hicbc_scenario.py": "cb27a5902ada645f4f2a8dfcf16e294083d2ca93bc4d91177c2f9afbf79539b7",
         "internal_snapshot.py": "2a9cc98fb5fcb1b5f363ac48c51dabd480a965e70db656cf626ebff310b3b198",
         "mtd_readiness.py": "1051277209aca4f086c4a207f2683fe5e41c85285befcc5cf1dd6e316e501ae2",
         "optimise.py": "47d4c6c4872de0d7d33be4d9a7b1ef43211f6c6c39f3052c70862af0840ca87a",
-        "paye_reconciliation.py": "f57e45280353b760dc037a6480a31a123e582033019655e44b1010f37c25786f",
+        "paye_evidence_capture.py": "f1e0a6830e20887768fee40e345f635d310ba65ca15142b49b647d8116c615e1",
+        "paye_extraction_confirmation.py": "ca707a270ef4462e6e4f0bec3abed569b5b550c21cefd6943dc2590a99a93d12",
+        "paye_reconciliation.py": "db6df119035bacefdcad0205bcad087e7fd3ed3f72daf6f2faaf31f9112403ed",
         "payments_on_account.py": "1fdd24157eac55366ed53732be75785900a8b9e27a33a4a1bf3eea0a8aed4202",
         "poa_reduction_guardrail.py": "7792ab1e1a07b0fc18e48e2832e5fd00037412ff41d4cd677dd404638c9c6bb1",
         "sa_account_reconciliation.py": "52eab2f910b17db125586a7a1583e87eab4103f7c2d52c79d231f291a1653153",
@@ -258,9 +283,9 @@
       "source_path": "reserved/engines"
     }
   },
-  "generated_on": "2026-09-01T00:23:24Z",
+  "generated_on": "2026-09-04T18:33:27Z",
   "test_counts": {
-    "passed": 2091,
+    "passed": 7538,
     "failed": 0,
     "errors": 0,
     "skipped": 0
@@ -275,10 +300,11 @@
       "UK and foreign property income",
       "Student and postgraduate loan liability",
       "Relief-at-Source pension treatment",
+      "High Income Child Benefit Charge (HICBC) \u2014 October v1 target (not yet activated)",
+      "Blind Person's Allowance",
       "Bounded Making Tax Digital indication"
     ],
     "out_of_scope": [
-      "High Income Child Benefit Charge (HICBC) \u2014 October v1 target (not yet activated)",
       "Scottish Income Tax \u2014 post-v1",
       "Capital Gains Tax \u2014 post-v1",
       "Full MTD filing \u2014 post-v1"
