@@ -8,14 +8,18 @@ control is deployed or launch-ready.
 
 - Evidence cut-off: 4 September 2026.
 - Current integration reconciliation point:
-  `110a90043dfc770c70059482be9d7b7e237749a6` (tree
-  `0d5b2e3e89334a58eab13f7ccdf5fb464ccf0079`).
-- Inspection worktree branch: `codex-cli/w9-completion-map-110a` (an isolated
+  `a07348976321df65bbd95c9170c906bcddd5baa5` (tree
+  `9bb1855031a7349322d4ebfa05fea00b1f339095`).
+- Inspection worktree branch: `codex-cli/w9-completion-map-a073` (an isolated
   branch based on, but not itself, the integration lineage).
-- Immutable starting commit: `110a90043dfc770c70059482be9d7b7e237749a6`.
-- Starting tree: `0d5b2e3e89334a58eab13f7ccdf5fb464ccf0079`.
+- Immutable starting commit: `a07348976321df65bbd95c9170c906bcddd5baa5`.
+- Starting tree: `9bb1855031a7349322d4ebfa05fea00b1f339095`.
 - Starting worktree: clean.
 - Evidence used: repository implementation and tests, [Founder Decisions](../FOUNDER_DECISIONS.md),
+  [W9-S1 independent-review findings](W9_S1_INDEPENDENT_REVIEW_EVIDENCE.md),
+  [W9-S1 launch data-flow and threat model](W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md),
+  [W9-S1 security decision dossier](W9_SECURITY_DECISION_DOSSIER.md),
+  [W9 security/operations gap register](W9_SECURITY_OPERATIONS_GAP_REGISTER.md),
   [authentication readiness](AUTHENTICATION_READINESS.md),
   [provider boundary adoption](PROVIDER_BOUNDARY_ADOPTION.md),
   [provider pre-audit readiness](PROVIDER_PRE_INDEPENDENT_AUDIT_READINESS.md),
@@ -23,8 +27,22 @@ control is deployed or launch-ready.
   [annual-position isolation audit](INTERNAL_ANNUAL_PERSISTENCE_ISOLATION_AUDIT.md),
   [W9-S3A minimised projection contract](W9_S3A_ANNUAL_POSITION_PERSISTENCE_CONTRACT.md),
   [W9-S3B detached repository/schema contract](W9_S3B_ANNUAL_POSITION_REPOSITORY_CONTRACT.md),
-  [PAYE fallback completion map](HMRC_PAYE_FALLBACK_COMPLETION_MAP.md), and
+  [PAYE fallback completion map](HMRC_PAYE_FALLBACK_COMPLETION_MAP.md),
+  [W10 completion map](W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md),
+  [W10-S2C policy evidence candidate](W10_S2C_POLICY_EVIDENCE_DOSSIER.md), and
   `reserved/assurance_metadata.json` at the starting commit.
+- The W9-S1 independent-review record integrated at
+  `81ae02044cccd921d98a0d1fc2360e1c4a983ab1` and its findings-driven W9-S1B
+  reconciliation are independently accepted and integrated in this lineage at
+  `587828337e01f269320048847b3250a690ce6133`. That acceptance establishes the
+  accuracy and current-state provenance of the findings/reconciliation only; it
+  is not assurance acceptance of the 13 unnamed decision owners, unresolved
+  risks, missing target/provider evidence, or W9-S1 completion.
+- The later W10 completion-map reconciliation at
+  `5612f7a33f27f09d1fa988f15dfdffbe77a72705` and W10-S2C candidate at the
+  current HEAD remain evidence-only and leave W10 incomplete. They do not
+  activate billing, accept the unresolved policies, or alter W9's S1–S5 state;
+  the S1B provider-neutral W10 non-authority boundary therefore remains current.
 
 Here, **W9** means the privacy, security and operations workstream. It does not
 refer to the historical annual-loan package labelled WP9 elsewhere.
@@ -47,6 +65,7 @@ local test suite passes.
 
 | Boundary | Implemented/integrated evidence | What remains before launch |
 | --- | --- | --- |
+| W9-S1 control inventory and threat evidence | The independent-review findings record is accepted/integrated at `81ae02044cccd921d98a0d1fc2360e1c4a983ab1`, and W9-S1B is accepted/integrated at `587828337e01f269320048847b3250a690ce6133`. S1B reconciles the launch model, decision dossier, gap register and evidence test to the accepted lineage; it preserves exactly 15 flows, 14 trust boundaries, 21 threats and 14 decisions, and brings the W9-S3A/S3B, W9-S4A–E and provider-neutral W10 local contract/inventory descriptions current. The gap register's candidate-era `ACT-01` and “Immediate package boundary” statements selecting S1B and fresh review are historical and satisfied by `5878283...` plus its independent acceptance; they are not a current redispatch instruction. | W9-S1 remains incomplete. Thirteen of the 14 decision entries still identify their accountable human role as “to be named”, and the required dated human, provider, target, legal, privacy, security and operations evidence has not been accepted. Every substantive gap row remains open unless separately evidenced; marking the S1B self-reference satisfied accepts no unresolved risk. |
 | Authentication and sessions | Clerk-broker token checks validate issuer, authorised party, subject and session identity; successful login establishes Reserved's signed, HTTP-only session; logout clears the complete session. Sensitive routes receive no-store headers. Local negative-claim and readiness tests exist. | Target Clerk/Google/Apple configuration, browser journeys, revocation/account-deletion handling and target-runtime negative tests remain external acceptance evidence. The current CSP still permits inline script and style execution and must be consciously accepted or tightened before launch. |
 | Provider OAuth and HTTP boundaries | Provider-bound, expiring, single-use state; callback ordering; opaque credential references; injected, non-production HTTP origins; payload-redacted evidence; and fail-closed provider readiness are integrated. Configuration alone cannot make an unimplemented adapter ready. | There is no approved encrypted token store or evidenced external key custody, rotation, break-glass, runtime redaction, deployment isolation, revocation/reconnect or backup/restore behavior. Provider sandbox and production activation evidence remain gated. |
 | Evidence and annual-position persistence | W9-S3A is accepted and integrated at `c489c25bab669c64e1c11d28caf29fcde9678fdd`: it defines a minimised, owner-bound, admission-sealed annual-position projection contract. W9-S3B is accepted and integrated at `110a90043dfc770c70059482be9d7b7e237749a6`: it defines a detached exact-primitive structural candidate, logical record/evidence-row shape and pure repository-operation contract. S3B deliberately does not import, trust or preserve S3A runtime admission and every result denies persistence authority. Neither package performs database, migration, retention, deletion, credential, environment or activation I/O. | There is still no authenticated S3A-to-S3B adapter, selected/verified datastore, physical schema or migration, durable read/write implementation, authenticated storage integrity, access-audit implementation, approved retention/legal-hold/backup-expiry behavior, whole-account erasure executor, encryption/key-custody implementation or target evidence. The existing `tax_calculations` stub remains unacceptable. |
@@ -60,7 +79,7 @@ local test suite passes.
 
 | Slice | Owned outcome | Current state | Dependencies and concurrency | Completion evidence |
 | --- | --- | --- | --- | --- |
-| **W9-S1 — control inventory, launch data-flow and threat boundary** | Preserve existing authentication/session, provider fail-close and canonical release controls; document the complete October data flow, trust boundaries, threats and exact unresolved security/privacy decisions without creating another readiness authority. | **Implemented and integrated; completion evidence still partial.** The launch data-flow/threat model and decision dossier were added at `8eec5d8...`, and their introducing-commit guard was corrected at `1b9a877...`. No durable package record located by this reconciliation proves the fresh independent-review disposition, so the slice is not counted complete. | Preserve the integrated evidence. Reconcile or repeat only the missing independent review; do not reimplement S1A. Target journeys remain for S5. | Independent review of exact evidence; all October flows and trust boundaries covered; threats and mitigations tied to existing controls/blockers; every unresolved choice has an owner and acceptance evidence; no environment, credential, network, persistence or activation side effects. |
+| **W9-S1 — control inventory, launch data-flow and threat boundary** | Preserve existing authentication/session, provider fail-close and canonical release controls; document the complete October data flow, trust boundaries, threats and exact unresolved security/privacy decisions without creating another readiness authority. | **Implemented and integrated; completion evidence remains partial.** The S1 independent-review findings record (`81ae02044cccd921d98a0d1fc2360e1c4a983ab1`) and findings-driven S1B current-state reconciliation (`587828337e01f269320048847b3250a690ce6133`) are accepted/integrated as exact local evidence. The model, decision dossier, gap register and test now cover the accepted lineage and preserve all 15 flows, 14 boundaries, 21 threats and 14 decisions. This does not complete S1: 13 decision owners remain “to be named”, and required human/provider/target/legal/privacy/security/operations evidence is not accepted. | Preserve S1A/S1B; do not repeat or redispatch their evidence-only work. Name the accountable roles without inferring them, obtain their dated evidence/acceptance, and complete the applicable target/provider journeys under S5. | The accepted structural review/reconciliation is necessary but insufficient. Slice completion still requires every unresolved choice to have a named accountable owner and accepted evidence, plus independent review of the exact resulting launch candidate; no environment, credential, network, persistence or activation side effects. |
 | **W9-S2 — provider secret and token custody** | Implement the approved encrypted credential/token store and its provider/owner isolation, rotation, tamper, revocation, audit and key-recovery boundaries. | **Missing engineering; decision-bound.** OAuth contracts deliberately stop at an abstract store boundary. | Requires an approved target datastore/KMS or equivalent, key custody and rotation owner, access policy and backup/recovery semantics. Provider adapters can continue against opaque references while this is decided. | Architecture/security decision; bounded implementation and independent review; wrong-key, tamper, rotation, ownership and restore tests; target custody evidence. |
 | **W9-S3 — durable data lifecycle** | Implement only the approved, minimised persistence for annual-position/evidence references and PAYE fallback, including retention, supersession, account erasure, backup expiry and provable raw-payslip deletion. | **Partial contract engineering is accepted and integrated; durable implementation and external evidence remain decision-bound.** S3A (`c489c25bab669c64e1c11d28caf29fcde9678fdd`) supplies the minimised admission/projection contract. S3B (`110a90043dfc770c70059482be9d7b7e237749a6`) supplies a detached, non-admitted logical row/evidence/repository-operation contract. Both are in-memory and disabled-first; neither is a datastore, migration or persistence implementation. | Preserve S3A/S3B rather than redispatching them. A separately reviewed adapter must authenticate genuine S3A output before forming an S3B structural candidate. Durable work additionally requires the approved field inventory/purpose and lawful-basis review, retention and backup-deletion schedule, erasure/legal-hold exceptions, target/datastore facts, encryption/key custody and audit-event rules. | Existing contract tests are design evidence only. Slice completion still requires approved schema/lifecycle decisions; reviewed adapter and physical implementation; migrations; ownership/integrity/concurrency and minimisation tests; target durable read/write evidence; deletion/erasure/backup-expiry evidence; and raw-payslip deletion demonstrated without logging or retaining document content. |
 | **W9-S4 — operational resilience and ownership** | Establish target monitoring, safe outage behavior, recoverable backup/restore, rollback, incident/security response and customer-support escalation with named owners. | **Partial local/synthetic implementation and review evidence.** S4A–E are integrated at `58fb282...`, `2cb3d43...`, `43e4671...`, `8f26ee7...` and `1a277b6...`, covering the fail-closed outage/recovery contract, local presentation and coordination, and a synthetic exercise. This does not close S4. | Target-runtime monitoring and ownership must be named before a further runbook/monitoring package is selected. Provider-specific exercises depend on sandbox access. Backup/restore, target alert routing, real-provider behavior and external/human acceptance remain missing. | Monitors and alerts exercised; provider outage and degraded-customer paths tested in the applicable target/sandbox; backup restored; rollback rehearsed; incident/support paths and tax/API/security owners accepted. |
@@ -81,9 +100,10 @@ tests from being mistaken for launch readiness.
 
 ## Sequence and parallelism
 
-1. Preserve W9-S1A's integrated launch data-flow/threat and decision-dossier
-   evidence. Reconcile or repeat only its missing independent-review evidence;
-   do not dispatch another implementation of the same package.
+1. Preserve the accepted/integrated W9-S1 independent-review findings and S1B
+   reconciliation. Do not redispatch S1A/S1B or treat accepted evidence of
+   incompleteness as risk acceptance. Name the 13 accountable decision roles
+   and obtain their dated evidence/acceptance before reassessing S1.
 2. Resolve S2 custody and the remaining S3 lifecycle/legal/privacy/target facts
    in parallel with ordinary provider/domain work. Keep credentials opaque and
    all S3 results non-durable until those gates are accepted.
@@ -135,12 +155,23 @@ W9 is complete only when all of the following are true:
 
 ## Current next action
 
-W9-S1A, W9-S3A and W9-S3B are already implemented and integrated. The next
-assurance action remains obtaining or repeating a fresh independent review of
-the exact W9-S1A evidence. In parallel, named legal/privacy/security/operations
-owners must supply and accept the remaining S2/S3 evidence recorded in
-`W9_SECURITY_DECISION_DOSSIER.md`, including exact retention/erasure/legal-hold
-and backup-expiry rules, custody and target/datastore facts.
+W9-S1A/S1B, W9-S3A and W9-S3B are already implemented and integrated. The next
+W9 assurance action is not another evidence-only reconciliation: the 13
+currently unnamed accountable decision roles must be named without inference,
+and the required dated human/provider/target/legal/privacy/security/operations
+evidence and acceptance must be obtained. This includes the remaining S2/S3
+evidence recorded in `W9_SECURITY_DECISION_DOSSIER.md`: exact
+retention/erasure/legal-hold and backup-expiry rules, custody and
+target/datastore facts. S1 must then be assessed against the exact resulting
+launch candidate; the accepted S1 findings and S1B reconciliation do not
+pre-approve that assessment.
+
+For avoidance of doubt, the integrated gap register's `ACT-01` and “Immediate
+package boundary” text predates S1B acceptance. Those two self-referential
+selection statements are satisfied by `587828337e01f269320048847b3250a690ce6133`
+and its independent review. All substantive retention, custody, target,
+provider, ownership, operations and acceptance gaps recorded around them remain
+open.
 
 `FD-W9-001` authorises the bounded minimised persistence design represented by
 S3A/S3B, but expressly leaves those legal/privacy/security/target matters open.
