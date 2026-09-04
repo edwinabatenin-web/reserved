@@ -3,7 +3,7 @@
 ## Status and scope
 
 This package supplies a pure, provider-neutral, route-less paid-access decision
-kernel for the exact W10-S2F/S5A paid boundary. It covers 27 paid endpoints in
+kernel for the exact W10-S2F/S5A paid boundary. It covers 28 paid endpoints in
 the accepted S5A class
 `authenticated_product_candidate_pending_founder_decision` and produces a
 deterministic allow/deny candidate for one endpoint, authenticated owner,
@@ -66,6 +66,7 @@ The exact paid set is:
 26. `hicbc.annual_preview` — independently gated non-production manual source;
     classification only, not runtime entitlement enforcement.
 27. `v2.paye_manual_baseline` — independently gated non-production manual partial capture/review only; classification does not enforce runtime entitlement.
+28. `v2.mtd_manual_scope` — independently gated non-production unsaved manual scope indication only; classification does not enforce runtime entitlement.
 
 The public/auth/legal/support class, billing purchase/return/recovery class and
 the separately reconciled internal/admin/closed class are deliberately absent.

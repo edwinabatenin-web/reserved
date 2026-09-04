@@ -271,9 +271,10 @@ def test_candidate_is_confined_to_exact_three_owned_paths_and_base():
 
 
 def test_paid_endpoint_boundary_is_exact_s5a_settled_class():
-    assert len(subject.PAID_ENDPOINTS) == 27
-    assert len(set(subject.PAID_ENDPOINTS)) == 27
+    assert len(subject.PAID_ENDPOINTS) == 28
+    assert len(set(subject.PAID_ENDPOINTS)) == 28
     assert "v2.paye_manual_baseline" in subject.PAID_ENDPOINTS
+    assert "v2.mtd_manual_scope" in subject.PAID_ENDPOINTS
     assert subject.PAID_ENDPOINTS == inventory_paid_endpoints()
     assert "v2.billing_plans" not in subject.PAID_ENDPOINTS
     assert "api.health" not in subject.PAID_ENDPOINTS
@@ -1144,6 +1145,6 @@ def test_evidence_states_non_activation_and_provisional_protocol_limits():
         "pair's exact adjacency",
         "globally latest durable state",
         "Repeating evaluation of the same",
-        "27 paid endpoints",
+        "28 paid endpoints",
     ):
         assert phrase in text

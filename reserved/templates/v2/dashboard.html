@@ -2,6 +2,9 @@
 {% block title %}Dashboard — Reserved™{% endblock %}
 {% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
+{% if mtd_manual_available %}
+<section class="panel"><a href="{{ url_for('v2.mtd_manual_scope') }}">Could Making Tax Digital apply to you?</a><p>Check a limited, unsaved indication from your completed-year manual facts.</p></section>
+{% endif %}
 {% if paye_manual_available %}
 <section class="panel"><a href="{{ url_for('v2.paye_manual_baseline') }}">Enter a manual PAYE baseline for one employment</a><p>Review partial cumulative facts only — not saved and not an annual tax estimate.</p></section>
 {% endif %}
