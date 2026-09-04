@@ -20,6 +20,9 @@ import reserved.billing.paid_access_guard as subject
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "6f3cb30d1bedcebe930084d56c64ab83ff719d5a"
 BASE_TREE = "ef36688a8bd07a58b98aa54412cd14b1d7c7d86c"
+SOURCE_CHECKPOINT = "88a3c879fbacad9e3f9feebe02764499f1f53daa"
+INTEGRATION_PARENT = "47d2ae9c1faf220789bc8ec75f7898c3dca4651a"
+INTEGRATION_CHECKPOINT = "824b3060c950ce7f623d29aeadc53ede34b6c565"
 OWNED_PATHS = {
     "docs/W10_S5D_PAID_ACCESS_GUARD.md",
     "reserved/billing/paid_access_guard.py",
@@ -240,9 +243,19 @@ def inventory_paid_endpoints():
 def test_candidate_is_confined_to_exact_three_owned_paths_and_base():
     changed = git_text("diff", "--name-only", "HEAD").splitlines()
     untracked = git_text("ls-files", "--others", "--exclude-standard").splitlines()
-    assert set(changed + untracked) <= OWNED_PATHS
-    assert git_text("rev-parse", "HEAD") == BASE
-    assert git_text("rev-parse", "HEAD^{tree}") == BASE_TREE
+    assert set(changed + untracked) <= {"tests/test_w10_paid_access_guard.py"}
+
+    assert git_text("rev-parse", f"{BASE}^{{tree}}") == BASE_TREE
+    for checkpoint, parent in (
+        (SOURCE_CHECKPOINT, BASE),
+        (INTEGRATION_CHECKPOINT, INTEGRATION_PARENT),
+    ):
+        assert git_text("rev-parse", f"{checkpoint}^") == parent
+        paths = set(
+            git_text("diff-tree", "--no-commit-id", "--name-only", "-r", checkpoint)
+            .splitlines()
+        )
+        assert paths == OWNED_PATHS
 
 
 def test_paid_endpoint_boundary_is_exact_s5a_settled_class():
