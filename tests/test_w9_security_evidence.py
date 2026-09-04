@@ -44,6 +44,31 @@ S5C_EVIDENCE_REFRESH_PATHS = {
     "tests/test_w10_s2c_policy_evidence.py",
     "tests/test_w9_security_evidence.py",
 }
+ENTITLEMENT_EVIDENCE_RECONCILIATION_COMMIT = (
+    "4e1f226e2109257e46e5865fe471564df1758246"
+)
+ENTITLEMENT_EVIDENCE_RECONCILIATION_PARENT = (
+    "48a97042fc0e17997bf2d23a4687e79c20b74b9e"
+)
+ENTITLEMENT_EVIDENCE_RECONCILIATION_PATHS = {
+    "docs/W10_S2B_FAIL_CLOSED_LAUNCH_DEFAULTS.md",
+    "docs/W10_S2C_POLICY_EVIDENCE_DOSSIER.md",
+    "docs/W10_S2D_BILLING_ACCOUNT_RECOVERY_CONTRACT.md",
+    "docs/W10_S4B_CHECKOUT_INTENT_CONTRACT.md",
+    "docs/W10_S4C_PORTAL_INTENT_CONTRACT.md",
+    "docs/W10_S6E_PAYMENT_RECOVERY_PRESENTATION_EVIDENCE.md",
+    "docs/W10_S7A_BILLING_THREAT_MODEL.md",
+    "docs/W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md",
+    "tests/test_w10_billing_account_recovery_contract.py",
+    "tests/test_w10_billing_threat_model.py",
+    "tests/test_w10_checkout_intent_contract.py",
+    "tests/test_w10_fail_closed_launch_defaults.py",
+    "tests/test_w10_payment_recovery_presentation.py",
+    "tests/test_w10_portal_intent_contract.py",
+    "tests/test_w10_s2c_policy_evidence.py",
+    "tests/test_w10_tax_invoice_prerequisite_contract.py",
+    "tests/test_w9_security_evidence.py",
+}
 
 # ── Mandatory structured IDs ──────────────────────────────────────────────────
 
@@ -874,11 +899,21 @@ def test_no_scope_drift_across_package_history():
             text=True,
             check=True,
         ).stdout.split()
-        assert changed == S5C_EVIDENCE_REFRESH_PATHS and identity == [
+        is_s5c_refresh = changed == S5C_EVIDENCE_REFRESH_PATHS and identity == [
             commit,
             S5C_EVIDENCE_REFRESH_PARENT,
-        ], (
+        ]
+        is_entitlement_reconciliation = (
+            commit == ENTITLEMENT_EVIDENCE_RECONCILIATION_COMMIT
+            and changed == ENTITLEMENT_EVIDENCE_RECONCILIATION_PATHS
+            and identity == [
+                ENTITLEMENT_EVIDENCE_RECONCILIATION_COMMIT,
+                ENTITLEMENT_EVIDENCE_RECONCILIATION_PARENT,
+            ]
+        )
+        assert is_s5c_refresh or is_entitlement_reconciliation, (
             f"scope drift in package commit {commit}: {drift}; expected either "
             f"W9 evidence-only paths {sorted(S1_EVIDENCE_PATHS)} or the exact "
-            "one-generation S5C evidence-dependency refresh"
+            "one-generation S5C evidence-dependency refresh or the exact "
+            "accepted W9/W10 entitlement evidence reconciliation"
         )
