@@ -20,10 +20,10 @@ W9_TEXT = W9_MAP.read_text(encoding="utf-8")
 START = "<!-- W10-COMPLETION-MAP-RECONCILIATION-BEGIN -->"
 END = "<!-- W10-COMPLETION-MAP-RECONCILIATION-END -->"
 
-BASE = "7a1dbdbb27b2132d62c92ea4b965e81436f72f85"
-BASE_TREE = "64463d3d586c31fd8757907399132f73caa2455f"
+BASE = "5e6ea885a371bb15aaba3bf8abb5bb81a99f6c2e"
+BASE_TREE = "585c3364cfb7bafeecdaf7c1af7a2b804202e6df"
 BASE_PARENTS = (
-    "824b3060c950ce7f623d29aeadc53ede34b6c565",
+    "e145e43631f9a03df70a378ac1eafbdf3974afa9",
 )
 Q1_Q2_CHECKPOINT = "2f0e8f0bb3377341b97dbfa760f9fb6aa529d3c9"
 Q1_Q2_INTEGRATION = "e78a3a4bfaef16357512ec01f4e7c9619932e95f"
@@ -90,6 +90,35 @@ EXPECTED_COMPONENTS = {
             "tests/test_w9_security_evidence.py",
         ),
     },
+    "W10-S5A-HICBC-refresh": {
+        "accepted_checkpoint": "8480264e664a91a26c062e371b12192f9a628a4a",
+        "accepted_tree": "559bfe4c77c5e5f3bf59553d91c78c614ac060ff",
+        "integration_commit": "95dd628e27f7261282f2ecf55d4cf29720329b91",
+        "integration_tree": "559bfe4c77c5e5f3bf59553d91c78c614ac060ff",
+        "paths": (
+            "docs/W10_S5A_PAID_SURFACE_INVENTORY.md",
+            "tests/test_w10_paid_surface_inventory.py",
+        ),
+    },
+    "W10-S5B-HICBC-downstream-reconciliation": {
+        "accepted_checkpoint": "d954ddcc88466967cc16efcaba02778e03a0f9a2",
+        "accepted_tree": "c72ff560e5f931f9f539114846d9f3d0cc5ced53",
+        "integration_commit": "d954ddcc88466967cc16efcaba02778e03a0f9a2",
+        "integration_tree": "c72ff560e5f931f9f539114846d9f3d0cc5ced53",
+        "paths": (
+            "docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md",
+            "docs/W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md",
+            "tests/test_w10_internal_route_reconciliation.py",
+            "tests/test_w9_security_evidence.py",
+        ),
+    },
+    "W10-S5B-HICBC-lineage-sentinel": {
+        "accepted_checkpoint": "05134e536d0428e0bcdfab96a109d64f46d2d9a4",
+        "accepted_tree": "60a30a3ad50bfdd6682b5ba95b19d3bb303272e4",
+        "integration_commit": "05134e536d0428e0bcdfab96a109d64f46d2d9a4",
+        "integration_tree": "60a30a3ad50bfdd6682b5ba95b19d3bb303272e4",
+        "paths": ("tests/test_w9_security_evidence.py",),
+    },
     "W10-S5D-product": {
         "accepted_checkpoint": "88a3c879fbacad9e3f9feebe02764499f1f53daa",
         "accepted_tree": "24f83e9560588676b1c89cd87194245a2f24580b",
@@ -107,6 +136,31 @@ EXPECTED_COMPONENTS = {
         "integration_commit": "7a1dbdbb27b2132d62c92ea4b965e81436f72f85",
         "integration_tree": "64463d3d586c31fd8757907399132f73caa2455f",
         "paths": ("tests/test_w10_paid_access_guard.py",),
+    },
+    "W10-S3C-runtime-entitlement-admission": {
+        "accepted_checkpoint": "b458f2df20aa29aa73b1cc56de2126cb1c26405a",
+        "accepted_tree": "3d56de032c2602e4804f71b36aa23e059d2f46de",
+        "integration_commit": "be417aed05a99199ee2bc54679ca598551947f95",
+        "integration_tree": "22da632b2e2e3de815f291bb6e06d80a849d038d",
+        "paths": (
+            "docs/W10_S3C_RUNTIME_ENTITLEMENT_ADMISSION.md",
+            "reserved/billing/runtime_entitlement_admission.py",
+            "tests/test_w10_runtime_entitlement_admission.py",
+        ),
+    },
+    "W10-S3C-source-sentinel-correction": {
+        "accepted_checkpoint": "3111556b3b3f93c84c024303c1845e9b3d808dff",
+        "accepted_tree": "9444d4be49b21031076a91640a25995fe5b954c7",
+        "integration_commit": "e145e43631f9a03df70a378ac1eafbdf3974afa9",
+        "integration_tree": "c2d3ae3d3cbcacfd28b57980951c781ecb2fa4ee",
+        "paths": ("tests/test_w10_runtime_entitlement_admission.py",),
+    },
+    "W10-S3C-integration-lineage-correction": {
+        "accepted_checkpoint": "5e6ea885a371bb15aaba3bf8abb5bb81a99f6c2e",
+        "accepted_tree": "585c3364cfb7bafeecdaf7c1af7a2b804202e6df",
+        "integration_commit": "5e6ea885a371bb15aaba3bf8abb5bb81a99f6c2e",
+        "integration_tree": "585c3364cfb7bafeecdaf7c1af7a2b804202e6df",
+        "paths": ("tests/test_w10_runtime_entitlement_admission.py",),
     },
     "W10-S7A": {
         "accepted_checkpoint": "699aba7facddf935b0b71797bca0abf17628dff9",
@@ -328,21 +382,15 @@ EXPECTED_HISTORICAL_MAP_BINDINGS = (
         "tree": "5d9ab24a68832482ceb3314ca335b54f102ea4da",
         "sha256": "19628e1c8638356d8250986830697e764be1aa0e9c02df958817607d2544fabf",
     },
+    {
+        "commit": "15335ad003687b8f6a08020de548fa0c59a45882",
+        "tree": "56c443d0ceb1f7bf261e81442f35b8820a78ae6d",
+        "sha256": "518947a496aebbcbeaa87db912c12367394fdbccc52c7f7bc4f41a48b5ea105b",
+    },
 )
 ALLOWED_CANDIDATE_PATHS = {
-    "docs/W9_COMPLETION_MAP.md",
     MAP_RELATIVE_PATH,
-    "tests/test_w10_billing_account_recovery_contract.py",
-    "tests/test_w10_cancellation_presentation.py",
-    "tests/test_w10_checkout_intent_contract.py",
     "tests/test_w10_completion_map.py",
-    "tests/test_w10_internal_route_reconciliation.py",
-    "tests/test_w10_payment_recovery_presentation.py",
-    "tests/test_w10_portal_intent_contract.py",
-    "tests/test_w10_provider_lifecycle_authority.py",
-    "tests/test_w10_s2c_policy_evidence.py",
-    "tests/test_w10_tax_invoice_prerequisite_contract.py",
-    "tests/test_w8_w10_subscription_lifecycle_composition.py",
 }
 
 
@@ -389,7 +437,7 @@ def test_candidate_is_confined_to_the_authorised_map_and_dedicated_test() -> Non
 
 def test_reconciliation_is_bound_to_exact_clean_merge_base_without_head_lock() -> None:
     data = reconciliation()
-    assert data["schema_version"] == "W10-completion-map/2026-09-04/reconciliation-8"
+    assert data["schema_version"] == "W10-completion-map/2026-09-04/reconciliation-9"
     assert data["reconciliation_base"] == {
         "commit": BASE,
         "tree": BASE_TREE,
@@ -601,6 +649,12 @@ def test_post_entitlement_components_bind_exact_integration_blobs_and_paths() ->
         "W9-evidence-package-history-correction",
         "W10-S5D-product",
         "W10-S5D-lineage-correction",
+        "W10-S3C-runtime-entitlement-admission",
+        "W10-S3C-source-sentinel-correction",
+        "W10-S3C-integration-lineage-correction",
+        "W10-S5A-HICBC-refresh",
+        "W10-S5B-HICBC-downstream-reconciliation",
+        "W10-S5B-HICBC-lineage-sentinel",
     )
 
     for name in names:
@@ -671,7 +725,8 @@ def test_s5d_records_exact_route_less_kernel_and_lineage_correction() -> None:
         "route-less provider-neutral guard kernel",
         "exact 25 paid endpoints",
         "`FD-W10-003` lifecycle and `FD-W10-004` withdrawal consequences",
-        "no authoritative runtime adapter, persistence, provider admission, route wiring or live enforcement",
+        "no provider authentication, global durability/latest-state",
+        "route wiring or live enforcement",
         "S5 is therefore partial, not complete",
         "0/8 slices complete",
         "terminal gate remains 0/13",
@@ -692,6 +747,59 @@ def test_finite_slice_and_terminal_denominators_remain_structurally_exact() -> N
     assert "0/8 (0%)" in TEXT
     assert "terminal gate remains 0/13" in TEXT
     assert "W9 remains 0/5" in TEXT
+
+
+def test_s3c_binds_source_integration_corrections_and_stays_partial() -> None:
+    components = reconciliation()["components"]
+    product = components["W10-S3C-runtime-entitlement-admission"]
+    source_sentinel = components["W10-S3C-source-sentinel-correction"]
+    integration_lineage = components["W10-S3C-integration-lineage-correction"]
+
+    assert git_text("show", "-s", "--format=%P", source_sentinel["accepted_checkpoint"]) == (
+        product["accepted_checkpoint"]
+    )
+    assert git_text("show", "-s", "--format=%P", source_sentinel["integration_commit"]) == (
+        product["integration_commit"]
+    )
+    assert git_text("show", "-s", "--format=%P", integration_lineage["integration_commit"]) == (
+        source_sentinel["integration_commit"]
+    )
+
+    for statement in (
+        "owner-bound route-less non-durable\nruntime-entitlement admission seam compatible with S5D",
+        "does not authenticate the\nprovider or caller",
+        "globally latest durable state",
+        "replay or\nforks across processes",
+        "wire any route or enforce access live",
+        "S3 remains incomplete",
+        "S5 remains partially implemented but incomplete",
+        "0/8 slices complete",
+        "terminal gate remains 0/13",
+    ):
+        assert statement in TEXT
+
+
+def test_hicbc_refresh_and_downstream_lineage_are_exact_without_gate_movement() -> None:
+    components = reconciliation()["components"]
+    refresh = components["W10-S5A-HICBC-refresh"]
+    downstream = components["W10-S5B-HICBC-downstream-reconciliation"]
+    sentinel = components["W10-S5B-HICBC-lineage-sentinel"]
+
+    assert refresh["accepted_tree"] == refresh["integration_tree"]
+    assert git_text("show", "-s", "--format=%P", downstream["integration_commit"]) == (
+        refresh["integration_commit"]
+    )
+    assert git_text("show", "-s", "--format=%P", sentinel["integration_commit"]) == (
+        downstream["integration_commit"]
+    )
+    for statement in (
+        "exact 44 always-registered and 8 HICBC-conditional routes",
+        "without changing\nthe paid-boundary policy or closing S5",
+        "all 21 threats remain open",
+        "Provider, target,",
+        "Founder activation/release and launch authority",
+    ):
+        assert statement in TEXT
 
 
 def test_fd_w10_004_closes_only_the_q3_policy_layer() -> None:
@@ -816,7 +924,8 @@ def test_current_state_is_partial_non_authorising_and_keeps_every_gate_open() ->
         "no authenticated adapter, durable",
         "S5C implements five bounded",
         "S5D adds the independently reviewed route-less provider-neutral guard kernel",
-        "no authoritative runtime adapter, persistence, provider admission, route wiring or live enforcement",
+        "no provider authentication, global durability/latest-state",
+        "route wiring or live enforcement",
         "No S2 component supplies runtime/provider/persistence/refund/enforcement/launch assurance",
         "S2 remains incomplete",
         "post-S2D/S5C reconciliation is integrated",
