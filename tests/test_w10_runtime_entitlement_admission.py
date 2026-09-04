@@ -244,6 +244,38 @@ def s5d_result(prior, current, *, at=None):
 
 
 def test_candidate_or_source_checkpoint_is_exactly_scoped_to_declared_base():
+    # Source provenance remains immutable when unrelated reviewed packages
+    # advance HEAD. This check is not an acceptance gate for later packages.
+    assert git_text("rev-parse", f"{BASE}^{{tree}}") == BASE_TREE
+    for checkpoint, parent in (
+        (SOURCE_CHECKPOINT, BASE),
+        (INTEGRATION_SOURCE_CHECKPOINT, INTEGRATION_BASE),
+    ):
+        assert git_text("rev-list", "--parents", "-n", "1", checkpoint).split() == [
+            checkpoint, parent
+        ]
+        assert set(git_text("diff", "--name-only", parent, checkpoint).splitlines()) == OWNED_PATHS
+    for path in OWNED_PATHS:
+        assert git_text("rev-parse", f"{SOURCE_CHECKPOINT}:{path}") == git_text(
+            "rev-parse", f"{INTEGRATION_SOURCE_CHECKPOINT}:{path}"
+        )
+    reachable = subprocess.run(
+        ["git", "-C", str(ROOT), "merge-base", "--is-ancestor",
+         INTEGRATION_SOURCE_CHECKPOINT, "HEAD"],
+        capture_output=True,
+        check=False,
+    ).returncode
+    if reachable == 0:
+        # Bind current product and contract evidence to the accepted bytes.
+        # The test itself may evolve under its own independent review.
+        for path in OWNED_PATHS - {"tests/test_w10_runtime_entitlement_admission.py"}:
+            accepted = subprocess.run(
+                ["git", "-C", str(ROOT), "show", f"{SOURCE_CHECKPOINT}:{path}"],
+                capture_output=True, check=True,
+            ).stdout
+            assert (ROOT / path).read_bytes() == accepted
+        return
+    assert reachable == 1, "Git ancestry verification failed"
     head = git_text("rev-parse", "HEAD")
     changed = git_text("diff", "--name-only", "HEAD").splitlines()
     untracked = git_text("ls-files", "--others", "--exclude-standard").splitlines()
