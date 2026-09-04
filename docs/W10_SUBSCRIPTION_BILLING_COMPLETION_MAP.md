@@ -7,15 +7,15 @@
 **Original planning commit:** `b15d3fcfa423192e1a8a2e8d0a49851b366518f4`
 
 **Current integration reconciliation point:**
-`2ad4a63dd1f10ba38859050b47245c28390667d8` (tree
-`dfcadbfc60267dce4f90f231c2458b7545f58cf1`)
+`110a90043dfc770c70059482be9d7b7e237749a6` (tree
+`0d5b2e3e89334a58eab13f7ccdf5fb464ccf0079`)
 
 **Current status:** **S1 independently reviewed and integrated; S2A's
-provider/runtime-neutral authority, S3A's provider-neutral entitlement
-transition policy and S4A's disabled-first Stripe edge contract are independently
-reviewed and integrated; S2 partially implemented, with S3, S4 and S6 also
-partial; 0/8 slices complete on the strict
-accepted-evidence denominator; not launch-ready.**
+provider/runtime-neutral authority, S2B's four fail-closed engineering defaults,
+S3A's provider-neutral entitlement transition policy, S3B's detached event-inbox
+contract and S4A's disabled-first Stripe edge contract are independently reviewed
+and integrated; S2 partially implemented, with S3, S4 and S6 also partial;
+0/8 slices complete on the strict accepted-evidence denominator; not launch-ready.**
 
 This map gives the October-launch subscription and billing workstream a finite
 endpoint. It is a planning and assurance control, not a provider decision,
@@ -52,18 +52,32 @@ approval. `FOUNDER_DECISIONS.md` is authoritative where older material differs.
   credentials, activate billing, settle VAT/invoice treatment or authorise a
   charge.
 
-### Genuinely unresolved subordinate policy
+### Fail-closed defaults and genuinely unresolved subordinate policy
 
-Six settled policy keys are now explicit. Nine policy keys remain unresolved:
-refunds; tax invoicing/additional VAT presentation; promotion/discount mechanics;
-partner-offer handling; the exact paid-access surface; plan changes/proration;
-billing-account recovery; manual overrides; and post-settlement dispute,
-chargeback or reversal consequences. None may be silently inferred from a
-provider default. These are implementation policies or decisions for the
-appropriate product, finance/tax, legal, security and operational owners.
-Escalate new scope, consequential external commitments, material exceptions and
-high-risk business judgement for Founder authority; ordinary implementation
-detail and review are not Founder gates.
+Six Founder-settled policy keys are explicit. Integrated S2B at
+`1033c9fbef008dcd33125a0b14e7fb18b8846d19` closes four further keys only as
+ordinary engineering defaults under the accepted fail-closed boundaries:
+promotions/discounts remain a reserved capability but inactive; partner offers
+are disabled and unsupported; ordinary mid-cycle plan changes, proration and
+immediate cancellation are disabled while paid-period-end cancellation and the
+mandatory statutory/consumer-rights override are preserved; and no manual
+entitlement override exists, with corrections limited to append-only observation
+and reconciliation with zero direct entitlement effect. These details are not
+represented as separately Founder-settled policy.
+
+For historical continuity, the preceding S2A checkpoint described
+six settled policy keys and nine policy keys unresolved. The accepted S2B defaults reduce
+that current unresolved remainder to five; they do not retroactively expand
+Founder authority.
+
+Exactly five policy keys remain unresolved: refunds; tax invoicing/additional VAT
+presentation; the exact paid-access surface; billing-account recovery; and
+post-settlement dispute, chargeback or reversal consequences. None may be
+silently inferred from a provider default. They require the appropriate product,
+finance/tax, legal, security and operational evidence or decision. Escalate new
+scope, consequential external commitments, material exceptions and high-risk
+business judgement for Founder authority; ordinary implementation detail and
+review are not Founder gates.
 
 ## Baseline finding and owned outcome
 
@@ -76,11 +90,13 @@ and independently demonstrated in the target environment.
 
 The repository currently has a stable authenticated `users.id` boundary and
 owner-isolation tests, but authentication alone grants every protected V2 route.
-The integrated S1 catalogue/authority and S3A lifecycle transition policy now
-have focused billing tests, but there is still no durable subscription/billing
-schema or event inbox, provider-verified entitlement decision, server-side paid
-access gate, provider-backed checkout/customer-portal route, billing webhook or
-provider SDK. Authentication itself still lacks target-provider launch evidence.
+The integrated S1 catalogue/authority, S2B defaults, S3A lifecycle transition
+policy and S3B event-inbox contract now have focused billing tests, but S3B is a
+detached structural contract only: there is still no durable subscription/billing
+schema or implemented event inbox, provider authenticity or persistence,
+provider-verified entitlement decision, server-side paid-access gate,
+provider-backed checkout/customer-portal route, billing webhook or provider SDK.
+Authentication itself still lacks target-provider launch evidence.
 
 `docs/STRIPE_CONNECT_SPEC.md`, `reserved/providers/payments/base.py` and
 `reserved/providers/payments/stripe_connect.py` concern the separate movement
@@ -96,9 +112,9 @@ must not reuse either domain contract as if it were subscription billing.
 | Slice | Smallest coherent outcome | Current state | Dependencies and completion evidence |
 |---|---|---|---|
 | **W10-S1 — authority and provider-neutral contract** | Encode the versioned initial plan catalogue and a fail-closed inventory of required policy inputs, while representing discounts/offers only as a required capability. | **Independently reviewed, checkpointed and integrated at `9e8f94a...`.** Exact authority, billing boundary, adversarial integrity and affected/full regression evidence passed. The slice remains short of launch-evidence-complete because later provider/target evidence is outside S1. | Preserve the exact integrated S1 authority and its 15-key denominator. S2 must consume its closure-bound validation/projector protocol, never mutable raw attributes or provider defaults. |
-| **W10-S2 — provider and policy closure** | Record the selected billing provider and every launch lifecycle/access/promotion/invoice and post-settlement dispute/chargeback/reversal policy needed by later slices, with decision owner and rationale. | **S2A independently reviewed, checkpointed and integrated at `5464bfa...`: six settled policy keys and the provisional Stripe capability boundary are encoded; nine policy keys remain unresolved. S2 remains incomplete.** The accepted component is provider/runtime-neutral and does not activate billing. | Provider terms/DPA/fees and appropriate product, finance/tax, legal, security and operational review for the nine remaining keys. Complete only when no runtime behaviour relies on an undocumented provider default. |
-| **W10-S3 — durable billing and entitlement core** | Implement the owner-bound catalogue/version reference, billing account, subscription and settlement observations, event inbox, audit/reconciliation record and policy-derived entitlement boundary, including post-settlement dispute/chargeback/reversal observations without assuming their access consequence. | **S3A independently reviewed, checkpointed and integrated at `94bd87f...`: the provider-neutral lifecycle transition policy now covers initial paid access, paid-period cancellation, exact duplicate handling, fail-closed rejection of older/same-date distinct observations, seven-day `payment_recovery`, non-extension, paid/recovery time boundaries and suspension. S3 remains incomplete.** S3A explicitly does not verify provider events, persist state or enforce routes. | S1 and the relevant S2 policies; accepted S3A semantics; W9 datastore, retention, encryption/key-custody and erasure decisions. Still required: durable billing-account/subscription/event-inbox/audit/reconciliation records; migrations; ownership/concurrency; authenticated event source; dispute/chargeback/reversal and correction/deletion/retention tests; independent schema/security review. |
-| **W10-S4 — provider adapter and collection lifecycle** | Implement disabled-first provider customer/checkout/management, verified webhooks, reconciliation and offer primitives against the provider-neutral core. | **S4A independently reviewed, checkpointed and integrated at `2ad4a63...`: the current official Stripe Checkout, Customer Portal, webhook integrity, duplicate/order and subscription-status semantics are encoded as a disabled, network-inert, non-entitling edge contract. S4 remains incomplete.** No SDK, credential, webhook endpoint, persistence, session creation, charge or provider activation is present. | Preserve S4A's exact disabled-first boundary. Completion still requires applicable S2 policies, S3 identities/event inbox, approved credential custody, accepted provider terms/security boundary and sandbox access. Synthetic and sandbox tests must cover successful, declined, delayed, duplicate, replayed, out-of-order, forged, refunded, post-settlement disputed/charged-back/reversed and recovered cases. No configuration or credential alone may enable it. |
+| **W10-S2 — provider and policy closure** | Record the selected billing provider and every launch lifecycle/access/promotion/invoice and post-settlement dispute/chargeback/reversal policy needed by later slices, with decision owner and rationale. | **S2A and S2B are independently reviewed, checkpointed and integrated at `5464bfac7bec6b3456d1895b2355a7e8ce86859b` and `1033c9fbef008dcd33125a0b14e7fb18b8846d19`.** S2A encodes six Founder-settled keys and the provisional Stripe capability boundary. S2B closes only four ordinary fail-closed engineering defaults: inactive promotions, disabled/unsupported partner offers, disabled ordinary mid-cycle changes/proration and no manual entitlement override. Exactly five keys remain unresolved, so S2 remains incomplete. Both components are provider/runtime-neutral and do not activate billing. | Provider terms/DPA/fees and appropriate product, finance/tax, legal, security and operational evidence or decisions for refunds, tax invoicing/additional VAT presentation, the exact paid-access surface, billing-account recovery and post-settlement dispute/chargeback/reversal consequences. Complete only when no runtime behaviour relies on an undocumented provider default. |
+| **W10-S3 — durable billing and entitlement core** | Implement the owner-bound catalogue/version reference, billing account, subscription and settlement observations, event inbox, audit/reconciliation record and policy-derived entitlement boundary, including post-settlement dispute/chargeback/reversal observations without assuming their access consequence. | **S3A and S3B are independently reviewed, checkpointed and integrated at `94bd87f019dc226ec8c73f32515229189500cf06` and `5bc29bcb30c95ea7a5a9430104653b366d709eb6`.** S3A defines the provider-neutral lifecycle transition policy. S3B defines detached immutable shapes and fail-closed admission/reconciliation invariants for future owner-bound billing account, subscription, event, receipt and disposition records. S3 remains incomplete: S3B is contract-only and supplies no database schema, migration, implemented durable inbox, provider authenticity, persistence or entitlement decision. | S1 and the relevant S2 policies; accepted S3A/S3B semantics; W9 datastore, retention, encryption/key-custody and erasure decisions. Still required: durable billing-account/subscription/event-inbox/audit/reconciliation records; migrations; exclusive shared-file ownership and concurrency controls; authenticated event source; dispute/chargeback/reversal and correction/deletion/retention tests; independent schema/security/privacy review. |
+| **W10-S4 — provider adapter and collection lifecycle** | Implement disabled-first provider customer/checkout/management, verified webhooks, reconciliation and offer primitives against the provider-neutral core. | **S4A independently reviewed, checkpointed and integrated at `2ad4a63dd1f10ba38859050b47245c28390667d8`: the current official Stripe Checkout, Customer Portal, webhook integrity, duplicate/order and subscription-status semantics are encoded as a disabled, network-inert, non-entitling edge contract. S4 remains incomplete.** No SDK, credential, webhook endpoint, persistence, session creation, charge or provider activation is present. | Preserve S4A's exact disabled-first boundary. Completion still requires applicable S2 policies, S3B-compatible durable identities/event inbox, approved credential custody, accepted provider terms/security boundary and sandbox access. Synthetic and sandbox tests must cover successful, declined, delayed, duplicate, replayed, out-of-order, forged, refunded, post-settlement disputed/charged-back/reversed and recovered cases. No configuration or credential alone may enable it. |
 | **W10-S5 — server-side access and administration** | Apply the approved entitlement decision, including explicitly approved post-settlement dispute/chargeback/reversal consequences, to every in-scope paid surface and supply least-privilege, audited support/admin correction tools. | **Not started.** | S2 access/lifecycle/override policy and S3 entitlement API; can use synthetic events while S4 proceeds. Route inventory, cross-user, stale/unknown status, dispute/chargeback/reversal, revocation, cache, concurrent update, bypass and audited-override tests; authentication and client-side hiding must never substitute for server enforcement. |
 | **W10-S6 — customer billing journeys** | Deliver truthful plan/offer presentation and the approved checkout, success/pending/failure, renewal/cancellation, invoice/receipt/refund, post-settlement dispute/chargeback/reversal and account-management journeys. | **Partial local implementation.** Integrated S6A–D work provides plan presentation, a safe renderer, an authenticated plans preview and an authenticated plan-selection preview (`45ade8e...`, `23d04a6...`, `3e05fb7...`, `46e2141...`). It does not provide provider-backed checkout or lifecycle journeys and is not counted complete. | Preserve those components. Completion still requires S1 catalogue; relevant S2 policy; stable S3-S5 contracts; provider-backed checkout/account-management states; exact price/VAT copy review; accessibility/browser evidence; no surprise renewal or invented refund/grace/dispute outcome; and clear recovery/support paths. |
 | **W10-S7 — billing security, privacy and operations** | Close W10-specific abuse, privacy, reconciliation, monitoring, support, recovery and incident controls without duplicating W9's general control plane. | **Not started.** | Threat model plus S2-S6; W9 custody, retention, monitoring, incident and target-runtime controls. Exercised webhook/credential rotation, alerting, ledger-provider and dispute/chargeback/reversal reconciliation, outage/backlog recovery, account erasure/retention and support runbooks with redacted evidence. |
@@ -126,16 +142,22 @@ rather than growing the map for ordinary fixes.
 
 ## Dependencies, parallelism and collision boundaries
 
-1. Preserve the independently reviewed integrated S1, S2A, S3A and S4A contracts.
-   S2A encodes the six settled provider/lifecycle inputs without closing S2;
-   S3A encodes the bounded transition policy without claiming provider
-   verification, persistence or enforcement. S4A encodes only the disabled
-   provider edge and cannot verify a callback or emit entitlement. Provider diligence
-   and the nine remaining policies may run in parallel, but S2 closes only
-   through explicit accepted evidence.
-2. S3 follows the relevant S1/S2 contracts. S4 and S5 can then run in parallel:
-   S4 owns provider translation, while S5 consumes only synthetic or canonical
-   billing observations and entitlement decisions.
+1. Preserve the independently reviewed integrated S1, S2A, S2B, S3A, S3B and
+   S4A contracts. S2A encodes the six Founder-settled provider/lifecycle inputs;
+   S2B closes only four fail-closed engineering defaults and leaves exactly five
+   keys unresolved, so it does not close S2. S3A encodes the bounded transition
+   policy without claiming provider verification, persistence or enforcement.
+   S3B encodes detached structural record and reconciliation invariants, not a
+   durable inbox, authenticated source, persistence layer or entitlement
+   decision. S4A encodes only the disabled provider edge and cannot verify a
+   callback or emit entitlement. Provider diligence and the five remaining
+   policies may run in parallel, but S2 closes only through explicit accepted
+   evidence.
+2. Durable S3 implementation follows the relevant S1/S2 contracts and must
+   preserve S3A/S3B. S4 and S5 can then run in parallel: S4 owns authenticated
+   provider translation, while S5 consumes only synthetic or canonical billing
+   observations and entitlement decisions. Neither may treat S3B structural
+   issuance as provider authenticity or durable admission.
 3. Preserve S6A–D's integrated presentation and authenticated preview work.
    Binding customer actions and the remaining provider-backed lifecycle journeys
    wait for stable S2-S5 contracts. S7 develops alongside S3-S6 and is exercised
@@ -153,7 +175,8 @@ rather than growing the map for ordinary fixes.
 
 Upstream contracts are the Founder authority snapshot, authenticated stable user
 identity and the W9 custody/data-lifecycle/operations boundaries. External
-dependencies are provider selection and terms, current provider documentation,
+dependencies are acceptance of Stripe terms and onboarding under the provisional
+baseline (or an expressly authorised replacement), current provider documentation,
 sandbox access, approved credentials/key custody, target hosting, finance/tax
 review of billing VAT/invoices and independent target review. W10 is independent
 of Yapily PIS/VRP and the tax calculation engine except for shared identity,
@@ -181,7 +204,7 @@ external contracting/onboarding queues can extend elapsed time beyond it.
 Total active effort is roughly **32–55 person-days**. A conservative elapsed
 range is **7–14 weeks** with the assumed parallelism; the serial critical path
 is roughly **29–58 working days** before any longer external queue is known.
-Provider selection, contracting, credentials or sandbox queues are the largest
+Provider terms/final acceptance and onboarding, credentials or sandbox queues are the largest
 schedule risks and may extend elapsed time beyond fourteen weeks; they are not
 disguised inside the engineering estimate.
 
@@ -240,23 +263,34 @@ W10 is complete only when all thirteen checks pass:
 
 ## Current next action
 
-W10-S1, S2A, S3A and S4A are independently reviewed and integrated. S2A records the
-six settled provider and paid-lifecycle decisions while preserving the nine
-unresolved keys. S3A consumes that explicit subset as a provider-neutral
-transition policy without claiming provider verification, persistence or route
-enforcement. S4A records the official Stripe edge semantics without providing a
-runtime adapter, signature verification or activation. The next action is the
-smallest non-invented durable S3/event-inbox
-boundary that can proceed once its W9 datastore, retention and key-custody
-dependencies are accepted, alongside bounded work to close remaining S2
-evidence. Further provider-edge S4 implementation must preserve S4A, proceed only
-against current authoritative technical evidence and remain disabled-first.
+W10-S1, S2A, S2B, S3A, S3B and S4A are independently reviewed and integrated.
+S2A records the six Founder-settled provider and paid-lifecycle decisions. S2B
+closes only the four accepted fail-closed engineering defaults and preserves the
+exact five unresolved keys. S3A remains the provider-neutral transition policy;
+S3B is only the detached record/admission/reconciliation contract and provides
+no durable inbox, provider authenticity, persistence or entitlement decision.
+S4A remains a disabled provider-edge contract with no runtime adapter, signature
+verification or activation.
+
+The next smallest non-invented package is a paid-access-surface inventory and
+boundary evidence slice: enumerate public, authenticated, UI, API, support,
+legal, health and static surfaces without changing enforcement. It may proceed
+alongside bounded specialist/provider evidence for refunds, VAT/invoicing,
+billing-account recovery and post-settlement consequences, and the exact Founder
+questions for paid-access scope and consequential post-settlement access. A
+durable S3 implementation may proceed only when its datastore, migration
+ownership, retention/erasure, key-custody, minimisation, authenticated-source and
+independent-review dependencies are accepted; it must implement rather than
+merely relabel S3B. Further provider-edge S4 implementation must preserve S4A,
+proceed only against current authoritative technical evidence and remain
+disabled-first.
 
 No provider adapter, credential, persistence migration, access grant or checkout
 package follows merely from the S1 contract. Provider-specific implementation
 waits for a selected provisional provider boundary and applicable external
-evidence. Provider-neutral entitlement design may begin only against explicit
-lifecycle decisions and the approved W9 custody/data-lifecycle boundary.
+evidence. Preserve the accepted non-durable S3A/S3B contracts. Further durable
+entitlement/event-inbox implementation requires the approved W9
+custody/data-lifecycle boundary as well as the explicit lifecycle decisions.
 
 ## Explicitly out of scope
 
@@ -271,11 +305,14 @@ launch policy may describe a deliberately unsupported case; unsupported
 sophistication does not create another slice unless authoritative scope changes.
 
 **Map disposition:** **S1 independently reviewed and integrated; S2 partially
-implemented with independently reviewed/integrated S2A, six settled policy keys
-and nine policy keys unresolved; S3 partially implemented with independently
-reviewed/integrated S3A but no durable/provider/enforcement boundary; S4
-partially implemented with independently reviewed/integrated S4A but no runtime
-adapter, signature verification, persistence or activation; S6 partially
-implemented/integrated; strict completion remains 0/8 pending S2
-policy closure and each slice's remaining completion evidence.** Target evidence
-and launch authority remain open.
+implemented with independently reviewed/integrated S2A and S2B, six
+Founder-settled keys, four fail-closed engineering defaults and exactly five
+policy keys unresolved; S3 partially implemented with independently
+reviewed/integrated S3A and detached contract-only S3B but no durable inbox,
+provider-authenticated source, persistence or enforcement boundary; S4 partially
+implemented with independently reviewed/integrated S4A but no runtime adapter,
+signature verification, persistence or activation; S6 partially
+implemented/integrated; strict completion remains 0/8 pending S2 policy closure
+and every slice's remaining completion evidence.** Provider, target,
+specialist-review, residual-risk, Founder activation/release and launch authority
+gates remain open.
