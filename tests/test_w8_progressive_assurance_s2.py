@@ -529,18 +529,201 @@ def test_presentation_and_persistence_handoffs_are_absent():
     )
     assert permitted_handoff.is_file() and not permitted_handoff.is_symlink()
     assert permitted_handoff.resolve(strict=True) == permitted_handoff
+    permitted_hicbc = _root() / "reserved/services/hicbc_annual_source_runtime.py"
+    assert permitted_hicbc.is_file() and not permitted_hicbc.is_symlink()
+    assert permitted_hicbc.resolve(strict=True) == permitted_hicbc
     violations = []
     for layer in layers:
         paths = (layer,) if layer.is_file() else tuple(layer.rglob("*.py"))
         for path in paths:
             text = path.read_text(errors="ignore")
+            violations.extend(_hicbc_boundary_source_violations(path, text))
             if path == permitted_handoff:
                 violations.extend(_annual_cash_handoff_source_violations(text))
+            elif path == permitted_hicbc:
+                # One already-authorised caller; its AST is checked above.
+                # No other annual/persistence/customer exposure is admitted.
+                continue
             else:
                 for marker in internal_markers:
                     if marker in text:
                         violations.append(f"{path.relative_to(_root())} contains {marker}")
     assert violations == [], "internal annual components leaked into customer/persistence layers"
+
+
+def _hicbc_boundary_source_violations(path: Path, source: str) -> list[str]:
+    """Local mirror of the accepted HICBC AST barrier, not a test-helper import."""
+    permitted = _root() / "reserved/services/hicbc_annual_source_runtime.py"
+    caller = _root() / "reserved/web/hicbc.py"
+    service = "reserved.services.hicbc_annual_source_runtime"
+    symbol = "own_ani_from_manual_annual"
+    if path != permitted:
+        if path != caller:
+            return ["additional HICBC annual-source consumer"] if (
+                symbol in source or "hicbc_annual_source_runtime" in source
+            ) else []
+        tree = ast.parse(source)
+        imports = [node for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+                   and node.module == service]
+        if len(imports) != 1 or imports[0].level or [
+            (alias.name, alias.asname) for alias in imports[0].names
+        ] != [(symbol, None)]:
+            return ["HICBC caller requires exact unaliased source import"]
+        calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == symbol]
+        previews = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                    and node.name == "annual_preview"]
+        if (len(calls) != 1 or len(previews) != 1
+                or calls[0] not in list(ast.walk(previews[0]))
+                or ast.unparse(calls[0]) != "own_ani_from_manual_annual(payload, tax_year)"):
+            return ["HICBC source may be called only by the named preview"]
+        parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr in {
+                symbol, "hicbc_annual_source_runtime"
+            }:
+                return ["HICBC source module/function attribute is forbidden"]
+            if isinstance(node, ast.Import) and any(
+                "hicbc_annual_source_runtime" in alias.name for alias in node.names
+            ):
+                return ["HICBC source module import/alias is forbidden"]
+            if isinstance(node, ast.ImportFrom) and node not in imports and (
+                "hicbc_annual_source_runtime" in (node.module or "")
+                or any(alias.name in {symbol, "hicbc_annual_source_runtime"}
+                       for alias in node.names)
+            ):
+                return ["additional HICBC source import is forbidden"]
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and (
+                "hicbc_annual_source_runtime" in node.value or symbol in node.value
+            ):
+                return ["dynamic HICBC source reference is forbidden"]
+            if isinstance(node, ast.Name) and node.id == symbol and isinstance(node.ctx, ast.Load):
+                parent = parents.get(node)
+                if not (isinstance(parent, ast.Call) and parent.func is node):
+                    return ["HICBC source function alias is forbidden"]
+        return []
+
+    allowed_imports = {
+        ("decimal", "Decimal", None),
+        ("reserved.engines.integrated_annual_position", "calculate_annual_position", None),
+    }
+    allowed_calls = {
+        "re.compile", "frozenset", "type", "set", "ValueError", "_MONEY.fullmatch",
+        "calculate_annual_position", "ani.is_finite",
+    }
+    tree = ast.parse(source)
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    violations = []
+    # Naming a returned whole result ``ani`` must not bypass the scalar boundary.
+    producer_calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                      and isinstance(node.func, ast.Name)
+                      and node.func.id == "calculate_annual_position"]
+    if len(producer_calls) != 1:
+        violations.append("exactly one annual producer is required")
+    elif not (
+        isinstance(parents.get(producer_calls[0]), ast.Assign)
+        and ast.unparse(parents[producer_calls[0]])
+        == "result = calculate_annual_position(facts, tax_year=tax_year)"
+    ):
+        violations.append("annual producer must bind only the reviewed result")
+    for name, expected in (
+        ("result", "result = calculate_annual_position(facts, tax_year=tax_year)"),
+        ("ani", "ani = result.adjusted_net_income"),
+    ):
+        writes = [node for node in ast.walk(tree) if isinstance(node, ast.Name)
+                  and node.id == name and isinstance(node.ctx, ast.Store)]
+        if (len(writes) != 1 or not isinstance(parents.get(writes[0]), ast.Assign)
+                or ast.unparse(parents[writes[0]]) != expected):
+            violations.append(f"{name} requires its single reviewed binding")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if [(a.name, a.asname) for a in node.names] != [("re", None)]:
+                violations.append("unauthorised import")
+        if isinstance(node, ast.ImportFrom):
+            if node.level or any((node.module, a.name, a.asname) not in allowed_imports for a in node.names):
+                violations.append("unauthorised from-import")
+        if isinstance(node, ast.Call) and _annual_cash_call_target(node.func) not in allowed_calls:
+            violations.append("unauthorised call")
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            if node.value.id == "result" and node.attr not in {"adjusted_net_income", "unsupported_families"}:
+                violations.append("annual result exposure")
+        if isinstance(node, ast.Return) and (node.value is None or ast.unparse(node.value) != "ani"):
+            violations.append("only own ANI may leave source")
+        if isinstance(node, ast.Name) and node.id in {"getattr", "globals", "locals", "__builtins__"}:
+            violations.append("dynamic access")
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            parent = parents.get(node)
+            if node.id == "result" and not isinstance(parent, ast.Attribute):
+                violations.append("annual result escaped into alias or operand")
+            if node.id == "calculate_annual_position" and not (
+                isinstance(parent, ast.Call) and parent.func is node
+            ):
+                violations.append("annual producer aliased")
+    return violations
+
+
+def test_hicbc_named_source_exception_rejects_expansion_and_result_exposure():
+    path = _root() / "reserved/services/hicbc_annual_source_runtime.py"
+    for source in (
+        "from reserved.engines.integrated_annual_position import AnnualPositionResult",
+        "from reserved.engines.integrated_annual_position import calculate_annual_position as calculate",
+        "from reserved.engines import integrated_annual_position as engine",
+        "from .hidden import calculate_annual_position",
+        "import importlib as loader\nloader.import_module('os')",
+        "__import__('os')", "getattr(result, 'total_liability')", "jsonify(result)",
+        "result.total_liability", "leak = result.__dict__", "def leak():\n return result",
+        "other = calculate_annual_position\nother({})", "def leak():\n ani = result\n return ani",
+    ):
+        assert _hicbc_boundary_source_violations(path, source), source
+
+
+def test_hicbc_source_exception_does_not_admit_additional_consumers():
+    import_line = "from reserved.services.hicbc_annual_source_runtime import own_ani_from_manual_annual"
+    for relative in ("reserved/services/another.py", "reserved/web/another.py",
+                     "reserved/api/another.py", "reserved/models/another.py", "reserved/database.py"):
+        for source in (import_line, import_line + " as calculate",
+                       "loader('reserved.services.hicbc_annual_source_runtime')"):
+            assert _hicbc_boundary_source_violations(_root() / relative, source)
+    caller = _root() / "reserved/web/hicbc.py"
+    valid_caller = import_line + "\ndef annual_preview():\n return own_ani_from_manual_annual(payload, tax_year)\n"
+    assert not _hicbc_boundary_source_violations(caller, valid_caller)
+    for source in (
+        import_line + " as calculate",
+        import_line + "\ndef other():\n return own_ani_from_manual_annual(payload, tax_year)",
+        import_line + "\ndef annual_preview():\n return own_ani_from_manual_annual(payload, tax_year)\n"
+                      "def other():\n return own_ani_from_manual_annual(payload, tax_year)",
+    ):
+        assert _hicbc_boundary_source_violations(caller, source)
+    for extra in (
+        "alias = own_ani_from_manual_annual",
+        "import reserved.services.hicbc_annual_source_runtime as source",
+        "from reserved.services import hicbc_annual_source_runtime as extra\n"
+        "def other():\n return extra.own_ani_from_manual_annual(payload, tax_year)",
+        "from reserved import services as alternate\n"
+        "def other():\n return alternate.hicbc_annual_source_runtime.own_ani_from_manual_annual(payload, tax_year)",
+        "from .hicbc_annual_source_runtime import own_ani_from_manual_annual as other",
+        "loader('reserved.services.hicbc_annual_source_runtime')",
+    ):
+        assert _hicbc_boundary_source_violations(caller, valid_caller + extra)
+
+
+def test_hicbc_source_must_return_the_single_scalar_projection():
+    path = _root() / "reserved/services/hicbc_annual_source_runtime.py"
+    source = path.read_text()
+    assert not _hicbc_boundary_source_violations(path, source)
+    mutations = (
+        source.replace("result = calculate_annual_position", "ani = calculate_annual_position")
+              .replace("ani = result.adjusted_net_income", "result = ani"),
+        source.replace("ani = result.adjusted_net_income", "ani = result"),
+        source.replace("return ani", "ani = calculate_annual_position(facts, tax_year=tax_year)\n    return ani"),
+        source.replace("ani = result.adjusted_net_income", "ani = result.total_liability"),
+        "from reserved.engines.integrated_annual_position import calculate_annual_position\n"
+        "def own_ani_from_manual_annual(payload, tax_year):\n"
+        " ani = calculate_annual_position(payload, tax_year=tax_year)\n return ani\n",
+    )
+    for mutation in mutations:
+        assert mutation != source
+        assert _hicbc_boundary_source_violations(path, mutation)
 
 
 def test_named_presentation_handoff_rejects_forbidden_source_fixtures():
