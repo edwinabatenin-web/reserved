@@ -538,6 +538,8 @@ def index():
         row=row,
         tax_year=tax_year,
         household_change=household_change,
+        annual_preview_available=(not is_production_environment()
+                                  and hicbc_enabled() and hicbc_annual_preview_enabled()),
     )
 
 
