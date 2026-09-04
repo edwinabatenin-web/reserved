@@ -4,8 +4,8 @@
 not security assurance, launch assurance, provider acceptance or activation.
 
 **Evidence cut-off:** 4 September 2026 at integration commit
-`f9412b36adeb75dc7d5d5af56824c87235f28ce7`, tree
-`1b648be16bdc2bc41311f7968f6d402a63d4c8a9`.
+`85e1250f53180bb3c1aff111c17101b9e59df080`, tree
+`89a96da31b7a5dbe9bf55c01e875a0d611829e01`.
 
 ## Scope and interpretation
 
@@ -33,15 +33,17 @@ inferred beyond accepted S2C/S4A evidence.
 The block below is the normative finite denominator. SHA-256 values bind the
 exact repository evidence inspected. `live` bindings intentionally fail if an
 implementation control drifts. `historical_at_cutoff` bindings verify the exact
-Git blob at this evidence cut-off so later truthful planning reconciliation
-does not rewrite historical provenance.
+Git blob at the row's declared accepted commit, as admitted by this evidence
+cut-off, so later truthful reconciliation does not rewrite historical
+provenance. The package topology separately distinguishes a reviewed source
+checkpoint from the commit that integrated identical package blobs.
 
 <!-- W10-S7A-REGISTER-BEGIN -->
 ```json
 {
   "schema_version": "W10-S7A/2026-09-04/v1",
-  "repository_head": "f9412b36adeb75dc7d5d5af56824c87235f28ce7",
-  "repository_tree": "1b648be16bdc2bc41311f7968f6d402a63d4c8a9",
+  "repository_head": "85e1250f53180bb3c1aff111c17101b9e59df080",
+  "repository_tree": "89a96da31b7a5dbe9bf55c01e875a0d611829e01",
   "scope": "october_subscription_billing_security_privacy_operations_delta",
   "w9_general_model_reproduced": false,
   "threat_denominator": 21,
@@ -62,6 +64,18 @@ does not rewrite historical provenance.
   "security_assurance": false,
   "launch_assurance": false,
   "provider_activation_authority": false,
+  "accepted_package_topology": {
+    "W10-S2D": {
+      "source_checkpoint_commit": "1d70e550f685b9c1a4636caf3be75debce500219",
+      "integrated_commit": "509c5360d453e23a0732e4e9d4637385eef20ef6",
+      "relationship": "parallel_reviewed_source_checkpoint_with_exact_package_blobs_integrated_at_integrated_commit"
+    },
+    "W10-S5C": {
+      "product_checkpoint_commit": "3c63e64e478957ce04ee1154363c2eae94b82b30",
+      "evidence_checkpoint_commit": "e3959964ca08bd5afb6f75feab4ec0fdc83a9423",
+      "relationship": "product_then_evidence_ancestors_preserved_by_repository_head_merge"
+    }
+  },
   "sources": [
     {
       "id": "SRC-01",
@@ -73,7 +87,7 @@ does not rewrite historical provenance.
     {
       "id": "SRC-02",
       "path": "docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md",
-      "accepted_commit": "f9412b36adeb75dc7d5d5af56824c87235f28ce7",
+      "accepted_commit": "85e1250f53180bb3c1aff111c17101b9e59df080",
       "sha256": "cd17168c04ed5c3b05044322daae2480973d57220f05c0419f539f6fdf14977d",
       "binding": "historical_at_cutoff"
     },
@@ -171,7 +185,7 @@ does not rewrite historical provenance.
     {
       "id": "SRC-16",
       "path": "reserved/web/v2.py",
-      "accepted_commit": "46e2141c421fa80e39b60cd5b6bb955f44dfd863",
+      "accepted_commit": "3c63e64e478957ce04ee1154363c2eae94b82b30",
       "sha256": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228",
       "binding": "live"
     },
@@ -194,6 +208,48 @@ does not rewrite historical provenance.
       "path": "docs/W9_SECURITY_DECISION_DOSSIER.md",
       "accepted_commit": "587828337e01f269320048847b3250a690ce6133",
       "sha256": "8828333aa53c92899f02df0ca9a64c04b3e7811b51fb3f154a01f2882da7446c",
+      "binding": "historical_at_cutoff"
+    },
+    {
+      "id": "SRC-20",
+      "path": "docs/W10_S2D_BILLING_ACCOUNT_RECOVERY_CONTRACT.md",
+      "accepted_commit": "509c5360d453e23a0732e4e9d4637385eef20ef6",
+      "sha256": "214e6fab5dcea9776faa8dc1cb425cbcd622698b8d62d1e0b710e11ec859f445",
+      "binding": "historical_at_cutoff"
+    },
+    {
+      "id": "SRC-21",
+      "path": "reserved/billing/billing_account_recovery_contract.py",
+      "accepted_commit": "509c5360d453e23a0732e4e9d4637385eef20ef6",
+      "sha256": "b3bfc4501bdb3631bd87c9dc4aea0984b899fdd3afb535f1414cedd721f4ae06",
+      "binding": "live"
+    },
+    {
+      "id": "SRC-22",
+      "path": "tests/test_w10_billing_account_recovery_contract.py",
+      "accepted_commit": "509c5360d453e23a0732e4e9d4637385eef20ef6",
+      "sha256": "7220d1d13b362d9c0c83d3e1ee37baae1fe83dc9bf3950605b919ff2d76213ee",
+      "binding": "historical_at_cutoff"
+    },
+    {
+      "id": "SRC-23",
+      "path": "docs/W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md",
+      "accepted_commit": "e3959964ca08bd5afb6f75feab4ec0fdc83a9423",
+      "sha256": "221b244e687611dfa3e55e67051cb9ffab59ef6fcd9f02d8c5c865611439d1f5",
+      "binding": "historical_at_cutoff"
+    },
+    {
+      "id": "SRC-24",
+      "path": "reserved/web/routes.py",
+      "accepted_commit": "3c63e64e478957ce04ee1154363c2eae94b82b30",
+      "sha256": "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed",
+      "binding": "live"
+    },
+    {
+      "id": "SRC-25",
+      "path": "tests/test_w10_internal_route_hardening.py",
+      "accepted_commit": "3c63e64e478957ce04ee1154363c2eae94b82b30",
+      "sha256": "20a754059b817eb33e5c83ae3edbe551c92c2bafbbbeeca39ed2c709900db3c8",
       "binding": "historical_at_cutoff"
     }
   ],
@@ -248,13 +304,13 @@ does not rewrite historical provenance.
       "title": "customer_portal_or_billing_recovery_confusion",
       "assets": ["reserved_owner", "owner_billing_mapping", "provider_management_session"],
       "attack_or_failure": "Billing email, provider customer ID, subscription ID, redirect input or support action selects another owner's billing account or bypasses Reserved login.",
-      "current_evidence": ["SRC-06", "SRC-08", "SRC-09", "SRC-10"],
+      "current_evidence": ["SRC-06", "SRC-08", "SRC-09", "SRC-10", "SRC-20", "SRC-21", "SRC-22"],
       "control_id": "BC-04",
-      "implemented_control": "S2C defines the no-transfer owner-rooted fail-closed baseline, S3B models only detached owner-bound records, and S4A remains unable to create portal sessions.",
-      "control_strength": "specialist_baseline_and_structural_contract_only",
-      "current_fail_closed_state": "Portal/recovery stays disabled; email/customer identifiers and provider defaults are not login or owner authority.",
+      "implemented_control": "S2D implements a pure disabled-first decision contract rooted only in the exact authenticated Reserved owner; email, provider identifiers, redirect input and support assertion cannot select an account, and its positive result is only a non-acting future management-session request candidate.",
+      "control_strength": "implemented_owner_bound_recovery_decision_contract_without_runtime_auth_repository_or_provider_session",
+      "current_fail_closed_state": "The S2D contract denies missing, ambiguous, stale, conflicting, replayed or cross-owner detached facts and grants no provider, network, entitlement, charge or refund authority; portal/recovery remains disabled.",
       "gap_id": "BG-04",
-      "exact_missing_evidence": ["authenticated_reserved_owner_adapter", "durable_unique_owner_to_billing_account_mapping", "atomic_freshness_replay_and_idempotency_control", "support_least_privilege_and_identity_recovery_evidence", "target_cross_owner_email_collision_session_swap_and_return_integrity_tests"],
+      "exact_missing_evidence": ["authenticated_reserved_owner_adapter", "durable_unique_owner_to_billing_account_mapping", "atomic_freshness_replay_idempotency_and_crash_recovery", "fixed_allowlisted_return_target_and_short_lived_provider_session_adapter", "support_least_privilege_and_identity_recovery_evidence", "target_cross_owner_email_collision_session_swap_and_return_integrity_tests"],
       "closure_owner_slices": ["W10-S2", "W10-S3", "W10-S4", "W10-S6", "W10-S7", "W10-S8"],
       "status": "open_not_security_or_launch_assurance"
     },
@@ -308,13 +364,13 @@ does not rewrite historical provenance.
       "title": "cross_owner_billing_account_mapping",
       "assets": ["reserved_users_id", "billing_account", "subscription", "management_access"],
       "attack_or_failure": "A stale, duplicate, email-derived, browser-supplied or support-modified mapping exposes or administers another owner's billing account.",
-      "current_evidence": ["SRC-06", "SRC-08", "SRC-10", "SRC-17", "SRC-18"],
+      "current_evidence": ["SRC-06", "SRC-08", "SRC-10", "SRC-17", "SRC-18", "SRC-20", "SRC-21", "SRC-22"],
       "control_id": "BC-08",
-      "implemented_control": "S2C fixes current authenticated Reserved owner as sole root and S3B records exact positive users.id ownership structurally; no durable billing mapping exists.",
-      "control_strength": "owner_binding_contract_and_missing_runtime_path",
-      "current_fail_closed_state": "Missing, stale, duplicate, ambiguous and cross-owner mapping must deny; no portal or billing-account recovery route exists.",
+      "implemented_control": "S2D locally enforces exact current-owner agreement, one active fresh internal mapping and single-use request semantics while excluding email/provider/browser/support authority; it neither authenticates nor persists that mapping.",
+      "control_strength": "implemented_owner_mapping_decision_contract_without_durable_mapping_or_authenticated_adapter",
+      "current_fail_closed_state": "Missing, stale, duplicate, ambiguous, conflicting, replayed and cross-owner detached mappings deny without exposing an account selection; no portal or billing-account recovery route exists.",
       "gap_id": "BG-08",
-      "exact_missing_evidence": ["durable_unique_owner_mapping_schema_and_migration", "foreign_key_or_equivalent_owner_integrity_and_atomic_update", "no_email_lookup_no_transfer_merge_or_delegation_enforcement", "cross_owner_enumeration_deletion_recreation_and_support_misuse_tests"],
+      "exact_missing_evidence": ["durable_unique_owner_mapping_schema_migration_and_authenticated_repository_adapter", "foreign_key_or_equivalent_owner_integrity_and_atomic_compare_and_set", "runtime_no_email_lookup_no_transfer_merge_or_delegation_enforcement", "target_cross_owner_enumeration_deletion_recreation_and_support_misuse_tests"],
       "closure_owner_slices": ["W10-S2", "W10-S3", "W10-S4", "W10-S7", "W10-S8"],
       "status": "open_not_security_or_launch_assurance"
     },
@@ -488,13 +544,13 @@ does not rewrite historical provenance.
       "title": "direct_url_api_or_route_classification_bypass",
       "assets": ["paid_surface_inventory", "server_route", "api", "entitlement_gate", "admin_boundary"],
       "attack_or_failure": "A user bypasses client hiding, reaches an unclassified/legacy/internal route, changes method/content negotiation or exploits inconsistent entitlement enforcement.",
-      "current_evidence": ["SRC-06", "SRC-10", "SRC-11", "SRC-14", "SRC-15", "SRC-16"],
+      "current_evidence": ["SRC-06", "SRC-10", "SRC-11", "SRC-14", "SRC-15", "SRC-16", "SRC-23", "SRC-24", "SRC-25"],
       "control_id": "BC-20",
-      "implemented_control": "S5A inventories exact registered routes and S5B reconciles 11 unknown entries as evidence; S6C/D routes require authentication but not paid entitlement.",
-      "control_strength": "source_bound_inventory_and_auth_only_preview",
-      "current_fail_closed_state": "No paid boundary is approved or enforced; internal/legacy treatments remain recommendations, so existing auth-only reachability blocks launch rather than proving access control.",
+      "implemented_control": "S5C implements the accepted fail-closed treatments for five legacy/internal routes: calculation and tax-assurance hard-404, connections and settings GET redirect to session-guarded v2 equivalents with settings POST hard-404, and sandbox checklist hard-404 in production.",
+      "control_strength": "implemented_five_route_legacy_internal_hardening_without_paid_entitlement_gate",
+      "current_fail_closed_state": "Those five legacy/internal bypasses are hardened, but Q2 remains unanswered and authenticated customer product routes remain auth-only without a central paid-entitlement default-deny gate, which still blocks launch.",
       "gap_id": "BG-20",
-      "exact_missing_evidence": ["answered_Q2_against_accepted_S5A_inventory", "implemented_S5B_route_hardening_with_refreshed_inventory", "central_server_side_default_deny_entitlement_guard", "all_method_direct_url_api_content_type_feature_flag_and_conditional_registration_tests", "admin_customer_separation_and_target_bypass_review"],
+      "exact_missing_evidence": ["answered_Q2_against_accepted_S5A_inventory", "central_server_side_default_deny_entitlement_guard_on_every_approved_paid_surface", "refreshed_post_Q2_route_inventory_and_all_method_direct_url_api_content_type_feature_flag_tests", "admin_customer_separation_and_target_bypass_review"],
       "closure_owner_slices": ["W10-S2", "W10-S5", "W10-S7", "W10-S8"],
       "status": "open_not_security_or_launch_assurance"
     },

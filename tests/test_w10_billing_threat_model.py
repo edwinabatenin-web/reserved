@@ -14,8 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCUMENT = ROOT / "docs" / "W10_S7A_BILLING_THREAT_MODEL.md"
 START = "<!-- W10-S7A-REGISTER-BEGIN -->"
 END = "<!-- W10-S7A-REGISTER-END -->"
-HEAD = "f9412b36adeb75dc7d5d5af56824c87235f28ce7"
-TREE = "1b648be16bdc2bc41311f7968f6d402a63d4c8a9"
+HEAD = "85e1250f53180bb3c1aff111c17101b9e59df080"
+TREE = "89a96da31b7a5dbe9bf55c01e875a0d611829e01"
+S2D_SOURCE = "1d70e550f685b9c1a4636caf3be75debce500219"
+S2D_INTEGRATED = "509c5360d453e23a0732e4e9d4637385eef20ef6"
+S5C_PRODUCT = "3c63e64e478957ce04ee1154363c2eae94b82b30"
+S5C_EVIDENCE = "e3959964ca08bd5afb6f75feab4ec0fdc83a9423"
 
 EXPECTED_SOURCES = {
     "SRC-01": (
@@ -110,7 +114,7 @@ EXPECTED_SOURCES = {
     ),
     "SRC-16": (
         "reserved/web/v2.py",
-        "46e2141c421fa80e39b60cd5b6bb955f44dfd863",
+        S5C_PRODUCT,
         "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228",
         "live",
     ),
@@ -130,6 +134,42 @@ EXPECTED_SOURCES = {
         "docs/W9_SECURITY_DECISION_DOSSIER.md",
         "587828337e01f269320048847b3250a690ce6133",
         "8828333aa53c92899f02df0ca9a64c04b3e7811b51fb3f154a01f2882da7446c",
+        "historical_at_cutoff",
+    ),
+    "SRC-20": (
+        "docs/W10_S2D_BILLING_ACCOUNT_RECOVERY_CONTRACT.md",
+        S2D_INTEGRATED,
+        "214e6fab5dcea9776faa8dc1cb425cbcd622698b8d62d1e0b710e11ec859f445",
+        "historical_at_cutoff",
+    ),
+    "SRC-21": (
+        "reserved/billing/billing_account_recovery_contract.py",
+        S2D_INTEGRATED,
+        "b3bfc4501bdb3631bd87c9dc4aea0984b899fdd3afb535f1414cedd721f4ae06",
+        "live",
+    ),
+    "SRC-22": (
+        "tests/test_w10_billing_account_recovery_contract.py",
+        S2D_INTEGRATED,
+        "7220d1d13b362d9c0c83d3e1ee37baae1fe83dc9bf3950605b919ff2d76213ee",
+        "historical_at_cutoff",
+    ),
+    "SRC-23": (
+        "docs/W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md",
+        S5C_EVIDENCE,
+        "221b244e687611dfa3e55e67051cb9ffab59ef6fcd9f02d8c5c865611439d1f5",
+        "historical_at_cutoff",
+    ),
+    "SRC-24": (
+        "reserved/web/routes.py",
+        S5C_PRODUCT,
+        "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed",
+        "live",
+    ),
+    "SRC-25": (
+        "tests/test_w10_internal_route_hardening.py",
+        S5C_PRODUCT,
+        "20a754059b817eb33e5c83ae3edbe551c92c2bafbbbeeca39ed2c709900db3c8",
         "historical_at_cutoff",
     ),
 }
@@ -177,6 +217,10 @@ THREAT_FIELDS = {
 
 def register():
     text = DOCUMENT.read_text(encoding="utf-8")
+    return register_from_text(text)
+
+
+def register_from_text(text: str):
     assert text.count(START) == text.count(END) == 1
     payload = text.split(START, 1)[1].split(END, 1)[0].strip()
     assert payload.startswith("```json\n") and payload.endswith("```")
@@ -201,6 +245,16 @@ def assert_git_blob_sha256(commit: str, relative_path: str, expected_hash: str):
     )
 
 
+def is_ancestor(commit: str, descendant: str = HEAD) -> bool:
+    return subprocess.run(
+        ["git", "merge-base", "--is-ancestor", commit, descendant],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+
 def test_exact_repository_identity_and_non_authority_flags_are_fixed():
     data = register()
     assert data["schema_version"] == "W10-S7A/2026-09-04/v1"
@@ -211,6 +265,46 @@ def test_exact_repository_identity_and_non_authority_flags_are_fixed():
     assert data["security_assurance"] is False
     assert data["launch_assurance"] is False
     assert data["provider_activation_authority"] is False
+
+
+def test_exact_s2d_and_s5c_checkpoint_integration_topology_is_not_flattened():
+    data = register()
+    assert data["accepted_package_topology"] == {
+        "W10-S2D": {
+            "source_checkpoint_commit": S2D_SOURCE,
+            "integrated_commit": S2D_INTEGRATED,
+            "relationship": (
+                "parallel_reviewed_source_checkpoint_with_exact_package_blobs_"
+                "integrated_at_integrated_commit"
+            ),
+        },
+        "W10-S5C": {
+            "product_checkpoint_commit": S5C_PRODUCT,
+            "evidence_checkpoint_commit": S5C_EVIDENCE,
+            "relationship": (
+                "product_then_evidence_ancestors_preserved_by_repository_head_merge"
+            ),
+        },
+    }
+    assert not is_ancestor(S2D_SOURCE)
+    assert is_ancestor(S2D_INTEGRATED)
+    assert is_ancestor(S5C_PRODUCT)
+    assert is_ancestor(S5C_EVIDENCE)
+
+    s2d_paths = (
+        "docs/W10_S2D_BILLING_ACCOUNT_RECOVERY_CONTRACT.md",
+        "reserved/billing/billing_account_recovery_contract.py",
+        "tests/test_w10_billing_account_recovery_contract.py",
+    )
+    for path in s2d_paths:
+        assert git_blob_sha256(S2D_SOURCE, path) == git_blob_sha256(
+            S2D_INTEGRATED, path
+        )
+
+    # A substituted topology cannot inherit the reviewed checkpoint's
+    # authority merely by naming that checkpoint elsewhere in the register.
+    assert S2D_INTEGRATED != S5C_PRODUCT
+    assert not is_ancestor(S2D_SOURCE, S2D_INTEGRATED)
 
 
 def test_exact_source_commit_hash_and_binding_register_is_not_substitutable():
@@ -226,12 +320,7 @@ def test_exact_source_commit_hash_and_binding_register_is_not_substitutable():
     assert sources == EXPECTED_SOURCES
 
     for source_id, (path, accepted_commit, expected_hash, binding) in sources.items():
-        ancestor = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", accepted_commit, HEAD],
-            cwd=ROOT,
-            check=False,
-        )
-        assert ancestor.returncode == 0, f"non-ancestor evidence source: {source_id}"
+        assert is_ancestor(accepted_commit), f"non-ancestor evidence source: {source_id}"
         actual_hash = (
             hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
             if binding == "live"
@@ -265,6 +354,23 @@ def test_historical_binding_survives_descendant_change_and_rejects_wrong_provena
         raise AssertionError("a wrong historical source digest was accepted")
 
 
+def test_s5c_live_v2_binding_uses_product_checkpoint_not_old_preview_blob():
+    path = "reserved/web/v2.py"
+    expected = EXPECTED_SOURCES["SRC-16"][2]
+    old_preview_commit = "46e2141c421fa80e39b60cd5b6bb955f44dfd863"
+
+    assert git_blob_sha256(S5C_PRODUCT, path) == expected
+    assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == expected
+    assert git_blob_sha256(old_preview_commit, path) != expected
+
+    try:
+        assert_git_blob_sha256(old_preview_commit, path, expected)
+    except AssertionError:
+        pass
+    else:  # pragma: no cover - explicit negative-control failure path
+        raise AssertionError("the old preview commit was accepted for current v2.py")
+
+
 def test_exact_finite_threat_control_and_gap_denominator():
     data = register()
     expected_ids = [f"BT-{index:02d}" for index in range(1, 22)]
@@ -279,6 +385,24 @@ def test_exact_finite_threat_control_and_gap_denominator():
     assert [item["gap_id"] for item in threats] == expected_gaps
     assert tuple(item["title"] for item in threats) == EXPECTED_TITLES
     assert len(threats) == 21
+
+
+def test_reconciliation_changes_only_the_three_authorised_threat_rows():
+    previous_text = subprocess.run(
+        ["git", "show", f"{HEAD}:docs/W10_S7A_BILLING_THREAT_MODEL.md"],
+        cwd=ROOT,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    ).stdout
+    previous = {
+        item["id"]: item for item in register_from_text(previous_text)["threats"]
+    }
+    current = {item["id"]: item for item in register()["threats"]}
+    assert {
+        threat_id for threat_id in current if current[threat_id] != previous[threat_id]
+    } == {"BT-04", "BT-08", "BT-20"}
 
 
 def test_every_row_has_exact_machine_fields_evidence_gap_owner_and_open_status():
@@ -373,8 +497,84 @@ def test_contract_evidence_is_not_misreported_as_runtime_or_target_control():
     assert "auth-only" in by_id["BT-09"]["current_fail_closed_state"]
     assert "blocks launch" in by_id["BT-09"]["current_fail_closed_state"]
     assert "auth-only" in by_id["BT-20"]["current_fail_closed_state"]
+    assert by_id["BT-04"]["control_strength"] == (
+        "implemented_owner_bound_recovery_decision_contract_without_runtime_auth_"
+        "repository_or_provider_session"
+    )
+    assert by_id["BT-08"]["control_strength"] == (
+        "implemented_owner_mapping_decision_contract_without_durable_mapping_or_"
+        "authenticated_adapter"
+    )
+    assert by_id["BT-20"]["control_strength"] == (
+        "implemented_five_route_legacy_internal_hardening_without_paid_entitlement_gate"
+    )
+    assert "portal/recovery remains disabled" in by_id["BT-04"][
+        "current_fail_closed_state"
+    ]
+    assert "Q2 remains unanswered" in by_id["BT-20"]["current_fail_closed_state"]
     assert "No checkout is offered" in by_id["BT-18"]["current_fail_closed_state"]
     assert "No billing provider SDK" in by_id["BT-21"]["current_fail_closed_state"]
+
+
+def test_reconciled_rows_bind_exact_new_evidence_and_preserved_open_gaps():
+    by_id = {item["id"]: item for item in register()["threats"]}
+    assert {
+        threat_id: (
+            row["current_evidence"],
+            row["exact_missing_evidence"],
+        )
+        for threat_id, row in by_id.items()
+        if threat_id in {"BT-04", "BT-08", "BT-20"}
+    } == {
+        "BT-04": (
+            ["SRC-06", "SRC-08", "SRC-09", "SRC-10", "SRC-20", "SRC-21", "SRC-22"],
+            [
+                "authenticated_reserved_owner_adapter",
+                "durable_unique_owner_to_billing_account_mapping",
+                "atomic_freshness_replay_idempotency_and_crash_recovery",
+                "fixed_allowlisted_return_target_and_short_lived_provider_session_adapter",
+                "support_least_privilege_and_identity_recovery_evidence",
+                "target_cross_owner_email_collision_session_swap_and_return_integrity_tests",
+            ],
+        ),
+        "BT-08": (
+            [
+                "SRC-06",
+                "SRC-08",
+                "SRC-10",
+                "SRC-17",
+                "SRC-18",
+                "SRC-20",
+                "SRC-21",
+                "SRC-22",
+            ],
+            [
+                "durable_unique_owner_mapping_schema_migration_and_authenticated_repository_adapter",
+                "foreign_key_or_equivalent_owner_integrity_and_atomic_compare_and_set",
+                "runtime_no_email_lookup_no_transfer_merge_or_delegation_enforcement",
+                "target_cross_owner_enumeration_deletion_recreation_and_support_misuse_tests",
+            ],
+        ),
+        "BT-20": (
+            [
+                "SRC-06",
+                "SRC-10",
+                "SRC-11",
+                "SRC-14",
+                "SRC-15",
+                "SRC-16",
+                "SRC-23",
+                "SRC-24",
+                "SRC-25",
+            ],
+            [
+                "answered_Q2_against_accepted_S5A_inventory",
+                "central_server_side_default_deny_entitlement_guard_on_every_approved_paid_surface",
+                "refreshed_post_Q2_route_inventory_and_all_method_direct_url_api_content_type_feature_flag_tests",
+                "admin_customer_separation_and_target_bypass_review",
+            ],
+        ),
+    }
 
 
 def test_w9_is_referenced_as_dependency_without_copying_general_registers():
