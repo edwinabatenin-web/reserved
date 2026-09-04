@@ -61,6 +61,8 @@ HISTORICAL_S5A_SOURCES = {
 }
 
 HISTORICAL_MAP = "docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md"
+HISTORICAL_FOUNDER_DECISIONS = "FOUNDER_DECISIONS.md"
+HISTORICAL_FOUNDER_DECISIONS_COMMIT = "10fb93e2e6ab567a72d2370c1603768a7ac04bb5"
 HISTORICAL_ENTITLEMENT_EVIDENCE = "docs/W10_S3A_ENTITLEMENT_TRANSITION_EVIDENCE.md"
 HISTORICAL_ENTITLEMENT_COMMIT = "94bd87f019dc226ec8c73f32515229189500cf06"
 WRONG_MAP_COMMIT = "81ae02044cccd921d98a0d1fc2360e1c4a983ab1"
@@ -107,6 +109,12 @@ def test_exact_integrated_repository_sources_remain_hash_bound():
         assert expected_hash in TEXT
         if relative_path == HISTORICAL_MAP:
             assert_historical_hash(BASE, relative_path, expected_hash)
+        elif relative_path == HISTORICAL_FOUNDER_DECISIONS:
+            assert_historical_hash(
+                HISTORICAL_FOUNDER_DECISIONS_COMMIT,
+                relative_path,
+                expected_hash,
+            )
         elif relative_path == HISTORICAL_ENTITLEMENT_EVIDENCE:
             assert_historical_hash(
                 HISTORICAL_ENTITLEMENT_COMMIT, relative_path, expected_hash
@@ -114,6 +122,9 @@ def test_exact_integrated_repository_sources_remain_hash_bound():
         else:
             assert_live_hash(ROOT / relative_path, expected_hash)
     assert "fafd93c1a8fa65428bd3af19c1f35e9b47b10f38f68312721e6f2a5e14943f0d" in TEXT
+    assert hashlib.sha256((ROOT / HISTORICAL_FOUNDER_DECISIONS).read_bytes()).hexdigest() != (
+        REPO_SOURCES[HISTORICAL_FOUNDER_DECISIONS]
+    )
 
 
 def test_live_source_drift_still_fails_closed(tmp_path):

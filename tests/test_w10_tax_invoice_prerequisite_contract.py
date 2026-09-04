@@ -153,7 +153,19 @@ def test_exact_contract_identity_tree_and_repository_source_hashes():
     )
     assert projected["repository_sources"] == EXPECTED_REPOSITORY_SOURCES
     for source_id, relative_path, expected_hash, _ in EXPECTED_REPOSITORY_SOURCES:
-        if source_id == "specialist_gate_dossier":
+        if source_id == "founder_authority":
+            blob = subprocess.run(
+                [
+                    "git",
+                    "show",
+                    f"10fb93e2e6ab567a72d2370c1603768a7ac04bb5:{relative_path}",
+                ],
+                cwd=ROOT,
+                check=True,
+                stdout=subprocess.PIPE,
+            ).stdout
+            actual = hashlib.sha256(blob).hexdigest()
+        elif source_id == "specialist_gate_dossier":
             blob = subprocess.run(
                 ["git", "show", f"a07348976321df65bbd95c9170c906bcddd5baa5:{relative_path}"],
                 cwd=ROOT, check=True, stdout=subprocess.PIPE,

@@ -142,7 +142,19 @@ def test_exact_base_contract_sources_and_no_completion_claim():
     assert projected["candidate_base_tree"] == TREE
     assert projected["source_bindings"] == EXPECTED_SOURCES
     for source_id, path, expected_hash, accepted_at in EXPECTED_SOURCES:
-        if source_id == "entitlement_transition_contract":
+        if source_id == "founder_authority":
+            blob = subprocess.run(
+                [
+                    "git",
+                    "show",
+                    f"10fb93e2e6ab567a72d2370c1603768a7ac04bb5:{path}",
+                ],
+                cwd=ROOT,
+                check=True,
+                stdout=subprocess.PIPE,
+            ).stdout
+            assert hashlib.sha256(blob).hexdigest() == expected_hash
+        elif source_id == "entitlement_transition_contract":
             blob = subprocess.run(
                 ["git", "show", f"{accepted_at}:{path}"], cwd=ROOT, check=True,
                 stdout=subprocess.PIPE,

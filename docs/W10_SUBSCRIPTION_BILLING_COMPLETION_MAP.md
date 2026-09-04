@@ -7,8 +7,8 @@
 **Original planning commit:** `b15d3fcfa423192e1a8a2e8d0a49851b366518f4`
 
 **Current integration reconciliation point:**
-`c5e560045ed3d62f02c894e931464c3d7294e99f` (tree
-`bcdbec9108c3c0904139eca278c03fe0f6914db2`)
+`22512f29ed17dbc9a13a8741891345eb54513d05` (tree
+`155ac33d0ee11b8f7836ff82c0055d694313f57c`)
 
 **Current status:** **S1 independently reviewed and integrated; S2A's
 provider/runtime-neutral authority, S2B's four fail-closed engineering defaults,
@@ -26,9 +26,10 @@ detached cancellation/end-of-paid-period presentation, S6G's initial-payment
 pending/failure presentation and S6H's initial-paid presentation, plus early-W8
 local lifecycle-composition evidence, S7A's
 post-convergence reconciliation and S2E's detached tax/invoice prerequisite
-contract are independently reviewed and integrated. Q3 post-settlement
-consequences remain the sole genuine Founder choice; tax/invoice and
-billing-account recovery remain specialist/engineering evidence gates; all 21
+contract are independently reviewed and integrated. `FD-W10-004` now settles
+Q3's verified full-withdrawal suspension/restoration policy; tax/invoice and
+billing-account recovery remain the two unresolved specialist/engineering policy
+keys, while post-settlement implementation and specialist acceptance remain open; all 21
 threats remain open; S2 partially implemented;
 S3, S4, S5, S6 and S7 remain partial;
 0/8 slices complete on the strict accepted-evidence denominator and 0/13 terminal
@@ -50,12 +51,12 @@ remain live; this record neither replaces nor weakens them.
 <!-- W10-COMPLETION-MAP-RECONCILIATION-BEGIN -->
 ```json
 {
-  "schema_version": "W10-completion-map/2026-09-04/reconciliation-6",
+  "schema_version": "W10-completion-map/2026-09-04/reconciliation-7",
   "reconciliation_base": {
-    "commit": "c5e560045ed3d62f02c894e931464c3d7294e99f",
-    "tree": "bcdbec9108c3c0904139eca278c03fe0f6914db2",
+    "commit": "22512f29ed17dbc9a13a8741891345eb54513d05",
+    "tree": "155ac33d0ee11b8f7836ff82c0055d694313f57c",
     "parents": [
-      "e78a3a4bfaef16357512ec01f4e7c9619932e95f"
+      "a07e98698b534fe3f6ee38aa1edbc4b5a00dc45d"
     ]
   },
   "components": {
@@ -66,6 +67,15 @@ remain live; this record neither replaces nor weakens them.
       "integration_tree": "fc86cd3ffbb7279624763307ea2498be78521c84",
       "paths_sha256": {
         "FOUNDER_DECISIONS.md": "03765242c39354ffe57834da8a4a4e5b0dbbdacf5278731e560dea55ae3722d4"
+      }
+    },
+    "Founder-Decision-W10-004": {
+      "accepted_checkpoint": "ab4f8d4d34aa4b80022018b2b15315d5ff72ebb5",
+      "accepted_tree": "155ac33d0ee11b8f7836ff82c0055d694313f57c",
+      "integration_commit": "22512f29ed17dbc9a13a8741891345eb54513d05",
+      "integration_tree": "155ac33d0ee11b8f7836ff82c0055d694313f57c",
+      "paths_sha256": {
+        "FOUNDER_DECISIONS.md": "78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f"
       }
     },
     "W10-S2D": {
@@ -333,6 +343,11 @@ remain live; this record neither replaces nor weakens them.
       "commit": "f9412b36adeb75dc7d5d5af56824c87235f28ce7",
       "tree": "1b648be16bdc2bc41311f7968f6d402a63d4c8a9",
       "sha256": "cd17168c04ed5c3b05044322daae2480973d57220f05c0419f539f6fdf14977d"
+    },
+    {
+      "commit": "aaa08d7b541ed49765f9d9c68bf1d91d4f34faf3",
+      "tree": "bbd545baba7e93c160716df7246cec8152ca7944",
+      "sha256": "f5c3e945e3b77a35c0716f8018deb19a831fbe3b10596236d46cdd5c45e0892e"
     }
   ]
 }
@@ -371,6 +386,30 @@ Both decisions are durably recorded in integration ancestor
 - This authority remains provisional and does not accept provider terms, approve
   credentials, activate billing, settle VAT/invoice treatment or authorise a
   charge.
+
+### Settled current-period full-withdrawal authority (`FD-W10-004`)
+
+The independently reviewed authority checkpoint
+`ab4f8d4d34aa4b80022018b2b15315d5ff72ebb5` is integrated at
+`22512f29ed17dbc9a13a8741891345eb54513d05`.
+
+- A verified full withdrawal attributable to the payment funding the current
+  subscription period suspends ordinary paid-product access at the next
+  authoritative entitlement evaluation, without another grace period.
+- Public, authentication, legal, privacy, data-access/export, billing-recovery,
+  cancellation and appropriate support surfaces remain reachable under their
+  existing controls; no account or data deletion is implied.
+- Open, partial, ambiguous, contradictory, stale or unresolved withdrawal
+  evidence does not suspend valid existing derived access solely on that basis
+  and can never create, restore, extend, prolong or strengthen entitlement.
+- Provider observations have zero direct entitlement authority. Restoration
+  requires an authoritatively verified and admitted reinstatement,
+  provider-reversal outcome, successful replacement payment or other already
+  authorised entitlement-establishing fact.
+- This authority does not settle discretionary refunds, exceptional support,
+  statutory remedies, wider disputes, data retention or account closure, and
+  supplies no provider activation, production, credential, payment, release or
+  go-live authority.
 
 ### Fail-closed defaults and genuinely unresolved subordinate policy
 
@@ -411,16 +450,20 @@ other accepted S5A classes retain their existing S5A/S5B/S5C treatments. This is
 a policy boundary only: client-side hiding is not enforcement, and no
 server-side paid-entitlement guard is supplied by S2F.
 
-Exactly three policy keys remain unresolved: tax invoicing/additional VAT
-presentation; billing-account recovery; and post-settlement dispute, chargeback
-or reversal consequences. Q3, the verified post-settlement loss/restoration
-access consequence, is the sole genuine current Founder choice. Tax/invoice
+`FD-W10-004` closes Q3 and the
+`post_settlement_dispute_chargeback_reversal_consequences` policy key at the
+Founder-policy layer. Exactly two policy keys remain unresolved: tax
+invoicing/additional VAT presentation and billing-account recovery. Tax/invoice
 requires accepted finance/tax/legal evidence; owner-bound no-transfer recovery
 requires accepted security/privacy/operations and target evidence plus durable
 authenticated engineering implementation. Those two remain
 specialist/engineering evidence gates under existing authority, not new Founder
-questions. None may be silently inferred from a provider default. S2 remains
-incomplete until all three keys and their applicable evidence are accepted.
+questions. Post-settlement provider authentication/admission, sandbox event
+evidence, legal/finance/support/fraud treatment, target reconciliation, recovery
+runbooks and runtime enforcement also remain open completion evidence under the
+settled rule. None may be silently inferred from a provider default. S2 remains
+incomplete until the two unresolved policy keys and all applicable implementation
+and specialist evidence are accepted.
 
 Integrated S2D at `509c5360d453e23a0732e4e9d4637385eef20ef6`
 implements only the disabled-first, owner-bound, no-transfer local decision
@@ -489,7 +532,7 @@ must not reuse either domain contract as if it were subscription billing.
 | Slice | Smallest coherent outcome | Current state | Dependencies and completion evidence |
 |---|---|---|---|
 | **W10-S1 — authority and provider-neutral contract** | Encode the versioned initial plan catalogue and a fail-closed inventory of required policy inputs, while representing discounts/offers only as a required capability. | **Independently reviewed, checkpointed and integrated at `9e8f94a...`.** Exact authority, billing boundary, adversarial integrity and affected/full regression evidence passed. The slice remains short of launch-evidence-complete because later provider/target evidence is outside S1. | Preserve the exact integrated S1 authority and its 15-key denominator. S2 must consume its closure-bound validation/projector protocol, never mutable raw attributes or provider defaults. |
-| **W10-S2 — provider and policy closure** | Record the selected billing provider and every launch lifecycle/access/promotion/invoice and post-settlement dispute/chargeback/reversal policy needed by later slices, with decision owner and rationale. | **S2A, S2B, S2C, S2D, S2E and S2F are independently reviewed, checkpointed and integrated; S2F's Q1/Q2 checkpoint `2f0e8f0bb3377341b97dbfa760f9fb6aa529d3c9` is integrated at `e78a3a4bfaef16357512ec01f4e7c9619932e95f`.** S2A encodes six Founder-settled keys and the provisional Stripe capability boundary. S2B closes four ordinary fail-closed defaults. S2C preserves the historical five-key classification. S2F closes Q1 refunds and Q2 paid surface only as bounded engineering policy under existing Founder authority. Exactly three keys remain: Q3 post-settlement consequences as the sole genuine Founder choice, plus tax/invoice and billing-account recovery as specialist/engineering evidence gates. S2D and S2E remain detached, non-authoritative contracts. No S2 component supplies runtime/provider/persistence/refund/enforcement/launch assurance. S2 remains incomplete. | Obtain the Q3 Founder answer; accepted legal/finance evidence for mandatory refund remedies and post-settlement treatment; finance/tax/legal evidence for VAT/invoices; and security/privacy/operations/target evidence plus durable authenticated implementation for owner-bound recovery. Provider terms/DPA/fees also remain open. Complete only when every key is versioned and accepted and no runtime behaviour relies on an undocumented provider default. |
+| **W10-S2 — provider and policy closure** | Record the selected billing provider and every launch lifecycle/access/promotion/invoice and post-settlement dispute/chargeback/reversal policy needed by later slices, with decision owner and rationale. | **S2A, S2B, S2C, S2D, S2E and S2F are independently reviewed, checkpointed and integrated; S2F's Q1/Q2 checkpoint `2f0e8f0bb3377341b97dbfa760f9fb6aa529d3c9` is integrated at `e78a3a4bfaef16357512ec01f4e7c9619932e95f`; `FD-W10-004` is accepted at `ab4f8d4d34aa4b80022018b2b15315d5ff72ebb5` and integrated at `22512f29ed17dbc9a13a8741891345eb54513d05`.** S2A encodes six Founder-settled keys and the provisional Stripe capability boundary. S2B closes four ordinary fail-closed defaults. S2C preserves the historical five-key classification. S2F closes Q1 refunds and Q2 paid surface as bounded engineering policy; `FD-W10-004` closes Q3's verified full-withdrawal suspension/restoration policy. Exactly two keys remain: tax/invoice and billing-account recovery as specialist/engineering evidence gates. Post-settlement implementation and specialist acceptance remain open under the settled rule. S2D and S2E remain detached, non-authoritative contracts. No S2 component supplies runtime/provider/persistence/refund/enforcement/launch assurance. S2 remains incomplete. | Obtain accepted legal/finance evidence for mandatory refund remedies and post-settlement treatment; finance/tax/legal evidence for VAT/invoices; security/privacy/operations/target evidence plus durable authenticated implementation for owner-bound recovery; and provider-authenticated post-settlement admission, reconciliation and enforcement evidence under `FD-W10-004`. Provider terms/DPA/fees also remain open. Complete only when every key is versioned and accepted and no runtime behaviour relies on an undocumented provider default. |
 | **W10-S3 — durable billing and entitlement core** | Implement the owner-bound catalogue/version reference, billing account, subscription and settlement observations, event inbox, audit/reconciliation record and policy-derived entitlement boundary, including post-settlement dispute/chargeback/reversal observations without assuming their access consequence. | **S3A and S3B are independently reviewed, checkpointed and integrated at `94bd87f019dc226ec8c73f32515229189500cf06` and `5bc29bcb30c95ea7a5a9430104653b366d709eb6`; the corrected S3A lifecycle is accepted at `b990d514a929c37b3f999137a0e383d05c37f0df` and integrated at `48a97042fc0e17997bf2d23a4687e79c20b74b9e`.** The hardened detached entitlement core preserves exact lifecycle history and models the first verified failed renewal as `payment_recovery` for exactly seven calendar days: ordinary access continues during that non-extendable interval, verified recovery restores paid state, and unresolved expiry suspends access. Provider labels have zero direct authority. S3 remains incomplete: these are local zero-authority contracts and supply no database schema, migration, implemented durable inbox, provider authenticity or persistence. | S1 and the relevant S2 policies; accepted S3A/S3B semantics; W9 datastore, retention, encryption/key-custody and erasure decisions. Still required: durable billing-account/subscription/event-inbox/audit/reconciliation records; migrations; exclusive shared-file ownership and concurrency controls; authenticated event source; dispute/chargeback/reversal and correction/deletion/retention tests; independent schema/security/privacy review. |
 | **W10-S4 — provider adapter and collection lifecycle** | Implement disabled-first provider customer/checkout/management, verified webhooks, reconciliation and offer primitives against the provider-neutral core. | **S4A is independently reviewed and integrated at `2ad4a63dd1f10ba38859050b47245c28390667d8`; S4B disabled Checkout intent is accepted at `e5ba0ed4f5e3832fe4ef58af8009cc17217bc85d` and integrated at `23f4d3dc742474d3a672388a1ebe99962505b234`; S4C disabled Customer Portal intent is accepted at `b197c987b96dd9fca6296c41bb002baf74099e55` and integrated at `67b52a66805e9d5c1317330b9f7b1f2a19d4172c`.** They remain network-inert, non-entitling intent/edge contracts. S4 remains incomplete: no SDK, credential, webhook endpoint, persistence, provider session creation, charge or activation is present. | Preserve S4A-C's exact disabled-first boundary. Completion still requires applicable S2 policies, S3B-compatible durable identities/event inbox, approved credential custody, accepted provider terms/security boundary and sandbox access. Synthetic and sandbox tests must cover successful, declined, delayed, duplicate, replayed, out-of-order, forged, refunded, post-settlement disputed/charged-back/reversed and recovered cases. No configuration or credential alone may enable it. |
 | **W10-S5 — server-side access and administration** | Apply the approved entitlement decision, including explicitly approved post-settlement dispute/chargeback/reversal consequences, to every in-scope paid surface and supply least-privilege, audited support/admin correction tools. | **S5A and S5B are independently reviewed, checkpointed and integrated at `9c0760192bb2420b90e57ec7313f69bbe52cbf74` and `051ae665a0cc94f6e9cdbbc728c621825c7769fe`; S5C product `3c63e64e478957ce04ee1154363c2eae94b82b30` and evidence `e3959964ca08bd5afb6f75feab4ec0fdc83a9423` are preserved through integration merge `85e1250f53180bb3c1aff111c17101b9e59df080`.** S5A source-binds the exact 44 always-registered and 8 HICBC-conditional routes and their provisional classes. S5B source-binds exact treatment of all 11 internal/admin/legacy/unknown entries. S5C implements five bounded legacy/internal route-hardening treatments. S2F now settles the accepted `authenticated_product_candidate_pending_founder_decision` class as paid-entitlement-required while preserving every other accepted class treatment. S5 remains partially implemented but incomplete: the paid boundary is policy-settled, but no server-side paid-boundary or entitlement guard exists. | Preserve S5C's route closures and S2F's exact paid-surface classification. Implement the boundary only against the applicable S2 policies and S3 entitlement API. Test cross-user, stale/unknown, revocation, cache, concurrency, direct-URL/API bypass and admin separation; authentication or client-side hiding never substitutes for server enforcement. |
@@ -526,8 +569,9 @@ rather than growing the map for ordinary fixes.
    provider/lifecycle inputs;
    S2B closes only four fail-closed engineering defaults. S2C preserves its
    historical five-key classification. S2F closes Q1 refunds and Q2 paid surface
-   as bounded engineering policy under existing Founder authority, leaving
-   exactly three keys unresolved and Q3 as the sole genuine Founder choice. S2D narrows recovery
+   as bounded engineering policy under existing Founder authority. `FD-W10-004`
+   closes Q3's Founder-policy key, leaving exactly two specialist/engineering
+   policy keys unresolved. S2D narrows recovery
    to a local owner-bound no-transfer contract but supplies no authenticated
    adapter, durable mapping or specialist/target acceptance. S3A encodes the bounded
    transition policy without claiming provider verification, persistence or enforcement.
@@ -543,8 +587,8 @@ rather than growing the map for ordinary fixes.
    policy, but none of these components enforces it.
    S2E preserves tax/invoice prerequisites but supplies no specialist acceptance.
    Reconciled S7A records all 21 threats as open current-lineage gaps.
-   Provider diligence, specialist/engineering evidence
-   and the Q3 Founder answer may run in parallel, but S2 closes only through
+   Provider diligence, specialist/engineering evidence and the implementation
+   unlocked by the Q3 answer may run in parallel, but S2 closes only through
    explicit accepted evidence.
 2. Durable S3 implementation follows the relevant S1/S2 contracts and must
    preserve S3A/S3B. S4 and S5 can then run in parallel: S4 owns authenticated
@@ -666,10 +710,12 @@ S2A records the six Founder-settled provider and paid-lifecycle decisions. S2B
 closes the four accepted fail-closed engineering defaults. S2C remains immutable
 historical evidence of the then-current five-key classification. Accepted S2F
 closes Q1 refunds and Q2 paid surface as bounded engineering policy under existing
-Founder authority. Exactly three keys remain unresolved: Q3 post-settlement
-consequences is the sole genuine Founder choice; VAT/invoice treatment and
-owner-bound no-transfer billing-account recovery remain specialist/engineering
-evidence gates rather than new Founder questions. S2D supplies the bounded local
+Founder authority. `FD-W10-004`, accepted at `ab4f8d4...` and integrated at
+`22512f2...`, closes Q3's verified full-withdrawal suspension/restoration policy.
+Exactly two policy keys remain unresolved: VAT/invoice treatment and owner-bound
+no-transfer billing-account recovery, both specialist/engineering evidence gates
+rather than new Founder questions. Post-settlement implementation and specialist
+acceptance remain open under the settled rule. S2D supplies the bounded local
 owner-bound recovery contract, not its authenticated/durable adapter or external
 acceptance. S2E supplies detached non-authoritative structural prerequisites for
 later specialist tax/invoice work, not accepted VAT/invoice facts or closure.
@@ -718,8 +764,8 @@ customer delivery, target or launch assurance and therefore does not close S6,
 W8 or any terminal check.
 
 The next S2 work is accepted specialist/engineering evidence for mandatory
-refund remedies, VAT/invoice, recovery and post-settlement gates plus the Q3
-Founder answer, followed by one versioned closure record for all 15 keys. The
+refund remedies, VAT/invoice, recovery and post-settlement implementation under
+the now-settled Q3 rule, followed by one versioned closure record for all 15 keys. The
 pre-Q2 route cleanup is complete at S5C and is not redispatch authority. Under
 the accepted Q2 policy and applicable S2/S3 dependencies, the smallest
 server-side paid-boundary design may consume a synthetic canonical entitlement
@@ -756,9 +802,10 @@ sophistication does not create another slice unless authoritative scope changes.
 implemented with independently reviewed/integrated S2A, S2B, evidence-only S2C,
 contract-only S2D, detached non-authoritative S2E and bounded engineering-policy
 S2F; Q1 refunds and Q2 paid surface are closed under existing Founder authority;
-exactly three policy keys remain unresolved, with Q3 the sole genuine Founder
-choice and VAT/invoice plus no-transfer recovery still awaiting
-specialist/engineering evidence;
+`FD-W10-004` closes Q3's verified full-withdrawal suspension/restoration policy;
+exactly two policy keys remain unresolved, with VAT/invoice plus no-transfer
+recovery still awaiting specialist/engineering evidence and post-settlement
+implementation/specialist acceptance still open under the settled rule;
 S3 partially implemented with independently reviewed/integrated hardened S3A
 lifecycle and detached contract-only S3B but no durable inbox,
 provider-authenticated source, persistence or enforcement boundary; S4 partially

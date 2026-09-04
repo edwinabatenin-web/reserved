@@ -344,10 +344,11 @@ def test_exact_metadata_preserves_incomplete_s5_and_no_new_founder_question():
 def test_every_reviewed_source_is_exactly_hash_bound():
     data = s5b()
     for relative_path, expected_hash in data["source_sha256"].items():
-        if relative_path == HISTORICAL_MAP:
+        if relative_path in (HISTORICAL_MAP, "FOUNDER_DECISIONS.md"):
             # The map is mutable bookkeeping. Verify the exact blob S5B reviewed
-            # rather than making every later truthful reconciliation look like
-            # corruption of the accepted historical evidence.
+            # and the Founder authority is an immutable historical decision
+            # snapshot. Later truthful updates must not look like corruption of
+            # the accepted S5B evidence.
             actual_hash = git_blob_sha256(data["repository_head"], relative_path)
         else:
             # Route, guard and authority sources stay live-bound so current drift

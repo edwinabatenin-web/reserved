@@ -20,10 +20,10 @@ W9_TEXT = W9_MAP.read_text(encoding="utf-8")
 START = "<!-- W10-COMPLETION-MAP-RECONCILIATION-BEGIN -->"
 END = "<!-- W10-COMPLETION-MAP-RECONCILIATION-END -->"
 
-BASE = "c5e560045ed3d62f02c894e931464c3d7294e99f"
-BASE_TREE = "bcdbec9108c3c0904139eca278c03fe0f6914db2"
+BASE = "22512f29ed17dbc9a13a8741891345eb54513d05"
+BASE_TREE = "155ac33d0ee11b8f7836ff82c0055d694313f57c"
 BASE_PARENTS = (
-    "e78a3a4bfaef16357512ec01f4e7c9619932e95f",
+    "a07e98698b534fe3f6ee38aa1edbc4b5a00dc45d",
 )
 Q1_Q2_CHECKPOINT = "2f0e8f0bb3377341b97dbfa760f9fb6aa529d3c9"
 Q1_Q2_INTEGRATION = "e78a3a4bfaef16357512ec01f4e7c9619932e95f"
@@ -39,6 +39,13 @@ EXPECTED_COMPONENTS = {
         "accepted_tree": "fc86cd3ffbb7279624763307ea2498be78521c84",
         "integration_commit": "10fb93e2e6ab567a72d2370c1603768a7ac04bb5",
         "integration_tree": "fc86cd3ffbb7279624763307ea2498be78521c84",
+        "paths": ("FOUNDER_DECISIONS.md",),
+    },
+    "Founder-Decision-W10-004": {
+        "accepted_checkpoint": "ab4f8d4d34aa4b80022018b2b15315d5ff72ebb5",
+        "accepted_tree": "155ac33d0ee11b8f7836ff82c0055d694313f57c",
+        "integration_commit": "22512f29ed17dbc9a13a8741891345eb54513d05",
+        "integration_tree": "155ac33d0ee11b8f7836ff82c0055d694313f57c",
         "paths": ("FOUNDER_DECISIONS.md",),
     },
     "W10-S2D": {
@@ -293,10 +300,25 @@ EXPECTED_HISTORICAL_MAP_BINDINGS = (
         "tree": "1b648be16bdc2bc41311f7968f6d402a63d4c8a9",
         "sha256": "cd17168c04ed5c3b05044322daae2480973d57220f05c0419f539f6fdf14977d",
     },
+    {
+        "commit": "aaa08d7b541ed49765f9d9c68bf1d91d4f34faf3",
+        "tree": "bbd545baba7e93c160716df7246cec8152ca7944",
+        "sha256": "f5c3e945e3b77a35c0716f8018deb19a831fbe3b10596236d46cdd5c45e0892e",
+    },
 )
 ALLOWED_CANDIDATE_PATHS = {
     MAP_RELATIVE_PATH,
+    "tests/test_w10_billing_account_recovery_contract.py",
+    "tests/test_w10_cancellation_presentation.py",
+    "tests/test_w10_checkout_intent_contract.py",
     "tests/test_w10_completion_map.py",
+    "tests/test_w10_internal_route_reconciliation.py",
+    "tests/test_w10_payment_recovery_presentation.py",
+    "tests/test_w10_portal_intent_contract.py",
+    "tests/test_w10_provider_lifecycle_authority.py",
+    "tests/test_w10_s2c_policy_evidence.py",
+    "tests/test_w10_tax_invoice_prerequisite_contract.py",
+    "tests/test_w8_w10_subscription_lifecycle_composition.py",
 }
 
 
@@ -343,7 +365,7 @@ def test_candidate_is_confined_to_the_authorised_map_and_dedicated_test() -> Non
 
 def test_reconciliation_is_bound_to_exact_clean_merge_base_without_head_lock() -> None:
     data = reconciliation()
-    assert data["schema_version"] == "W10-completion-map/2026-09-04/reconciliation-6"
+    assert data["schema_version"] == "W10-completion-map/2026-09-04/reconciliation-7"
     assert data["reconciliation_base"] == {
         "commit": BASE,
         "tree": BASE_TREE,
@@ -398,6 +420,7 @@ def test_cherry_picks_merge_resolution_and_live_refresh_are_not_conflated() -> N
 
     for component_name in (
         "Founder-Decisions-W10-002-003",
+        "Founder-Decision-W10-004",
         "W10-S2D",
         "W10-S7A",
         "W10-S7A-reconciliation",
@@ -473,6 +496,7 @@ def test_new_decision_s7a_and_s2e_bindings_reject_wrong_blobs_and_lineage() -> N
     components = reconciliation()["components"]
     for name in (
         "Founder-Decisions-W10-002-003",
+        "Founder-Decision-W10-004",
         "W10-S7A-reconciliation",
         "W10-S2E",
     ):
@@ -612,6 +636,31 @@ def test_finite_slice_and_terminal_denominators_remain_structurally_exact() -> N
     assert "W9 remains 0/5" in TEXT
 
 
+def test_fd_w10_004_closes_only_the_q3_policy_layer() -> None:
+    authority = (ROOT / "FOUNDER_DECISIONS.md").read_text(encoding="utf-8")
+    for statement in (
+        "FD-W10-004 — Resolved: verified full withdrawal",
+        "must suspend ordinary paid-product access at the next",
+        "without an additional grace period",
+        "Open, partial, ambiguous, contradictory, stale or unresolved withdrawal",
+        "must also never create, restore, extend, prolong or strengthen",
+        "Provider observations remain evidence inputs and must not directly",
+        "A provider\nobservation alone is insufficient",
+    ):
+        assert statement in authority
+
+    for statement in (
+        "closes Q3 and the\n`post_settlement_dispute_chargeback_reversal_consequences` policy key",
+        "Exactly two policy keys remain unresolved",
+        "Post-settlement provider authentication/admission",
+        "no provider activation, production, credential, payment, release or\n  go-live authority",
+        "S2 remains\nincomplete",
+        "0/8 slices complete",
+        "terminal gate remains 0/13",
+    ):
+        assert statement in TEXT
+
+
 def test_w9_map_records_s3d_without_moving_any_launch_gate() -> None:
     slice_rows = re.findall(r"(?m)^\| \*\*W9-S([1-5]) —", W9_TEXT)
     assert slice_rows == [str(value) for value in range(1, 6)]
@@ -650,9 +699,10 @@ def test_w9_map_records_s3d_without_moving_any_launch_gate() -> None:
 def test_current_state_is_partial_non_authorising_and_keeps_every_gate_open() -> None:
     required = (
         "closes Q1 refunds and Q2 paid surface as bounded engineering policy under existing",
-        "Exactly three policy keys remain unresolved",
-        "is the sole genuine current Founder choice",
-        "tax/invoice and billing-account recovery as specialist/engineering evidence gates",
+        "`FD-W10-004` closes Q3",
+        "Exactly two policy keys remain unresolved",
+        "two remain\nspecialist/engineering evidence gates",
+        "Post-settlement provider authentication/admission",
         "Mandatory statutory and consumer rights",
         "No refund action or refund-derived",
         "client-side hiding is not enforcement",
@@ -698,9 +748,10 @@ def test_current_state_is_partial_non_authorising_and_keeps_every_gate_open() ->
         "S7A closes",
         "S2D closes the recovery key",
         "Exactly five policy keys remain unresolved",
-        "Q1, Q2 and Q3 are answered",
         "remain unanswered Founder questions",
         "Q2 remains unanswered",
+        "Q3 post-settlement\nconsequences remain the sole genuine Founder choice",
+        "Exactly three policy keys remain unresolved",
         "no approved paid boundary or enforcement",
         "strict completion remains 1/8",
         "requires post-convergence reconciliation",

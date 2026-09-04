@@ -439,6 +439,7 @@ def test_completion_map_preserves_denominator_and_records_s2_partial_only():
     assert "Six Founder-settled policy keys are explicit" in text
     assert "six settled\npolicy keys and nine policy keys unresolved" in text
     assert "closes Q1 and\nQ2 as bounded ordinary engineering policies" in text
-    assert "is the sole genuine current Founder choice" in text
+    assert "`FD-W10-004` closes Q3" in text
+    assert "Exactly two policy keys remain unresolved" in text
     assert "S2 remains incomplete" in text
     assert "not launch-ready" in text

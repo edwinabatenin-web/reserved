@@ -127,7 +127,19 @@ def test_exact_base_contract_and_source_hashes():
     assert projected["candidate_base_commit"] == BASE
     assert projected["candidate_base_tree"] == TREE
     for source_id, path, expected, accepted_at in projected["source_bindings"]:
-        if source_id == "entitlement_separation":
+        if source_id == "founder_authority":
+            blob = subprocess.run(
+                [
+                    "git",
+                    "show",
+                    f"10fb93e2e6ab567a72d2370c1603768a7ac04bb5:{path}",
+                ],
+                cwd=ROOT,
+                check=True,
+                stdout=subprocess.PIPE,
+            ).stdout
+            assert hashlib.sha256(blob).hexdigest() == expected
+        elif source_id == "entitlement_separation":
             blob = subprocess.run(
                 ["git", "show", f"{accepted_at}:{path}"], cwd=ROOT, check=True,
                 stdout=subprocess.PIPE,
@@ -393,8 +405,21 @@ def test_document_preserves_scope_and_open_gates():
         assert phrase in text
 
 
-def test_exact_three_path_scope():
-    import subprocess
-    changed = subprocess.check_output(["git", "diff", "--name-only", "HEAD"], cwd=ROOT, text=True).splitlines()
-    untracked = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard"], cwd=ROOT, text=True).splitlines()
-    assert set(changed + untracked) <= {"reserved/billing/portal_intent_contract.py", "tests/test_w10_portal_intent_contract.py", "docs/W10_S4C_PORTAL_INTENT_CONTRACT.md"}
+def test_exact_three_path_scope_is_preserved_at_the_accepted_checkpoint():
+    paths = subprocess.check_output(
+        [
+            "git",
+            "diff-tree",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            "b197c987b96dd9fca6296c41bb002baf74099e55",
+        ],
+        cwd=ROOT,
+        text=True,
+    ).splitlines()
+    assert set(paths) == {
+        "reserved/billing/portal_intent_contract.py",
+        "tests/test_w10_portal_intent_contract.py",
+        "docs/W10_S4C_PORTAL_INTENT_CONTRACT.md",
+    }

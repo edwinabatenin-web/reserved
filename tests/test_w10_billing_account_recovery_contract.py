@@ -666,6 +666,7 @@ def test_document_and_accepted_source_hashes_are_exactly_bound():
     }
     for relative_path, digest in expected.items():
         historical_commits = {
+            "FOUNDER_DECISIONS.md": "10fb93e2e6ab567a72d2370c1603768a7ac04bb5",
             "reserved/billing/entitlement_core.py": "94bd87f019dc226ec8c73f32515229189500cf06",
             "docs/W10_S2C_POLICY_EVIDENCE_DOSSIER.md": "a07348976321df65bbd95c9170c906bcddd5baa5",
         }

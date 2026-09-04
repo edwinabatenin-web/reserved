@@ -779,7 +779,20 @@ def test_evidence_binds_exact_current_integration_sources_and_scope():
     assert "8fdcc0414c72393c4f575f7597bd30850b707d35" in evidence
     assert "773aea8429967dc086ac0ced2f38302b8998fc7c" in evidence
     for path, expected_hash in expected.items():
-        assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == expected_hash
+        if path == "FOUNDER_DECISIONS.md":
+            content = subprocess.run(
+                [
+                    "git",
+                    "show",
+                    f"10fb93e2e6ab567a72d2370c1603768a7ac04bb5:{path}",
+                ],
+                cwd=ROOT,
+                check=True,
+                stdout=subprocess.PIPE,
+            ).stdout
+        else:
+            content = (ROOT / path).read_bytes()
+        assert hashlib.sha256(content).hexdigest() == expected_hash
         assert expected_hash in evidence
     for phrase in (
         "test-only projection",
@@ -790,26 +803,7 @@ def test_evidence_binds_exact_current_integration_sources_and_scope():
         assert phrase in evidence.lower()
 
 
-def test_package_diff_is_confined_to_two_new_assurance_paths():
-    changed = subprocess.run(
-        ["git", "diff", "--name-only", "HEAD"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
-    untracked = subprocess.run(
-        ["git", "ls-files", "--others", "--exclude-standard"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
-    candidate_paths = set(changed + untracked)
-    if candidate_paths:
-        assert candidate_paths == ALLOWED_PATHS
-        return
-
+def test_historical_package_scope_remains_exact_after_checkpoint():
     introduction_commits = {
         subprocess.run(
             ["git", "log", "--diff-filter=A", "-1", "--format=%H", "--", path],
