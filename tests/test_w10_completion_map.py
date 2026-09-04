@@ -20,10 +20,10 @@ W9_TEXT = W9_MAP.read_text(encoding="utf-8")
 START = "<!-- W10-COMPLETION-MAP-RECONCILIATION-BEGIN -->"
 END = "<!-- W10-COMPLETION-MAP-RECONCILIATION-END -->"
 
-BASE = "fd7f30dcdc3557ef70c9bdfc4b89e046e16c2bd0"
-BASE_TREE = "b2edd687819b5b0f95c44f1a68d746a85f7bd9c1"
+BASE = "b8ce971f4dc6b8a1ced10e9b490be68d481752de"
+BASE_TREE = "7fcc5be531c5a4331e6a7ff65ce18a33e1772766"
 BASE_PARENTS = (
-    "109b5ec6e3ace82d8e41c98ece1baf7553eff039",
+    "5f7b76408a5d72b71be71d0e5d6c7a6edde260b7",
 )
 S2D_S5C_BASE = "85e1250f53180bb3c1aff111c17101b9e59df080"
 S2D_S5C_TREE = "89a96da31b7a5dbe9bf55c01e875a0d611829e01"
@@ -156,14 +156,64 @@ EXPECTED_COMPONENTS = {
     },
     "W10-S6F": {
         "accepted_checkpoint": "9c7b5c7b283134a471d5c5d7a720e4c10b1a16a6",
-        "accepted_tree": BASE_TREE,
-        "integration_commit": BASE,
-        "integration_tree": BASE_TREE,
+        "accepted_tree": "b2edd687819b5b0f95c44f1a68d746a85f7bd9c1",
+        "integration_commit": "fd7f30dcdc3557ef70c9bdfc4b89e046e16c2bd0",
+        "integration_tree": "b2edd687819b5b0f95c44f1a68d746a85f7bd9c1",
         "paths": (
             "docs/W10_S6F_CANCELLATION_PRESENTATION_EVIDENCE.md",
             "reserved/billing/cancellation_presentation.py",
             "tests/test_w10_cancellation_presentation.py",
         ),
+    },
+    "W10-S6G": {
+        "accepted_checkpoint": "9ff214418bf42f7877bdabde550df5d2300983de",
+        "accepted_tree": "106c09ae1f5ec0f6da64827b4402a75fd02feb1a",
+        "integration_commit": "2690c9335ca8073b1723846cccf33c15f9ff727f",
+        "integration_tree": "c5ee5ef6cde1272288c6e60325747c6d9752b99c",
+        "paths": (
+            "docs/W10_S6G_INITIAL_PAYMENT_PRESENTATION_EVIDENCE.md",
+            "reserved/billing/initial_payment_presentation.py",
+            "tests/test_w10_initial_payment_presentation.py",
+        ),
+    },
+    "W10-S6H": {
+        "accepted_checkpoint": "b45a8050e728bf457ab2508de4d64d88f40b5253",
+        "accepted_tree": "773aea8429967dc086ac0ced2f38302b8998fc7c",
+        "integration_commit": "8fdcc0414c72393c4f575f7597bd30850b707d35",
+        "integration_tree": "773aea8429967dc086ac0ced2f38302b8998fc7c",
+        "paths": (
+            "docs/W10_S6H_INITIAL_PAID_PRESENTATION_EVIDENCE.md",
+            "reserved/billing/initial_paid_presentation.py",
+            "tests/test_w10_initial_paid_presentation.py",
+        ),
+    },
+    "W8-W10-lifecycle-composition": {
+        "accepted_checkpoint": "318aca386c960f7993b1ade5cb6b57bcfe28de00",
+        "accepted_tree": "1485401624cb59a685678bdc4917513f4915e05e",
+        "integration_commit": "584ff7f31009913706d3427c38a986bbfa6799d2",
+        "integration_tree": "1485401624cb59a685678bdc4917513f4915e05e",
+        "paths": (
+            "docs/W8_W10_SUBSCRIPTION_LIFECYCLE_COMPOSITION_EVIDENCE.md",
+            "tests/test_w8_w10_subscription_lifecycle_composition.py",
+        ),
+    },
+    "W9-S3D": {
+        "accepted_checkpoint": "98e4887e038f9ada1f090b0723837f3cb49eb8af",
+        "accepted_tree": "9b2b2fe6d27d7c36759dfbd368f4a764058e58c8",
+        "integration_commit": "5f7b76408a5d72b71be71d0e5d6c7a6edde260b7",
+        "integration_tree": "c04c45a9ee33788655061d7a9fff7e0e1d953f75",
+        "paths": (
+            "docs/W9_S3D_AUTHENTICATED_OWNER_ADAPTER.md",
+            "reserved/annual_position_authenticated_owner_adapter.py",
+            "tests/test_annual_position_authenticated_owner_adapter.py",
+        ),
+    },
+    "W9-S3D-source-ancestry-correction": {
+        "accepted_checkpoint": "2ccafb00047583979e55e0ebb4fb193f17abe659",
+        "accepted_tree": "536c13528733794fe9ad5c3fd27f44812170fae9",
+        "integration_commit": BASE,
+        "integration_tree": BASE_TREE,
+        "paths": ("tests/test_annual_position_authenticated_owner_adapter.py",),
     },
     "W10-S6E-test-scope-correction": {
         "accepted_checkpoint": "cd6f94bc5109d18cb229fa65396bb66677960543",
@@ -279,7 +329,7 @@ def test_candidate_is_confined_to_the_authorised_map_and_dedicated_test() -> Non
 
 def test_reconciliation_is_bound_to_exact_clean_merge_base_without_head_lock() -> None:
     data = reconciliation()
-    assert data["schema_version"] == "W10-completion-map/2026-09-04/reconciliation-4"
+    assert data["schema_version"] == "W10-completion-map/2026-09-04/reconciliation-5"
     assert data["reconciliation_base"] == {
         "commit": BASE,
         "tree": BASE_TREE,
@@ -438,6 +488,11 @@ def test_post_entitlement_components_bind_exact_integration_blobs_and_paths() ->
         "W10-S4C",
         "W10-S6E",
         "W10-S6F",
+        "W10-S6G",
+        "W10-S6H",
+        "W8-W10-lifecycle-composition",
+        "W9-S3D",
+        "W9-S3D-source-ancestry-correction",
         "W10-S6E-test-scope-correction",
         "W10-S3A-hardening",
         "W9-W10-entitlement-evidence-reconciliation",
@@ -460,6 +515,34 @@ def test_post_entitlement_components_bind_exact_integration_blobs_and_paths() ->
             )
 
 
+def test_s3d_records_exact_three_path_source_and_descendant_safe_correction() -> None:
+    components = reconciliation()["components"]
+    source = components["W9-S3D"]
+    correction = components["W9-S3D-source-ancestry-correction"]
+
+    assert tuple(source["paths_sha256"]) == (
+        "docs/W9_S3D_AUTHENTICATED_OWNER_ADAPTER.md",
+        "reserved/annual_position_authenticated_owner_adapter.py",
+        "tests/test_annual_position_authenticated_owner_adapter.py",
+    )
+    assert tuple(correction["paths_sha256"]) == (
+        "tests/test_annual_position_authenticated_owner_adapter.py",
+    )
+    assert git_text("show", "-s", "--format=%P", correction["accepted_checkpoint"]) == source[
+        "accepted_checkpoint"
+    ]
+    assert git_text("show", "-s", "--format=%P", correction["integration_commit"]) == source[
+        "integration_commit"
+    ]
+
+    for component in (source, correction):
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", component["integration_commit"], "HEAD"],
+            cwd=ROOT,
+            check=True,
+        )
+
+
 def test_finite_slice_and_terminal_denominators_remain_structurally_exact() -> None:
     slice_rows = re.findall(r"(?m)^\| \*\*W10-S([1-8]) —", TEXT)
     assert slice_rows == [str(value) for value in range(1, 9)]
@@ -475,24 +558,35 @@ def test_finite_slice_and_terminal_denominators_remain_structurally_exact() -> N
     assert "W9 remains 0/5" in TEXT
 
 
-def test_w9_map_records_s3c_without_moving_any_launch_gate() -> None:
+def test_w9_map_records_s3d_without_moving_any_launch_gate() -> None:
     slice_rows = re.findall(r"(?m)^\| \*\*W9-S([1-5]) —", W9_TEXT)
     assert slice_rows == [str(value) for value in range(1, 6)]
     assert "**0/5 slices\nare complete (0%)**" in W9_TEXT
     assert "c9bdaa6538d68c0c64b2dcde97f224a69c089d30" in W9_TEXT
     assert "5f5a948891e1e812a5c74ff6c7266d153bb492fa" in W9_TEXT
-    assert "three accepted non-durable\ncontract/adapter layers" in W9_TEXT
+    assert "four accepted non-durable\ncontract/adapter layers" in W9_TEXT
     assert "selected/verified datastore" in W9_TEXT
+    assert "physical schema and migration" in W9_TEXT
     assert "durable read/write implementation" in W9_TEXT
+    assert "access-audit implementation" in W9_TEXT
     assert "approved retention/legal-hold/backup-expiry" in W9_TEXT
+    assert "whole-account erasure executor" in W9_TEXT
     assert "encryption/key-custody implementation" in W9_TEXT
     assert "target evidence remain missing" in W9_TEXT
+    assert "human/provider/target/legal/privacy/security/operations\nevidence" in W9_TEXT
+    assert "Activation and release remain Founder\n   gates" in W9_TEXT
     assert "historical\n  accepted/integrated evidence at `a07348976321df65bbd95c9170c906bcddd5baa5`" in W9_TEXT
     assert "current HEAD remain evidence-only" not in W9_TEXT
     assert "validates the exact live admitted S3A projection" in W9_TEXT
     assert "caller-supplied expected owner/business references" in W9_TEXT
     assert "does not authenticate the runtime caller or issuer" in W9_TEXT
-    assert "future authenticated runtime-owner adapter" in W9_TEXT
+    assert "98e4887e038f9ada1f090b0723837f3cb49eb8af" in W9_TEXT
+    assert "2ccafb00047583979e55e0ebb4fb193f17abe659" in W9_TEXT
+    assert "5f7b76408a5d72b71be71d0e5d6c7a6edde260b7" in W9_TEXT
+    assert "b8ce971f4dc6b8a1ced10e9b490be68d481752de" in W9_TEXT
+    assert "exact three-path boundary" in W9_TEXT
+    assert "Owner-to-business membership authorisation" in W9_TEXT
+    assert "future authenticated runtime-owner adapter" not in W9_TEXT
     assert "S3C authenticated non-durable adapter" not in W9_TEXT
     assert "authenticates an exact S3A projection" not in W9_TEXT
     assert "authenticates the exact S3A envelope" not in W9_TEXT
@@ -522,6 +616,10 @@ def test_current_state_is_partial_non_authorising_and_keeps_every_gate_open() ->
         "S6F is accepted",
         "detached zero-authority cancellation/end-of-paid-period view",
         "cannot cancel, mutate, persist or grant access",
+        "S6G is accepted",
+        "S6H is accepted",
+        "early-W8 lifecycle-composition evidence",
+        "test-only projections",
         "W9 package-history sentinel is corrected at `109b5ec...`",
         "provider terms",
         "sandbox access",
