@@ -18,15 +18,23 @@ TEXT = MAP.read_text(encoding="utf-8")
 START = "<!-- W10-COMPLETION-MAP-RECONCILIATION-BEGIN -->"
 END = "<!-- W10-COMPLETION-MAP-RECONCILIATION-END -->"
 
-BASE = "85e1250f53180bb3c1aff111c17101b9e59df080"
-BASE_TREE = "89a96da31b7a5dbe9bf55c01e875a0d611829e01"
+BASE = "251deb1c39bbc4f5b4c7c3b1356a380cb0b9df04"
+BASE_TREE = "ec382c130c4120fcab8b87a1711c696c0b661015"
 BASE_PARENTS = (
-    "54a82476939dce8f75af62d73aeb477e11a1260c",
-    "e3959964ca08bd5afb6f75feab4ec0fdc83a9423",
+    "1d91526d11b5291d5388c78940682ca02edeb61e",
 )
+S2D_S5C_BASE = "85e1250f53180bb3c1aff111c17101b9e59df080"
+S2D_S5C_TREE = "89a96da31b7a5dbe9bf55c01e875a0d611829e01"
 WRONG_MAP_COMMIT = "81ae02044cccd921d98a0d1fc2360e1c4a983ab1"
 
 EXPECTED_COMPONENTS = {
+    "Founder-Decisions-W10-002-003": {
+        "accepted_checkpoint": "14d5a253d6993044e026c4b862fa4a18708712da",
+        "accepted_tree": "fc86cd3ffbb7279624763307ea2498be78521c84",
+        "integration_commit": "10fb93e2e6ab567a72d2370c1603768a7ac04bb5",
+        "integration_tree": "fc86cd3ffbb7279624763307ea2498be78521c84",
+        "paths": ("FOUNDER_DECISIONS.md",),
+    },
     "W10-S2D": {
         "accepted_checkpoint": "1d70e550f685b9c1a4636caf3be75debce500219",
         "accepted_tree": "d6cad612d010baa3a311a8ecd2eabd5f9f37c37e",
@@ -41,8 +49,8 @@ EXPECTED_COMPONENTS = {
     "W10-S5C-product": {
         "accepted_checkpoint": "3c63e64e478957ce04ee1154363c2eae94b82b30",
         "accepted_tree": "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7",
-        "integration_commit": BASE,
-        "integration_tree": BASE_TREE,
+        "integration_commit": S2D_S5C_BASE,
+        "integration_tree": S2D_S5C_TREE,
         "paths": (
             "reserved/web/routes.py",
             "reserved/web/v2.py",
@@ -55,8 +63,8 @@ EXPECTED_COMPONENTS = {
     "W10-S5C-evidence": {
         "accepted_checkpoint": "e3959964ca08bd5afb6f75feab4ec0fdc83a9423",
         "accepted_tree": "6e2705c4948b3b843d034beec05aef36ffb8c8ba",
-        "integration_commit": BASE,
-        "integration_tree": BASE_TREE,
+        "integration_commit": S2D_S5C_BASE,
+        "integration_tree": S2D_S5C_TREE,
         "paths": (
             "docs/W10_S5A_PAID_SURFACE_INVENTORY.md",
             "docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md",
@@ -77,6 +85,27 @@ EXPECTED_COMPONENTS = {
         "paths": (
             "docs/W10_S7A_BILLING_THREAT_MODEL.md",
             "tests/test_w10_billing_threat_model.py",
+        ),
+    },
+    "W10-S7A-reconciliation": {
+        "accepted_checkpoint": "06eec249369cd71c1b6ff8dfaec94bf32b4fbb67",
+        "accepted_tree": "f942f27a7aae169c9fb6cbdf4797a80bd3df7288",
+        "integration_commit": "1d91526d11b5291d5388c78940682ca02edeb61e",
+        "integration_tree": "e2fc725961f816d80eed9e5373d738e5e21a024c",
+        "paths": (
+            "docs/W10_S7A_BILLING_THREAT_MODEL.md",
+            "tests/test_w10_billing_threat_model.py",
+        ),
+    },
+    "W10-S2E": {
+        "accepted_checkpoint": "4511e45297dfcae980c606e4bb09b549510ea23f",
+        "accepted_tree": "cd6bdf2f66878aa4baecd79d5e7c504dd13a4007",
+        "integration_commit": BASE,
+        "integration_tree": BASE_TREE,
+        "paths": (
+            "docs/W10_S2E_TAX_INVOICE_PREREQUISITE.md",
+            "reserved/billing/tax_invoice_prerequisite_contract.py",
+            "tests/test_w10_tax_invoice_prerequisite_contract.py",
         ),
     },
 }
@@ -142,7 +171,7 @@ def test_candidate_is_confined_to_the_authorised_map_and_dedicated_test() -> Non
 
 def test_reconciliation_is_bound_to_exact_clean_merge_base_without_head_lock() -> None:
     data = reconciliation()
-    assert data["schema_version"] == "W10-completion-map/2026-09-04/reconciliation-1"
+    assert data["schema_version"] == "W10-completion-map/2026-09-04/reconciliation-2"
     assert data["reconciliation_base"] == {
         "commit": BASE,
         "tree": BASE_TREE,
@@ -195,7 +224,13 @@ def test_component_commits_trees_paths_and_historical_blobs_are_exact() -> None:
 def test_cherry_picks_merge_resolution_and_live_refresh_are_not_conflated() -> None:
     components = reconciliation()["components"]
 
-    for component_name in ("W10-S2D", "W10-S7A"):
+    for component_name in (
+        "Founder-Decisions-W10-002-003",
+        "W10-S2D",
+        "W10-S7A",
+        "W10-S7A-reconciliation",
+        "W10-S2E",
+    ):
         component = components[component_name]
         assert changed_paths(component["integration_commit"]) == tuple(
             component["paths_sha256"]
@@ -236,7 +271,7 @@ def test_cherry_picks_merge_resolution_and_live_refresh_are_not_conflated() -> N
         "tests/test_w10_billing_threat_model.py",
     }
     for relative_path, expected_sha256 in s7a_refresh.items():
-        assert_historical_sha256(BASE, relative_path, expected_sha256)
+        assert_historical_sha256(S2D_S5C_BASE, relative_path, expected_sha256)
 
 
 def test_mutable_historical_map_sources_use_exact_git_blobs_and_reject_forgery() -> None:
@@ -257,6 +292,34 @@ def test_mutable_historical_map_sources_use_exact_git_blobs_and_reject_forgery()
             assert_historical_sha256(
                 WRONG_MAP_COMMIT, MAP_RELATIVE_PATH, binding["sha256"]
             )
+
+
+def test_new_decision_s7a_and_s2e_bindings_reject_wrong_blobs_and_lineage() -> None:
+    components = reconciliation()["components"]
+    for name in (
+        "Founder-Decisions-W10-002-003",
+        "W10-S7A-reconciliation",
+        "W10-S2E",
+    ):
+        component = components[name]
+        path, expected_sha256 = next(iter(component["paths_sha256"].items()))
+        assert_historical_sha256(component["accepted_checkpoint"], path, expected_sha256)
+        with pytest.raises(AssertionError):
+            assert_historical_sha256(component["accepted_checkpoint"], path, "0" * 64)
+
+    # The isolated S2E checkpoint is deliberately not accepted as current-lineage
+    # evidence merely because it has the same patch: only its integration commit
+    # is an ancestor of this reconciliation base.
+    isolated = components["W10-S2E"]["accepted_checkpoint"]
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", isolated, BASE],
+        cwd=ROOT,
+    ).returncode != 0
+    subprocess.run(
+        ["git", "merge-base", "--is-ancestor", components["W10-S2E"]["integration_commit"], "HEAD"],
+        cwd=ROOT,
+        check=True,
+    )
 
 
 def test_finite_slice_and_terminal_denominators_remain_structurally_exact() -> None:
@@ -283,8 +346,11 @@ def test_current_state_is_partial_non_authorising_and_keeps_every_gate_open() ->
         "no authenticated adapter, durable",
         "S5C implements five bounded",
         "no paid-boundary or entitlement guard exists",
-        "requires post-convergence evidence reconciliation",
+        "post-S2D/S5C reconciliation is integrated",
         "No threat is accepted closed",
+        "all 21 threats remain open",
+        "detached, structurally validated, non-authoritative tax/invoice prerequisite",
+        "does not close the VAT/invoice policy key",
         "no security, privacy, operations, provider, target or launch assurance",
         "provider terms",
         "sandbox access",
@@ -303,6 +369,8 @@ def test_current_state_is_partial_non_authorising_and_keeps_every_gate_open() ->
         "S7A closes",
         "S2D closes the recovery key",
         "strict completion remains 1/8",
+        "requires post-convergence reconciliation",
+        "awaits current-lineage reconciliation",
     )
     for statement in forbidden:
         assert statement not in TEXT

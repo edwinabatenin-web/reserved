@@ -7,8 +7,8 @@
 **Original planning commit:** `b15d3fcfa423192e1a8a2e8d0a49851b366518f4`
 
 **Current integration reconciliation point:**
-`85e1250f53180bb3c1aff111c17101b9e59df080` (tree
-`89a96da31b7a5dbe9bf55c01e875a0d611829e01`)
+`251deb1c39bbc4f5b4c7c3b1356a380cb0b9df04` (tree
+`ec382c130c4120fcab8b87a1711c696c0b661015`)
 
 **Current status:** **S1 independently reviewed and integrated; S2A's
 provider/runtime-neutral authority, S2B's four fail-closed engineering defaults,
@@ -18,8 +18,9 @@ S3A's provider-neutral entitlement transition policy, S3B's detached event-inbox
 contract, S4A's disabled-first Stripe edge contract, S5A's exact paid-surface
 inventory, S5B's exact eleven-route reconciliation evidence and S5C's five
 bounded route-hardening treatments are independently reviewed and integrated;
-the initial S7A billing threat register was independently reviewed and integrated
-but now requires post-convergence evidence reconciliation; S2 partially implemented;
+S7A's post-convergence reconciliation and S2E's detached tax/invoice prerequisite
+contract are independently reviewed and integrated, while all 21 threats and the
+specialist VAT/invoice key remain open; S2 partially implemented;
 S3, S4, S5, S6 and S7 remain partial;
 0/8 slices complete on the strict accepted-evidence denominator and 0/13 terminal
 checks complete; W9 remains 0/5; not launch-ready.**
@@ -40,16 +41,24 @@ remain live; this record neither replaces nor weakens them.
 <!-- W10-COMPLETION-MAP-RECONCILIATION-BEGIN -->
 ```json
 {
-  "schema_version": "W10-completion-map/2026-09-04/reconciliation-1",
+  "schema_version": "W10-completion-map/2026-09-04/reconciliation-2",
   "reconciliation_base": {
-    "commit": "85e1250f53180bb3c1aff111c17101b9e59df080",
-    "tree": "89a96da31b7a5dbe9bf55c01e875a0d611829e01",
+    "commit": "251deb1c39bbc4f5b4c7c3b1356a380cb0b9df04",
+    "tree": "ec382c130c4120fcab8b87a1711c696c0b661015",
     "parents": [
-      "54a82476939dce8f75af62d73aeb477e11a1260c",
-      "e3959964ca08bd5afb6f75feab4ec0fdc83a9423"
+      "1d91526d11b5291d5388c78940682ca02edeb61e"
     ]
   },
   "components": {
+    "Founder-Decisions-W10-002-003": {
+      "accepted_checkpoint": "14d5a253d6993044e026c4b862fa4a18708712da",
+      "accepted_tree": "fc86cd3ffbb7279624763307ea2498be78521c84",
+      "integration_commit": "10fb93e2e6ab567a72d2370c1603768a7ac04bb5",
+      "integration_tree": "fc86cd3ffbb7279624763307ea2498be78521c84",
+      "paths_sha256": {
+        "FOUNDER_DECISIONS.md": "03765242c39354ffe57834da8a4a4e5b0dbbdacf5278731e560dea55ae3722d4"
+      }
+    },
     "W10-S2D": {
       "accepted_checkpoint": "1d70e550f685b9c1a4636caf3be75debce500219",
       "accepted_tree": "d6cad612d010baa3a311a8ecd2eabd5f9f37c37e",
@@ -109,6 +118,27 @@ remain live; this record neither replaces nor weakens them.
         "docs/W10_S7A_BILLING_THREAT_MODEL.md": "d40a84890ae8b244d86501efda5a47e0ad51e98975139ec9000d0d7202ca8eee",
         "reserved/web/v2.py": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228",
         "tests/test_w10_billing_threat_model.py": "89bc0d0e53d7d9eed292b7e3c351c2441722598f3a2dbcb7eb248ebe01f5b270"
+      }
+    },
+    "W10-S7A-reconciliation": {
+      "accepted_checkpoint": "06eec249369cd71c1b6ff8dfaec94bf32b4fbb67",
+      "accepted_tree": "f942f27a7aae169c9fb6cbdf4797a80bd3df7288",
+      "integration_commit": "1d91526d11b5291d5388c78940682ca02edeb61e",
+      "integration_tree": "e2fc725961f816d80eed9e5373d738e5e21a024c",
+      "paths_sha256": {
+        "docs/W10_S7A_BILLING_THREAT_MODEL.md": "85303c4d1ed36b974d67bec38622d19586e8b478d8321b48b8035970c61f679b",
+        "tests/test_w10_billing_threat_model.py": "d7aa986064f828b77f2dfa493e28e8cb0cd46033808245ecf22f030b2211f8fa"
+      }
+    },
+    "W10-S2E": {
+      "accepted_checkpoint": "4511e45297dfcae980c606e4bb09b549510ea23f",
+      "accepted_tree": "cd6bdf2f66878aa4baecd79d5e7c504dd13a4007",
+      "integration_commit": "251deb1c39bbc4f5b4c7c3b1356a380cb0b9df04",
+      "integration_tree": "ec382c130c4120fcab8b87a1711c696c0b661015",
+      "paths_sha256": {
+        "docs/W10_S2E_TAX_INVOICE_PREREQUISITE.md": "3b2535493bd39dc25ff879f4eb2dfd901e52dc2df65a1c46dee4fa5e4e88f04b",
+        "reserved/billing/tax_invoice_prerequisite_contract.py": "325401be223975383bc80f5b4d0c0b8ab679fbae8127200ef294066a8dfe3bc0",
+        "tests/test_w10_tax_invoice_prerequisite_contract.py": "541498152bf7f63cf525d646a1d72495a9698c0d7068f6a46198783d29588ca7"
       }
     }
   },
@@ -207,6 +237,15 @@ contract evidence therefore narrows later implementation but does not satisfy
 the remaining security/privacy/operations/target evidence or close the recovery
 key.
 
+Integrated S2E at `251deb1c39bbc4f5b4c7c3b1356a380cb0b9df04`
+adds a detached, immutable, I/O-free tax/invoice prerequisite contract. Its
+validators establish local structural and semantic consistency only; they are
+not provenance, authentication, issuance, legal, tax, provider, delivery or
+entitlement authority. S2E preserves the settled gross catalogue, the £29/£156
+amount limb only (not £288), and every false authority and specialist gate. It
+does not accept a VAT registration, rate, customer/location/tax-point fact,
+invoice disposition or Stripe Tax configuration. It does not close the VAT/invoice policy key.
+
 ## Baseline finding and owned outcome
 
 W10 owns a customer-to-billing-account-to-entitlement path that can quote one
@@ -235,9 +274,9 @@ pages production-404. Integrated S5C product checkpoint `3c63e64...` plus
 evidence checkpoint `e395996...`, preserved through merge `85e1250...`, implements
 the five bounded legacy/internal route treatments. It does not decide or enforce
 the paid boundary. The initial S7A checkpoint integrated at `54a8247...`
-recorded 21 open W10 billing threat/control gaps. At reconciliation base
-`85e1250...`, that evidence predates S2D/S5C convergence and requires a focused
-post-convergence refresh; it is not current assurance and supplies no security,
+recorded 21 open W10 billing threat/control gaps. Its accepted post-S2D/S5C
+reconciliation is integrated at `1d91526...`; it makes the register current to
+that convergence but closes none of the 21 threats and supplies no security,
 provider, target or launch assurance.
 
 `docs/STRIPE_CONNECT_SPEC.md`, `reserved/providers/payments/base.py` and
@@ -254,12 +293,12 @@ must not reuse either domain contract as if it were subscription billing.
 | Slice | Smallest coherent outcome | Current state | Dependencies and completion evidence |
 |---|---|---|---|
 | **W10-S1 — authority and provider-neutral contract** | Encode the versioned initial plan catalogue and a fail-closed inventory of required policy inputs, while representing discounts/offers only as a required capability. | **Independently reviewed, checkpointed and integrated at `9e8f94a...`.** Exact authority, billing boundary, adversarial integrity and affected/full regression evidence passed. The slice remains short of launch-evidence-complete because later provider/target evidence is outside S1. | Preserve the exact integrated S1 authority and its 15-key denominator. S2 must consume its closure-bound validation/projector protocol, never mutable raw attributes or provider defaults. |
-| **W10-S2 — provider and policy closure** | Record the selected billing provider and every launch lifecycle/access/promotion/invoice and post-settlement dispute/chargeback/reversal policy needed by later slices, with decision owner and rationale. | **S2A, S2B, S2C and S2D are independently reviewed, checkpointed and integrated at `5464bfac7bec6b3456d1895b2355a7e8ce86859b`, `1033c9fbef008dcd33125a0b14e7fb18b8846d19`, `a07348976321df65bbd95c9170c906bcddd5baa5` and `509c5360d453e23a0732e4e9d4637385eef20ef6`.** S2A encodes six Founder-settled keys and the provisional Stripe capability boundary. S2B closes only four ordinary fail-closed engineering defaults. S2C classifies the exact five-key remainder and supplies evidence-backed recommendations/questions, but answers none: Q1 refunds, Q2 paid-access surface and Q3 post-settlement consequences remain Founder gates; VAT/invoice and no-transfer billing-account recovery remain specialist-evidence gates. S2D implements only a disabled-first owner-bound recovery decision contract, with no runtime/provider/persistence authority or accepted specialist/target evidence. S2 remains incomplete. | Obtain authoritative answers to Q1/Q2/Q3 and accepted legal/finance evidence for refunds/post-settlement treatment, finance/tax/legal evidence for VAT/invoices, and security/privacy/operations/target evidence plus durable authenticated implementation for owner-bound recovery. Provider terms/DPA/fees also remain open. Complete only when every key is versioned and accepted and no runtime behaviour relies on an undocumented provider default. |
+| **W10-S2 — provider and policy closure** | Record the selected billing provider and every launch lifecycle/access/promotion/invoice and post-settlement dispute/chargeback/reversal policy needed by later slices, with decision owner and rationale. | **S2A, S2B, S2C, S2D and S2E are independently reviewed, checkpointed and integrated at `5464bfac7bec6b3456d1895b2355a7e8ce86859b`, `1033c9fbef008dcd33125a0b14e7fb18b8846d19`, `a07348976321df65bbd95c9170c906bcddd5baa5`, `509c5360d453e23a0732e4e9d4637385eef20ef6` and `251deb1c39bbc4f5b4c7c3b1356a380cb0b9df04`.** S2A encodes six Founder-settled keys and the provisional Stripe capability boundary, including the explicit non-extendable `payment_recovery` engineering interpretation. S2B closes only four ordinary fail-closed engineering defaults. S2C classifies the exact five-key remainder but answers none: Q1 refunds, Q2 paid-access surface and Q3 post-settlement consequences remain Founder gates; VAT/invoice and no-transfer billing-account recovery remain specialist-evidence gates. S2D is only a disabled-first owner-bound recovery decision contract. S2E is only a detached, structurally validated, non-authoritative tax/invoice prerequisite. Neither supplies runtime/provider/persistence authority or accepted specialist/target evidence. S2 remains incomplete. | Obtain authoritative answers to Q1/Q2/Q3 and accepted legal/finance evidence for refunds/post-settlement treatment, finance/tax/legal evidence for VAT/invoices, and security/privacy/operations/target evidence plus durable authenticated implementation for owner-bound recovery. Provider terms/DPA/fees also remain open. Complete only when every key is versioned and accepted and no runtime behaviour relies on an undocumented provider default. |
 | **W10-S3 — durable billing and entitlement core** | Implement the owner-bound catalogue/version reference, billing account, subscription and settlement observations, event inbox, audit/reconciliation record and policy-derived entitlement boundary, including post-settlement dispute/chargeback/reversal observations without assuming their access consequence. | **S3A and S3B are independently reviewed, checkpointed and integrated at `94bd87f019dc226ec8c73f32515229189500cf06` and `5bc29bcb30c95ea7a5a9430104653b366d709eb6`.** S3A defines the provider-neutral lifecycle transition policy. S3B defines detached immutable shapes and fail-closed admission/reconciliation invariants for future owner-bound billing account, subscription, event, receipt and disposition records. S3 remains incomplete: S3B is contract-only and supplies no database schema, migration, implemented durable inbox, provider authenticity, persistence or entitlement decision. | S1 and the relevant S2 policies; accepted S3A/S3B semantics; W9 datastore, retention, encryption/key-custody and erasure decisions. Still required: durable billing-account/subscription/event-inbox/audit/reconciliation records; migrations; exclusive shared-file ownership and concurrency controls; authenticated event source; dispute/chargeback/reversal and correction/deletion/retention tests; independent schema/security/privacy review. |
 | **W10-S4 — provider adapter and collection lifecycle** | Implement disabled-first provider customer/checkout/management, verified webhooks, reconciliation and offer primitives against the provider-neutral core. | **S4A independently reviewed, checkpointed and integrated at `2ad4a63dd1f10ba38859050b47245c28390667d8`: the current official Stripe Checkout, Customer Portal, webhook integrity, duplicate/order and subscription-status semantics are encoded as a disabled, network-inert, non-entitling edge contract. S4 remains incomplete.** No SDK, credential, webhook endpoint, persistence, session creation, charge or provider activation is present. | Preserve S4A's exact disabled-first boundary. Completion still requires applicable S2 policies, S3B-compatible durable identities/event inbox, approved credential custody, accepted provider terms/security boundary and sandbox access. Synthetic and sandbox tests must cover successful, declined, delayed, duplicate, replayed, out-of-order, forged, refunded, post-settlement disputed/charged-back/reversed and recovered cases. No configuration or credential alone may enable it. |
 | **W10-S5 — server-side access and administration** | Apply the approved entitlement decision, including explicitly approved post-settlement dispute/chargeback/reversal consequences, to every in-scope paid surface and supply least-privilege, audited support/admin correction tools. | **S5A and S5B are independently reviewed, checkpointed and integrated at `9c0760192bb2420b90e57ec7313f69bbe52cbf74` and `051ae665a0cc94f6e9cdbbc728c621825c7769fe`; S5C product `3c63e64e478957ce04ee1154363c2eae94b82b30` and evidence `e3959964ca08bd5afb6f75feab4ec0fdc83a9423` are preserved through integration merge `85e1250f53180bb3c1aff111c17101b9e59df080`.** S5A source-binds the exact 44 always-registered and 8 HICBC-conditional routes and their provisional classes. S5B source-binds exact treatment of all 11 internal/admin/legacy/unknown entries. S5C implements five bounded legacy/internal route-hardening treatments without deciding customer paid scope. S5 is partially implemented but incomplete: Q2 remains unanswered and no paid-boundary or entitlement guard exists. | Preserve S5C's route closures. Actual paid-boundary enforcement must await the exact Q2 Founder answer against accepted S5A plus the applicable S2 policies and S3 entitlement API. Test cross-user, stale/unknown, revocation, cache, concurrency, direct-URL/API bypass and admin separation; authentication/client hiding never substitutes for server enforcement. |
 | **W10-S6 — customer billing journeys** | Deliver truthful plan/offer presentation and the approved checkout, success/pending/failure, renewal/cancellation, invoice/receipt/refund, post-settlement dispute/chargeback/reversal and account-management journeys. | **Partial local implementation.** Integrated S6A–D work provides plan presentation, a safe renderer, an authenticated plans preview and an authenticated plan-selection preview (`45ade8e...`, `23d04a6...`, `3e05fb7...`, `46e2141...`). It does not provide provider-backed checkout or lifecycle journeys and is not counted complete. | Preserve those components. Completion still requires S1 catalogue; relevant S2 policy; stable S3-S5 contracts; provider-backed checkout/account-management states; exact price/VAT copy review; accessibility/browser evidence; no surprise renewal or invented refund/grace/dispute outcome; and clear recovery/support paths. |
-| **W10-S7 — billing security, privacy and operations** | Close W10-specific abuse, privacy, reconciliation, monitoring, support, recovery and incident controls without duplicating W9's general control plane. | **The initial S7A checkpoint was independently reviewed and integrated at `54a82476939dce8f75af62d73aeb477e11a1260c`; post-S2D/S5C convergence evidence reconciliation is required.** S7A is an open 21-item billing threat/control/gap register only. No threat is accepted closed and no security, privacy, operations, provider, target or launch assurance is supplied; S7 implementation remains not started and the slice is incomplete. | First reconcile S7A to the current S2D/S5C lineage without converting local controls into assurance. Closure still requires S2-S6 plus W9 custody, retention, monitoring, incident and target-runtime controls; W9 itself remains 0/5. Exercise webhook/credential rotation, alerting, ledger-provider and dispute/chargeback/reversal reconciliation, outage/backlog recovery, account erasure/retention and support runbooks with redacted evidence. |
+| **W10-S7 — billing security, privacy and operations** | Close W10-specific abuse, privacy, reconciliation, monitoring, support, recovery and incident controls without duplicating W9's general control plane. | **The initial S7A checkpoint was independently reviewed and integrated at `54a82476939dce8f75af62d73aeb477e11a1260c`; its accepted post-S2D/S5C reconciliation is integrated at `1d91526d11b5291d5388c78940682ca02edeb61e`.** S7A remains an open 21-item billing threat/control/gap register only. No threat is accepted closed and no security, privacy, operations, provider, target or launch assurance is supplied; S7 implementation remains not started and the slice is incomplete. | Preserve the reconciled register and close threats only with separately accepted evidence. Closure still requires S2-S6 plus W9 custody, retention, monitoring, incident and target-runtime controls; W9 itself remains 0/5. Exercise webhook/credential rotation, alerting, ledger-provider and dispute/chargeback/reversal reconciliation, outage/backlog recovery, account erasure/retention and support runbooks with redacted evidence. |
 | **W10-S8 — integrated target assurance and activation** | Prove the complete paid-access journey in the launch candidate and assemble the W10 release evidence. | **Not started.** | S1-S7, launch identity and target runtime, provider sandbox/production-capable configuration and independent reviewer. End-to-end positive and failure-path evidence, final privacy/security/finance-tax review, residual-risk disposition and separate Founder authorisation for production activation/release/go-live. |
 
 ## Assurance states and stable denominator
@@ -284,9 +323,9 @@ rather than growing the map for ordinary fixes.
 
 ## Dependencies, parallelism and collision boundaries
 
-1. Preserve the independently reviewed integrated S1, S2A, S2B, S2C, S2D,
+1. Preserve the independently reviewed integrated S1, S2A, S2B, S2C, S2D, S2E,
    S3A, S3B, S4A, S5A, S5B and S5C boundaries. Preserve initial S7A provenance
-   while its post-convergence evidence is reconciled. S2A encodes the six Founder-settled
+   and its accepted post-convergence reconciliation. S2A encodes the six Founder-settled
    provider/lifecycle inputs;
    S2B closes only four fail-closed engineering defaults and leaves exactly five
    keys unresolved. S2C classifies Q1/Q2/Q3 as consequential Founder choices and
@@ -301,7 +340,8 @@ rather than growing the map for ordinary fixes.
    callback or emit entitlement. S5A is inventory evidence only; S5B reconciles
    its 11 internal/admin/legacy/unknown entries; S5C implements five bounded
    legacy/internal route treatments. None approves or enforces a paid boundary.
-   Initial S7A records open threats and awaits current-lineage reconciliation.
+   S2E preserves tax/invoice prerequisites but supplies no specialist acceptance.
+   Reconciled S7A records all 21 threats as open current-lineage gaps.
    Provider diligence, specialist evidence
    and the three Founder answers may run in parallel, but S2 closes only through
    explicit accepted evidence.
@@ -415,10 +455,10 @@ W10 is complete only when all thirteen checks pass:
 
 ## Current next action
 
-W10-S1, S2A, S2B, S2C, S2D, S3A, S3B, S4A, S5A, S5B and S5C are independently
-reviewed and integrated. The initial S7A checkpoint is integrated, but its
-evidence predates S2D/S5C convergence and must be reconciled before it can be
-treated as the current W10 billing threat register.
+W10-S1, S2A, S2B, S2C, S2D, S2E, S3A, S3B, S4A, S5A, S5B and S5C are
+independently reviewed and integrated. The initial S7A checkpoint and its
+post-S2D/S5C reconciliation are also integrated; the reconciled register keeps
+all 21 threats open and is not security or launch assurance.
 S2A records the six Founder-settled provider and paid-lifecycle decisions. S2B
 closes only the four accepted fail-closed engineering defaults and preserves the
 exact five unresolved keys. S2C classifies the remaining evidence and decision
@@ -427,7 +467,9 @@ post-settlement consequences remain unanswered Founder questions; VAT/invoice
 treatment and owner-bound no-transfer billing-account recovery remain specialist
 evidence gates rather than new Founder questions. S2D supplies the bounded local
 owner-bound recovery contract, not its authenticated/durable adapter or external
-acceptance. S3A remains the provider-neutral transition policy;
+acceptance. S2E supplies detached non-authoritative structural prerequisites for
+later specialist tax/invoice work, not accepted VAT/invoice facts or closure.
+S3A remains the provider-neutral transition policy;
 S3B is only the detached record/admission/reconciliation contract and provides
 no durable inbox, provider authenticity, persistence or entitlement decision.
 S4A remains a disabled provider-edge contract with no runtime adapter, signature
@@ -439,10 +481,9 @@ question, but changes no route and does not start S5.
 
 S5C has now implemented the five accepted legacy/internal hardening treatments
 without changing Founder-only scope, choosing a paid boundary or enforcing
-entitlement. This makes S5 partial, not complete. The focused S7A evidence
-reconciliation is the immediate documentation dependency created by the merged
-S2D/S5C lineage; it must retain all 21 threats as open unless separate accepted
-evidence closes one.
+entitlement. This makes S5 partial, not complete. S7A reconciliation is complete
+at `1d91526...`; all 21 threats remain open unless separate accepted evidence
+closes one.
 
 The next S2 work is accepted specialist evidence for the enumerated refund,
 VAT/invoice, recovery and post-settlement gates plus authoritative answers to
@@ -478,8 +519,9 @@ launch policy may describe a deliberately unsupported case; unsupported
 sophistication does not create another slice unless authoritative scope changes.
 
 **Map disposition:** **S1 independently reviewed and integrated; S2 partially
-implemented with independently reviewed/integrated S2A, S2B, evidence-only S2C
-and contract-only S2D, six Founder-settled keys, four fail-closed engineering
+implemented with independently reviewed/integrated S2A, S2B, evidence-only S2C,
+contract-only S2D and detached non-authoritative S2E, six Founder-settled keys,
+four fail-closed engineering
 defaults and exactly five policy keys unresolved, with Q1/Q2/Q3 unanswered and
 VAT/invoice plus no-transfer recovery still awaiting specialist acceptance;
 S3 partially
@@ -490,8 +532,8 @@ implemented with independently reviewed/integrated S4A but no runtime adapter,
 signature verification, persistence or activation; S5 partially implemented,
 with independently reviewed/integrated S5A inventory, S5B 11-route reconciliation
 and S5C five-treatment hardening, but no approved paid boundary or enforcement;
-S6 partially implemented/integrated; initial S7A is integrated open-gap evidence
-requiring post-convergence reconciliation and supplies no assurance; strict
+S6 partially implemented/integrated; initial and post-convergence S7A are
+integrated open-gap evidence with all 21 threats still open and supply no assurance; strict
 completion remains 0/8 and the terminal gate remains 0/13 pending S2 policy
 closure and every slice's remaining completion evidence.** W9 remains 0/5.
 Provider, target,
