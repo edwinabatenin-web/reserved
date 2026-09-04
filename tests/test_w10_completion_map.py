@@ -307,6 +307,7 @@ EXPECTED_HISTORICAL_MAP_BINDINGS = (
     },
 )
 ALLOWED_CANDIDATE_PATHS = {
+    "docs/W9_COMPLETION_MAP.md",
     MAP_RELATIVE_PATH,
     "tests/test_w10_billing_account_recovery_contract.py",
     "tests/test_w10_cancellation_presentation.py",
@@ -661,13 +662,13 @@ def test_fd_w10_004_closes_only_the_q3_policy_layer() -> None:
         assert statement in TEXT
 
 
-def test_w9_map_records_s3d_without_moving_any_launch_gate() -> None:
+def test_w9_map_records_s3e_without_moving_any_launch_gate() -> None:
     slice_rows = re.findall(r"(?m)^\| \*\*W9-S([1-5]) —", W9_TEXT)
     assert slice_rows == [str(value) for value in range(1, 6)]
     assert "**0/5 slices\nare complete (0%)**" in W9_TEXT
     assert "c9bdaa6538d68c0c64b2dcde97f224a69c089d30" in W9_TEXT
     assert "5f5a948891e1e812a5c74ff6c7266d153bb492fa" in W9_TEXT
-    assert "four accepted non-durable\ncontract/adapter layers" in W9_TEXT
+    assert "five accepted non-durable\ncontract/adapter layers" in W9_TEXT
     assert "selected/verified datastore" in W9_TEXT
     assert "physical schema and migration" in W9_TEXT
     assert "durable read/write implementation" in W9_TEXT
@@ -688,12 +689,57 @@ def test_w9_map_records_s3d_without_moving_any_launch_gate() -> None:
     assert "5f7b76408a5d72b71be71d0e5d6c7a6edde260b7" in W9_TEXT
     assert "b8ce971f4dc6b8a1ced10e9b490be68d481752de" in W9_TEXT
     assert "exact three-path boundary" in W9_TEXT
-    assert "Owner-to-business membership authorisation" in W9_TEXT
+    assert "51367e07d7d4c1e0673c00101aa1c99e84834a51" in W9_TEXT
+    assert "5d3bca019a6fbb888bd8e55952e891ab5abd29a2" in W9_TEXT
+    assert "target-neutral, pure/non-durable contract" in W9_TEXT
+    assert "authoritative membership source or physical repository" in W9_TEXT
+    assert "does not select a datastore, retention or custody policy" in W9_TEXT
+    assert "prove\ntarget membership or persistence" in W9_TEXT
     assert "future authenticated runtime-owner adapter" not in W9_TEXT
     assert "S3C authenticated non-durable adapter" not in W9_TEXT
     assert "authenticates an exact S3A projection" not in W9_TEXT
     assert "authenticates the exact S3A envelope" not in W9_TEXT
     assert "An authenticated adapter" not in W9_TEXT
+
+
+def test_w9_map_binds_exact_s3e_source_and_integration_evidence() -> None:
+    source = "51367e07d7d4c1e0673c00101aa1c99e84834a51"
+    integration = "5d3bca019a6fbb888bd8e55952e891ab5abd29a2"
+    paths_sha256 = {
+        "docs/W9_S3E_OWNER_BUSINESS_MEMBERSHIP_CONTRACT.md": (
+            "94a9a300929cd86469a22b87e89e7f117d9ab023667b06991cd8bd6756f65ddd"
+        ),
+        "reserved/owner_business_membership_contract.py": (
+            "19f6bd2a5039341006ea4d2238a82b0c35bd9cc22570bcd4f90e87c5609eea5e"
+        ),
+        "tests/test_owner_business_membership_contract.py": (
+            "66356ab6ef39e6603774871858adf9520f5510e41c320608f2ac9bf8ad72477f"
+        ),
+    }
+
+    assert git_text("rev-parse", f"{source}^{{tree}}") == (
+        "43d90d883109c8766496cd0eef84f079c2d14e8f"
+    )
+    assert git_text("rev-parse", f"{integration}^{{tree}}") == (
+        "63d5a2fafd9a9f86292ee5f9324a5655ed0a9dd4"
+    )
+    assert git_text("show", "-s", "--format=%P", source) == (
+        "030da8a2928473b9b5af35a158ea6ad5c5ad8e49"
+    )
+    assert git_text("show", "-s", "--format=%P", integration) == (
+        "ad0d284fedbe5e73b1fe421ce289019d5409a063"
+    )
+    assert changed_paths(source) == tuple(paths_sha256)
+    assert changed_paths(integration) == tuple(paths_sha256)
+    for relative_path, expected_sha256 in paths_sha256.items():
+        assert_historical_sha256(source, relative_path, expected_sha256)
+        assert_historical_sha256(integration, relative_path, expected_sha256)
+
+    subprocess.run(
+        ["git", "merge-base", "--is-ancestor", integration, "HEAD"],
+        cwd=ROOT,
+        check=True,
+    )
 
 
 def test_current_state_is_partial_non_authorising_and_keeps_every_gate_open() -> None:
