@@ -2,10 +2,17 @@
 
 ## Status and authority
 
-**Evidence cut-off:** 2 September 2026  
-**Starting commit:** `b15d3fcfa423192e1a8a2e8d0a49851b366518f4`  
-**Starting tree:** `3ddd2a273ab7d7b9677ab81b5c16ca7fe0bb7caf`  
-**Current status:** **PLANNED — 0/8 slices complete; not launch-ready.**
+**Evidence cut-off:** 4 September 2026
+
+**Original planning commit:** `b15d3fcfa423192e1a8a2e8d0a49851b366518f4`
+
+**Current integration reconciliation point:**
+`79351eb02c0b82b19063689d5da460f3f07394b4` (tree
+`36f167cb5aaf97299cdde9f8d7fe056bfdf32d0c`)
+
+**Current status:** **S1 implemented and integrated; S6 partially implemented
+and integrated; 0/8 slices complete on the strict accepted-evidence denominator;
+not launch-ready.**
 
 This map gives the October-launch subscription and billing workstream a finite
 endpoint. It is a planning and assurance control, not a provider decision,
@@ -68,12 +75,12 @@ must not reuse either domain contract as if it were subscription billing.
 
 | Slice | Smallest coherent outcome | Current state | Dependencies and completion evidence |
 |---|---|---|---|
-| **W10-S1 — authority and provider-neutral contract** | Encode the versioned initial plan catalogue and a fail-closed inventory of required policy inputs, while representing discounts/offers only as a required capability. | **Planned; implementable now.** | Depends only on `FD-W10-001`. Pure contract and adversarial tests must preserve exact GBP amounts, VAT-inclusive-where-applicable wording, authority version and unresolved-policy states without provider IDs, lifecycle defaults or access grants. |
+| **W10-S1 — authority and provider-neutral contract** | Encode the versioned initial plan catalogue and a fail-closed inventory of required policy inputs, while representing discounts/offers only as a required capability. | **Implemented and integrated at `c09dac2...`; completion evidence still partial.** The exact authority contract, billing boundary and adversarial tests exist. No durable package record located by this reconciliation proves the fresh independent-review disposition, so the slice is not yet counted complete. | Preserve the integrated contract and reconcile or repeat only the missing independent review. S2 policy closure must not mutate the versioned `FD-W10-001` snapshot or infer provider defaults. |
 | **W10-S2 — provider and policy closure** | Record the selected billing provider and every launch lifecycle/access/promotion/invoice and post-settlement dispute/chargeback/reversal policy needed by later slices, with decision owner and rationale. | **Unresolved; no provider selected.** | Provider evidence and appropriate product, finance/tax, legal, security and operational review. Complete only when no runtime behaviour relies on an undocumented provider default; production contracting/commitment and consequential choices retain their applicable authority gates. |
 | **W10-S3 — durable billing and entitlement core** | Implement the owner-bound catalogue/version reference, billing account, subscription and settlement observations, event inbox, audit/reconciliation record and policy-derived entitlement boundary, including post-settlement dispute/chargeback/reversal observations without assuming their access consequence. | **Not started.** | S1 and the relevant S2 policies; W9 datastore, retention, encryption/key-custody and erasure decisions. Migrations, ownership/concurrency, ordered-event, duplicate/replay, dispute/chargeback/reversal, correction and deletion/retention tests; independent schema/security review. |
 | **W10-S4 — provider adapter and collection lifecycle** | Implement disabled-first provider customer/checkout/management, verified webhooks, reconciliation and offer primitives against the provider-neutral core. | **Not started.** | S2 provider selection/contract; S3 identities; approved credential custody; current official provider contract and sandbox access. Synthetic contract tests plus successful, declined, delayed, duplicate, replayed, out-of-order, forged, refunded, post-settlement disputed/charged-back/reversed and recovered sandbox evidence. No configuration or credential alone may enable it. |
 | **W10-S5 — server-side access and administration** | Apply the approved entitlement decision, including explicitly approved post-settlement dispute/chargeback/reversal consequences, to every in-scope paid surface and supply least-privilege, audited support/admin correction tools. | **Not started.** | S2 access/lifecycle/override policy and S3 entitlement API; can use synthetic events while S4 proceeds. Route inventory, cross-user, stale/unknown status, dispute/chargeback/reversal, revocation, cache, concurrent update, bypass and audited-override tests; authentication and client-side hiding must never substitute for server enforcement. |
-| **W10-S6 — customer billing journeys** | Deliver truthful plan/offer presentation and the approved checkout, success/pending/failure, renewal/cancellation, invoice/receipt/refund, post-settlement dispute/chargeback/reversal and account-management journeys. | **Not started.** | S1 catalogue; relevant S2 policy; stable S3-S5 contracts. Exact price/VAT copy review, accessibility/browser tests, no surprise renewal or invented refund/grace/dispute outcome, and clear recovery/support paths. |
+| **W10-S6 — customer billing journeys** | Deliver truthful plan/offer presentation and the approved checkout, success/pending/failure, renewal/cancellation, invoice/receipt/refund, post-settlement dispute/chargeback/reversal and account-management journeys. | **Partial local implementation.** Integrated S6A–D work provides plan presentation, a safe renderer, an authenticated plans preview and an authenticated plan-selection preview (`45ade8e...`, `23d04a6...`, `3e05fb7...`, `46e2141...`). It does not provide provider-backed checkout or lifecycle journeys and is not counted complete. | Preserve those components. Completion still requires S1 catalogue; relevant S2 policy; stable S3-S5 contracts; provider-backed checkout/account-management states; exact price/VAT copy review; accessibility/browser evidence; no surprise renewal or invented refund/grace/dispute outcome; and clear recovery/support paths. |
 | **W10-S7 — billing security, privacy and operations** | Close W10-specific abuse, privacy, reconciliation, monitoring, support, recovery and incident controls without duplicating W9's general control plane. | **Not started.** | Threat model plus S2-S6; W9 custody, retention, monitoring, incident and target-runtime controls. Exercised webhook/credential rotation, alerting, ledger-provider and dispute/chargeback/reversal reconciliation, outage/backlog recovery, account erasure/retention and support runbooks with redacted evidence. |
 | **W10-S8 — integrated target assurance and activation** | Prove the complete paid-access journey in the launch candidate and assemble the W10 release evidence. | **Not started.** | S1-S7, launch identity and target runtime, provider sandbox/production-capable configuration and independent reviewer. End-to-end positive and failure-path evidence, final privacy/security/finance-tax review, residual-risk disposition and separate Founder authorisation for production activation/release/go-live. |
 
@@ -99,14 +106,16 @@ rather than growing the map for ordinary fixes.
 
 ## Dependencies, parallelism and collision boundaries
 
-1. S1 can proceed immediately. S2 provider diligence and policy drafting may
+1. Preserve the integrated S1 contract and reconcile or repeat only its missing
+   independent-review evidence. S2 provider diligence and policy drafting may
    run in parallel, but S2 closes only through explicit decisions.
 2. S3 follows the relevant S1/S2 contracts. S4 and S5 can then run in parallel:
    S4 owns provider translation, while S5 consumes only synthetic or canonical
    billing observations and entitlement decisions.
-3. S6 may prototype copy and states against S1, but binding customer actions
-   waits for stable S3-S5 contracts. S7 develops alongside S3-S6 and is
-   exercised against their integrated result. S8 is the final serial gate.
+3. Preserve S6A–D's integrated presentation and authenticated preview work.
+   Binding customer actions and the remaining provider-backed lifecycle journeys
+   wait for stable S2-S5 contracts. S7 develops alongside S3-S6 and is exercised
+   against their integrated result. S8 is the final serial gate.
 4. One owner at a time controls `reserved/database.py` migrations and shared
    user/account deletion. Billing code should start in a new `reserved/billing/`
    boundary; provider-specific code must translate at its edge and must not
@@ -205,34 +214,18 @@ W10 is complete only when all thirteen checks pass:
     are recorded. No credential, provider dashboard setting or green local test
     can grant launch status by itself.
 
-## Immediate next bounded package
+## Current next action
 
-### W10-S1A — Founder-authority snapshot and policy-completeness contract
+W10-S1A is already implemented and integrated. The next action is to obtain or
+repeat a fresh independent review of that exact contract and then record the
+smallest set of explicit S2 provider and customer-lifecycle decisions needed by
+S3-S6.
 
-Create a network-inert, provider-neutral contract package containing:
-
-- `docs/W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md`;
-- `reserved/billing/__init__.py` and `reserved/billing/contracts.py`; and
-- `tests/test_billing_contracts.py`.
-
-It should model a versioned `FD-W10-001` authority snapshot with stable internal
-monthly/six-month/yearly keys, exact GBP amounts, VAT-inclusive-where-applicable
-presentation metadata and the requirement that discounts/offers be supportable.
-It should also enumerate the unresolved policy keys, including post-settlement
-dispute/chargeback/reversal handling and any resulting entitlement consequence,
-and return a fail-closed “policy incomplete” result until each has an explicit,
-traceable decision. Tests must reject floats, altered initial amounts, provider
-product IDs, invented VAT rates/applicability, implicit
-renew/cancel/grace/refund/dispute/chargeback/reversal/entitlement defaults and any
-attempt to treat the offers requirement as a discount calculation rule.
-
-Protected paths are `FOUNDER_DECISIONS.md`, `reserved/database.py`,
-`reserved/auth.py`, all routes/templates/configuration, existing payment/provider
-code, requirements, credentials, readiness/release metadata and all existing
-tests. The package makes no provider call, persists nothing, grants no access and
-changes no activation state. It is **IMPLEMENTABLE NOW** without unresolved
-policy, production access or credentials; close it only after focused tests and
-fresh independent review.
+No provider adapter, credential, persistence migration, access grant or checkout
+package follows merely from the S1 contract. Provider-specific implementation
+waits for a selected provisional provider boundary and applicable external
+evidence. Provider-neutral entitlement design may begin only against explicit
+lifecycle decisions and the approved W9 custody/data-lifecycle boundary.
 
 ## Explicitly out of scope
 
@@ -246,5 +239,7 @@ accounts, handle credentials, charge money, merge, deploy or go live. A required
 launch policy may describe a deliberately unsupported case; unsupported
 sophistication does not create another slice unless authoritative scope changes.
 
-**Map disposition:** **review-ready** as a finite W10 plan; implementation,
-policy closure, target evidence and launch authority remain wholly open.
+**Map disposition:** **S1 implemented and integrated and S6 partially
+implemented/integrated; strict completion remains 0/8 pending independently
+accepted S1 evidence, S2 policy closure and each slice's remaining completion
+evidence.** Target evidence and launch authority remain open.
