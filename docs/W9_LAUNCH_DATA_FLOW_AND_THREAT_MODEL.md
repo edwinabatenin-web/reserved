@@ -13,15 +13,17 @@ another readiness authority, or alter production/readiness state.
   `81ae02044cccd921d98a0d1fc2360e1c4a983ab1`, tree
   `ac5922e7aae0016a54f78a8645a244ac83eae0d2`.
 - Narrow live-current W10 route-evidence refresh: accepted integration commit
-  `c5e560045ed3d62f02c894e931464c3d7294e99f`, tree
-  `bcdbec9108c3c0904139eca278c03fe0f6914db2`. The accepted S5C product
+  `95dd628e27f7261282f2ecf55d4cf29720329b91`, tree
+  `559bfe4c77c5e5f3bf59553d91c78c614ac060ff`. The accepted S5C product
   checkpoint remains historically pinned at
   `3c63e64e478957ce04ee1154363c2eae94b82b30`, tree
   `ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7`. This records fail-closed
   legacy/internal route hardening only; it is not W9-S1 completion, a paid-
-  boundary decision, entitlement enforcement or launch assurance.
-  The paid-boundary decision and paid-entitlement enforcement remain **not started**;
-  W10-S5 is incomplete. Strict W9 completion remains **0/5**; all existing
+  boundary decision, entitlement enforcement or launch assurance. Accepted
+  W10-S2F settles the paid-route class and accepted S5D supplies a route-less
+  guard kernel; the runtime adapter, route wiring and live paid-entitlement
+  enforcement remain **not started**. W10-S5 is incomplete. Strict W9
+  completion remains **0/5**; all existing
   evidence, ownership, provider, target, legal, privacy and operations gates
   remain open.
 - [W9-S1 independent-review evidence](W9_S1_INDEPENDENT_REVIEW_EVIDENCE.md)
@@ -61,8 +63,8 @@ The binding proves only which local evidence was inspected.
 | W10-S3A entitlement core | `reserved/billing/entitlement_core.py` | `201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415` |
 | W10-S3B event-inbox contract | `reserved/billing/event_inbox_contract.py` | `4dc0b6bb8b109854531dc1b9d492255e98dca805822cd5e0257f0fdf9b0ca8ed` |
 | W10-S4A disabled-first Stripe contract | `reserved/billing/stripe_disabled_first_contract.py` | `87a84c5ec77f25e12667b5466052b4a84ee6e01a6b075df643202d95aec98638` |
-| W10-S5A current paid-surface inventory findings | `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `64894dbfb74b0faa16b8b4c824f79b021675caf57a391c9a19c269a0f914c7c9` |
-| W10-S5B current internal-route reconciliation | `docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md` | `3cbf1325ef388412dee1a766c13965a00347ba0f517417318b33338f6d261f56` |
+| W10-S5A current paid-surface inventory findings | `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `8a2ee7d91eb20e29bcdd20ebd5d2f6b98e9dd559501140303937e99e1bd1e747` |
+| W10-S5B current internal-route reconciliation | `docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md` | `96f1ed01298604a283b791131ba43daf8c6b82582dd2ed822663d4b4a385daa8` |
 | W10-S5C route-hardening evidence candidate | `docs/W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md` | `221b244e687611dfa3e55e67051cb9ffab59ef6fcd9f02d8c5c865611439d1f5` |
 | Current legacy/internal route source | `reserved/web/routes.py` | `cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd` |
 | W10-S5C V2 production-gate source | `reserved/web/v2.py` | `dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228` |

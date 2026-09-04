@@ -307,11 +307,11 @@ def function(relative_path: str, name: str) -> ast.FunctionDef:
 
 def test_exact_metadata_preserves_incomplete_s5_and_no_new_founder_question():
     data = s5b()
-    assert data["schema_version"] == "W10-S5B/2026-09-04/v2"
+    assert data["schema_version"] == "W10-S5B/2026-09-04/v3"
     assert data["repository_head"] == (
-        "c5e560045ed3d62f02c894e931464c3d7294e99f"
+        "95dd628e27f7261282f2ecf55d4cf29720329b91"
     )
-    assert data["repository_tree"] == "bcdbec9108c3c0904139eca278c03fe0f6914db2"
+    assert data["repository_tree"] == "559bfe4c77c5e5f3bf59553d91c78c614ac060ff"
     assert data["accepted_s5a_commit"] == (
         "9c0760192bb2420b90e57ec7313f69bbe52cbf74"
     )
@@ -332,12 +332,12 @@ def test_exact_metadata_preserves_incomplete_s5_and_no_new_founder_question():
         "candidate_requires_independent_review"
     )
     assert data["s5_status"] == (
-        "incomplete_prerequisite_route_hardening_implemented"
+        "incomplete_guard_kernel_implemented_route_enforcement_not_started"
     )
-    assert data["paid_boundary_status"] == (
-        "unresolved_existing_s5a_founder_question"
+    assert data["paid_boundary_status"] == "settled_by_w10_s2f"
+    assert data["paid_entitlement_enforcement_status"] == (
+        "guard_kernel_only_runtime_adapter_and_route_wiring_not_started"
     )
-    assert data["paid_entitlement_enforcement_status"] == "not_started"
     assert data["new_founder_question_required"] is False
 
 
@@ -638,10 +638,12 @@ def test_document_preserves_nonimplementation_and_decision_boundaries():
     required = (
         "This evidence refresh changes no route or runtime behavior.",
         "prerequisite route hardening is implemented",
-        "paid-entitlement enforcement remain **not started**",
+        "accepted W10-S2F settles the paid-route class",
+        "accepted W10-S5D supplies a route-less guard kernel",
+        "live paid-entitlement enforcement remain **not started**",
         "W10-S5 remains incomplete",
         "No additional Founder question is created",
-        "This evidence neither answers nor restates that question.",
+        "does not reopen or independently settle that policy",
         "None of the routes below becomes a free or paid customer product",
         "No database, network, environment credential or provider code path is exercised.",
     )
@@ -651,6 +653,8 @@ def test_document_preserves_nonimplementation_and_decision_boundaries():
         "paid boundary approved",
         "entitlement implemented",
         "W10-S5 complete",
+        "paid-surface question remains unanswered",
+        "gated by Founder Q2",
     )
     for phrase in forbidden:
         assert phrase not in text

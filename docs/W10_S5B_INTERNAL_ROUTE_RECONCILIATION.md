@@ -5,8 +5,8 @@
 **Evidence cut-off:** 4 September 2026
 
 **Live source checkpoint:**
-`c5e560045ed3d62f02c894e931464c3d7294e99f` (tree
-`bcdbec9108c3c0904139eca278c03fe0f6914db2`)
+`95dd628e27f7261282f2ecf55d4cf29720329b91` (tree
+`559bfe4c77c5e5f3bf59553d91c78c614ac060ff`)
 
 **Accepted S5C product checkpoint:**
 `3c63e64e478957ce04ee1154363c2eae94b82b30`
@@ -31,8 +31,10 @@ This is not a paid-surface decision, entitlement design or access-control
 implementation. It does not expose a route, approve a current guard, weaken
 authentication or CSRF, activate a provider, access credentials or data, or
 make a paid-boundary decision or complete W10-S5. The prerequisite route
-hardening is implemented; the paid-boundary decision and paid-entitlement
-enforcement remain **not started**, and W10-S5 remains incomplete.
+hardening is implemented, accepted W10-S2F settles the paid-route class, and
+accepted W10-S5D supplies a route-less guard kernel. The authoritative runtime
+adapter, route wiring and live paid-entitlement enforcement remain **not
+started**, and W10-S5 remains incomplete.
 
 ## Result
 
@@ -48,10 +50,10 @@ No additional Founder question is created by these eleven reconciliations:
 - `web.tax_assurance` and `v2.sandbox_checklist` are source-labelled internal
   evidence/operations pages and must not be customer-reachable in production.
 
-The accepted S5A Founder question still governs which authenticated customer
-product surfaces are paid. This evidence neither answers nor restates that
-question. None of the routes below becomes a free or paid customer product by
-this reconciliation or by S5C hardening.
+Accepted W10-S2F now governs which authenticated customer product surfaces are
+paid. This evidence consumes but does not reopen or independently settle that
+policy. None of the routes below becomes a free or paid customer product by
+this reconciliation or by S5C hardening alone.
 
 ## Exact accepted evidence
 
@@ -68,10 +70,10 @@ rather than being silently reinterpreted as current runtime evidence.
 
 | Evidence | SHA-256 | Use |
 |---|---|---|
-| `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `5d1d957f53edf04898df8064ee5825a5ab9a55091daf2fed8b292f54db596601` | Refreshed exact route/method/guard/CSRF inventory; preserves the existing paid-boundary question. |
-| `tests/test_w10_paid_surface_inventory.py` | `adf2044d4c72bb7985e4fed90ecb771aa1d88719bb39aac9ce47c70c4371b512` | Refreshed inventory/source/registry freshness assurance. |
+| `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `8a2ee7d91eb20e29bcdd20ebd5d2f6b98e9dd559501140303937e99e1bd1e747` | Current exact route/method/guard/CSRF inventory after linked-HICBC mutual-permission integration; records accepted S2F policy and route-less S5D without claiming runtime enforcement. |
+| `tests/test_w10_paid_surface_inventory.py` | `4ae3e0b6867248b1adaaedd8a9fcdfed60fdb63b70f76df40ff0d2889396f137` | Current inventory/source/registry freshness assurance. |
 | `5612f7a...:docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md` | `7af205f420c2cf3a9039fff7aad1af65e55221005231b2fabe3bd99c94f96c4d` | Historical W10 state and explicit S5B next action, verified from the Git blob. |
-| `FOUNDER_DECISIONS.md` | `03765242c39354ffe57834da8a4a4e5b0dbbdacf5278731e560dea55ae3722d4` | October scope, paid-subscription authority and ordinary-engineering authority. |
+| `FOUNDER_DECISIONS.md` | `78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f` | Current October scope, paid-subscription lifecycle/withdrawal authority and ordinary-engineering authority at the refreshed repository identity. |
 | `docs/TECHNICAL_ARCHITECTURE.md` | `7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79` | Capital Gains dormant/out-of-scope and launch-layer boundary. |
 | `docs/API_CONTRACT_GAP_REPORT.md` | `b0eeeea6357e88dd1db59dd5ddf2d4e4e712f79f73d3a61c52838cda390ac85f` | Current implementation-derived HTTP classification; Founder area is not a public API. |
 
@@ -84,18 +86,18 @@ disposition forward by name alone.
 <!-- W10-S5B-RECONCILIATION-BEGIN -->
 ```json
 {
-  "schema_version": "W10-S5B/2026-09-04/v2",
-  "repository_head": "c5e560045ed3d62f02c894e931464c3d7294e99f",
-  "repository_tree": "bcdbec9108c3c0904139eca278c03fe0f6914db2",
+  "schema_version": "W10-S5B/2026-09-04/v3",
+  "repository_head": "95dd628e27f7261282f2ecf55d4cf29720329b91",
+  "repository_tree": "559bfe4c77c5e5f3bf59553d91c78c614ac060ff",
   "accepted_s5a_commit": "9c0760192bb2420b90e57ec7313f69bbe52cbf74",
   "accepted_s5b_commit": "051ae665a0cc94f6e9cdbbc728c621825c7769fe",
   "accepted_s5c_product_checkpoint": "3c63e64e478957ce04ee1154363c2eae94b82b30",
   "accepted_s5c_product_tree": "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7",
   "reconciliation_status": "accepted_reconciliation_with_implemented_s5c_treatments",
   "evidence_refresh_status": "candidate_requires_independent_review",
-  "s5_status": "incomplete_prerequisite_route_hardening_implemented",
-  "paid_boundary_status": "unresolved_existing_s5a_founder_question",
-  "paid_entitlement_enforcement_status": "not_started",
+  "s5_status": "incomplete_guard_kernel_implemented_route_enforcement_not_started",
+  "paid_boundary_status": "settled_by_w10_s2f",
+  "paid_entitlement_enforcement_status": "guard_kernel_only_runtime_adapter_and_route_wiring_not_started",
   "new_founder_question_required": false,
   "historical_completion_map_blob": {
     "commit": "5612f7a33f27f09d1fa988f15dfdffbe77a72705",
@@ -103,10 +105,10 @@ disposition forward by name alone.
     "sha256": "7af205f420c2cf3a9039fff7aad1af65e55221005231b2fabe3bd99c94f96c4d"
   },
   "source_sha256": {
-    "FOUNDER_DECISIONS.md": "03765242c39354ffe57834da8a4a4e5b0dbbdacf5278731e560dea55ae3722d4",
+    "FOUNDER_DECISIONS.md": "78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f",
     "docs/API_CONTRACT_GAP_REPORT.md": "b0eeeea6357e88dd1db59dd5ddf2d4e4e712f79f73d3a61c52838cda390ac85f",
     "docs/TECHNICAL_ARCHITECTURE.md": "7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79",
-    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "64894dbfb74b0faa16b8b4c824f79b021675caf57a391c9a19c269a0f914c7c9",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "8a2ee7d91eb20e29bcdd20ebd5d2f6b98e9dd559501140303937e99e1bd1e747",
     "reserved/__init__.py": "5f35d6d88542218cd8d5dbdac9662ef6711768ae5a3749a92d779325b42a2f34",
     "reserved/providers/banking/yapily.py": "885d021f20f8a76b5f2d26ed692f1e2cae4a7c9764c885da286a61c1c2b68475",
     "reserved/security.py": "73a5d20f1aa69fafda1ab4a9d6c01668fc9a465686e2d8198f8649364e43ae2b",
@@ -118,7 +120,7 @@ disposition forward by name alone.
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
     "reserved/web/v2.py": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228",
-    "tests/test_w10_paid_surface_inventory.py": "aa1c40ad19dc737df07ec24cc9304ece57ad27f741694b6b4688400c7e448c87"
+    "tests/test_w10_paid_surface_inventory.py": "4ae3e0b6867248b1adaaedd8a9fcdfed60fdb63b70f76df40ff0d2889396f137"
   },
   "s5c_implemented_treatments": {
     "web.calculate": {
@@ -432,8 +434,8 @@ particular:
 - do not treat refreshed S5A/S5B evidence as product authority;
 - do not add paid entitlement to Founder routes or use customer subscription
   state as Founder authentication;
-- do not implement the unresolved customer paid boundary while retiring legacy
-  aliases;
+- do not confuse the settled paid boundary or route-less S5D kernel with live
+  route enforcement while retiring legacy aliases;
 - do not weaken global CSRF, customer authentication, Founder authentication,
   session clearing, no-store headers, rate limiting or CSV sanitisation;
 - do not make the assurance/sandbox routes production-visible merely because a
@@ -444,9 +446,9 @@ particular:
 
 ## Decision and next package
 
-**New Founder action required by S5B: no.** The existing accepted S5A
-paid-surface question remains unanswered and is still required before customer
-paid-boundary implementation. A new Founder question would arise only if a
+**New Founder action required by S5B: no.** W10-S2F closes the former S5A
+paid-surface question as accepted engineering policy. A new Founder question
+would arise only if a
 future proposal sought to put Capital Gains into October scope, make an internal
 assurance route a customer feature, expose Founder administration to customer
 identities, or preserve a legacy route as an independent customer product.
@@ -456,8 +458,10 @@ cleanup: Capital Gains and all Founder boundaries are unchanged; the three
 legacy paths are retired or redirected without a paid-surface answer;
 `tax-assurance` is closed because no staff boundary exists; and the sandbox
 checklist is production-404 while retaining its non-production customer-session
-guard. The next S5 implementation package is still gated by Founder Q2 and must
-implement server-side paid-entitlement enforcement separately.
+guard. S5D separately supplies the accepted route-less guard kernel. The next
+S5 engineering packages must supply the authoritative runtime-entitlement
+adapter and server-side route wiring without treating either as provider or
+launch authority.
 
 ## Assurance method and limits
 

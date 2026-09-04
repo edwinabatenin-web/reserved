@@ -55,8 +55,8 @@ LIVE_PROVENANCE_RECONCILIATION_INTEGRATION_PARENT = (
     "aaa08d7b541ed49765f9d9c68bf1d91d4f34faf3"
 )
 S5C_EVIDENCE_REFRESH_PARENT = "3c63e64e478957ce04ee1154363c2eae94b82b30"
-CURRENT_ROUTES_COMMIT = "c5e560045ed3d62f02c894e931464c3d7294e99f"
-CURRENT_ROUTES_TREE = "bcdbec9108c3c0904139eca278c03fe0f6914db2"
+CURRENT_ROUTES_COMMIT = "95dd628e27f7261282f2ecf55d4cf29720329b91"
+CURRENT_ROUTES_TREE = "559bfe4c77c5e5f3bf59553d91c78c614ac060ff"
 HISTORICAL_S5C_ROUTES_SHA256 = (
     "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed"
 )
@@ -220,8 +220,8 @@ SOURCE_SHA256 = {
     "reserved/billing/entitlement_core.py": "201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415",
     "reserved/billing/event_inbox_contract.py": "4dc0b6bb8b109854531dc1b9d492255e98dca805822cd5e0257f0fdf9b0ca8ed",
     "reserved/billing/stripe_disabled_first_contract.py": "87a84c5ec77f25e12667b5466052b4a84ee6e01a6b075df643202d95aec98638",
-    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "64894dbfb74b0faa16b8b4c824f79b021675caf57a391c9a19c269a0f914c7c9",
-    "docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md": "3cbf1325ef388412dee1a766c13965a00347ba0f517417318b33338f6d261f56",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "8a2ee7d91eb20e29bcdd20ebd5d2f6b98e9dd559501140303937e99e1bd1e747",
+    "docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md": "96f1ed01298604a283b791131ba43daf8c6b82582dd2ed822663d4b4a385daa8",
     "docs/W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md": "221b244e687611dfa3e55e67051cb9ffab59ef6fcd9f02d8c5c865611439d1f5",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
     "reserved/web/v2.py": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228",
@@ -278,7 +278,8 @@ REQUIRED_SEMANTIC_MARKERS = [
     "W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md",
     "W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md",
     "legacy/internal route hardening",
-    "paid-entitlement enforcement remain **not started**",
+    "live paid-entitlement",
+    "enforcement remain **not started**",
 ]
 
 # Bind the newly reconciled semantics to the exact structured sections that
