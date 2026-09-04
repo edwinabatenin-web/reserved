@@ -21,6 +21,11 @@ def hicbc_annual_preview_enabled() -> bool:
     return os.environ.get("HICBC_ANNUAL_PREVIEW_ENABLED", "") == "1"
 
 
+def paye_manual_baseline_enabled() -> bool:
+    """Independent disabled-first manual capture switch, read at request time."""
+    return os.environ.get("PAYE_MANUAL_BASELINE_ENABLED", "") == "1"
+
+
 class Config:
     # ── Core ──────────────────────────────────────────────────────────────────
     SECRET_KEY        = os.environ.get("SESSION_SECRET", "reserved-local-preview-only")

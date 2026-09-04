@@ -2,6 +2,9 @@
 {% block title %}Dashboard — Reserved™{% endblock %}
 {% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
+{% if paye_manual_available %}
+<section class="panel"><a href="{{ url_for('v2.paye_manual_baseline') }}">Enter a manual PAYE baseline for one employment</a><p>Review partial cumulative facts only — not saved and not an annual tax estimate.</p></section>
+{% endif %}
 {% if liability.calculation_status == 'unsupported_rule' %}
 <section class="panel" role="status" aria-live="polite">
     <h1>Estimate unavailable for this loan-plan combination</h1>

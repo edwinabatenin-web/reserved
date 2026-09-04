@@ -39,6 +39,7 @@ bank consent is tested).
 
 import logging
 import os
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from flask import (
     Blueprint, abort, g, jsonify, redirect, render_template,
@@ -52,6 +53,7 @@ from reserved.auth import (
     set_user_session, verify_clerk_session_token,
 )
 from reserved.database import (
+    get_user,
     get_account,
     get_connection_by_token,
     get_invoice_counts_for_user,
@@ -68,6 +70,8 @@ from reserved.database import (
     persist_match_result,
 )
 from reserved.extensions import csrf
+from reserved.config import paye_manual_baseline_enabled
+from reserved.services.paye_manual_baseline import review_manual_baseline
 from reserved.matching.engine import MatchingEngine
 from reserved.billing.contracts import INITIAL_BILLING_AUTHORITY
 from reserved.providers.banking.classifier import TransactionCategory
@@ -561,7 +565,41 @@ def dashboard_view():
         summary        = _dash["summary"],
         liability      = _dash["liability"],
         is_demo        = _dash["is_demo"],
+        paye_manual_available=(paye_manual_baseline_enabled() and not is_production_environment()),
     )
+
+
+@v2.route("/paye/manual-baseline", methods=["GET", "POST"])
+@require_auth
+def paye_manual_baseline():
+    """Disabled, non-production capture/review only; no saved financial state."""
+    if is_production_environment() or not paye_manual_baseline_enabled():
+        abort(404)
+    if type(g.user_id) is not int or g.user_id <= 0 or get_user(g.user_id) is None:
+        abort(403)
+    year = resolve_tax_year(context_tax_year=configured_tax_year())
+    if year is None:
+        abort(404)
+    review = None
+    error = None
+    status = 200
+    if request.args:
+        abort(400)
+    if request.method == "POST":
+        try:
+            if (request.mimetype != "application/x-www-form-urlencoded"
+                    or request.content_length is None or request.content_length > 4096
+                    or request.files or any(len(request.form.getlist(key)) != 1 for key in request.form)):
+                raise ValueError("Invalid form")
+            fields = request.form.to_dict()
+            fields.pop("csrf_token", None)  # Already verified by global Flask-WTF.
+            review = review_manual_baseline(fields, tax_year=year,
+                                            observed_on=datetime.now(timezone.utc).date())
+        except (ValueError, TypeError, InvalidOperation):
+            error = "We could not review those facts. Check the date, amounts and choices, then confirm they are cumulative figures for one employment."
+            status = 400
+    return render_template("v2/paye_manual_baseline.html", tax_year=year,
+                           review=review, error=error), status
 
 
 @v2.get("/connections")

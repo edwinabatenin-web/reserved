@@ -17,8 +17,8 @@ guard kernel is implemented. The authoritative runtime adapter, route wiring
 and live paid-entitlement enforcement remain **not started**, and W10-S5
 remains incomplete. S5A is inventory evidence only.
 
-The registry has 44 always-registered rules. Enabling the disabled-by-default
-HICBC feature gate adds 9 owner-authenticated rules, producing 53 total. The
+The registry has 45 always-registered rules. Enabling the disabled-by-default
+HICBC feature gate adds 9 owner-authenticated rules, producing 54 total. The
 annual-preview rule additionally requires its own strict switch and denies
 production; its paid classification does not wire runtime entitlement. Flask's
 implicit `HEAD` and `OPTIONS` methods are omitted; the listed methods are the
@@ -62,13 +62,13 @@ only when `HICBC_ENABLED` is explicitly enabled.
   "paid_entitlement_enforcement_status": "guard_kernel_only_runtime_adapter_and_route_wiring_not_started",
   "route_hardening_changes": true,
   "route_counts": {
-    "always": 44,
+    "always": 45,
     "hicbc_feature_enabled_additional": 9,
-    "hicbc_feature_enabled_total": 53
+    "hicbc_feature_enabled_total": 54
   },
   "classification_counts": {
     "public_infrastructure_auth_legal_support": 14,
-    "authenticated_product_candidate_pending_founder_decision": 26,
+    "authenticated_product_candidate_pending_founder_decision": 27,
     "billing_purchase_return_recovery_candidate": 2,
     "internal_admin_unknown_requiring_reconciliation": 11
   },
@@ -76,12 +76,12 @@ only when `HICBC_ENABLED` is explicitly enabled.
     "reserved/__init__.py": "5f35d6d88542218cd8d5dbdac9662ef6711768ae5a3749a92d779325b42a2f34",
     "reserved/api/routes.py": "9d865764b222c0985b27c23707a7cea8a8327152795deb14e91a27feef081364",
     "reserved/auth.py": "adfe50a348a94e1f1a7405a41d92ec39b5d1a9db8c92b64222410701af39ae91",
-    "reserved/config.py": "1156bc1d25ba6a65f3a482ebd8802c41e1053a70695cff612486b2b636d4d062",
+    "reserved/config.py": "fa0ed4e9c9ac18b4b2366732a25a37f52c8aeb0adf16d49acdd62cc02510697f",
     "reserved/extensions.py": "ef35d3ec969e299a1c8221b5636bcf44590189175b0ad0c83e88d38ded35b2a0",
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
     "reserved/web/hicbc.py": "a05f4a8916f04765cf7e0c05b4b86873f25446f3c9e4dacb25a090bf7cc9406a",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
-    "reserved/web/v2.py": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228"
+    "reserved/web/v2.py": "be6247e5f9aa91cfbdc3a4d028fbf4b3c4911eaf98dcd1f7b383b28998838236"
   },
   "routes": [
     {
@@ -323,6 +323,16 @@ only when `HICBC_ENABLED` is explicitly enabled.
       "csrf": "not_applicable",
       "classification": "authenticated_product_candidate_pending_founder_decision",
       "note": "Authenticated dashboard product candidate."
+    },
+    {
+      "endpoint": "v2.paye_manual_baseline",
+      "rule": "/v2/paye/manual-baseline",
+      "methods": ["GET", "POST"],
+      "registration": "always",
+      "guard": "customer_session",
+      "csrf": "global",
+      "classification": "authenticated_product_candidate_pending_founder_decision",
+      "note": "Independent strict switch and production denial; existing-user manual partial capture/review only. Paid classification, not runtime entitlement enforcement."
     },
     {
       "endpoint": "v2.demo_login",

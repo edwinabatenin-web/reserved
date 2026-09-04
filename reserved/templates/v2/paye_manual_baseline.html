@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Manual PAYE baseline — Reserved{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Limited preview</p><h1>Manual PAYE baseline</h1><p>Tax year {{ tax_year }} — one employment only.</p></div></section>
+<section class="panel">
+    <p>These facts are partial and are not saved. This is not an annual tax estimate, refund or tax-to-pay calculation, forecast or recommendation about money to put aside.</p>
+    {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+    {% if review %}
+    <h2>Review your manual facts</h2>
+    <dl>{% for label, value in review %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+    <p>Pay frequency and pension treatment are reviewed from your validated entry. They are not retained by the normalized PAYE evidence item.</p>
+    <p>Capture identities exist only for this request. They are not persistent employment or ownership proof. No full-year completeness or source verification is established.</p>
+    <a href="{{ url_for('v2.paye_manual_baseline') }}">Enter another baseline or correct these facts</a>
+    {% else %}
+    <p id="baseline-help">Use cumulative figures from the start of this tax year through the date below, for one employment — not a single pay period or combined jobs. Leave unknown amounts or tax code blank; enter 0 only when you know it is zero. Enter pounds and pence without commas or currency symbols. Do not enter an employer name, payroll reference or National Insurance number.</p>
+    <form method="post" action="{{ url_for('v2.paye_manual_baseline') }}" autocomplete="off" novalidate aria-describedby="baseline-help">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <fieldset><legend>Cumulative PAYE facts</legend>
+            <label for="gross-pay">Cumulative gross pay (£)</label><input id="gross-pay" name="gross_pay_to_date" type="text" inputmode="decimal" maxlength="13">
+            <label for="tax-paid">Cumulative tax deducted (£)</label><input id="tax-paid" name="tax_paid_to_date" type="text" inputmode="decimal" maxlength="13">
+            <label for="tax-code">Tax code (leave blank if unknown)</label><input id="tax-code" name="tax_code" type="text" maxlength="32">
+            <label for="pay-frequency">Pay frequency</label><select id="pay-frequency" name="pay_frequency">
+                <option value="unknown">Unknown</option><option value="weekly">Weekly</option><option value="fortnightly">Fortnightly</option><option value="four_weekly">Four weekly</option><option value="monthly">Monthly</option><option value="annually">Annually</option><option value="other">Other</option>
+            </select>
+            <label for="pension-treatment">Pension treatment</label><select id="pension-treatment" name="pension_treatment">
+                <option value="unknown">Unknown</option><option value="none">None</option><option value="salary_sacrifice">Salary sacrifice</option><option value="net_pay">Net pay</option><option value="relief_at_source">Relief at source</option>
+            </select>
+            <label for="effective-date">Figures effective through (within {{ tax_year }}, not a future date)</label><input id="effective-date" name="effective_through" type="date" required>
+        </fieldset>
+        <label><input type="checkbox" name="confirmation" value="yes" required> I have checked these entries and confirm they describe one employment's cumulative facts, with any unknowns left unknown.</label>
+        <button type="submit">Review these facts — do not save</button>
+    </form>
+    {% endif %}
+    <p><a href="{{ url_for('v2.dashboard_view') }}">Back to dashboard</a></p>
+</section>
+{% endblock %}
