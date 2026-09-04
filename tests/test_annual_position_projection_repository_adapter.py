@@ -34,7 +34,7 @@ from reserved.annual_position_repository_contract import (
     structural_candidate_identity,
 )
 from tests.test_annual_to_cash_integration import compose
-from tests.test_w8_annual_cash_customer_handoff import project
+from tests.test_w8_annual_cash_customer_handoff import handoff
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +50,19 @@ OWNED_PATHS = {
     "reserved/annual_position_projection_repository_adapter.py",
     "tests/test_annual_position_projection_repository_adapter.py",
     "docs/W9_S3C_PROJECTION_REPOSITORY_ADAPTER.md",
+}
+COMPOSED_RESOLUTION_PATHS = OWNED_PATHS | {
+    "docs/W8_S2C_ANNUAL_CASH_CUSTOMER_HANDOFF_EVIDENCE.md",
+    "docs/W9_S3A_ANNUAL_POSITION_PERSISTENCE_CONTRACT.md",
+    "reserved/annual_position_persistence_contract.py",
+    "reserved/services/w8_annual_cash_customer_handoff.py",
+    "tests/test_annual_position_authenticated_owner_adapter.py",
+    "tests/test_annual_position_persistence_contract.py",
+    "tests/test_annual_position_projection_repository_adapter.py",
+    "tests/test_annual_position_repository_contract.py",
+    "tests/test_internal_tax_boundary.py",
+    "tests/test_w8_annual_cash_customer_handoff.py",
+    "tests/test_w8_progressive_assurance_s2.py",
 }
 
 
@@ -71,9 +84,24 @@ class EvilStr(str):
 
 def admitted(*, user_id="user-1", business_id="business-1"):
     annual = compose()
-    result = project(annual, user_id=user_id, business_id=business_id)
+    result = handoff(annual)
     assert result is not None
-    return annual, result, admit_annual_position_projection(annual, result)
+    return annual, result, admit_annual_position_projection(
+        annual,
+        result,
+        authenticated_user_id=user_id,
+        authenticated_business_id=business_id,
+    )
+
+
+def supersede(previous, annual, result):
+    return supersede_annual_position_projection(
+        previous,
+        annual,
+        result,
+        authenticated_user_id=previous.user_id,
+        authenticated_business_id=previous.business_id,
+    )
 
 
 def init_values(projection):
@@ -121,9 +149,15 @@ def test_exact_base_and_accepted_source_identities_are_bound():
     assert subprocess.run(
         ["git", "merge-base", "--is-ancestor", BASE, "HEAD"], cwd=ROOT
     ).returncode == 0
-    assert hashlib.sha256(
-        (ROOT / "reserved/annual_position_persistence_contract.py").read_bytes()
-    ).hexdigest() == S3A_HASH
+    source_at_commit = subprocess.check_output(
+        [
+            "git",
+            "show",
+            f"{S3A_COMMIT}:reserved/annual_position_persistence_contract.py",
+        ],
+        cwd=ROOT,
+    )
+    assert hashlib.sha256(source_at_commit).hexdigest() == S3A_HASH
     assert hashlib.sha256(
         (ROOT / "reserved/annual_position_repository_contract.py").read_bytes()
     ).hexdigest() == S3B_HASH
@@ -310,7 +344,7 @@ def test_successor_preserves_both_s3a_and_s3b_predecessor_chains():
     annual, result, previous = admitted()
     previous_operation = adapt(previous)
     previous_candidate = extract_structural_candidate(previous_operation)
-    successor = supersede_annual_position_projection(previous, annual, result)
+    successor = supersede(previous, annual, result)
 
     operation = adapt(
         successor,
@@ -332,7 +366,7 @@ def test_successor_preserves_both_s3a_and_s3b_predecessor_chains():
 
 def test_successor_requires_both_exact_predecessor_inputs():
     annual, result, previous = admitted()
-    successor = supersede_annual_position_projection(previous, annual, result)
+    successor = supersede(previous, annual, result)
     previous_candidate = extract_structural_candidate(adapt(previous))
     with pytest.raises(ProjectionRepositoryAdapterError, match="both predecessor"):
         adapt(successor)
@@ -355,7 +389,7 @@ def test_initial_projection_rejects_injected_predecessor_inputs():
 
 def test_successor_rejects_wrong_or_malformed_previous_candidate():
     annual, result, previous = admitted()
-    successor = supersede_annual_position_projection(previous, annual, result)
+    successor = supersede(previous, annual, result)
     _, _, other = admitted(user_id="other-user", business_id="other-business")
     other_candidate = extract_structural_candidate(adapt(other))
     with pytest.raises(ProjectionRepositoryAdapterError, match="does not match"):
@@ -374,7 +408,7 @@ def test_successor_rejects_wrong_or_malformed_previous_candidate():
 
 def test_successor_rejects_unadmitted_or_cross_owner_previous_projection():
     annual, result, previous = admitted()
-    successor = supersede_annual_position_projection(previous, annual, result)
+    successor = supersede(previous, annual, result)
     previous_candidate = extract_structural_candidate(adapt(previous))
     unadmitted = AnnualPositionPersistenceProjection(*init_values(previous))
     with pytest.raises(ProjectionRepositoryAdapterError, match="not admitted"):
@@ -457,7 +491,7 @@ def test_operation_fixed_provenance_and_identity_fields_require_exact_strings(
 def test_successor_source_predecessor_identity_requires_an_exact_string(text_type):
     annual, result, previous = admitted()
     previous_candidate = extract_structural_candidate(adapt(previous))
-    successor = supersede_annual_position_projection(previous, annual, result)
+    successor = supersede(previous, annual, result)
     operation = adapt(
         successor,
         previous_projection=previous,
@@ -474,7 +508,7 @@ def test_successor_source_predecessor_identity_requires_an_exact_string(text_typ
 def test_successor_rejects_regex_valid_source_predecessor_substitution():
     annual, result, previous = admitted()
     previous_candidate = extract_structural_candidate(adapt(previous))
-    successor = supersede_annual_position_projection(previous, annual, result)
+    successor = supersede(previous, annual, result)
     operation = adapt(
         successor,
         previous_projection=previous,
@@ -491,7 +525,7 @@ def test_successor_rejects_regex_valid_source_predecessor_substitution():
 def test_successor_rejects_recomputed_structural_predecessor_substitution():
     annual, result, previous = admitted()
     previous_candidate = extract_structural_candidate(adapt(previous))
-    successor = supersede_annual_position_projection(previous, annual, result)
+    successor = supersede(previous, annual, result)
     operation = adapt(
         successor,
         previous_projection=previous,
@@ -525,7 +559,7 @@ def test_successor_rejects_recomputed_structural_predecessor_substitution():
 def test_successor_rejects_cross_owner_business_prior_chain():
     annual, result, previous = admitted()
     previous_candidate = extract_structural_candidate(adapt(previous))
-    successor = supersede_annual_position_projection(previous, annual, result)
+    successor = supersede(previous, annual, result)
     operation = adapt(
         successor,
         previous_projection=previous,
@@ -559,7 +593,7 @@ def test_successor_rejects_cross_owner_business_prior_chain():
 def test_successor_rejects_coherent_wrong_version_prior_chain():
     annual, result, previous = admitted()
     previous_candidate = extract_structural_candidate(adapt(previous))
-    successor = supersede_annual_position_projection(previous, annual, result)
+    successor = supersede(previous, annual, result)
     successor_candidate = extract_structural_candidate(
         adapt(
             successor,
@@ -831,7 +865,7 @@ def test_candidate_changes_only_the_three_new_w9_s3c_paths():
         cwd=ROOT,
         text=True,
     ).splitlines()
-    assert set(changed + untracked) <= OWNED_PATHS
+    assert set(changed + untracked) <= COMPOSED_RESOLUTION_PATHS
 
 
 def test_evidence_document_preserves_every_residual_gate_and_non_authority():

@@ -24,12 +24,14 @@ import dis
 import pickle
 import types
 from dataclasses import replace
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
 import reserved.annual_position_persistence_contract as contract_module
+import reserved.services.w8_annual_cash_customer_handoff as handoff_module
 from reserved.annual_position_persistence_contract import (
     RECORD_PURPOSE,
     SCHEMA_VERSION,
@@ -51,7 +53,11 @@ from reserved.services.w8_customer_result import (
     w8_customer_result_identity,
 )
 from tests.test_annual_to_cash_integration import annual_position, compose
-from tests.test_w8_annual_cash_customer_handoff import project
+from tests.test_w8_annual_cash_customer_handoff import (
+    handoff as make_handoff,
+    project as make_legacy_result,
+    references,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_SOURCE = (ROOT / "reserved" / "annual_position_persistence_contract.py").read_text()
@@ -64,10 +70,27 @@ FORGED_CONTENT_IDENTITY = "annual-position-persistence:sha256-" + "f" * 64
 
 def _admitted(nation="England", user_id=USER_ID, business_id=BUSINESS_ID):
     annual_cash = compose() if nation == "England" else compose(annual=annual_position(nation))
-    result = project(annual_cash, user_id=user_id, business_id=business_id)
-    assert result is not None
-    projection = admit_annual_position_projection(annual_cash, result)
-    return annual_cash, result, projection
+    handoff = make_handoff(annual_cash)
+    assert handoff is not None
+    projection = admit_annual_position_projection(
+        annual_cash,
+        handoff,
+        authenticated_user_id=user_id,
+        authenticated_business_id=business_id,
+    )
+    return annual_cash, handoff, projection
+
+
+def _supersede(previous, annual_cash, handoff, *, user_id=None, business_id=None):
+    return supersede_annual_position_projection(
+        previous,
+        annual_cash,
+        handoff,
+        authenticated_user_id=previous.user_id if user_id is None else user_id,
+        authenticated_business_id=(
+            previous.business_id if business_id is None else business_id
+        ),
+    )
 
 
 def _init_values(projection):
@@ -82,8 +105,155 @@ def _chain(length):
     annual_cash, result, first = _admitted()
     chain = [first]
     for _ in range(length - 1):
-        chain.append(supersede_annual_position_projection(chain[-1], annual_cash, result))
+        chain.append(_supersede(chain[-1], annual_cash, result))
     return annual_cash, result, chain
+
+
+# ── 0. Owner-unbound handoff admission and authenticated binding ─────────────
+
+def test_admission_rejects_removed_owner_bound_w8_result_input():
+    annual_cash = compose()
+    owner_bound = make_legacy_result(
+        annual_cash, user_id=USER_ID, business_id=BUSINESS_ID
+    )
+    with pytest.raises(ValueError, match="owner-unbound handoff"):
+        admit_annual_position_projection(
+            annual_cash,
+            owner_bound,
+            authenticated_user_id=USER_ID,
+            authenticated_business_id=BUSINESS_ID,
+        )
+
+
+def test_duck_typed_annual_position_is_rejected_without_descriptor_access():
+    accessed = []
+
+    class HostileDuck:
+        @property
+        def as_of(self):
+            accessed.append("as_of")
+            raise AssertionError("hostile descriptor executed")
+
+    annual_cash = compose()
+    with pytest.raises(ValueError, match="exact annual/cash position"):
+        admit_annual_position_projection(
+            HostileDuck(),
+            make_handoff(annual_cash),
+            authenticated_user_id=USER_ID,
+            authenticated_business_id=BUSINESS_ID,
+        )
+    assert accessed == []
+
+
+def test_annual_position_subclass_is_rejected_without_descriptor_access():
+    annual_cash = compose()
+    accessed = []
+
+    class HostileSubclass(type(annual_cash)):
+        @property
+        def as_of(self):
+            accessed.append("as_of")
+            raise AssertionError("hostile descriptor executed")
+
+    hostile = object.__new__(HostileSubclass)
+    with pytest.raises(ValueError, match="exact annual/cash position"):
+        admit_annual_position_projection(
+            hostile,
+            make_handoff(annual_cash),
+            authenticated_user_id=USER_ID,
+            authenticated_business_id=BUSINESS_ID,
+        )
+    assert accessed == []
+
+
+def test_admission_validates_handoff_before_binding_authenticated_owner():
+    annual_cash = compose()
+    valid = make_handoff(annual_cash)
+    altered_presentation = replace(
+        valid.presentation_input, annual_liability=Decimal("1.00")
+    )
+    reconstructed = handoff_module.UnboundAnnualCashPresentation(
+        altered_presentation,
+        references(annual_cash),
+        annual_cash.as_of,
+        annual_cash.tax_year,
+        annual_cash.nation,
+        annual_cash.ruleset_version,
+        annual_cash.contract_version,
+        valid.source_position_identity,
+        annual_cash.annual_position_reference,
+        _issue_token=handoff_module._ISSUE_TOKEN,
+    )
+    with pytest.raises(ValueError, match="not derived from the exact source"):
+        admit_annual_position_projection(
+            annual_cash,
+            reconstructed,
+            authenticated_user_id=USER_ID,
+            authenticated_business_id=BUSINESS_ID,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field_name", "replacement"),
+    [
+        ("tax_year", "2027/28"),
+        ("nation", "Wales"),
+        ("evidence_references", ("forged-source",)),
+        ("as_of", date(2028, 1, 1)),
+        ("source_position_identity", "annual-to-cash-position:sha256-" + "0" * 64),
+    ],
+)
+def test_altered_handoff_identity_context_fails_closed(field_name, replacement):
+    annual_cash = compose()
+    altered = make_handoff(annual_cash)
+    object.__setattr__(altered, field_name, replacement)
+    with pytest.raises(ValueError):
+        admit_annual_position_projection(
+            annual_cash,
+            altered,
+            authenticated_user_id=USER_ID,
+            authenticated_business_id=BUSINESS_ID,
+        )
+
+
+def test_stale_or_mismatched_handoff_cannot_bind_to_another_source_snapshot():
+    prior = compose(set_aside="0.00")
+    current = compose(set_aside="99999.00")
+    prior_handoff = make_handoff(prior)
+    with pytest.raises(ValueError, match="source|expected source context"):
+        admit_annual_position_projection(
+            current,
+            prior_handoff,
+            authenticated_user_id=USER_ID,
+            authenticated_business_id=BUSINESS_ID,
+        )
+
+
+def test_valid_handoff_binds_only_explicit_authenticated_owner_references():
+    annual_cash = compose()
+    unbound = make_handoff(annual_cash)
+    assert unbound.owner_authoritative is False
+    assert not hasattr(unbound, "user_id")
+    projection = admit_annual_position_projection(
+        annual_cash,
+        unbound,
+        authenticated_user_id="authenticated-user",
+        authenticated_business_id="authenticated-business",
+    )
+    assert projection.user_id == "authenticated-user"
+    assert projection.business_id == "authenticated-business"
+    assert reconstruct_w8_customer_result(projection).user_id == "authenticated-user"
+
+
+def test_supersession_rejects_cross_owner_binding_from_same_valid_handoff():
+    annual_cash, unbound, projection = _admitted()
+    with pytest.raises(ValueError, match="cross-user"):
+        _supersede(
+            projection,
+            annual_cash,
+            unbound,
+            user_id="different-authenticated-user",
+        )
 
 
 # ── 1. Admission is explicit and public construction fails closed ─────────────
@@ -121,29 +291,27 @@ def test_pickle_decode_is_structural_and_unadmitted():
 
 def test_supersede_rejects_cross_user():
     annual_cash, result, projection = _admitted()
-    other_result = project(annual_cash, user_id="user-2")
     with pytest.raises(ValueError, match="cross-user"):
-        supersede_annual_position_projection(projection, annual_cash, other_result)
+        _supersede(projection, annual_cash, result, user_id="user-2")
 
 
 def test_supersede_rejects_cross_business():
     annual_cash, result, projection = _admitted()
-    other_result = project(annual_cash, business_id="business-2")
     with pytest.raises(ValueError, match="cross-business"):
-        supersede_annual_position_projection(projection, annual_cash, other_result)
+        _supersede(projection, annual_cash, result, business_id="business-2")
 
 
 def test_supersede_rejects_cross_nation():
     annual_cash, result, projection = _admitted(nation="England")
     wales_cash = compose(annual=annual_position("Wales"))
-    wales_result = project(wales_cash)
+    wales_result = make_handoff(wales_cash)
     with pytest.raises(ValueError, match="geography"):
-        supersede_annual_position_projection(projection, wales_cash, wales_result)
+        _supersede(projection, wales_cash, wales_result)
 
 
 def test_supersede_produces_a_boundary_matched_admitted_successor():
     annual_cash, result, projection = _admitted()
-    successor = supersede_annual_position_projection(projection, annual_cash, result)
+    successor = _supersede(projection, annual_cash, result)
     assert successor.annual_cash_identity_admitted is True
     assert successor.record_version == projection.record_version + 1
     assert successor.predecessor_identity == annual_position_projection_identity(projection)
@@ -157,7 +325,7 @@ def test_supersede_produces_a_boundary_matched_admitted_successor():
 
 def test_rebinding_primitives_cannot_bypass_chain_detection(monkeypatch):
     annual_cash, result, projection = _admitted()
-    successor = supersede_annual_position_projection(projection, annual_cash, result)
+    successor = _supersede(projection, annual_cash, result)
     broken = replace(successor, predecessor_identity=FORGED_CONTENT_IDENTITY)
 
     monkeypatch.setattr(contract_module, "range", lambda *a, **k: (), raising=False)
@@ -200,7 +368,12 @@ def test_rebinding_rebuild_helper_and_class_cannot_bypass_admission(monkeypatch)
 
     # The captured admission path still works even though the module-level names
     # were rebound after import.
-    again = admit_annual_position_projection(annual_cash, result)
+    again = admit_annual_position_projection(
+        annual_cash,
+        result,
+        authenticated_user_id=projection.user_id,
+        authenticated_business_id=projection.business_id,
+    )
     assert again.annual_cash_identity_admitted is True
     assert type(again).__name__ == "AnnualPositionPersistenceProjection"
     # Pickle fails closed instead of silently using the rebound helper.
@@ -245,7 +418,12 @@ def test_rebinding_exported_policy_constants_cannot_change_acceptance(monkeypatc
     monkeypatch.setattr(contract_module, "_DELETION_STATE", "deleted")
     monkeypatch.setattr(contract_module, "_ACCOUNT_ERASURE_ELIGIBILITY", "eligible")
 
-    again = admit_annual_position_projection(annual_cash, result)
+    again = admit_annual_position_projection(
+        annual_cash,
+        result,
+        authenticated_user_id=projection.user_id,
+        authenticated_business_id=projection.business_id,
+    )
     assert again.schema_version == SCHEMA_VERSION
     assert again.record_purpose == RECORD_PURPOSE
     assert again.unresolved_inputs == projection.unresolved_inputs
@@ -345,10 +523,11 @@ def test_hostile_field_mutation_is_rejected_by_all_protocols():
 
 def test_carried_constraints_are_customer_result_constraints():
     annual_cash, result, projection = _admitted()
+    reconstructed = reconstruct_w8_customer_result(projection)
     assert not hasattr(projection, "limitations")
     assert not hasattr(projection, "prohibited_uses")
-    assert projection.customer_result_limitations == result.limitations
-    assert projection.customer_result_prohibited_uses == result.prohibited_uses
+    assert projection.customer_result_limitations == reconstructed.limitations
+    assert projection.customer_result_prohibited_uses == reconstructed.prohibited_uses
     assert "persistence_or_storage" in projection.customer_result_prohibited_uses
     # The projection itself is an authorised durable projection, not prohibited.
     assert projection.record_purpose == RECORD_PURPOSE
@@ -382,8 +561,13 @@ def test_admission_canonicalises_producer_money():
     # payments-made adjustment; admission canonicalises it so every monetary
     # fact in the projection carries exactly two decimal places.
     annual_cash = compose()
-    result = project(annual_cash)
-    projection = admit_annual_position_projection(annual_cash, result)
+    result = make_handoff(annual_cash)
+    projection = admit_annual_position_projection(
+        annual_cash,
+        result,
+        authenticated_user_id=USER_ID,
+        authenticated_business_id=BUSINESS_ID,
+    )
     for item in projection.adjustments:
         assert item.amount.as_tuple().exponent == -2
     for item in projection.obligations:
@@ -430,7 +614,7 @@ def test_chain_rejects_repeated_identity():
 
 def test_chain_rejects_broken_successor_link():
     annual_cash, result, projection = _admitted()
-    successor = supersede_annual_position_projection(projection, annual_cash, result)
+    successor = _supersede(projection, annual_cash, result)
     broken = replace(successor, predecessor_identity=FORGED_CONTENT_IDENTITY)
     with pytest.raises(ValueError, match="preceding record"):
         validate_supersession_chain([projection, broken])
@@ -438,7 +622,7 @@ def test_chain_rejects_broken_successor_link():
 
 def test_chain_rejects_version_skip():
     annual_cash, result, projection = _admitted()
-    successor = supersede_annual_position_projection(projection, annual_cash, result)
+    successor = _supersede(projection, annual_cash, result)
     skipped = replace(successor, record_version=3)
     with pytest.raises(ValueError, match="strictly progress"):
         validate_supersession_chain([projection, skipped])

@@ -112,8 +112,18 @@ def _repack(envelope, *, row=None, evidence=None, version=None):
 def test_s3a_pins_are_design_provenance_only():
     assert SOURCE_S3A_COMMIT == "c489c25bab669c64e1c11d28caf29fcde9678fdd"
     assert SOURCE_S3A_SHA256 == "da68058811e1f1f3974851f3f85703c7b2d79e05695ed88c2980251a3c649469"
-    source = ROOT / "reserved" / "annual_position_persistence_contract.py"
-    assert hashlib.sha256(source.read_bytes()).hexdigest() == SOURCE_S3A_SHA256
+    # S3B records immutable design provenance, not a runtime pin to the live
+    # S3A source file. Verify the file at the named historical commit so a
+    # reviewed S3A API migration does not falsify or silently rewrite history.
+    source_at_commit = subprocess.check_output(
+        [
+            "git",
+            "show",
+            f"{SOURCE_S3A_COMMIT}:reserved/annual_position_persistence_contract.py",
+        ],
+        cwd=ROOT,
+    )
+    assert hashlib.sha256(source_at_commit).hexdigest() == SOURCE_S3A_SHA256
     text = SOURCE.read_text()
     assert "import reserved.annual_position_persistence_contract" not in text
     assert "from reserved.annual_position_persistence_contract" not in text

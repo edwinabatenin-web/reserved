@@ -1,24 +1,27 @@
-"""Pure, fail-closed annual/cash to customer-result handoff for W8-S2C.
+"""Pure, fail-closed W8-S2C annual/cash presentation handoff.
 
-The handoff accepts only a live value issued by the reviewed annual-to-cash
-producer.  It copies customer-safe facts into the existing W2/W8 presentation
-contracts; it does not calculate tax, persist data, call a provider, or grant
-payment authority.  Geography is read only from that producer and cannot be
-supplied or changed by the handoff caller.
+The output is deliberately *not* an owner-authoritative public result. A
+separate authenticated owner/business boundary must bind it first.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import date
 from decimal import Decimal
+from enum import Enum
+import hashlib
+import hmac
+import json
+import re
 
 from reserved.engines import cash_funding_position as funding
 from reserved.engines import cash_obligation_reconciliation as obligations
+from reserved.engines import payments_on_account as poa
 from reserved.engines.annual_to_cash_integration import (
-    AnnualToCashInputProvenance,
+    CONTRACT_VERSION as ANNUAL_TO_CASH_VERSION,
     AnnualToCashPosition,
     AnnualToCashStatus,
-    annual_to_cash_position_identity,
-    annual_to_cash_position_provenance,
+    cash_ready_annual_position_identity,
 )
 from reserved.services.w2_customer_language import (
     CONTRACT_VERSION as W2_VERSION,
@@ -30,259 +33,602 @@ from reserved.services.w2_customer_language import (
     ObligationKind,
     PresentationStatus,
     W2PresentationInput,
-)
-from reserved.services.w8_customer_result import (
-    W8CustomerResult,
-    compose_w8_customer_result,
+    present_w2_customer_language,
 )
 
 
+CONTRACT_VERSION = "reserved-w8-annual-cash-presentation-handoff/1.0"
 _ZERO = Decimal("0.00")
 _PENNY = Decimal("0.01")
+_SOURCE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
+_DIGEST_ID = re.compile(r"^[a-z0-9-]+:sha256-[0-9a-f]{64}$")
+_SUPPORTED_NATIONS = ("England", "Wales", "Northern Ireland")
+_MAX_GRAPH_DEPTH = 64
+_MAX_GRAPH_NODES = 4096
+_LIMITATIONS = (
+    "qualified_local_estimate_not_hmrc_recorded_amount",
+    "requires_separate_authenticated_owner_business_binding",
+)
+_PROHIBITED_USES = (
+    "owner_authoritative_public_result",
+    "present_as_current_hmrc_bill",
+    "persistence_or_customer_rendering",
+    "payment_or_transfer_action",
+)
+_OBLIGATION_KIND = {
+    obligations.account.ChargeKind.BALANCING_PAYMENT: ObligationKind.BALANCING_PAYMENT,
+    obligations.account.ChargeKind.PAYMENT_ON_ACCOUNT_1:
+        ObligationKind.FIRST_PAYMENT_ON_ACCOUNT,
+    obligations.account.ChargeKind.PAYMENT_ON_ACCOUNT_2:
+        ObligationKind.SECOND_PAYMENT_ON_ACCOUNT,
+}
+_FUNDING_KIND = {
+    funding.FundingBalance.GAP: FundingClassification.GAP,
+    funding.FundingBalance.EXACT: FundingClassification.EXACT,
+    funding.FundingBalance.SURPLUS: FundingClassification.SURPLUS,
+}
 
 
-def _make_handoff():
-    """Capture the reviewed collaborators and fixed mappings once.
+class _IssueToken:
+    """Private construction convention; not a secret or authenticity proof."""
 
-    Module-name rebinding must not turn an invalid producer value into a
-    presentable result.  The producer's public read-only capabilities remain
-    the sole authority for issuance identity and provenance.
-    """
 
-    identity_reader = annual_to_cash_position_identity
-    provenance_reader = annual_to_cash_position_provenance
-    public_composer = compose_w8_customer_result
-    raw = object.__getattribute__
-    decimal_type = Decimal
-    date_type = date
-    exact_type = type
-    supported_nations = frozenset({"England", "Wales", "Northern Ireland"})
+_ISSUE_TOKEN = _IssueToken()
 
-    annual_type = AnnualToCashPosition
-    provenance_type = AnnualToCashInputProvenance
-    annual_status_type = AnnualToCashStatus
-    qualified = AnnualToCashStatus.QUALIFIED_LOCAL_RESULT
-    calculated = AnnualToCashStatus.CALCULATED
-    review_required = AnnualToCashStatus.REVIEW_REQUIRED
-    unresolved = AnnualToCashStatus.UNRESOLVED
 
-    balancing_kind = obligations.account.ChargeKind.BALANCING_PAYMENT
-    poa_1_kind = obligations.account.ChargeKind.PAYMENT_ON_ACCOUNT_1
-    poa_2_kind = obligations.account.ChargeKind.PAYMENT_ON_ACCOUNT_2
-    funding_calculated = funding.FundingComputationStatus.CALCULATED
-    funding_gap = funding.FundingBalance.GAP
-    funding_exact = funding.FundingBalance.EXACT
-    funding_surplus = funding.FundingBalance.SURPLUS
+@dataclass(frozen=True, slots=True, eq=False, init=False)
+class UnboundAnnualCashPresentation:
+    """Content-bound presentation facts awaiting authenticated ownership."""
 
-    obligation_fact = ObligationFact
-    adjustment_fact = AdjustmentFact
-    w2_input = W2PresentationInput
-    presentation_ready = PresentationStatus.READY
-    local_estimate = EvidenceClassification.QUALIFIED_LOCAL_ESTIMATE
-    obligation_balancing = ObligationKind.BALANCING_PAYMENT
-    obligation_poa_1 = ObligationKind.FIRST_PAYMENT_ON_ACCOUNT
-    obligation_poa_2 = ObligationKind.SECOND_PAYMENT_ON_ACCOUNT
-    adjustment_deductions = AdjustmentKind.DEDUCTIONS_AND_CREDITS
-    adjustment_prior_poa = AdjustmentKind.PRIOR_PAYMENTS_ON_ACCOUNT
-    adjustment_payments = AdjustmentKind.PAYMENTS_MADE
-    adjustment_credit = AdjustmentKind.CREDIT_OR_REFUND
-    funding_gap_public = FundingClassification.GAP
-    funding_exact_public = FundingClassification.EXACT
-    funding_surplus_public = FundingClassification.SURPLUS
-    w2_version = W2_VERSION
-    zero = _ZERO
-    penny = _PENNY
+    presentation_input: W2PresentationInput
+    evidence_references: tuple[str, ...]
+    as_of: date
+    tax_year: str
+    nation: str
+    ruleset_version: str
+    annual_to_cash_contract_version: str
+    source_position_identity: str
+    annual_position_reference: str
+    contract_version: str = field(init=False, default=CONTRACT_VERSION)
+    owner_authoritative: bool = field(init=False, default=False)
+    limitations: tuple[str, ...] = field(init=False, default=_LIMITATIONS)
+    prohibited_uses: tuple[str, ...] = field(init=False, default=_PROHIBITED_USES)
+    _integrity_seal: str = field(init=False, repr=False, compare=False)
 
-    def money(value: object) -> bool:
-        return (
-            exact_type(value) is decimal_type
-            and value.is_finite()
-            and value >= zero
-            and value == value.quantize(penny)
-            and not (value.is_zero() and value.is_signed())
-        )
-
-    def evidence_references(
-        value: AnnualToCashPosition,
-        provenance: AnnualToCashInputProvenance,
-    ) -> tuple[str, ...]:
-        annual = raw(value, "considered_annual_position")
-        reconciliation = raw(value, "obligation_reconciliation")
-        position = raw(value, "funding_position")
-        account = raw(reconciliation, "considered_account")
-
-        refs = [*raw(annual, "evidence_ids")]
-        refs.extend(raw(provenance, "deductions_credits_evidence_ids"))
-        refs.extend(raw(provenance, "prior_poa_evidence_ids"))
-        refs.extend(raw(provenance, "payment_source_ids"))
-        for item in raw(account, "considered_charges"):
-            refs.extend((raw(item, "charge_id"), raw(item, "source_reference")))
-        for item in raw(account, "considered_credits"):
-            refs.extend((raw(item, "credit_id"), raw(item, "source_reference")))
-        for item in raw(account, "considered_allocations"):
-            refs.extend((raw(item, "allocation_id"), raw(item, "source_reference")))
-        set_aside = raw(position, "considered_set_aside")
-        if set_aside is not None:
-            refs.extend((raw(set_aside, "evidence_id"), raw(set_aside, "source_reference")))
-            refs.extend(raw(item, "allocation_id") for item in raw(set_aside, "allocations"))
-        if not refs or any(exact_type(item) is not str for item in refs):
-            raise ValueError("annual/cash source identities are invalid")
-        # A single source record may support several distinct HMRC charges.
-        # The public W8 contract requires unique references, so preserve the
-        # complete semantic source set in deterministic first-occurrence order.
-        return tuple(dict.fromkeys(refs))
-
-    def obligation_kind(value: object) -> ObligationKind:
-        if value is balancing_kind:
-            return obligation_balancing
-        if value is poa_1_kind:
-            return obligation_poa_1
-        if value is poa_2_kind:
-            return obligation_poa_2
-        raise ValueError("annual/cash obligation kind is unsupported")
-
-    def project(
-        value: AnnualToCashPosition,
-        *,
-        user_id: str,
-        business_id: str,
+    def __init__(
+        self,
+        presentation_input: W2PresentationInput,
         evidence_references: tuple[str, ...],
-    ) -> W8CustomerResult | None:
-        """Return a customer-safe result, or ``None`` for any unsafe position.
+        as_of: date,
+        tax_year: str,
+        nation: str,
+        ruleset_version: str,
+        annual_to_cash_contract_version: str,
+        source_position_identity: str,
+        annual_position_reference: str,
+        *,
+        _issue_token: object = None,
+    ) -> None:
+        if _issue_token is not _ISSUE_TOKEN:
+            raise ValueError("unbound annual/cash handoffs may be issued only by the composer")
+        for name, value in (
+            ("presentation_input", presentation_input),
+            ("evidence_references", evidence_references),
+            ("as_of", as_of),
+            ("tax_year", tax_year),
+            ("nation", nation),
+            ("ruleset_version", ruleset_version),
+            ("annual_to_cash_contract_version", annual_to_cash_contract_version),
+            ("source_position_identity", source_position_identity),
+            ("annual_position_reference", annual_position_reference),
+        ):
+            object.__setattr__(self, name, value)
+        object.__setattr__(self, "contract_version", CONTRACT_VERSION)
+        object.__setattr__(self, "owner_authoritative", False)
+        object.__setattr__(self, "limitations", _LIMITATIONS)
+        object.__setattr__(self, "prohibited_uses", _PROHIBITED_USES)
+        _validate_handoff_state(self, require_seal=False)
+        object.__setattr__(self, "_integrity_seal", _expected_handoff_seal(self))
+        _validate_handoff_state(self, require_seal=True)
 
-        Ownership failures remain categorical ``ValueError`` results from the
-        already-reviewed public-result boundary. Geography is producer-bound;
-        malformed or absent geography fails closed as ``None``. No input value
-        is included in failure text.
-        """
-
+    def __repr__(self) -> str:
         try:
-            if exact_type(value) is not annual_type:
-                raise ValueError("annual/cash position is unsupported")
-            issued_identity = identity_reader(value)
-            provenance = provenance_reader(value)
-            if exact_type(issued_identity) is not str or exact_type(provenance) is not provenance_type:
-                raise ValueError("annual/cash producer evidence is unsupported")
-            tax_year = raw(value, "tax_year")
-            nation = raw(value, "nation")
-            if exact_type(nation) is not str or nation not in supported_nations:
-                raise ValueError("annual/cash geography is unsupported")
+            _validate_handoff_state(self, require_seal=True)
+        except (AttributeError, TypeError, ValueError):
+            return "UnboundAnnualCashPresentation(<invalid-state>)"
+        return "UnboundAnnualCashPresentation(<validated-owner-unbound>)"
 
-            status = raw(value, "status")
-            if exact_type(status) is not annual_status_type:
-                raise ValueError("annual/cash status is unsupported")
-            if status is review_required or status is unresolved:
-                return None
-            if status is not qualified and status is not calculated:
-                raise ValueError("annual/cash status is unsupported")
+    def __eq__(self, other: object) -> bool:
+        _validate_handoff_state(self, require_seal=True)
+        if type(other) is not UnboundAnnualCashPresentation:
+            return False
+        _validate_handoff_state(other, require_seal=True)
+        return _handoff_components(self) == _handoff_components(other)
 
-            # Even a producer status named CALCULATED contains a locally
-            # calculated annual liability.  It must never be promoted to an
-            # HMRC-confirmed or exact customer claim.
-            reconciliation = raw(value, "obligation_reconciliation")
-            balancing = raw(value, "balancing_position")
-            position = raw(value, "funding_position")
-            if reconciliation is None or balancing is None or position is None:
-                raise ValueError("annual/cash position is incomplete")
-            if raw(position, "status") is not funding_calculated:
-                raise ValueError("annual/cash funding is not actionable")
+    def __hash__(self) -> int:
+        _validate_handoff_state(self, require_seal=True)
+        return hash(_handoff_components(self))
 
-            expected_refs = evidence_references_for_value = evidence_references_fn(
-                value, provenance
-            )
-            if (
-                exact_type(evidence_references) is not tuple
-                or any(exact_type(item) is not str for item in evidence_references)
-                or evidence_references != expected_refs
-            ):
-                raise ValueError("source or evidence identities do not match")
+    def __copy__(self):
+        raise TypeError("unbound annual/cash handoffs cannot be copied")
 
-            obligation_facts = []
-            for item in raw(reconciliation, "expected_obligations"):
-                amount = raw(item, "amount")
-                due_on = raw(item, "due_date")
-                if not money(amount) or exact_type(due_on) is not date_type:
-                    raise ValueError("annual/cash obligation is invalid")
-                obligation_facts.append(
-                    obligation_fact(obligation_kind(raw(item, "kind")), amount, due_on)
+    def __deepcopy__(self, memo):
+        raise TypeError("unbound annual/cash handoffs cannot be copied")
+
+    def __reduce__(self):
+        raise TypeError("unbound annual/cash handoffs cannot be pickled")
+
+
+def _canonical(value: object) -> object:
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            "type": f"{type(value).__module__}.{type(value).__qualname__}",
+            "fields": {
+                item.name: _canonical(object.__getattribute__(value, item.name))
+                for item in fields(type(value))
+                if item.name != "_integrity_seal"
+            },
+        }
+    if type(value) is Decimal:
+        return {"decimal": str(value)}
+    if type(value) is date:
+        return {"date": value.isoformat()}
+    if isinstance(value, Enum):
+        return {
+            "enum": f"{type(value).__module__}.{type(value).__qualname__}:{value.value}"
+        }
+    if type(value) is tuple:
+        return [_canonical(item) for item in value]
+    if value is None or type(value) in (str, int, bool):
+        return value
+    raise ValueError(f"unsupported identity type: {type(value).__name__}")
+
+
+def _digest(value: object) -> str:
+    encoded = json.dumps(
+        _canonical(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _handoff_components(value: UnboundAnnualCashPresentation) -> tuple[object, ...]:
+    return (
+        value.contract_version,
+        value.presentation_input,
+        value.evidence_references,
+        value.as_of,
+        value.tax_year,
+        value.nation,
+        value.ruleset_version,
+        value.annual_to_cash_contract_version,
+        value.source_position_identity,
+        value.annual_position_reference,
+        value.owner_authoritative,
+        value.limitations,
+        value.prohibited_uses,
+    )
+
+
+def _expected_handoff_seal(value: UnboundAnnualCashPresentation) -> str:
+    return _digest(_handoff_components(value))
+
+
+def _validate_exact_presentation_graph(
+    value: object,
+    *,
+    active: set[int] | None = None,
+    visited: set[int] | None = None,
+    depth: int = 0,
+) -> None:
+    if depth > _MAX_GRAPH_DEPTH:
+        raise ValueError("handoff presentation graph exceeds the depth limit")
+    active = set() if active is None else active
+    visited = set() if visited is None else visited
+    allowed_dataclasses = {W2PresentationInput, ObligationFact, AdjustmentFact}
+    traversable = (
+        is_dataclass(value) and not isinstance(value, type)
+    ) or type(value) is tuple
+    if traversable:
+        identity = id(value)
+        if identity in active:
+            raise ValueError("handoff presentation graph contains a cycle")
+        if identity in visited:
+            return
+        if len(visited) >= _MAX_GRAPH_NODES:
+            raise ValueError("handoff presentation graph exceeds the node limit")
+        active.add(identity)
+        visited.add(identity)
+        try:
+            if type(value) is tuple:
+                for item in value:
+                    _validate_exact_presentation_graph(
+                        item, active=active, visited=visited, depth=depth + 1
+                    )
+                return
+            if type(value) not in allowed_dataclasses:
+                raise ValueError("handoff presentation contains an unsupported contract")
+            expected = {item.name for item in fields(type(value))}
+            if not hasattr(value, "__dict__") or set(vars(value)) != expected:
+                raise ValueError("handoff presentation contains undeclared state")
+            for item in fields(type(value)):
+                _validate_exact_presentation_graph(
+                    object.__getattribute__(value, item.name),
+                    active=active,
+                    visited=visited,
+                    depth=depth + 1,
                 )
-            facts = tuple(obligation_facts)
-            if len(facts) != len({raw(item, "kind") for item in facts}):
-                raise ValueError("annual/cash obligations are duplicated")
+            return
+        finally:
+            active.remove(identity)
+    if isinstance(value, Enum):
+        if type(value).__module__ != "reserved.services.w2_customer_language":
+            raise ValueError("handoff presentation contains an unsupported enum")
+        return
+    if type(value) in (str, bool, date, Decimal) or value is None:
+        return
+    raise ValueError("handoff presentation contains unsupported state")
 
-            deductions = raw(balancing, "deductions_credits")
-            prior_poa = raw(balancing, "prior_poa")
-            payments = raw(balancing, "payments_made_total")
-            excess_credit = raw(balancing, "excess_credit")
-            credit = zero if excess_credit is None else excess_credit
-            amounts = (deductions, prior_poa, payments, credit)
-            if not all(money(item) for item in amounts):
-                raise ValueError("annual/cash adjustment is invalid")
-            adjustments = (
-                adjustment_fact(adjustment_deductions, deductions),
-                adjustment_fact(adjustment_prior_poa, prior_poa),
-                adjustment_fact(adjustment_payments, payments),
-                adjustment_fact(adjustment_credit, credit),
-            )
 
-            balance = raw(position, "balance")
-            if balance is funding_gap:
-                funding_kind = funding_gap_public
-                funding_amount = raw(position, "funding_gap")
-                if not money(funding_amount) or funding_amount == zero:
-                    raise ValueError("annual/cash funding gap is invalid")
-            elif balance is funding_exact:
-                funding_kind = funding_exact_public
-                funding_amount = None
-                if raw(position, "funding_gap") != zero or raw(position, "reserve_surplus") != zero:
-                    raise ValueError("annual/cash exact funding is invalid")
-            elif balance is funding_surplus:
-                funding_kind = funding_surplus_public
-                funding_amount = raw(position, "reserve_surplus")
-                if not money(funding_amount) or funding_amount == zero:
-                    raise ValueError("annual/cash funding surplus is invalid")
-            else:
-                raise ValueError("annual/cash funding state is unsupported")
-
-            liability = raw(value, "final_self_assessment_liability")
-            if not money(liability):
-                raise ValueError("annual/cash liability is invalid")
-            presentation = w2_input(
-                w2_version,
-                presentation_ready,
-                local_estimate,
-                liability,
-                facts,
-                adjustments,
-                funding_kind,
-                funding_amount,
-                None,
-            )
-            # Detect any mutation between the first producer lookup and the
-            # completed copy before exposing the public result.
-            if identity_reader(value) != issued_identity or provenance_reader(value) is not provenance:
-                raise ValueError("annual/cash producer identity changed")
-        except (AttributeError, KeyError, TypeError, ValueError, ArithmeticError):
-            return None
-
-        return public_composer(
-            presentation,
-            nation=nation,
-            tax_year=tax_year,
-            user_id=user_id,
-            business_id=business_id,
-            evidence_references=evidence_references_for_value,
+def _validate_handoff_state(
+    value: object, *, require_seal: bool
+) -> UnboundAnnualCashPresentation:
+    if type(value) is not UnboundAnnualCashPresentation:
+        raise ValueError("handoff must be an exact UnboundAnnualCashPresentation")
+    _validate_exact_presentation_graph(value.presentation_input)
+    if (
+        value.contract_version != CONTRACT_VERSION
+        or value.owner_authoritative is not False
+        or value.limitations != _LIMITATIONS
+        or value.prohibited_uses != _PROHIBITED_USES
+        or type(value.presentation_input) is not W2PresentationInput
+        or present_w2_customer_language(value.presentation_input).safe_to_present is not True
+        or type(value.evidence_references) is not tuple
+        or not value.evidence_references
+        or any(
+            type(item) is not str or not _SOURCE_ID.fullmatch(item)
+            for item in value.evidence_references
         )
+        or len(value.evidence_references) != len(set(value.evidence_references))
+        or type(value.as_of) is not date
+        or type(value.tax_year) is not str
+        or not value.tax_year
+        or type(value.nation) is not str
+        or value.nation not in _SUPPORTED_NATIONS
+        or type(value.ruleset_version) is not str
+        or not value.ruleset_version
+        or value.annual_to_cash_contract_version != ANNUAL_TO_CASH_VERSION
+        or type(value.source_position_identity) is not str
+        or not _DIGEST_ID.fullmatch(value.source_position_identity)
+        or not value.source_position_identity.startswith("annual-to-cash-position:")
+        or type(value.annual_position_reference) is not str
+        or not _DIGEST_ID.fullmatch(value.annual_position_reference)
+    ):
+        raise ValueError("unbound annual/cash handoff state is invalid")
+    if require_seal:
+        seal = object.__getattribute__(value, "_integrity_seal")
+        if type(seal) is not str or not hmac.compare_digest(
+            seal, _expected_handoff_seal(value)
+        ):
+            raise ValueError("unbound annual/cash handoff integrity mismatch")
+    return value
 
-    evidence_references_fn = evidence_references
-    return project
+
+def _money(value: object) -> bool:
+    return (
+        type(value) is Decimal and value.is_finite() and value >= _ZERO
+        and value == value.quantize(_PENNY)
+        and not (value.is_zero() and value.is_signed())
+    )
 
 
-compose_w8_annual_cash_customer_result = _make_handoff()
-compose_w8_annual_cash_customer_result.__name__ = (
-    "compose_w8_annual_cash_customer_result"
-)
-compose_w8_annual_cash_customer_result.__qualname__ = (
-    "compose_w8_annual_cash_customer_result"
-)
-del _make_handoff
+def _exact_graph(
+    value: object,
+    *,
+    active: set[int] | None = None,
+    visited: set[int] | None = None,
+    depth: int = 0,
+) -> None:
+    """Reject subtypes, undeclared state, cycles and unbounded graphs."""
+    if depth > _MAX_GRAPH_DEPTH:
+        raise ValueError("annual/cash input graph exceeds the depth limit")
+    active = set() if active is None else active
+    visited = set() if visited is None else visited
+    traversable = (
+        is_dataclass(value) and not isinstance(value, type)
+    ) or type(value) is tuple
+    if traversable:
+        identity = id(value)
+        if identity in active:
+            raise ValueError("annual/cash input graph contains a cycle")
+        if identity in visited:
+            return
+        if len(visited) >= _MAX_GRAPH_NODES:
+            raise ValueError("annual/cash input graph exceeds the node limit")
+        active.add(identity)
+        visited.add(identity)
+        try:
+            if type(value) is tuple:
+                for item in value:
+                    _exact_graph(
+                        item, active=active, visited=visited, depth=depth + 1
+                    )
+                return
+            expected = {item.name for item in fields(type(value))}
+            if not hasattr(value, "__dict__") or set(vars(value)) != expected:
+                raise ValueError("annual/cash input is not an exact validated snapshot")
+            if type(value).__module__.split(".")[:2] != ["reserved", "engines"]:
+                raise ValueError("annual/cash input contains an unsupported contract")
+            for item in fields(type(value)):
+                _exact_graph(
+                    object.__getattribute__(value, item.name),
+                    active=active,
+                    visited=visited,
+                    depth=depth + 1,
+                )
+            return
+        finally:
+            active.remove(identity)
+    if isinstance(value, Enum):
+        if type(value).__module__.split(".")[:2] != ["reserved", "engines"]:
+            raise ValueError("annual/cash input contains an unsupported enum")
+        return
+    if type(value) in (str, int, bool, date, Decimal) or value is None:
+        if type(value) is Decimal and not value.is_finite():
+            raise ValueError("annual/cash input contains non-finite numeric state")
+        return
+    raise ValueError("annual/cash input contains unsupported state")
+
+
+def _source_references(value: AnnualToCashPosition) -> tuple[str, ...]:
+    annual = value.considered_annual_position
+    reconciliation = value.obligation_reconciliation
+    position = value.funding_position
+    assert reconciliation is not None and position is not None
+    account = reconciliation.considered_account
+    refs = [*annual.evidence_ids]
+    for item in account.considered_charges:
+        refs.extend((item.charge_id, item.source_reference))
+    for item in account.considered_credits:
+        refs.extend((item.credit_id, item.source_reference))
+    for item in account.considered_allocations:
+        refs.extend((item.allocation_id, item.source_reference))
+    evidence = position.considered_set_aside
+    if evidence is not None:
+        refs.extend((evidence.evidence_id, evidence.source_reference))
+        refs.extend(item.allocation_id for item in evidence.allocations)
+    if (
+        any(type(item) is not str or not _SOURCE_ID.fullmatch(item) for item in refs)
+        or len(refs) != len(set(refs))
+    ):
+        raise ValueError("annual/cash source identities are invalid or duplicated")
+    return tuple(refs)
+
+
+def _recompute_nested(value: AnnualToCashPosition) -> None:
+    assessed = value.poa_assessment
+    balancing = value.balancing_position
+    reconciliation = value.obligation_reconciliation
+    position = value.funding_position
+    assert assessed is not None and balancing is not None
+    assert reconciliation is not None and position is not None
+    recomputed_reconciliation = obligations.reconcile_cash_obligations(
+        account_reconciliation=reconciliation.considered_account,
+        poa_assessment=assessed,
+        balancing_position=balancing,
+    )
+    if recomputed_reconciliation != reconciliation:
+        raise ValueError("cash-obligation reconciliation does not match upstream inputs")
+    evidence = position.considered_set_aside
+    if evidence is None or type(evidence.observed_on) is not date:
+        raise ValueError("calculated funding requires exact set-aside evidence")
+    evidence_age = (value.as_of - evidence.observed_on).days
+    if evidence_age < 0:
+        raise ValueError("set-aside evidence cannot be observed in the future")
+    recomputed_position = funding.compose_cash_funding_position(
+        obligation_reconciliation=reconciliation,
+        set_aside_evidence=evidence,
+        as_of=value.as_of,
+        # For an already-calculated result, output is independent of the
+        # original unretained threshold at this minimum non-stale boundary.
+        stale_after_days=evidence_age,
+    )
+    if recomputed_position != position:
+        raise ValueError("cash-funding position does not match upstream inputs")
+
+
+def _validate(value: object, supplied_references: object) -> AnnualToCashPosition:
+    if type(value) is not AnnualToCashPosition:
+        raise ValueError("annual/cash input must be an exact AnnualToCashPosition")
+    _exact_graph(value)
+    # The accepted upstream 1.0 composer always sources the final liability as
+    # LOCAL_ESTIMATE. CALCULATED cannot authenticate exact HMRC provenance.
+    if (
+        value.contract_version != ANNUAL_TO_CASH_VERSION
+        or value.status is not AnnualToCashStatus.QUALIFIED_LOCAL_RESULT
+        or "annual_liability_is_local_estimate_not_hmrc_issued" not in value.limitations
+        or type(value.as_of) is not date
+        or value.tax_year != value.considered_annual_position.tax_year
+        or type(value.nation) is not str
+        or value.nation not in _SUPPORTED_NATIONS
+        or value.nation != value.considered_annual_position.nation
+        or value.ruleset_version != value.considered_annual_position.ruleset_version
+        or value.as_of < value.considered_annual_position.as_of
+        or value.annual_position_reference
+           != cash_ready_annual_position_identity(value.considered_annual_position)
+        or type(value.limitations) is not tuple
+        or type(value.prohibited_uses) is not tuple
+        or "present_surplus_as_available_or_safe_to_spend" not in value.prohibited_uses
+    ):
+        raise ValueError("annual/cash input is inconsistent or unsupported")
+    assessed, balancing = value.poa_assessment, value.balancing_position
+    reconciliation, position = value.obligation_reconciliation, value.funding_position
+    if not all(item is not None for item in (assessed, balancing, reconciliation, position)):
+        raise ValueError("annual/cash input is incomplete")
+    assert assessed is not None and balancing is not None
+    assert reconciliation is not None and position is not None
+    if (
+        type(assessed) is not poa.PoAAssessment
+        or type(balancing) is not poa.BalancingPosition
+        or type(reconciliation) is not obligations.CashObligationReconciliation
+        or type(position) is not funding.CashFundingPosition
+        or reconciliation.considered_poa is not assessed
+        or reconciliation.considered_balancing is not balancing
+        or position.considered_obligations is not reconciliation
+        or position.as_of != value.as_of
+        or position.status is not funding.FundingComputationStatus.CALCULATED
+        or reconciliation.status not in {
+            obligations.CashObligationStatus.ALIGNED,
+            obligations.CashObligationStatus.OBSERVATION_NOT_HMRC_CONFIRMED,
+        }
+        or reconciliation.discrepancies
+        or value.final_self_assessment_liability != balancing.final_liability
+        or not _money(value.final_self_assessment_liability)
+    ):
+        raise ValueError("annual/cash nested state is inconsistent")
+    _recompute_nested(value)
+    expected_refs = _source_references(value)
+    if type(supplied_references) is not tuple or supplied_references != expected_refs:
+        raise ValueError("source or evidence identities do not match the annual/cash snapshot")
+    return value
+
+
+def _source_position_identity(value: AnnualToCashPosition) -> str:
+    return f"annual-to-cash-position:sha256-{_digest(value)}"
+
+
+def annual_to_cash_source_identity(
+    value: AnnualToCashPosition,
+    *,
+    evidence_references: tuple[str, ...],
+) -> str:
+    """Return the identity of one fully revalidated upstream snapshot."""
+    validated = _validate(value, evidence_references)
+    return _source_position_identity(validated)
+
+
+def compose_w8_annual_cash_customer_handoff(
+    value: AnnualToCashPosition,
+    *,
+    evidence_references: tuple[str, ...],
+) -> UnboundAnnualCashPresentation | None:
+    """Project reviewed facts into an explicitly owner-unbound handoff."""
+    try:
+        value = _validate(value, evidence_references)
+        balancing = value.balancing_position
+        reconciliation = value.obligation_reconciliation
+        position = value.funding_position
+        assert balancing is not None and reconciliation is not None and position is not None
+        facts = tuple(
+            ObligationFact(_OBLIGATION_KIND[item.kind], item.amount, item.due_date)
+            for item in reconciliation.expected_obligations
+        )
+        if len(facts) != len({item.kind for item in facts}):
+            raise ValueError("annual/cash obligations are duplicated or unsupported")
+        adjustments = (
+            AdjustmentFact(AdjustmentKind.DEDUCTIONS_AND_CREDITS, balancing.deductions_credits),
+            AdjustmentFact(AdjustmentKind.PRIOR_PAYMENTS_ON_ACCOUNT, balancing.prior_poa),
+            AdjustmentFact(AdjustmentKind.PAYMENTS_MADE, balancing.payments_made_total),
+            AdjustmentFact(
+                AdjustmentKind.CREDIT_OR_REFUND,
+                balancing.excess_credit if balancing.excess_credit is not None else _ZERO,
+            ),
+        )
+        if not all(_money(item.amount) for item in (*facts, *adjustments)):
+            raise ValueError("annual/cash projection contains invalid money")
+        funding_kind = _FUNDING_KIND[position.balance]
+        funding_amount = {
+            FundingClassification.GAP: position.funding_gap,
+            FundingClassification.EXACT: None,
+            FundingClassification.SURPLUS: position.reserve_surplus,
+        }[funding_kind]
+        presentation = W2PresentationInput(
+            W2_VERSION, PresentationStatus.READY,
+            EvidenceClassification.QUALIFIED_LOCAL_ESTIMATE,
+            value.final_self_assessment_liability, facts, adjustments,
+            funding_kind, funding_amount, None,
+        )
+        if present_w2_customer_language(presentation).safe_to_present is not True:
+            raise ValueError("annual/cash projection is not presentable")
+        return UnboundAnnualCashPresentation(
+            presentation,
+            evidence_references,
+            value.as_of,
+            value.tax_year,
+            value.nation,
+            value.ruleset_version,
+            value.contract_version,
+            _source_position_identity(value),
+            value.annual_position_reference,
+            _issue_token=_ISSUE_TOKEN,
+        )
+    except (AttributeError, KeyError, TypeError, ValueError, ArithmeticError):
+        return None
+
+
+def validate_w8_annual_cash_customer_handoff(
+    value: UnboundAnnualCashPresentation,
+    *,
+    source_position: AnnualToCashPosition,
+    evidence_references: tuple[str, ...],
+    expected_as_of: date,
+) -> UnboundAnnualCashPresentation:
+    """Revalidate one handoff against exact caller-supplied source context.
+
+    ``expected_as_of`` must come from the eventual authenticated request/state
+    adapter. This pure boundary deliberately makes no global latest-state claim.
+    """
+    if type(expected_as_of) is not date:
+        raise ValueError("expected_as_of must be an exact date")
+    handoff = _validate_handoff_state(value, require_seal=True)
+    source = _validate(source_position, evidence_references)
+    if (
+        source.as_of != expected_as_of
+        or handoff.as_of != expected_as_of
+        or handoff.tax_year != source.tax_year
+        or handoff.nation != source.nation
+        or handoff.ruleset_version != source.ruleset_version
+        or handoff.annual_to_cash_contract_version != source.contract_version
+        or handoff.source_position_identity != _source_position_identity(source)
+        or handoff.annual_position_reference != source.annual_position_reference
+        or handoff.evidence_references != evidence_references
+    ):
+        raise ValueError("handoff does not match the exact expected source context")
+    expected = compose_w8_annual_cash_customer_handoff(
+        source, evidence_references=evidence_references
+    )
+    if expected is None or _handoff_components(handoff) != _handoff_components(expected):
+        raise ValueError("handoff was not derived from the exact source snapshot")
+    return handoff
+
+
+def project_w8_annual_cash_presentation(
+    value: UnboundAnnualCashPresentation,
+    *,
+    source_position: AnnualToCashPosition,
+    evidence_references: tuple[str, ...],
+    expected_as_of: date,
+) -> W2PresentationInput:
+    """Return only the still-owner-unbound facts after exact source admission."""
+    return validate_w8_annual_cash_customer_handoff(
+        value,
+        source_position=source_position,
+        evidence_references=evidence_references,
+        expected_as_of=expected_as_of,
+    ).presentation_input
+
+
+def w8_annual_cash_customer_handoff_identity(
+    value: UnboundAnnualCashPresentation,
+    *,
+    source_position: AnnualToCashPosition,
+    evidence_references: tuple[str, ...],
+    expected_as_of: date,
+) -> str:
+    """Return identity only after exact source admission, never from seal alone."""
+    handoff = validate_w8_annual_cash_customer_handoff(
+        value,
+        source_position=source_position,
+        evidence_references=evidence_references,
+        expected_as_of=expected_as_of,
+    )
+    return f"w8-annual-cash-handoff:sha256-{_digest(_handoff_components(handoff))}"

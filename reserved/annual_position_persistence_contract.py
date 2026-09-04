@@ -7,11 +7,13 @@ run a migration, write a file, open a network connection, hold credentials,
 select a datastore, choose encryption/key custody, or activate anything.
 
 At admission it accepts only an exact, live producer-issued ``AnnualToCashPosition``
-and an exact, genuine ``W8CustomerResult`` derived from it. It independently
-validates their identities and coherence, then copies only the canonical minimal
-facts into an immutable projection. The rendered customer copy is never stored:
-it is deterministically reproduced from the minimal projection through the
-already-reviewed W2/W8 contracts.
+and the exact owner-unbound W8 handoff derived from it. It independently
+validates their identities and coherence before binding the separately supplied
+authenticated owner/business references inside this persistence authority
+boundary. It then copies only the canonical minimal facts into an immutable
+projection. The rendered customer copy is never stored: it is deterministically
+reproduced from the minimal projection through the already-reviewed W2/W8
+contracts.
 
 Trust and admission are explicit. A projection built through the public
 constructor, ``dataclasses.replace`` or pickle decoding is a *structural
@@ -69,7 +71,8 @@ from reserved.services.w2_customer_language import (
     W2PresentationInput,
 )
 from reserved.services.w8_annual_cash_customer_handoff import (
-    compose_w8_annual_cash_customer_result,
+    UnboundAnnualCashPresentation,
+    validate_w8_annual_cash_customer_handoff,
 )
 from reserved.services.w8_customer_result import (
     SupportedNation,
@@ -233,9 +236,10 @@ def _make_persistence_contract():
 
     annual_position_type = AnnualToCashPosition
     provenance_type = AnnualToCashInputProvenance
+    handoff_type = UnboundAnnualCashPresentation
     annual_cash_identity_reader = annual_to_cash_position_identity
     provenance_reader = annual_to_cash_position_provenance
-    handoff_composer = compose_w8_annual_cash_customer_result
+    handoff_validator = validate_w8_annual_cash_customer_handoff
     w8_composer = compose_w8_customer_result
     w8_identity_reader = w8_customer_result_identity
 
@@ -593,11 +597,43 @@ def _make_persistence_contract():
 
     def _build_admitted_projection(
         annual_position,
-        customer_result,
+        handoff,
         *,
+        authenticated_user_id,
+        authenticated_business_id,
         record_version: int,
         predecessor_identity,
     ) -> AnnualPositionPersistenceProjection:
+        # Reject duck types and subclasses before any attribute, property or
+        # descriptor access. The deeper handoff/source validator still proves
+        # the complete exact source graph after this inert outer type gate.
+        if exact_type(annual_position) is not annual_position_type:
+            raise value_error(
+                "persistence admission requires an exact annual/cash position"
+            )
+
+        # The W8 boundary is deliberately owner-unbound. Revalidate its exact
+        # producer/source/evidence/as-of binding before consulting or binding
+        # any owner reference. A structurally reconstructed or altered handoff
+        # therefore cannot use this persistence boundary to mint authority.
+        if exact_type(handoff) is not handoff_type:
+            raise value_error("persistence admission requires an exact owner-unbound handoff")
+        supplied_references = raw(handoff, "evidence_references")
+        expected_as_of = raw(annual_position, "as_of")
+        validated_handoff = handoff_validator(
+            handoff,
+            source_position=annual_position,
+            evidence_references=supplied_references,
+            expected_as_of=expected_as_of,
+        )
+
+        # These references are asserted by the already-authenticated caller;
+        # the unbound W8 object is never allowed to carry or select them.
+        _validate_owner(authenticated_user_id, "authenticated user")
+        _validate_owner(authenticated_business_id, "authenticated business")
+        if authenticated_user_id == authenticated_business_id:
+            raise value_error("user and business ownership must be distinct")
+
         annual_identity = annual_cash_identity_reader(annual_position)
         if exact_type(annual_identity) is not str_type:
             raise value_error("annual/cash producer identity is unsupported")
@@ -605,16 +641,18 @@ def _make_persistence_contract():
         if exact_type(provenance) is not provenance_type:
             raise value_error("annual/cash producer provenance is unsupported")
 
-        # Independently prove the customer result was derived from this exact
-        # live annual/cash position before copying any fact.
-        recomputed = handoff_composer(
-            annual_position,
-            user_id=customer_result.user_id,
-            business_id=customer_result.business_id,
-            evidence_references=customer_result.evidence_references,
+        # Bind ownership only after exact handoff admission. The W8 public
+        # result is an internal derived value, not an accepted caller input.
+        customer_result = w8_composer(
+            raw(validated_handoff, "presentation_input"),
+            nation=raw(validated_handoff, "nation"),
+            tax_year=raw(validated_handoff, "tax_year"),
+            user_id=authenticated_user_id,
+            business_id=authenticated_business_id,
+            evidence_references=raw(validated_handoff, "evidence_references"),
         )
-        if recomputed is None or w8_identity_reader(recomputed) != w8_identity_reader(customer_result):
-            raise value_error("customer result is not coherent with the annual/cash position")
+        if customer_result is None:
+            raise value_error("authenticated owner binding did not produce a customer result")
 
         presentation = raw(customer_result, "presentation_input")
         evidence = raw(presentation, "evidence")
@@ -692,12 +730,17 @@ def _make_persistence_contract():
 
     def admit_annual_position_projection(
         annual_position,
-        customer_result,
+        handoff,
+        *,
+        authenticated_user_id,
+        authenticated_business_id,
     ) -> AnnualPositionPersistenceProjection:
-        """Admit exact producer-issued results and copy minimal facts only."""
+        """Admit an exact unbound handoff, then bind authenticated ownership."""
         return _build_admitted_projection(
             annual_position,
-            customer_result,
+            handoff,
+            authenticated_user_id=authenticated_user_id,
+            authenticated_business_id=authenticated_business_id,
             record_version=1,
             predecessor_identity=None,
         )
@@ -727,7 +770,10 @@ def _make_persistence_contract():
     def supersede_annual_position_projection(
         previous,
         annual_position,
-        customer_result,
+        handoff,
+        *,
+        authenticated_user_id,
+        authenticated_business_id,
     ) -> AnnualPositionPersistenceProjection:
         """Admit a successor linked to the exact previous content identity.
 
@@ -738,7 +784,9 @@ def _make_persistence_contract():
         previous_identity = annual_position_projection_identity(previous)
         successor = _build_admitted_projection(
             annual_position,
-            customer_result,
+            handoff,
+            authenticated_user_id=authenticated_user_id,
+            authenticated_business_id=authenticated_business_id,
             record_version=_slot(previous, "record_version") + 1,
             predecessor_identity=previous_identity,
         )

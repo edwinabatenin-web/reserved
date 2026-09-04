@@ -1,69 +1,78 @@
-# W8-S2C annual/cash customer-handoff evidence
+# W8-S2C annual/cash presentation-handoff evidence
 
-This bounded candidate adds one pure, network-inert handoff from the reviewed
-annual-to-cash producer to the reviewed W2 customer-language and W8 public
-result contracts. It adds no route, template, storage, provider access,
-calculation, filing, payment authority or activation.
+This integration-resolution candidate composes the independently reviewed
+W8-S2C correction checkpoint
+`67de691bf9bd447789027307473689ae59331c40` with the current clean integration
+baseline `f25a90a98be39f41cbb71138d3d68bf3b96f6427`. It preserves the later
+tax-year and geography provenance hardening already present on that baseline
+(including the source/integration checkpoint lineages represented by
+`a3164e7`/`16e586f` and `33aa569`/`afe1e9d`) rather than choosing either side
+of the collision wholesale.
 
-## Producer authority and provenance
+The candidate provides one pure, network-inert adapter from the accepted
+`AnnualToCashPosition` graph to an explicitly **owner-unbound** presentation
+handoff. It introduces no route, persistence, authentication, provider call,
+calculation, wording, payment authority or activation.
 
-The handoff accepts only an exact, live producer-issued `AnnualToCashPosition`.
-It calls the public read-only `annual_to_cash_position_identity()` and
-`annual_to_cash_position_provenance()` capabilities before reading any nested
-facts, and calls both again before exposing a public result. Directly
-constructed, replaced, copied, reconstructed, mutated and coherently forged
-positions therefore fail closed. The handoff receives no issuance capability
-and makes no claim against arbitrary interpreter, closure or frame access.
+The adapter accepts only the authentically reachable
+`QUALIFIED_LOCAL_RESULT` state. Under the current upstream contract the annual
+liability is always sourced as `LOCAL_ESTIMATE`; consequently this boundary
+never relabels a locally calculated amount as HMRC-confirmed or HMRC-recorded.
 
-The customer-facing evidence tuple must exactly equal the complete ordered set
-of opaque source identities supported by the producer graph and provenance:
-annual evidence, deductions/credits evidence, prior-PoA evidence, payment
-source identities, account charges/credits/allocations and set-aside evidence.
-Where one upstream source record supports several distinct HMRC charges, its
-source reference is retained once in deterministic first-occurrence order, as
-required by the public W8 contract. Derived content digests are not
-misrepresented as source references.
+The complete input graph is bounded for depth and node count and rejects
+cycles, subtypes and undeclared state. The adapter recomputes the exact
+`CashObligationReconciliation` and `CashFundingPosition` from their retained
+upstream inputs and requires equality before copying amounts or dates. It also
+requires the exact ordered set of opaque evidence references already present
+in the snapshot.
 
-## Projection semantics
+The composer produces an exact frozen, content-bound value. Ordinary direct
+construction, dataclass replacement, copying and pickling are rejected;
+low-level mutation invalidates its integrity digest. The module-private issue
+token and digest are **not** secrets, signatures, provenance or authenticity
+proofs; they detect accidental/ordinary mutation only. Downstream acceptance
+always uses the public exact-source validator/projector, and the public identity
+routine also requires that validation rather than trusting the token or digest.
+The value retains the exact
+source position identity, annual-position reference, evidence references,
+as-of date, tax year, admitted UK nation, ruleset and upstream contract
+version. Nation and tax year are copied only from the exact revalidated source;
+they are not caller-supplied. Missing, unsupported, mutated or coherently
+reconstructed geography/tax-year state therefore fails closed. Its public
+validator/projector requires the exact revalidated source snapshot, evidence
+set and a caller-supplied expected as-of date before returning presentation
+facts. A mismatched newer/older source context, replayed context or substituted
+fact therefore fails closed.
 
-Only producer-issued actionable states may render. Review-required and
-unresolved states return the categorical value-free result `None`. Both
-actionable producer status names are presented as
-`QUALIFIED_LOCAL_ESTIMATE`: the annual liability is locally calculated and is
-never promoted to an HMRC-confirmed or exact claim.
+The result contains no user or business identity and is fixed as
+`owner_authoritative=False`. It prohibits owner-authoritative public use,
+customer rendering and persistence until a separate accepted authenticated
+owner/business boundary binds the presentation. It does not claim to solve
+ownership or request-context authority. It also makes no claim that its source
+is globally latest: the eventual authenticated state adapter must supply the
+authoritative expected as-of date and current source snapshot.
 
-The projection copies, without recalculation:
+Unresolved, review-required, forged-CALCULATED, malformed, mutated,
+substituted, duplicated, incomplete, cyclic, over-deep, subtype-bearing and
+unsupported graphs return `None` without projecting values. The implementation
+catches only expected data/validation failures; it does not catch
+`BaseException`.
 
-- final Self Assessment liability;
-- each balancing-payment and Payment-on-Account amount and due date;
-- deductions/credits, prior PoA, payments made and credit/refund position;
-- exact funding gap, exact coverage or reserve surplus;
-- the complete source-reference tuple.
+This is a candidate for independent review only. It does not close ownership,
+persistence, routing, target-runtime or HMRC-observation gates and does not
+claim W8-S2 completion.
 
-The existing W2 language contract retains customer wording. The existing W8
-public result retains supported geography, ownership, immutable-result and
-no-payment/no-transfer controls. A surplus remains explicitly unavailable and
-not spendable.
+## Verification scope
 
-## Rebinding and hostile-state controls
-
-The implementation closes over the genuine producer readers, public composer,
-exact date/decimal types, constructors, enum members and monetary constants. Rebinding their
-module names cannot rehabilitate an altered value or replace the public
-composer. Exact top-level type rejection occurs before any hostile subtype
-hook can run. Producer identity then validates the complete nested graph and
-provenance before projection.
-
-## Compatibility boundary
-
-Exactly two compatibility consumers are adjusted. They allow the exact,
-resolved regular file
-`reserved/services/w8_annual_cash_customer_handoff.py` to reference only the
-already-authorised annual-to-cash markers. Every other service, web, API,
-database and model path remains prohibited, and persistence remains absent.
-
-## Status
-
-This is an implementation candidate for fresh independent review. Passing
-tests do not establish acceptance, integrated W8-S2 completion, target-runtime
-evidence or launch readiness.
+The focused suite covers authentic classification, exact nested recomputation,
+mutated amounts and dates, admission sealing, source-context substitution and
+replay, copy/pickle/dataclass replacement, owner-unbound output, evidence
+substitution, duplicate identities, cycles and depth bounds, plus all supported
+launch nations and hostile geography/tax-year mutation and reconstruction. The affected
+upstream W1/W2/W8 matrix and full suite are also run. The two historical
+absence sentinels use exact AST allowlists for every import and call in this
+named boundary, including only necessary safe standard-library and reviewed
+upstream symbols. Negative source fixtures prove that relative, third-party,
+host/process/network, aliased dynamic-loader, indirect-call, annual-calculation,
+internal-composition, broader-engine and web/API/model/database expansion
+remain forbidden.

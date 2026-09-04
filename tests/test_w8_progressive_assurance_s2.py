@@ -511,7 +511,7 @@ def test_provider_to_tax_handoff_is_confined_to_named_boundary():
     )
 
 
-def test_exact_annual_cash_presentation_handoff_is_the_only_customer_consumer():
+def test_presentation_and_persistence_handoffs_are_absent():
     internal_markers = (
         "integrated_annual_position", "annual_to_cash_integration",
         "compose_annual_to_cash_position", "AnnualToCashPosition",
@@ -524,23 +524,47 @@ def test_exact_annual_cash_presentation_handoff_is_the_only_customer_consumer():
         _root() / "reserved" / "database.py",
         _root() / "reserved" / "models",
     )
-    root = _root()
-    permitted = root / "reserved" / "services" / "w8_annual_cash_customer_handoff.py"
-    assert permitted.is_file() and not permitted.is_symlink()
-    assert permitted.resolve(strict=True) == permitted
-    consumers = {}
+    permitted_handoff = (
+        _root() / "reserved" / "services" / "w8_annual_cash_customer_handoff.py"
+    )
+    assert permitted_handoff.is_file() and not permitted_handoff.is_symlink()
+    assert permitted_handoff.resolve(strict=True) == permitted_handoff
+    violations = []
     for layer in layers:
         paths = (layer,) if layer.is_file() else tuple(layer.rglob("*.py"))
         for path in paths:
             text = path.read_text(errors="ignore")
-            for marker in internal_markers:
-                if marker in text:
-                    consumers.setdefault(path, set()).add(marker)
-    assert set(consumers) == {permitted}, (
-        "internal annual components may be consumed only by the exact W8-S2C "
-        f"handoff; found {[(path.relative_to(root), sorted(markers)) for path, markers in consumers.items()]}"
+            if path == permitted_handoff:
+                violations.extend(_annual_cash_handoff_source_violations(text))
+            else:
+                for marker in internal_markers:
+                    if marker in text:
+                        violations.append(f"{path.relative_to(_root())} contains {marker}")
+    assert violations == [], "internal annual components leaked into customer/persistence layers"
+
+
+def test_named_presentation_handoff_rejects_forbidden_source_fixtures():
+    forbidden_sources = (
+        "from reserved.engines.integrated_annual_position import calculate_annual_position",
+        "from reserved.engines.cash_ready_annual_position import CashReadyAnnualPosition",
+        "from reserved.web.routes import index",
+        "from reserved.api.w8_customer_result import get_customer_result",
+        "from reserved.models import User",
+        "from reserved import database",
+        "calculate_annual_position()",
+        "funding.unreviewed_engine_call()",
+        "poa.assess_payments_on_account()",
+        "__import__('reserved.web.routes')",
+        "importlib.import_module('reserved.api.w8_customer_result')",
+        "import os\nos.system('true')",
+        "import requests\nrequests.get('https://example.test')",
+        "from .nearby import hidden",
+        "import importlib as il\nil.import_module('reserved.web.routes')",
+        "loader = __import__\nloader('reserved.web.routes')",
+        "getattr(__builtins__, 'open')('/tmp/probe')",
     )
-    assert consumers[permitted] == {"annual_to_cash_integration", "AnnualToCashPosition"}
+    for source in forbidden_sources:
+        assert _annual_cash_handoff_source_violations(source), source
 
 
 def test_geography_and_jurisdiction_references_are_recorded_honestly():
@@ -794,6 +818,136 @@ def test_w8_map_preserves_post_s3d_gates_and_finite_completion_counts():
 
 
 # ── Local helpers (production contracts only) ────────────────────────────────
+
+_ANNUAL_CASH_ALLOWED_IMPORTS = {
+    "__future__": {("annotations", None)},
+    "dataclasses": {
+        ("dataclass", None), ("field", None), ("fields", None),
+        ("is_dataclass", None),
+    },
+    "datetime": {("date", None)},
+    "decimal": {("Decimal", None)},
+    "enum": {("Enum", None)},
+    "reserved.engines": {
+        ("cash_funding_position", "funding"),
+        ("cash_obligation_reconciliation", "obligations"),
+        ("payments_on_account", "poa"),
+    },
+    "reserved.engines.annual_to_cash_integration": {
+        ("CONTRACT_VERSION", "ANNUAL_TO_CASH_VERSION"),
+        ("AnnualToCashPosition", None),
+        ("AnnualToCashStatus", None),
+        ("cash_ready_annual_position_identity", None),
+    },
+    "reserved.services.w2_customer_language": {
+        ("CONTRACT_VERSION", "W2_VERSION"),
+        ("AdjustmentFact", None),
+        ("AdjustmentKind", None),
+        ("EvidenceClassification", None),
+        ("FundingClassification", None),
+        ("ObligationFact", None),
+        ("ObligationKind", None),
+        ("PresentationStatus", None),
+        ("W2PresentationInput", None),
+        ("present_w2_customer_language", None),
+    },
+}
+_ANNUAL_CASH_ALLOWED_DIRECT_IMPORTS = {
+    ("hashlib", None), ("hmac", None), ("json", None), ("re", None),
+}
+_ANNUAL_CASH_ALLOWED_CALL_TARGETS = {
+    "AdjustmentFact", "Decimal", "ObligationFact", "TypeError",
+    "UnboundAnnualCashPresentation", "ValueError", "W2PresentationInput",
+    "_DIGEST_ID.fullmatch", "_IssueToken", "_SOURCE_ID.fullmatch",
+    "_canonical", "_digest", "_exact_graph", "_expected_handoff_seal",
+    "_handoff_components", "_money", "_recompute_nested",
+    "_source_position_identity", "_source_references", "_validate",
+    "_validate_exact_presentation_graph", "_validate_handoff_state",
+    "active.add", "active.remove", "all", "any",
+    "cash_ready_annual_position_identity",
+    "compose_w8_annual_cash_customer_handoff", "dataclass", "field", "fields",
+    "funding.compose_cash_funding_position", "hasattr", "hash",
+    "hashlib.sha256", "hashlib.sha256().hexdigest", "hmac.compare_digest",
+    "id", "is_dataclass", "isinstance", "json.dumps",
+    "json.dumps().encode", "len", "object.__getattribute__",
+    "object.__setattr__", "obligations.reconcile_cash_obligations",
+    "present_w2_customer_language", "re.compile", "refs.extend", "set",
+    "str", "tuple", "type", "type().__module__.split",
+    "validate_w8_annual_cash_customer_handoff", "value.is_finite",
+    "value.is_signed", "value.is_zero", "value.isoformat", "value.quantize",
+    "value.source_position_identity.startswith", "vars", "visited.add",
+}
+_ANNUAL_CASH_ALLOWED_ENGINE_CALLS = {
+    "funding.compose_cash_funding_position",
+    "obligations.reconcile_cash_obligations",
+    "cash_ready_annual_position_identity",
+}
+_ANNUAL_CASH_ALLOWED_ENGINE_ATTRIBUTES = {
+    "funding": {
+        "CashFundingPosition", "FundingBalance", "FundingComputationStatus",
+        "compose_cash_funding_position",
+    },
+    "obligations": {
+        "account", "CashObligationReconciliation", "CashObligationStatus",
+        "reconcile_cash_obligations",
+    },
+    "poa": {"PoAAssessment", "BalancingPosition"},
+}
+_ANNUAL_CASH_FORBIDDEN_SYMBOLS = {
+    "integrated_annual_position", "calculate_annual_position",
+    "CashReadyAnnualPosition", "compose_annual_to_cash_position",
+}
+
+
+def _annual_cash_handoff_source_violations(source: str) -> list[str]:
+    tree = ast.parse(source)
+    violations = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                fact = (alias.name, alias.asname)
+                if fact not in _ANNUAL_CASH_ALLOWED_DIRECT_IMPORTS:
+                    violations.append(f"forbidden absolute import {fact}")
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            allowed = _ANNUAL_CASH_ALLOWED_IMPORTS.get(module)
+            for alias in node.names:
+                if (
+                    node.level != 0
+                    or allowed is None
+                    or (alias.name, alias.asname) not in allowed
+                ):
+                    violations.append(
+                        f"forbidden from-import level={node.level} "
+                        f"{module}.{alias.name} as {alias.asname}"
+                    )
+        if isinstance(node, (ast.Name, ast.Attribute)):
+            symbol = node.id if isinstance(node, ast.Name) else node.attr
+            if symbol in _ANNUAL_CASH_FORBIDDEN_SYMBOLS:
+                violations.append(f"forbidden symbol {symbol}")
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            allowed_attributes = _ANNUAL_CASH_ALLOWED_ENGINE_ATTRIBUTES.get(node.value.id)
+            if allowed_attributes is not None and node.attr not in allowed_attributes:
+                violations.append(
+                    f"forbidden engine attribute {node.value.id}.{node.attr}"
+                )
+        if isinstance(node, ast.Call):
+            target = _annual_cash_call_target(node.func)
+            if target not in _ANNUAL_CASH_ALLOWED_CALL_TARGETS:
+                violations.append(f"forbidden call {target}")
+    return violations
+
+
+def _annual_cash_call_target(value: ast.expr) -> str:
+    if isinstance(value, ast.Name):
+        return value.id
+    if isinstance(value, ast.Attribute):
+        return f"{_annual_cash_call_target(value.value)}.{value.attr}"
+    if isinstance(value, ast.Call):
+        return f"{_annual_cash_call_target(value.func)}()"
+    if isinstance(value, ast.Subscript):
+        return f"{_annual_cash_call_target(value.value)}[]"
+    return type(value).__name__
 
 def _root() -> Path:
     return Path(__file__).resolve().parents[1]

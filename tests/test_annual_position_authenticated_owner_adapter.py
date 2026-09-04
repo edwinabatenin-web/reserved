@@ -22,7 +22,7 @@ from reserved.annual_position_projection_repository_adapter import (
     extract_structural_candidate,
 )
 from tests.test_annual_to_cash_integration import compose
-from tests.test_w8_annual_cash_customer_handoff import project
+from tests.test_w8_annual_cash_customer_handoff import handoff
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +32,19 @@ OWNED_PATHS = {
     "reserved/annual_position_authenticated_owner_adapter.py",
     "tests/test_annual_position_authenticated_owner_adapter.py",
     "docs/W9_S3D_AUTHENTICATED_OWNER_ADAPTER.md",
+}
+COMPOSED_RESOLUTION_PATHS = OWNED_PATHS | {
+    "docs/W8_S2C_ANNUAL_CASH_CUSTOMER_HANDOFF_EVIDENCE.md",
+    "docs/W9_S3A_ANNUAL_POSITION_PERSISTENCE_CONTRACT.md",
+    "reserved/annual_position_persistence_contract.py",
+    "reserved/services/w8_annual_cash_customer_handoff.py",
+    "tests/test_annual_position_authenticated_owner_adapter.py",
+    "tests/test_annual_position_persistence_contract.py",
+    "tests/test_annual_position_projection_repository_adapter.py",
+    "tests/test_annual_position_repository_contract.py",
+    "tests/test_internal_tax_boundary.py",
+    "tests/test_w8_annual_cash_customer_handoff.py",
+    "tests/test_w8_progressive_assurance_s2.py",
 }
 MISSING = object()
 
@@ -45,9 +58,24 @@ def app():
 
 def admitted(*, user_id="41", business_id="business-41"):
     annual = compose()
-    result = project(annual, user_id=user_id, business_id=business_id)
+    result = handoff(annual)
     assert result is not None
-    return annual, result, admit_annual_position_projection(annual, result)
+    return annual, result, admit_annual_position_projection(
+        annual,
+        result,
+        authenticated_user_id=user_id,
+        authenticated_business_id=business_id,
+    )
+
+
+def supersede(previous, annual, result):
+    return supersede_annual_position_projection(
+        previous,
+        annual,
+        result,
+        authenticated_user_id=previous.user_id,
+        authenticated_business_id=previous.business_id,
+    )
 
 
 def adapt(projection, *, business=MISSING, evaluated_on=MISSING,
@@ -224,7 +252,7 @@ def test_successor_path_preserves_s3a_and_s3b_predecessors(app):
     try:
         previous_operation = adapt(previous)
         previous_candidate = extract_structural_candidate(previous_operation)
-        successor = supersede_annual_position_projection(previous, annual, result)
+        successor = supersede(previous, annual, result)
         operation = adapt(
             successor,
             previous_projection=previous,
@@ -239,7 +267,7 @@ def test_successor_path_preserves_s3a_and_s3b_predecessors(app):
 
 def test_missing_or_substituted_successor_inputs_fail_closed(app):
     annual, result, previous = admitted()
-    successor = supersede_annual_position_projection(previous, annual, result)
+    successor = supersede(previous, annual, result)
     context = session(app)
     try:
         with pytest.raises(subject.AuthenticatedOwnerAdapterError):
@@ -397,7 +425,7 @@ def test_candidate_changes_only_the_three_authorised_paths():
         cwd=ROOT,
         text=True,
     ).splitlines()
-    assert set(changed + untracked) <= OWNED_PATHS
+    assert set(changed + untracked) <= COMPOSED_RESOLUTION_PATHS
 
 
 def test_evidence_preserves_non_authority_and_business_mapping_gap():
