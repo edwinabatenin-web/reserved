@@ -120,10 +120,10 @@
     "engine_version": "4.0.0",
     "evidence_uncertainty_sha256": "680aa39f6d9345e62d9269813b947611fc169ca926f81b0ec1e74e6fc06c8c1d",
     "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-    "generated_on": "2026-09-04T18:33:27Z",
+    "generated_on": "2026-09-04T19:30:12Z",
     "rules_version": "uk-2026-27-v4",
     "schema": "reserved-engine-artefact-provenance-1",
-    "source_commit": "6f3cb30d1bedcebe930084d56c64ab83ff719d5a",
+    "source_commit": "15335ad003687b8f6a08020de548fa0c59a45882",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -158,7 +158,7 @@
     "source_path": "reserved/engines"
   },
   "production_source": {
-    "source_commit": "6f3cb30d1bedcebe930084d56c64ab83ff719d5a",
+    "source_commit": "15335ad003687b8f6a08020de548fa0c59a45882",
     "source_files": {
       "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
       "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -225,7 +225,7 @@
     }
   ],
   "assurance_implementation_identity": "03ac385db5abe944036c0e19463d7f264d1d319aa116b3b79f824d598ffb87ae",
-  "canonical_result_digest": "0dd62dd90f9fc5b628bf01b1601a5dcf8c76baf6cb2dcd455cd56010df69b1a7",
+  "canonical_result_digest": "18a4926d50dd5ae28486f6593bc1f22a142b1cda62ec7b4e9d17a23964630b89",
   "rw3_fixture_gate": {
     "gate_passed": true,
     "classification_complete": true,
@@ -245,10 +245,10 @@
       "engine_version": "4.0.0",
       "evidence_uncertainty_sha256": "680aa39f6d9345e62d9269813b947611fc169ca926f81b0ec1e74e6fc06c8c1d",
       "evidence_uncertainty_source": "reserved/evidence_uncertainty.py",
-      "generated_on": "2026-09-04T18:33:27Z",
+      "generated_on": "2026-09-04T19:30:12Z",
       "rules_version": "uk-2026-27-v4",
       "schema": "reserved-engine-artefact-provenance-1",
-      "source_commit": "6f3cb30d1bedcebe930084d56c64ab83ff719d5a",
+      "source_commit": "15335ad003687b8f6a08020de548fa0c59a45882",
       "source_files": {
         "CHANGELOG.md": "3925400955cb71abfc9653ff93a743e1d7c6923bff7fb8d2bf7a800303dd5de2",
         "__init__.py": "9c107147ff47d1d21c305fd13f67418c6b851a725b7e3ede7a5883670f57079e",
@@ -283,9 +283,9 @@
       "source_path": "reserved/engines"
     }
   },
-  "generated_on": "2026-09-04T18:33:27Z",
+  "generated_on": "2026-09-04T19:30:12Z",
   "test_counts": {
-    "passed": 7538,
+    "passed": 7657,
     "failed": 0,
     "errors": 0,
     "skipped": 0
