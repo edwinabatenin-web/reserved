@@ -48,6 +48,12 @@ LIVE_PROVENANCE_RECONCILIATION_COMMIT = (
 LIVE_PROVENANCE_RECONCILIATION_PARENT = (
     "c5e560045ed3d62f02c894e931464c3d7294e99f"
 )
+LIVE_PROVENANCE_RECONCILIATION_INTEGRATION_COMMIT = (
+    "ae4dec7671e12fd3d0f48ff62f59d5b2d23ce65d"
+)
+LIVE_PROVENANCE_RECONCILIATION_INTEGRATION_PARENT = (
+    "aaa08d7b541ed49765f9d9c68bf1d91d4f34faf3"
+)
 S5C_EVIDENCE_REFRESH_PARENT = "3c63e64e478957ce04ee1154363c2eae94b82b30"
 CURRENT_ROUTES_COMMIT = "c5e560045ed3d62f02c894e931464c3d7294e99f"
 CURRENT_ROUTES_TREE = "bcdbec9108c3c0904139eca278c03fe0f6914db2"
@@ -937,13 +943,25 @@ def _is_exact_live_provenance_reconciliation(
     commit: str, changed: set[str], identity: list[str]
 ) -> bool:
     return (
-        commit == LIVE_PROVENANCE_RECONCILIATION_COMMIT
-        and changed == LIVE_PROVENANCE_RECONCILIATION_PATHS
-        and identity
-        == [
-            LIVE_PROVENANCE_RECONCILIATION_COMMIT,
-            LIVE_PROVENANCE_RECONCILIATION_PARENT,
-        ]
+        changed == LIVE_PROVENANCE_RECONCILIATION_PATHS
+        and (
+            (
+                commit == LIVE_PROVENANCE_RECONCILIATION_COMMIT
+                and identity
+                == [
+                    LIVE_PROVENANCE_RECONCILIATION_COMMIT,
+                    LIVE_PROVENANCE_RECONCILIATION_PARENT,
+                ]
+            )
+            or (
+                commit == LIVE_PROVENANCE_RECONCILIATION_INTEGRATION_COMMIT
+                and identity
+                == [
+                    LIVE_PROVENANCE_RECONCILIATION_INTEGRATION_COMMIT,
+                    LIVE_PROVENANCE_RECONCILIATION_INTEGRATION_PARENT,
+                ]
+            )
+        )
     )
 
 
@@ -951,6 +969,11 @@ def test_live_provenance_generation_allowance_rejects_scope_or_topology_drift():
     commit = LIVE_PROVENANCE_RECONCILIATION_COMMIT
     paths = set(LIVE_PROVENANCE_RECONCILIATION_PATHS)
     identity = [commit, LIVE_PROVENANCE_RECONCILIATION_PARENT]
+    integration_commit = LIVE_PROVENANCE_RECONCILIATION_INTEGRATION_COMMIT
+    integration_identity = [
+        integration_commit,
+        LIVE_PROVENANCE_RECONCILIATION_INTEGRATION_PARENT,
+    ]
 
     assert _is_exact_live_provenance_reconciliation(commit, paths, identity)
     assert not _is_exact_live_provenance_reconciliation(
@@ -964,6 +987,27 @@ def test_live_provenance_generation_allowance_rejects_scope_or_topology_drift():
     )
     assert not _is_exact_live_provenance_reconciliation(
         "0" * 40, paths, identity
+    )
+    assert _is_exact_live_provenance_reconciliation(
+        integration_commit, paths, integration_identity
+    )
+    assert not _is_exact_live_provenance_reconciliation(
+        integration_commit,
+        paths - {"docs/W10_S5A_PAID_SURFACE_INVENTORY.md"},
+        integration_identity,
+    )
+    assert not _is_exact_live_provenance_reconciliation(
+        integration_commit,
+        paths | {"reserved/web/routes.py"},
+        integration_identity,
+    )
+    assert not _is_exact_live_provenance_reconciliation(
+        integration_commit,
+        paths,
+        [integration_commit, "0" * 40],
+    )
+    assert not _is_exact_live_provenance_reconciliation(
+        "0" * 40, paths, integration_identity
     )
 
 
