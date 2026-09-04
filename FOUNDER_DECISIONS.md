@@ -720,6 +720,95 @@ mechanics, and partner-offer handling must remain explicit implementation
 policies or unresolved decisions as appropriate. They must not be represented
 as Founder decisions without further authority.
 
+## FD-W9-001 — Resolved: durable minimised structured annual position (4 September 2026)
+
+For the October launch, Reserved should persist a minimised, owner-bound
+structured annual tax and cash position together with the evidence references,
+provenance and uncertainty needed to explain it. This durable structured
+position is required so an authorised customer can return to a coherent current
+view across sessions and so supersession, reconciliation and deletion can be
+handled explicitly.
+
+This decision does not authorise retention of raw payslip documents or complete
+provider payloads. The existing temporary-payslip-processing decision remains
+authoritative: originals are transient and must be securely deleted after the
+necessary extraction and checking. Durable evidence should use the minimum
+structured fields and references necessary for the approved customer purpose.
+
+This decision authorises bounded design and implementation of the owner-bound
+structured persistence boundary. It does not itself settle the exact field
+inventory, lawful basis, retention periods, legal-hold exceptions, backup-expiry
+schedule, datastore, encryption/key custody, migration, production access or
+activation. Those engineering, legal/privacy, security and target-evidence
+requirements remain separate fail-closed gates.
+
+## FD-W10-002 — Resolved: provisional Stripe subscription baseline (4 September 2026)
+
+Reserved should use **Stripe Billing, Stripe Checkout and Stripe Customer
+Portal** as the provisional technical baseline for October subscription billing.
+This is a selection for bounded design, disabled-first implementation and
+non-production assurance. It is not a selection of Stripe Connect, which belongs
+to a separate historical customer-money-movement boundary and must not be reused
+as subscription authority.
+
+The subscription boundary must remain provider-separated and portable. Stripe
+customer, price, subscription, invoice and event identifiers are provider
+observations or configuration, not Founder authority and not direct entitlement
+flags. Reserved must derive access only through its own reviewed, owner-bound,
+idempotent and auditable entitlement policy and reconciliation boundary.
+
+This decision does not execute or accept provider terms; approve fees, a DPA or
+other legal/commercial allocation; authorise credentials or sandbox/production
+access; settle VAT/invoice treatment; initiate a charge; or activate billing.
+Those external, legal, finance/tax, security, sandbox and production gates remain
+required. A later Founder Decision may replace the provisional provider before
+activation, although replacement becomes more costly after provider-specific
+configuration or migrations exist.
+
+## FD-W10-003 — Resolved: October paid-entitlement lifecycle (4 September 2026)
+
+For the October launch:
+
+- paid access begins only after Reserved has verified a successful initial
+  subscription payment through its reconciled provider-event boundary;
+- subscriptions renew automatically according to the selected paid plan;
+- customer cancellation stops future renewal, while ordinary paid access
+  continues until the end of the already-paid period;
+- a failed renewal enters one bounded **seven-calendar-day payment-recovery
+  period** with appropriate customer messaging and provider-event
+  reconciliation; ordinary customer access continues during that period;
+- if payment remains unresolved at the end of that period, ordinary paid access
+  is suspended; and
+- no free trial or free tier is included in the October launch.
+
+Mandatory statutory and consumer rights override this product policy where
+applicable.
+
+### Engineering interpretation: explicit `payment_recovery` state
+
+The seven-day recovery period must be represented internally as an explicit
+canonical state such as `payment_recovery`, not as normally paid/active billing
+state. This is an engineering consequence of the lifecycle above rather than a
+separate Founder decision. While in that state, the entitlement decision may
+continue ordinary customer access only until a recorded recovery deadline. The
+state and deadline must be owner-bound, auditable and derived from verified,
+idempotent, order-safe provider observations.
+
+The first verified failed-renewal observation establishes the bounded recovery
+deadline. Duplicate or repeated failure events must not extend it. A verified
+successful recovery returns the subscription to its ordinary paid state;
+expiry without verified recovery suspends ordinary paid access. Unknown,
+contradictory, forged, replayed, late or out-of-order events must not create or
+indefinitely extend access and must enter the existing fail-closed reconciliation
+path. Provider status labels must not be copied directly into Reserved access
+flags.
+
+This decision does not settle refunds, post-settlement disputes, chargebacks or
+reversals; exceptional/manual override authority; billing-account recovery;
+promotion/discount mechanics; partner offers; invoice/VAT implementation; or
+the exact inventory of paid surfaces. Those remain explicit later policies or
+external/legal/engineering gates as applicable.
+
 ## FD-OA-001 — Resolved: routine bounded engineering authority (2 September 2026)
 
 During the active Reserved build, an already-authorised OA agent may carry out
