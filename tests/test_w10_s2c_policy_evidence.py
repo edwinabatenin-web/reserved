@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -55,6 +56,29 @@ REPO_SOURCES = {
     ),
 }
 
+HISTORICAL_MAP = "docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md"
+WRONG_MAP_COMMIT = "81ae02044cccd921d98a0d1fc2360e1c4a983ab1"
+
+
+def git_blob_sha256(commit: str, relative_path: str) -> str:
+    """Hash the exact repository blob reviewed at ``commit``."""
+
+    result = subprocess.run(
+        ["git", "show", f"{commit}:{relative_path}"],
+        cwd=ROOT,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return hashlib.sha256(result.stdout).hexdigest()
+
+
+def assert_historical_hash(commit: str, relative_path: str, expected_hash: str):
+    actual_hash = git_blob_sha256(commit, relative_path)
+    assert actual_hash == expected_hash, (
+        f"stale historical S2C source: {commit}:{relative_path}"
+    )
+
 
 def test_exact_base_tree_date_and_non_authority_status_are_explicit():
     assert BASE in TEXT
@@ -70,9 +94,38 @@ def test_exact_integrated_repository_sources_remain_hash_bound():
     for relative_path, expected_hash in REPO_SOURCES.items():
         assert relative_path in TEXT
         assert expected_hash in TEXT
-        assert hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest() == (
-            expected_hash
-        )
+        if relative_path == HISTORICAL_MAP:
+            # The dossier reviewed the map at BASE. Later truthful reconciliations
+            # may change the live map without rewriting that historical evidence.
+            assert_historical_hash(BASE, relative_path, expected_hash)
+        else:
+            # Immutable authority/product inputs remain deliberately live-bound:
+            # current drift must continue to invalidate the S2C evidence check.
+            assert hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest() == (
+                expected_hash
+            )
+
+
+def test_historical_map_provenance_survives_reconciliation_but_rejects_forgery():
+    expected_hash = REPO_SOURCES[HISTORICAL_MAP]
+    live_hash = hashlib.sha256((ROOT / HISTORICAL_MAP).read_bytes()).hexdigest()
+
+    assert live_hash != expected_hash
+    assert_historical_hash(BASE, HISTORICAL_MAP, expected_hash)
+
+    try:
+        assert_historical_hash(BASE, HISTORICAL_MAP, "0" * 64)
+    except AssertionError:
+        pass
+    else:  # pragma: no cover - explicit negative-control failure path
+        raise AssertionError("an incorrect historical S2C digest was accepted")
+
+    try:
+        assert_historical_hash(WRONG_MAP_COMMIT, HISTORICAL_MAP, expected_hash)
+    except AssertionError:
+        pass
+    else:  # pragma: no cover - explicit negative-control failure path
+        raise AssertionError("an incorrect historical S2C commit was accepted")
 
 
 def test_exact_five_key_denominator_and_one_section_per_key():

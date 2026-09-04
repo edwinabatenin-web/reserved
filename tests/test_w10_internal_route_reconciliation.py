@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 
@@ -15,6 +16,8 @@ S5A_START = "<!-- W10-S5A-INVENTORY-BEGIN -->"
 S5A_END = "<!-- W10-S5A-INVENTORY-END -->"
 S5B_START = "<!-- W10-S5B-RECONCILIATION-BEGIN -->"
 S5B_END = "<!-- W10-S5B-RECONCILIATION-END -->"
+HISTORICAL_MAP = "docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md"
+WRONG_MAP_COMMIT = "81ae02044cccd921d98a0d1fc2360e1c4a983ab1"
 
 EXPECTED = {
     "web.calculate": (
@@ -192,6 +195,26 @@ def s5b() -> dict:
     return extract(S5B, S5B_START, S5B_END)
 
 
+def git_blob_sha256(commit: str, relative_path: str) -> str:
+    """Hash the exact repository blob reviewed at ``commit``."""
+
+    result = subprocess.run(
+        ["git", "show", f"{commit}:{relative_path}"],
+        cwd=ROOT,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return hashlib.sha256(result.stdout).hexdigest()
+
+
+def assert_historical_hash(commit: str, relative_path: str, expected_hash: str):
+    actual_hash = git_blob_sha256(commit, relative_path)
+    assert actual_hash == expected_hash, (
+        f"stale historical S5B source: {commit}:{relative_path}"
+    )
+
+
 def decorator_name(node: ast.expr) -> str:
     if isinstance(node, ast.Call):
         return decorator_name(node.func)
@@ -233,9 +256,42 @@ def test_exact_metadata_is_evidence_only_and_no_new_founder_question():
 
 
 def test_every_reviewed_source_is_exactly_hash_bound():
-    for relative_path, expected_hash in s5b()["source_sha256"].items():
-        actual_hash = hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest()
+    data = s5b()
+    for relative_path, expected_hash in data["source_sha256"].items():
+        if relative_path == HISTORICAL_MAP:
+            # The map is mutable bookkeeping. Verify the exact blob S5B reviewed
+            # rather than making every later truthful reconciliation look like
+            # corruption of the accepted historical evidence.
+            actual_hash = git_blob_sha256(data["repository_head"], relative_path)
+        else:
+            # Route, guard and authority sources stay live-bound so current drift
+            # still invalidates the evidence exactly as before.
+            actual_hash = hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest()
         assert actual_hash == expected_hash, f"stale S5B source: {relative_path}"
+
+
+def test_historical_map_provenance_survives_reconciliation_but_rejects_forgery():
+    data = s5b()
+    commit = data["repository_head"]
+    expected_hash = data["source_sha256"][HISTORICAL_MAP]
+    live_hash = hashlib.sha256((ROOT / HISTORICAL_MAP).read_bytes()).hexdigest()
+
+    assert live_hash != expected_hash
+    assert_historical_hash(commit, HISTORICAL_MAP, expected_hash)
+
+    try:
+        assert_historical_hash(commit, HISTORICAL_MAP, "0" * 64)
+    except AssertionError:
+        pass
+    else:  # pragma: no cover - explicit negative-control failure path
+        raise AssertionError("an incorrect historical S5B digest was accepted")
+
+    try:
+        assert_historical_hash(WRONG_MAP_COMMIT, HISTORICAL_MAP, expected_hash)
+    except AssertionError:
+        pass
+    else:  # pragma: no cover - explicit negative-control failure path
+        raise AssertionError("an incorrect historical S5B commit was accepted")
 
 
 def test_exact_s5a_unknown_set_is_consumed_without_omission_or_expansion():
@@ -404,7 +460,7 @@ def test_document_preserves_nonimplementation_and_decision_boundaries():
     assert "does not claim they are launch-ready" in normalized
 
 
-def test_assurance_test_itself_is_standard_library_and_io_inert():
+def test_assurance_test_itself_is_standard_library_and_external_service_inert():
     tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
     imports = set()
     for node in ast.walk(tree):
@@ -412,4 +468,11 @@ def test_assurance_test_itself_is_standard_library_and_io_inert():
             imports.update(alias.name.split(".", 1)[0] for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
             imports.add(node.module.split(".", 1)[0])
-    assert imports == {"__future__", "ast", "hashlib", "json", "pathlib"}
+    assert imports == {
+        "__future__",
+        "ast",
+        "hashlib",
+        "json",
+        "pathlib",
+        "subprocess",
+    }
