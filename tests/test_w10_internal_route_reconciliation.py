@@ -1,4 +1,4 @@
-"""Source-bound checks for the evidence-only W10-S5B reconciliation."""
+"""Source-bound checks for refreshed W10-S5B/S5C route evidence."""
 
 from __future__ import annotations
 
@@ -12,18 +12,42 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 S5A = ROOT / "docs" / "W10_S5A_PAID_SURFACE_INVENTORY.md"
 S5B = ROOT / "docs" / "W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md"
+S5C = ROOT / "docs" / "W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md"
 S5A_START = "<!-- W10-S5A-INVENTORY-BEGIN -->"
 S5A_END = "<!-- W10-S5A-INVENTORY-END -->"
 S5B_START = "<!-- W10-S5B-RECONCILIATION-BEGIN -->"
 S5B_END = "<!-- W10-S5B-RECONCILIATION-END -->"
 HISTORICAL_MAP = "docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md"
 WRONG_MAP_COMMIT = "81ae02044cccd921d98a0d1fc2360e1c4a983ab1"
+S5C_START = "<!-- W10-S5C-EVIDENCE-BEGIN -->"
+S5C_END = "<!-- W10-S5C-EVIDENCE-END -->"
+
+EXPECTED_PRODUCT_PATH_HASHES = {
+    "reserved/web/routes.py": (
+        "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed"
+    ),
+    "reserved/web/v2.py": (
+        "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228"
+    ),
+    "tests/test_auth.py": (
+        "5dd2284eeb57dbed40119936ada5bde9c3902b21d0c0bf44cb61e55275d7b974"
+    ),
+    "tests/test_tax_year_context.py": (
+        "f01625359c365ca0085064e264d747e6d9d4007db0c6a34281f7666fff1d37fd"
+    ),
+    "tests/test_unsupported_plan_rendering.py": (
+        "5e2eae15e80a876a17bd0339526a798def1c238fbf84457178822710ef196c49"
+    ),
+    "tests/test_w10_internal_route_hardening.py": (
+        "20a754059b817eb33e5c83ae3edbe551c92c2bafbbbeeca39ed2c709900db3c8"
+    ),
+}
 
 EXPECTED = {
     "web.calculate": (
         "/calculate",
         ("POST",),
-        "none",
+        "always_404",
         "global",
         "legacy_product_action_not_independent_october_surface",
         "remove_registration_or_production_404_until_separately_authenticated_and_classified",
@@ -41,7 +65,7 @@ EXPECTED = {
     "web.connections": (
         "/connections",
         ("GET",),
-        "none",
+        "redirect_to_customer_session_guarded_v2_equivalent",
         "not_applicable",
         "legacy_alias_to_authenticated_connections_product",
         "redirect_get_to_customer_authenticated_v2_connections_no_independent_content",
@@ -50,7 +74,7 @@ EXPECTED = {
     "web.settings": (
         "/settings",
         ("GET", "POST"),
-        "none",
+        "get_redirect_to_customer_session_guarded_v2_equivalent_post_always_404",
         "global",
         "legacy_alias_to_authenticated_customer_settings_product",
         "redirect_get_to_customer_authenticated_v2_settings_and_disable_legacy_post",
@@ -59,7 +83,7 @@ EXPECTED = {
     "web.tax_assurance": (
         "/tax-assurance",
         ("GET",),
-        "none",
+        "always_404",
         "not_applicable",
         "internal_assurance_noncustomer_nonproduction",
         "production_404_and_nonproduction_staff_authenticated_only",
@@ -113,7 +137,7 @@ EXPECTED = {
     "v2.sandbox_checklist": (
         "/v2/sandbox-checklist",
         ("GET",),
-        "customer_session",
+        "production_404_nonproduction_customer_session",
         "not_applicable",
         "internal_provider_assurance_noncustomer_nonproduction",
         "production_404_and_nonproduction_staff_authenticated_only_not_readiness_authority",
@@ -125,7 +149,7 @@ EXPECTED_SOURCE_REACHABILITY = {
     "web.calculate": (
         "reserved/web/routes.py",
         "calculate",
-        "public_post_with_valid_csrf_reaches_legacy_calculation",
+        "valid_csrf_post_is_404_before_profile_calculation_or_render",
     ),
     "web.capital_gains": (
         "reserved/web/routes.py",
@@ -135,17 +159,17 @@ EXPECTED_SOURCE_REACHABILITY = {
     "web.connections": (
         "reserved/web/routes.py",
         "connections",
-        "public_get_renders_legacy_illustrative_connections",
+        "public_get_redirects_exactly_to_customer_session_guarded_v2_connections",
     ),
     "web.settings": (
         "reserved/web/routes.py",
         "settings",
-        "public_get_and_valid_csrf_post_updates_session_or_authenticated_owner_profile",
+        "public_get_redirects_exactly_to_customer_session_guarded_v2_settings_and_valid_csrf_post_is_404_before_mutation",
     ),
     "web.tax_assurance": (
         "reserved/web/routes.py",
         "tax_assurance",
-        "public_get_reads_local_assurance_metadata_and_renders_internal_page",
+        "get_is_404_before_metadata_read_or_render_in_all_environments_and_auth_states",
     ),
     "founder.dashboard": (
         "reserved/web/founder.py",
@@ -175,8 +199,45 @@ EXPECTED_SOURCE_REACHABILITY = {
     "v2.sandbox_checklist": (
         "reserved/web/v2.py",
         "sandbox_checklist",
-        "any_authenticated_customer_can_view_provider_mode_and_secret_presence_booleans",
+        "production_404_before_customer_auth_or_provider_construction_nonproduction_customer_session_required",
     ),
+}
+
+EXPECTED_IMPLEMENTED_TREATMENTS = {
+    "web.calculate": {
+        "status": "implemented_at_accepted_s5c_product_checkpoint",
+        "treatment": (
+            "registered_post_hard_404_before_profile_calculation_or_render"
+        ),
+    },
+    "web.connections": {
+        "status": "implemented_at_accepted_s5c_product_checkpoint",
+        "treatment": (
+            "get_redirects_exactly_to_customer_session_guarded_v2_connections_"
+            "with_no_independent_content"
+        ),
+    },
+    "web.settings": {
+        "status": "implemented_at_accepted_s5c_product_checkpoint",
+        "treatment": (
+            "get_redirects_exactly_to_customer_session_guarded_v2_settings_and_"
+            "valid_csrf_post_hard_404s_before_mutation"
+        ),
+    },
+    "web.tax_assurance": {
+        "status": "implemented_at_accepted_s5c_product_checkpoint",
+        "treatment": (
+            "hard_404_before_metadata_read_or_render_in_all_environments_and_"
+            "auth_states"
+        ),
+    },
+    "v2.sandbox_checklist": {
+        "status": "implemented_at_accepted_s5c_product_checkpoint",
+        "treatment": (
+            "production_404_before_customer_auth_or_provider_construction_"
+            "nonproduction_existing_customer_session_guard_preserved"
+        ),
+    },
 }
 
 
@@ -215,6 +276,10 @@ def assert_historical_hash(commit: str, relative_path: str, expected_hash: str):
     )
 
 
+def s5c() -> dict:
+    return extract(S5C, S5C_START, S5C_END)
+
+
 def decorator_name(node: ast.expr) -> str:
     if isinstance(node, ast.Call):
         return decorator_name(node.func)
@@ -237,21 +302,34 @@ def function(relative_path: str, name: str) -> ast.FunctionDef:
     return matches[0]
 
 
-def test_exact_metadata_is_evidence_only_and_no_new_founder_question():
+def test_exact_metadata_preserves_incomplete_s5_and_no_new_founder_question():
     data = s5b()
-    assert data["schema_version"] == "W10-S5B/2026-09-04/v1"
+    assert data["schema_version"] == "W10-S5B/2026-09-04/v2"
     assert data["repository_head"] == (
-        "5612f7a33f27f09d1fa988f15dfdffbe77a72705"
+        "3c63e64e478957ce04ee1154363c2eae94b82b30"
     )
-    assert data["repository_tree"] == "4786614d7ea428e3aea1d61a72dc74d9aad6bd92"
+    assert data["repository_tree"] == "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7"
     assert data["accepted_s5a_commit"] == (
         "9c0760192bb2420b90e57ec7313f69bbe52cbf74"
     )
-    assert data["reconciliation_status"] == "evidence_only_no_runtime_change"
-    assert data["s5_status"] == "not_started"
+    assert data["accepted_s5b_commit"] == (
+        "051ae665a0cc94f6e9cdbbc728c621825c7769fe"
+    )
+    assert data["accepted_s5c_product_checkpoint"] == data["repository_head"]
+    assert data["accepted_s5c_product_tree"] == data["repository_tree"]
+    assert data["reconciliation_status"] == (
+        "accepted_reconciliation_with_implemented_s5c_treatments"
+    )
+    assert data["evidence_refresh_status"] == (
+        "candidate_requires_independent_review"
+    )
+    assert data["s5_status"] == (
+        "incomplete_prerequisite_route_hardening_implemented"
+    )
     assert data["paid_boundary_status"] == (
         "unresolved_existing_s5a_founder_question"
     )
+    assert data["paid_entitlement_enforcement_status"] == "not_started"
     assert data["new_founder_question_required"] is False
 
 
@@ -270,28 +348,111 @@ def test_every_reviewed_source_is_exactly_hash_bound():
         assert actual_hash == expected_hash, f"stale S5B source: {relative_path}"
 
 
-def test_historical_map_provenance_survives_reconciliation_but_rejects_forgery():
-    data = s5b()
-    commit = data["repository_head"]
-    expected_hash = data["source_sha256"][HISTORICAL_MAP]
-    live_hash = hashlib.sha256((ROOT / HISTORICAL_MAP).read_bytes()).hexdigest()
-
-    assert live_hash != expected_hash
-    assert_historical_hash(commit, HISTORICAL_MAP, expected_hash)
+def test_historical_completion_map_is_verified_from_exact_git_blob_and_rejects_forgery():
+    binding = s5b()["historical_completion_map_blob"]
+    assert binding == {
+        "commit": "5612f7a33f27f09d1fa988f15dfdffbe77a72705",
+        "path": "docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md",
+        "sha256": "7af205f420c2cf3a9039fff7aad1af65e55221005231b2fabe3bd99c94f96c4d",
+    }
+    live_hash = hashlib.sha256((ROOT / binding["path"]).read_bytes()).hexdigest()
+    assert live_hash != binding["sha256"]
+    assert_historical_hash(binding["commit"], binding["path"], binding["sha256"])
 
     try:
-        assert_historical_hash(commit, HISTORICAL_MAP, "0" * 64)
+        assert_historical_hash(binding["commit"], binding["path"], "0" * 64)
     except AssertionError:
         pass
     else:  # pragma: no cover - explicit negative-control failure path
         raise AssertionError("an incorrect historical S5B digest was accepted")
 
     try:
-        assert_historical_hash(WRONG_MAP_COMMIT, HISTORICAL_MAP, expected_hash)
+        assert_historical_hash(WRONG_MAP_COMMIT, binding["path"], binding["sha256"])
     except AssertionError:
         pass
     else:  # pragma: no cover - explicit negative-control failure path
         raise AssertionError("an incorrect historical S5B commit was accepted")
+
+
+def test_s5c_checkpoint_binds_exact_product_diff_hashes_and_disposition():
+    data = s5c()
+    assert data["schema_version"] == "W10-S5C/2026-09-04/v1"
+    assert data["accepted_product_commit"] == (
+        "3c63e64e478957ce04ee1154363c2eae94b82b30"
+    )
+    assert data["accepted_product_tree"] == (
+        "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7"
+    )
+    assert data["accepted_product_disposition"] == (
+        "independently_reviewed_accepted_and_integrated"
+    )
+    assert data["evidence_refresh_status"] == (
+        "candidate_requires_independent_review"
+    )
+    assert data["s5_status"] == (
+        "incomplete_prerequisite_route_hardening_implemented"
+    )
+    assert data["paid_boundary_status"] == (
+        "unresolved_existing_s5a_founder_question"
+    )
+    assert data["paid_entitlement_enforcement_status"] == "not_started"
+    assert data["verification"] == {
+        "accepted_product_focused": "38_passed",
+        "accepted_product_affected": "354_passed",
+        "pre_refresh_clean_checkpoint_freshness": (
+            "3_expected_failures_for_stale_s5a_s5b_source_guard_and_"
+            "reachability_evidence"
+        ),
+        "refreshed_evidence_focused": "28_passed",
+        "expanded_evidence_affected": (
+            "62_passed_with_one_dirty_worktree_scope_sentinel_deselected"
+        ),
+        "unfiltered_candidate_full": (
+            "6594_passed_2_expected_dirty_worktree_scope_sentinel_failures_"
+            "7_subtests_passed"
+        ),
+        "substantive_candidate_full": (
+            "6594_passed_2_dirty_worktree_scope_sentinels_deselected_"
+            "7_subtests_passed"
+        ),
+        "post_commit_unfiltered_expectation": (
+            "6596_passed_7_subtests_passed_with_clean_worktree_and_exact_one_"
+            "generation_history_allowance"
+        ),
+    }
+    assert data["product_changed_paths_sha256"] == EXPECTED_PRODUCT_PATH_HASHES
+    for relative_path, expected_hash in EXPECTED_PRODUCT_PATH_HASHES.items():
+        assert hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest() == (
+            expected_hash
+        )
+    changed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(ROOT),
+            "diff-tree",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            data["accepted_product_commit"],
+        ],
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.splitlines()
+    assert set(changed) == set(EXPECTED_PRODUCT_PATH_HASHES)
+
+
+def test_s5c_treatments_match_current_s5b_guards_reachability_and_treatment():
+    checkpoint = s5c()["implemented_route_treatments"]
+    reconciliation = {route["endpoint"]: route for route in s5b()["routes"]}
+    assert set(checkpoint) == set(EXPECTED_IMPLEMENTED_TREATMENTS)
+    for endpoint, outcome in checkpoint.items():
+        assert outcome == {
+            "guard": reconciliation[endpoint]["current_guard"],
+            "reachability": reconciliation[endpoint]["current_reachability"],
+            "treatment": EXPECTED_IMPLEMENTED_TREATMENTS[endpoint]["treatment"],
+        }
 
 
 def test_exact_s5a_unknown_set_is_consumed_without_omission_or_expansion():
@@ -352,6 +513,7 @@ def test_guard_category_treatment_and_decision_substitution_is_rejected():
         )
     assert actual == EXPECTED
     assert actual_source_reachability == EXPECTED_SOURCE_REACHABILITY
+    assert s5b()["s5c_implemented_treatments"] == EXPECTED_IMPLEMENTED_TREATMENTS
 
 
 def test_route_decorators_and_critical_current_guards_match_source():
@@ -420,6 +582,12 @@ def test_security_sensitive_behavior_is_present_in_exact_bound_sources():
     assert "YapilyClient()" in sandbox_body
     assert "bool(client._uuid)" in sandbox_body
     assert "bool(client._secret)" in sandbox_body
+    production_gate = v2.split(
+        "def _hide_production_internal_routes():", 1
+    )[1].split("# ── Illustrative UK bank roster", 1)[0]
+    assert 'request.endpoint == "v2.sandbox_checklist"' in production_gate
+    assert "is_production_environment()" in production_gate
+    assert "abort(404)" in production_gate
 
 
 def test_legacy_handlers_match_documented_reachability_and_collision_facts():
@@ -428,12 +596,19 @@ def test_legacy_handlers_match_documented_reachability_and_collision_facts():
     settings = routes.split("def settings():", 1)[1].split("@web.route", 1)[0]
     connections = routes.split("def connections():", 1)[1].split("@web.get", 1)[0]
     tax_assurance = routes.split("def tax_assurance():", 1)[1]
-    assert 'request.form.get("invoice_amount"' in calculate
-    assert 'render_template(\n        "dashboard.html"' in calculate
-    assert 'session["profile"] = profile' in settings
-    assert "save_profile_by_user" in settings
-    assert 'render_template("connections.html")' in connections
-    assert "meta_path.read_text()" in tax_assurance
+    assert "abort(404)" in calculate
+    assert 'request.form.get("invoice_amount"' not in calculate
+    assert "build_dashboard" not in calculate
+    assert settings.index('if request.method == "POST":') < settings.index(
+        "abort(404)"
+    ) < settings.index('url_for("v2.settings_page")')
+    assert 'session["profile"] = profile' not in settings
+    assert "save_profile_by_user" not in settings
+    assert 'return redirect(url_for("v2.connections"))' in connections
+    assert 'render_template("connections.html")' not in connections
+    assert tax_assurance.index("abort(404)") < tax_assurance.index(
+        "meta_path.read_text()"
+    )
     assert 'render_template("tax_assurance.html", meta=metadata)' in tax_assurance
 
 
@@ -441,8 +616,10 @@ def test_document_preserves_nonimplementation_and_decision_boundaries():
     text = S5B.read_text(encoding="utf-8")
     normalized = " ".join(text.split())
     required = (
-        "It changes no route or runtime behavior.",
-        "W10-S5 implementation remains **not started**",
+        "This evidence refresh changes no route or runtime behavior.",
+        "prerequisite route hardening is implemented",
+        "paid-entitlement enforcement remain **not started**",
+        "W10-S5 remains incomplete",
         "No additional Founder question is created",
         "This evidence neither answers nor restates that question.",
         "None of the routes below becomes a free or paid customer product",

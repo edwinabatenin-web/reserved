@@ -821,7 +821,7 @@ def test_settings_post_saves_to_db_when_authenticated(client, monkeypatch):
     assert uid is not None
 
     # Post settings
-    rv = client.post("/settings", data={
+    rv = client.post("/v2/settings", data={
         "first_name":         "Edwina",
         "entity_type":        "sole_trader",
         "day_job_salary":     "0",
@@ -863,19 +863,23 @@ def test_settings_loads_from_db_for_authenticated_user(client, monkeypatch):
     })
 
     # GET settings page must pre-fill from DB
-    rv = client.get("/settings")
+    rv = client.get("/v2/settings")
     assert rv.status_code == 200
     assert b"72000" in rv.data or b"Edwina" in rv.data
 
 
-def test_settings_falls_back_to_session_when_unauthenticated(client):
-    """Unauthenticated visitors must still read settings from the Flask session."""
+def test_legacy_settings_redirect_cannot_expose_unauthenticated_session_profile(client):
+    """The legacy alias must not render session profile data publicly."""
     with client.session_transaction() as sess:
         sess["profile"] = {"ytd_freelance_profit": "55000", "first_name": "Anonymous"}
 
     rv = client.get("/settings")
-    assert rv.status_code == 200
-    assert b"55000" in rv.data or b"Anonymous" in rv.data
+    assert rv.status_code == 302
+    assert rv.headers["Location"].endswith("/v2/settings")
+    protected = client.get("/v2/settings")
+    assert protected.status_code == 302
+    assert protected.headers["Location"].endswith("/v2/demo-login")
+    assert b"55000" not in rv.data and b"Anonymous" not in rv.data
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

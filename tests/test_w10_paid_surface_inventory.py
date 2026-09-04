@@ -32,6 +32,9 @@ GUARDS = {
     "nonproduction_only",
     "founder_password_and_rate_limit",
     "always_404",
+    "redirect_to_customer_session_guarded_v2_equivalent",
+    "get_redirect_to_customer_session_guarded_v2_equivalent_post_always_404",
+    "production_404_nonproduction_customer_session",
 }
 
 EXPECTED_CLASSIFICATION_MEMBERS = {
@@ -105,16 +108,12 @@ EXPECTED_GUARD_MEMBERS = {
         "v2.login",
         "v2.logout",
         "web.about",
-        "web.calculate",
-        "web.connections",
         "web.dashboard",
         "web.early_access",
         "web.feedback",
         "web.future",
         "web.privacy",
         "web.robots_txt",
-        "web.settings",
-        "web.tax_assurance",
     },
     "customer_session": {
         "hicbc.delete_estimate",
@@ -137,7 +136,6 @@ EXPECTED_GUARD_MEMBERS = {
         "v2.optimise_save_scenario",
         "v2.optimise_view",
         "v2.review_queue",
-        "v2.sandbox_checklist",
         "v2.settings_page",
         "v2.transactions",
         "v2.transactions_seed",
@@ -155,7 +153,20 @@ EXPECTED_GUARD_MEMBERS = {
     "clerk_session_token": {"v2.auth_verify"},
     "nonproduction_only": {"v2.demo_login"},
     "founder_password_and_rate_limit": {"founder.login"},
-    "always_404": {"web.capital_gains"},
+    "always_404": {
+        "web.calculate",
+        "web.capital_gains",
+        "web.tax_assurance",
+    },
+    "redirect_to_customer_session_guarded_v2_equivalent": {
+        "web.connections",
+    },
+    "get_redirect_to_customer_session_guarded_v2_equivalent_post_always_404": {
+        "web.settings",
+    },
+    "production_404_nonproduction_customer_session": {
+        "v2.sandbox_checklist",
+    },
 }
 
 
@@ -210,17 +221,20 @@ def decorated_endpoints(relative_path, blueprint_name, decorator):
     }
 
 
-def test_inventory_metadata_is_non_authorising_and_s5_remains_not_started():
+def test_inventory_metadata_is_non_authorising_and_s5_remains_incomplete():
     data = inventory()
-    assert data["schema_version"] == "W10-S5A/2026-09-04/v1"
+    assert data["schema_version"] == "W10-S5A/2026-09-04/v2"
     assert data["integration_commit"] == (
-        "6edf3cd6b96090f25036688e83da1d3b5295b098"
+        "3c63e64e478957ce04ee1154363c2eae94b82b30"
     )
-    assert data["integration_tree"] == "0d77f1853cc22a8c1e923552425478b7b9155cb2"
+    assert data["integration_tree"] == "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7"
     assert data["inventory_status"] == "evidence_only_no_paid_boundary_decision"
-    assert data["s5_status"] == "not_started"
+    assert data["s5_status"] == (
+        "incomplete_prerequisite_route_hardening_implemented"
+    )
     assert data["paid_boundary_status"] == "unresolved_founder_decision"
-    assert data["enforcement_changes"] is False
+    assert data["paid_entitlement_enforcement_status"] == "not_started"
+    assert data["route_hardening_changes"] is True
 
 
 def test_bound_route_auth_and_csrf_sources_have_not_changed():
@@ -317,7 +331,10 @@ def test_customer_and_founder_decorator_guards_match_inventory():
     data = inventory()
     documented_customer = {
         route["endpoint"] for route in data["routes"]
-        if route["guard"] == "customer_session"
+        if route["guard"] in {
+            "customer_session",
+            "production_404_nonproduction_customer_session",
+        }
     }
     source_customer = decorated_endpoints(
         "reserved/web/v2.py", "v2", "require_auth"
@@ -363,6 +380,17 @@ def test_authentication_and_billing_candidate_routes_are_exact():
         "founder_password_and_rate_limit"
     )
     assert by_endpoint["web.capital_gains"]["guard"] == "always_404"
+    assert by_endpoint["web.calculate"]["guard"] == "always_404"
+    assert by_endpoint["web.tax_assurance"]["guard"] == "always_404"
+    assert by_endpoint["web.connections"]["guard"] == (
+        "redirect_to_customer_session_guarded_v2_equivalent"
+    )
+    assert by_endpoint["web.settings"]["guard"] == (
+        "get_redirect_to_customer_session_guarded_v2_equivalent_post_always_404"
+    )
+    assert by_endpoint["v2.sandbox_checklist"]["guard"] == (
+        "production_404_nonproduction_customer_session"
+    )
 
     billing_candidates = {
         route["endpoint"] for route in inventory()["routes"]
@@ -375,7 +403,7 @@ def test_authentication_and_billing_candidate_routes_are_exact():
     )
 
 
-def test_ambiguous_internal_and_legacy_routes_remain_reconciliation_only():
+def test_internal_and_legacy_class_membership_remains_exact_after_reconciliation():
     reconciliation = {
         route["endpoint"] for route in inventory()["routes"]
         if route["classification"] == "internal_admin_unknown_requiring_reconciliation"
@@ -401,7 +429,9 @@ def test_evidence_contains_exact_minimal_founder_question_and_no_boundary_claim(
     assert "If not, identify the" in text
     assert "exact route exceptions and intended treatment." in text
     assert "It does not decide which customer" in text
-    assert "W10-S5 remains **not started**" in text
+    assert "paid-entitlement enforcement remain **not" in text
+    assert "started**, and W10-S5 remains incomplete" in text
+    assert "S5C prerequisite route hardening is implemented" in text
     assert "no registered subscription checkout" in text
     assert "does not approve the recommended default" in text
 

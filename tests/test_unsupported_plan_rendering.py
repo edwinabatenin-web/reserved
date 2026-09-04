@@ -38,14 +38,14 @@ def _unsupported_panel(response):
 
 
 @pytest.mark.parametrize("plans", [["mystery"], [1, 2]])
-def test_legacy_calculate_renders_verification_before_any_monetary_guidance(app, monkeypatch, plans):
-    monkeypatch.setattr(routes, "_get_profile", lambda: (_profile(plans), False))
+def test_legacy_calculate_hard_404s_before_rendering_unsupported_plans(app, monkeypatch, plans):
+    def forbidden_profile_read():
+        raise AssertionError(f"legacy calculation read profile for {plans!r}")
+
+    monkeypatch.setattr(routes, "_get_profile", forbidden_profile_read)
     response = app.test_client().post("/calculate", data={"invoice_amount": "5000"})
-    html, panel = _unsupported_panel(response)
-    assert response.status_code == 200
-    assert html.index('role="status"') < html.index("HMRC or a qualified tax adviser")
-    assert "No student-loan amount, total, allocation or set-aside figure" in panel
-    assert "£" not in panel
+    assert response.status_code == 404
+    assert 'role="status"' not in response.get_data(as_text=True)
 
 
 @pytest.mark.parametrize("plans", [["mystery"], [1, 2]])

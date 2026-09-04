@@ -2,13 +2,14 @@
 
 ## Status and boundary
 
-This is an exact route inventory at clean integration commit
-`6edf3cd6b96090f25036688e83da1d3b5295b098` (tree
-`0d77f1853cc22a8c1e923552425478b7b9155cb2`). It is evidence for the still
+This is an exact route inventory refreshed at the accepted clean W10-S5C
+product checkpoint `3c63e64e478957ce04ee1154363c2eae94b82b30` (tree
+`ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7`). It is evidence for the still
 unresolved W10 paid-access-surface decision. It does not decide which customer
-product surfaces require paid entitlement, change any existing route or guard,
-or make W10-S5 implemented. W10-S5 remains **not started**; S5A is inventory
-evidence only.
+product surfaces require paid entitlement or implement an entitlement gate.
+The independently accepted S5C prerequisite route hardening is implemented;
+the paid-boundary decision and paid-entitlement enforcement remain **not
+started**, and W10-S5 remains incomplete. S5A is inventory evidence only.
 
 The registry has 44 always-registered rules. Enabling the disabled-by-default
 HICBC feature gate adds 8 owner-authenticated rules, producing 52 total. Flask's
@@ -28,9 +29,11 @@ Every rule is assigned exactly one provisional evidence class:
   reachable as appropriate to buy, return from, or recover billing access; the
   current registry contains only authenticated plan-preview/selection routes,
   not checkout, return, portal or billing recovery.
-- `internal_admin_unknown_requiring_reconciliation`: privileged/internal,
-  dormant or legacy unguarded product behavior that cannot safely be assigned
-  to either side of a customer paid boundary without reconciliation.
+- `internal_admin_unknown_requiring_reconciliation`: the original provisional
+  S5A class for privileged/internal, dormant or legacy product behavior. S5B
+  has now reconciled all eleven entries and S5C hardened the five affected
+  routes, but the class name and membership remain fixed so this refresh does
+  not silently recategorise any route against unresolved Founder Q2.
 
 `guard` records the observed route-level access mechanism. `csrf` records the
 global state-changing-request protection or an explicit exemption; it is not an
@@ -42,13 +45,14 @@ only when `HICBC_ENABLED` is explicitly enabled.
 <!-- W10-S5A-INVENTORY-BEGIN -->
 ```json
 {
-  "schema_version": "W10-S5A/2026-09-04/v1",
-  "integration_commit": "6edf3cd6b96090f25036688e83da1d3b5295b098",
-  "integration_tree": "0d77f1853cc22a8c1e923552425478b7b9155cb2",
+  "schema_version": "W10-S5A/2026-09-04/v2",
+  "integration_commit": "3c63e64e478957ce04ee1154363c2eae94b82b30",
+  "integration_tree": "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7",
   "inventory_status": "evidence_only_no_paid_boundary_decision",
-  "s5_status": "not_started",
+  "s5_status": "incomplete_prerequisite_route_hardening_implemented",
   "paid_boundary_status": "unresolved_founder_decision",
-  "enforcement_changes": false,
+  "paid_entitlement_enforcement_status": "not_started",
+  "route_hardening_changes": true,
   "route_counts": {
     "always": 44,
     "hicbc_feature_enabled_additional": 8,
@@ -68,8 +72,8 @@ only when `HICBC_ENABLED` is explicitly enabled.
     "reserved/extensions.py": "ef35d3ec969e299a1c8221b5636bcf44590189175b0ad0c83e88d38ded35b2a0",
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
     "reserved/web/hicbc.py": "5eb230d3a894a70881b3d46e66c26eee67c1cd077529179229375ebb0ec2efa0",
-    "reserved/web/routes.py": "cfe006a96c16c781db707bcf5c7e1d55250176a09bb02356ccc51b3abeaf91fa",
-    "reserved/web/v2.py": "d91434e2fcf804c74a4154716cab5b1f4ac1642b8f3c90f895a7cf23428b0ca0"
+    "reserved/web/routes.py": "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed",
+    "reserved/web/v2.py": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228"
   },
   "routes": [
     {
@@ -107,10 +111,10 @@ only when `HICBC_ENABLED` is explicitly enabled.
       "rule": "/calculate",
       "methods": ["POST"],
       "registration": "always",
-      "guard": "none",
+      "guard": "always_404",
       "csrf": "global",
       "classification": "internal_admin_unknown_requiring_reconciliation",
-      "note": "Legacy unguarded calculation product action; paid-boundary treatment is ambiguous."
+      "note": "Retired legacy calculation action; valid-CSRF POST reaches an unconditional 404 before profile, calculation or rendering."
     },
     {
       "endpoint": "web.capital_gains",
@@ -127,10 +131,10 @@ only when `HICBC_ENABLED` is explicitly enabled.
       "rule": "/connections",
       "methods": ["GET"],
       "registration": "always",
-      "guard": "none",
+      "guard": "redirect_to_customer_session_guarded_v2_equivalent",
       "csrf": "not_applicable",
       "classification": "internal_admin_unknown_requiring_reconciliation",
-      "note": "Legacy unguarded product page; reconcile with authenticated V2 equivalent."
+      "note": "Legacy GET contains no product content and redirects exactly to authenticated /v2/connections."
     },
     {
       "endpoint": "web.early_access",
@@ -247,10 +251,10 @@ only when `HICBC_ENABLED` is explicitly enabled.
       "rule": "/settings",
       "methods": ["GET", "POST"],
       "registration": "always",
-      "guard": "none",
+      "guard": "get_redirect_to_customer_session_guarded_v2_equivalent_post_always_404",
       "csrf": "global",
       "classification": "internal_admin_unknown_requiring_reconciliation",
-      "note": "Legacy unguarded product settings; reconcile with authenticated V2 equivalent."
+      "note": "Legacy GET redirects exactly to authenticated /v2/settings; valid-CSRF legacy POST unconditionally 404s before mutation."
     },
     {
       "endpoint": "static",
@@ -267,10 +271,10 @@ only when `HICBC_ENABLED` is explicitly enabled.
       "rule": "/tax-assurance",
       "methods": ["GET"],
       "registration": "always",
-      "guard": "none",
+      "guard": "always_404",
       "csrf": "not_applicable",
       "classification": "internal_admin_unknown_requiring_reconciliation",
-      "note": "Source identifies this as internal, but it has no route-level guard."
+      "note": "Internal assurance page unconditionally 404s before reading metadata or rendering in every environment and auth state."
     },
     {
       "endpoint": "v2.index",
@@ -437,10 +441,10 @@ only when `HICBC_ENABLED` is explicitly enabled.
       "rule": "/v2/sandbox-checklist",
       "methods": ["GET"],
       "registration": "always",
-      "guard": "customer_session",
+      "guard": "production_404_nonproduction_customer_session",
       "csrf": "not_applicable",
       "classification": "internal_admin_unknown_requiring_reconciliation",
-      "note": "Source identifies this as an internal sandbox checklist."
+      "note": "Production requests 404 before customer-session handling; non-production retains the existing customer-session guard."
     },
     {
       "endpoint": "v2.settings_page",
@@ -608,16 +612,19 @@ routes concern bank-data consent and are not billing purchase/return routes;
 the V2 invoice routes concern a customer's business invoices, not Reserved
 subscription invoices.
 
-Reconciliation is mandatory for:
+The S5B reconciliation and S5C hardening now record:
 
-- legacy unguarded product routes `/calculate`, `/connections` and `/settings`;
-- the registered but always-404 `/capital-gains` route;
-- the unguarded source-labelled internal `/tax-assurance` route;
-- all `/founder` administration/authentication/export routes; and
-- the authenticated but source-labelled internal `/v2/sandbox-checklist`.
+- retired/hardened legacy product routes `/calculate`, `/connections` and
+  `/settings`;
+- the preserved always-404 `/capital-gains` route;
+- the now always-404 internal `/tax-assurance` route;
+- unchanged `/founder` administration/authentication/export boundaries; and
+- production-404 plus non-production customer-session behavior for the
+  internal `/v2/sandbox-checklist`.
 
-This class does not recommend exposing, removing or paid-gating those routes. It
-prevents them from becoming an accidental exception by omission.
+This retained class does not expose or paid-gate those routes. It prevents them
+from becoming an accidental exception by omission and is not a paid-boundary
+decision.
 
 ## Minimal Founder decision
 
@@ -628,8 +635,9 @@ routes whenever their separate feature gate is enabled. Keep
 `public_infrastructure_auth_legal_support` and
 `billing_purchase_return_recovery_candidate` outside the paid-entitlement gate
 while preserving every current authentication, token, feature, rate-limit and
-CSRF control. Do not treat `internal_admin_unknown_requiring_reconciliation` as
-customer access in either direction until each route is separately reconciled.
+CSRF control. Treat `internal_admin_unknown_requiring_reconciliation` according
+to its accepted S5B/S5C route-specific fail-closed treatment, never as an
+implicit paid or free customer class.
 
 The consequence is that customer-session authentication alone would no longer
 authorise product access: a future server-side S5 implementation would also need
@@ -646,8 +654,8 @@ The exact minimal question is:
 > while routes in `public_infrastructure_auth_legal_support` and
 > `billing_purchase_return_recovery_candidate` remain outside that gate but keep
 > their existing controls, and
-> `internal_admin_unknown_requiring_reconciliation` remains excluded from
-> customer access pending route-by-route reconciliation? If not, identify the
+> `internal_admin_unknown_requiring_reconciliation` remains governed by its
+> accepted S5B/S5C route-specific fail-closed treatment? If not, identify the
 > exact route exceptions and intended treatment.
 
 ## Assurance and limits
@@ -659,7 +667,8 @@ and cross-check exact guard labels, route decorators and explicit CSRF
 exemptions. App construction stubs database initialisation; tests call no route,
 database, provider, network or credential path.
 
-This inventory must be regenerated and reviewed whenever any bound source or
-registered route changes. Passing its tests proves inventory freshness only. It
-does not approve the recommended default, decide entitlement, implement an
-access gate, complete W10-S5, or provide launch evidence.
+This inventory was regenerated after S5C because its bound route sources and
+guards changed. It must be regenerated and reviewed again whenever any bound
+source or registered route changes. Passing its tests proves inventory
+freshness only. It does not approve the recommended default, decide entitlement,
+implement a paid-access gate, complete W10-S5, or provide launch evidence.

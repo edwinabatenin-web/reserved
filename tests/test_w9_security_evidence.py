@@ -32,6 +32,18 @@ S1A_INTRODUCING_PATHS = {
 S1_EVIDENCE_PATHS = S1A_INTRODUCING_PATHS | {
     "docs/W9_SECURITY_OPERATIONS_GAP_REGISTER.md",
 }
+S5C_EVIDENCE_REFRESH_PARENT = "3c63e64e478957ce04ee1154363c2eae94b82b30"
+S5C_EVIDENCE_REFRESH_PATHS = {
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md",
+    "docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md",
+    "docs/W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md",
+    "docs/W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md",
+    "docs/W9_SECURITY_DECISION_DOSSIER.md",
+    "tests/test_w10_internal_route_reconciliation.py",
+    "tests/test_w10_paid_surface_inventory.py",
+    "tests/test_w10_s2c_policy_evidence.py",
+    "tests/test_w9_security_evidence.py",
+}
 
 # ── Mandatory structured IDs ──────────────────────────────────────────────────
 
@@ -139,6 +151,8 @@ INTEGRATED_COMMIT_IDENTITIES = {
     "W10-S3B": "5bc29bcb30c95ea7a5a9430104653b366d709eb6",
     "W10-S4A": "2ad4a63dd1f10ba38859050b47245c28390667d8",
     "W10-S5A": "9c0760192bb2420b90e57ec7313f69bbe52cbf74",
+    "W10-S5B": "051ae665a0cc94f6e9cdbbc728c621825c7769fe",
+    "W10-S5C": "3c63e64e478957ce04ee1154363c2eae94b82b30",
 }
 
 SOURCE_SHA256 = {
@@ -154,7 +168,11 @@ SOURCE_SHA256 = {
     "reserved/billing/entitlement_core.py": "b46b797614b57047e64f6f6597b1c788b9ab15db90653b07add31b4bbb03cb3b",
     "reserved/billing/event_inbox_contract.py": "4dc0b6bb8b109854531dc1b9d492255e98dca805822cd5e0257f0fdf9b0ca8ed",
     "reserved/billing/stripe_disabled_first_contract.py": "87a84c5ec77f25e12667b5466052b4a84ee6e01a6b075df643202d95aec98638",
-    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "abf7b01158993f404d28eb29f7cd62b38f6f3d86b4ebdd3be9174c342bf198f8",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "5d1d957f53edf04898df8064ee5825a5ab9a55091daf2fed8b292f54db596601",
+    "docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md": "4ba7324883e6aa27081e47ffa6f1c0a1fde99a5f175375a4aae289ce5b7a5917",
+    "docs/W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md": "221b244e687611dfa3e55e67051cb9ffab59ef6fcd9f02d8c5c865611439d1f5",
+    "reserved/web/routes.py": "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed",
+    "reserved/web/v2.py": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228",
     "docs/W9_S1_INDEPENDENT_REVIEW_EVIDENCE.md": "b824cdd5d493fadcb3c3cb476da78fd12265fe9b6d5fb0b3de4051cd569f663b",
 }
 
@@ -205,6 +223,10 @@ REQUIRED_SEMANTIC_MARKERS = [
     "provider authenticity",
     "no physical schema",
     "W10_S5A_PAID_SURFACE_INVENTORY.md",
+    "W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md",
+    "W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md",
+    "legacy/internal route hardening",
+    "paid-entitlement enforcement remain **not started**",
 ]
 
 # Bind the newly reconciled semantics to the exact structured sections that
@@ -229,7 +251,10 @@ SECTION_SEMANTIC_MARKERS = {
         "S5A",
         "five exact policy keys",
         "no provider authenticity, persistence or entitlement authority",
-        "route-inventory evidence only",
+        "remains inventory evidence",
+        "accepted S5C",
+        "closes or redirects the reviewed legacy/internal paths",
+        "without paid-entitlement enforcement",
         "billing-account recovery",
         "post-settlement dispute/chargeback/reversal consequences",
     ],
@@ -241,6 +266,8 @@ SECTION_SEMANTIC_MARKERS = {
     ],
     "TB-08": [
         "W10 S1/S2A/S2B/S3A/S3B",
+        "S5A/S5B/S5C route evidence",
+        "reviewed legacy/internal route bypasses",
         "provider authenticity",
         "durable billing inbox",
         "paid-surface enforcement",
@@ -342,6 +369,8 @@ DECISION_SEMANTIC_MARKERS = {
         "billing-account recovery",
         "post-settlement dispute/chargeback/reversal consequences",
         "S5A `W10_S5A_PAID_SURFACE_INVENTORY.md`",
+        "S5C hardens only the reviewed legacy/internal routes",
+        "without deciding paid access",
     ],
 }
 
@@ -665,6 +694,10 @@ def test_reconciliation_does_not_claim_missing_completion_or_acceptance():
     ]
     missing = [marker for marker in required_non_claims if marker not in gap_register]
     assert not missing, f"missing explicit non-authority boundary(ies): {missing}"
+    for path in (DATA_FLOW_DOC, DECISION_DOC):
+        assert "Strict W9 completion remains **0/5**" in _normalise_whitespace(
+            _read(path)
+        )
 
 
 def test_explicit_non_activation_statement_is_present_in_both_documents():
@@ -833,7 +866,19 @@ def test_no_scope_drift_across_package_history():
     for commit in _package_history_commits():
         changed = set(_changed_paths_for_commit(commit))
         drift = sorted(changed - S1_EVIDENCE_PATHS)
-        assert not drift, (
-            f"scope drift in package commit {commit}: {drift}; "
-            f"only {sorted(S1_EVIDENCE_PATHS)} may change"
+        if not drift:
+            continue
+        identity = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "rev-list", "--parents", "-n", "1", commit],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+        assert changed == S5C_EVIDENCE_REFRESH_PATHS and identity == [
+            commit,
+            S5C_EVIDENCE_REFRESH_PARENT,
+        ], (
+            f"scope drift in package commit {commit}: {drift}; expected either "
+            f"W9 evidence-only paths {sorted(S1_EVIDENCE_PATHS)} or the exact "
+            "one-generation S5C evidence-dependency refresh"
         )
