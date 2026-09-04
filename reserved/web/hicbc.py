@@ -309,6 +309,18 @@ def _child_benefit_amount_from_row(
     if claimant is None:
         return None
     if claimant == "none":
+        # Preserve the stored affirmative answer, but do not let it erase
+        # contradictory entitlement evidence. These fields describe receipt/
+        # entitlement, not merely the existence of children in the household.
+        legacy_receives = row.get("receives_child_benefit")
+        if legacy_receives is not None and str(legacy_receives).strip() != "":
+            if _tri(legacy_receives) != 0:
+                return None
+        for name in ("child_benefit_annual", "child_benefit_children",
+                     "child_benefit_weeks_entitled"):
+            value = _decimal(row.get(name), name)
+            if value is not None and value != 0:
+                return None
         return Decimal("0")
     annual_override = row.get("child_benefit_annual")
     if annual_override is not None and str(annual_override).strip() != "":
@@ -502,13 +514,22 @@ def _responsibility_from_sources(user_ani, row, linked_evidence, tax_year):
         partner_evidence = linked_evidence
 
     claimant = _claimant_from_row(row)
-    child_benefit_amount = _child_benefit_amount_from_row(row, tax_year, claimant)
+    try:
+        child_benefit_amount = _child_benefit_amount_from_row(row, tax_year, claimant)
+    except (ValueError, TypeError, InvalidOperation, OverflowError):
+        # Corrupt/malformed entitlement facts are unknown, never zero or a
+        # reflected exception. The engine's existing insufficient state applies.
+        child_benefit_amount = None
+    # UI/storage 'none' is not an engine claimant enum. A proven zero amount
+    # uses its existing None/zero contract; conflicting/unknown amounts stay
+    # None/None and fail closed. Neither path changes the persisted answer.
+    engine_claimant = None if claimant == "none" else claimant
 
     result = determine_hicbc_responsibility(
         user_ani=user_ani,
         child_benefit_amount=child_benefit_amount,
         has_relevant_partner=has_partner,
-        claimant=claimant,
+        claimant=engine_claimant,
         partner_evidence=partner_evidence,
         additional_evidence=additional_evidence,
         tax_year=tax_year,
@@ -616,7 +637,7 @@ def save_estimate():
     annual_raw = (request.form.get("child_benefit_annual") or "").strip()
     if annual_raw:
         try:
-            annual_override = _decimal(annual_raw, "child_benefit_annual", allow_zero=False)
+            annual_override = _decimal(annual_raw, "child_benefit_annual", allow_zero=claimant == "none")
         except ValueError as exc:
             errors.append(str(exc))
 
