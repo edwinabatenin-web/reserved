@@ -20,11 +20,15 @@ W9_TEXT = W9_MAP.read_text(encoding="utf-8")
 START = "<!-- W10-COMPLETION-MAP-RECONCILIATION-BEGIN -->"
 END = "<!-- W10-COMPLETION-MAP-RECONCILIATION-END -->"
 
-BASE = "b8ce971f4dc6b8a1ced10e9b490be68d481752de"
-BASE_TREE = "7fcc5be531c5a4331e6a7ff65ce18a33e1772766"
+BASE = "c5e560045ed3d62f02c894e931464c3d7294e99f"
+BASE_TREE = "bcdbec9108c3c0904139eca278c03fe0f6914db2"
 BASE_PARENTS = (
-    "5f7b76408a5d72b71be71d0e5d6c7a6edde260b7",
+    "e78a3a4bfaef16357512ec01f4e7c9619932e95f",
 )
+Q1_Q2_CHECKPOINT = "2f0e8f0bb3377341b97dbfa760f9fb6aa529d3c9"
+Q1_Q2_INTEGRATION = "e78a3a4bfaef16357512ec01f4e7c9619932e95f"
+W9_S3D_CORRECTION_INTEGRATION = "b8ce971f4dc6b8a1ced10e9b490be68d481752de"
+W9_S3D_CORRECTION_TREE = "7fcc5be531c5a4331e6a7ff65ce18a33e1772766"
 S2D_S5C_BASE = "85e1250f53180bb3c1aff111c17101b9e59df080"
 S2D_S5C_TREE = "89a96da31b7a5dbe9bf55c01e875a0d611829e01"
 WRONG_MAP_COMMIT = "81ae02044cccd921d98a0d1fc2360e1c4a983ab1"
@@ -108,6 +112,17 @@ EXPECTED_COMPONENTS = {
             "docs/W10_S2E_TAX_INVOICE_PREREQUISITE.md",
             "reserved/billing/tax_invoice_prerequisite_contract.py",
             "tests/test_w10_tax_invoice_prerequisite_contract.py",
+        ),
+    },
+    "W10-S2F-Q1-Q2-policy-closure": {
+        "accepted_checkpoint": Q1_Q2_CHECKPOINT,
+        "accepted_tree": "526ff18bf883e4643fd18fe7d2865c486c2d468b",
+        "integration_commit": Q1_Q2_INTEGRATION,
+        "integration_tree": "2958a81e0acbbe8d11afc3e65e8d9033fdce642b",
+        "paths": (
+            "docs/W10_S2F_Q1_Q2_POLICY_CLOSURE.md",
+            "reserved/billing/q1_q2_policy_closure.py",
+            "tests/test_w10_q1_q2_policy_closure.py",
         ),
     },
     "W9-S3C": {
@@ -211,8 +226,8 @@ EXPECTED_COMPONENTS = {
     "W9-S3D-source-ancestry-correction": {
         "accepted_checkpoint": "2ccafb00047583979e55e0ebb4fb193f17abe659",
         "accepted_tree": "536c13528733794fe9ad5c3fd27f44812170fae9",
-        "integration_commit": BASE,
-        "integration_tree": BASE_TREE,
+        "integration_commit": W9_S3D_CORRECTION_INTEGRATION,
+        "integration_tree": W9_S3D_CORRECTION_TREE,
         "paths": ("tests/test_annual_position_authenticated_owner_adapter.py",),
     },
     "W10-S6E-test-scope-correction": {
@@ -280,7 +295,6 @@ EXPECTED_HISTORICAL_MAP_BINDINGS = (
     },
 )
 ALLOWED_CANDIDATE_PATHS = {
-    "docs/W9_COMPLETION_MAP.md",
     MAP_RELATIVE_PATH,
     "tests/test_w10_completion_map.py",
 }
@@ -329,7 +343,7 @@ def test_candidate_is_confined_to_the_authorised_map_and_dedicated_test() -> Non
 
 def test_reconciliation_is_bound_to_exact_clean_merge_base_without_head_lock() -> None:
     data = reconciliation()
-    assert data["schema_version"] == "W10-completion-map/2026-09-04/reconciliation-5"
+    assert data["schema_version"] == "W10-completion-map/2026-09-04/reconciliation-6"
     assert data["reconciliation_base"] == {
         "commit": BASE,
         "tree": BASE_TREE,
@@ -388,6 +402,7 @@ def test_cherry_picks_merge_resolution_and_live_refresh_are_not_conflated() -> N
         "W10-S7A",
         "W10-S7A-reconciliation",
         "W10-S2E",
+        "W10-S2F-Q1-Q2-policy-closure",
     ):
         component = components[component_name]
         assert changed_paths(component["integration_commit"]) == tuple(
@@ -400,7 +415,9 @@ def test_cherry_picks_merge_resolution_and_live_refresh_are_not_conflated() -> N
 
     product = components["W10-S5C-product"]
     for relative_path, expected_sha256 in product["paths_sha256"].items():
-        assert_historical_sha256(BASE, relative_path, expected_sha256)
+        assert_historical_sha256(
+            W9_S3D_CORRECTION_INTEGRATION, relative_path, expected_sha256
+        )
 
     evidence = components["W10-S5C-evidence"]
     assert git_text(
@@ -475,6 +492,43 @@ def test_new_decision_s7a_and_s2e_bindings_reject_wrong_blobs_and_lineage() -> N
     ).returncode != 0
     subprocess.run(
         ["git", "merge-base", "--is-ancestor", components["W10-S2E"]["integration_commit"], "HEAD"],
+        cwd=ROOT,
+        check=True,
+    )
+
+
+def test_q1_q2_closure_has_exact_source_and_integrated_identity() -> None:
+    component = reconciliation()["components"]["W10-S2F-Q1-Q2-policy-closure"]
+    assert component == {
+        "accepted_checkpoint": Q1_Q2_CHECKPOINT,
+        "accepted_tree": "526ff18bf883e4643fd18fe7d2865c486c2d468b",
+        "integration_commit": Q1_Q2_INTEGRATION,
+        "integration_tree": "2958a81e0acbbe8d11afc3e65e8d9033fdce642b",
+        "paths_sha256": {
+            "docs/W10_S2F_Q1_Q2_POLICY_CLOSURE.md": (
+                "3ba4450408637677f490ff62d3e940cda5d5c2a8570ff8640fdc6d9327fa8f78"
+            ),
+            "reserved/billing/q1_q2_policy_closure.py": (
+                "c758bedb6dd6812c7625a9e49f97eaa6c0440b9ef8e1a78219323f6167f14e04"
+            ),
+            "tests/test_w10_q1_q2_policy_closure.py": (
+                "6d4e60977b824f711676d6a4eef4ccfeedbdc55928c26073fdd381e916b6b5e4"
+            ),
+        },
+    }
+    assert git_text("show", "-s", "--format=%P", Q1_Q2_CHECKPOINT) == (
+        "030da8a2928473b9b5af35a158ea6ad5c5ad8e49"
+    )
+    assert git_text("show", "-s", "--format=%P", Q1_Q2_INTEGRATION) == (
+        "8f19639c0598df5f7885a4081a21c6a42765f2ec"
+    )
+    assert changed_paths(Q1_Q2_CHECKPOINT) == tuple(component["paths_sha256"])
+    assert changed_paths(Q1_Q2_INTEGRATION) == tuple(component["paths_sha256"])
+    for relative_path, expected_sha256 in component["paths_sha256"].items():
+        assert_historical_sha256(Q1_Q2_CHECKPOINT, relative_path, expected_sha256)
+        assert_historical_sha256(Q1_Q2_INTEGRATION, relative_path, expected_sha256)
+    subprocess.run(
+        ["git", "merge-base", "--is-ancestor", Q1_Q2_INTEGRATION, BASE],
         cwd=ROOT,
         check=True,
     )
@@ -595,17 +649,23 @@ def test_w9_map_records_s3d_without_moving_any_launch_gate() -> None:
 
 def test_current_state_is_partial_non_authorising_and_keeps_every_gate_open() -> None:
     required = (
-        "Q1 refunds, Q2 paid surface and Q3",
-        "remain unanswered Founder questions",
-        "Exactly five policy keys remain unresolved",
+        "closes Q1 refunds and Q2 paid surface as bounded engineering policy under existing",
+        "Exactly three policy keys remain unresolved",
+        "is the sole genuine current Founder choice",
+        "tax/invoice and billing-account recovery as specialist/engineering evidence gates",
+        "Mandatory statutory and consumer rights",
+        "No refund action or refund-derived",
+        "client-side hiding is not enforcement",
         "implements only the disabled-first, owner-bound, no-transfer local decision",
         "no authenticated adapter, durable",
         "S5C implements five bounded",
-        "no paid-boundary or entitlement guard exists",
+        "paid boundary is policy-settled, but no server-side paid-boundary or entitlement guard exists",
+        "No S2 component supplies runtime/provider/persistence/refund/enforcement/launch assurance",
+        "S2 remains incomplete",
         "post-S2D/S5C reconciliation is integrated",
         "No threat is accepted closed",
         "all 21 threats remain open",
-        "detached, structurally validated, non-authoritative tax/invoice prerequisite",
+        "detached, non-authoritative contracts",
         "does not close the VAT/invoice policy key",
         "no security, privacy, operations, provider, target or launch assurance",
         "S4B disabled Checkout intent",
@@ -637,6 +697,11 @@ def test_current_state_is_partial_non_authorising_and_keeps_every_gate_open() ->
         "S7A is current assurance",
         "S7A closes",
         "S2D closes the recovery key",
+        "Exactly five policy keys remain unresolved",
+        "Q1, Q2 and Q3 are answered",
+        "remain unanswered Founder questions",
+        "Q2 remains unanswered",
+        "no approved paid boundary or enforcement",
         "strict completion remains 1/8",
         "requires post-convergence reconciliation",
         "awaits current-lineage reconciliation",
