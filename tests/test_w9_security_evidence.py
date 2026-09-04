@@ -54,6 +54,18 @@ LIVE_PROVENANCE_RECONCILIATION_INTEGRATION_COMMIT = (
 LIVE_PROVENANCE_RECONCILIATION_INTEGRATION_PARENT = (
     "aaa08d7b541ed49765f9d9c68bf1d91d4f34faf3"
 )
+HICBC_LINEAGE_RECONCILIATION_COMMIT = (
+    "d954ddcc88466967cc16efcaba02778e03a0f9a2"
+)
+HICBC_LINEAGE_RECONCILIATION_PARENT = (
+    "95dd628e27f7261282f2ecf55d4cf29720329b91"
+)
+HICBC_LINEAGE_RECONCILIATION_PATHS = {
+    "docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md",
+    "docs/W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md",
+    "tests/test_w10_internal_route_reconciliation.py",
+    "tests/test_w9_security_evidence.py",
+}
 S5C_EVIDENCE_REFRESH_PARENT = "3c63e64e478957ce04ee1154363c2eae94b82b30"
 CURRENT_ROUTES_COMMIT = "95dd628e27f7261282f2ecf55d4cf29720329b91"
 CURRENT_ROUTES_TREE = "559bfe4c77c5e5f3bf59553d91c78c614ac060ff"
@@ -1045,14 +1057,25 @@ def test_no_scope_drift_across_package_history():
         is_live_provenance_reconciliation = _is_exact_live_provenance_reconciliation(
             commit, changed, identity
         )
+        is_hicbc_lineage_reconciliation = (
+            commit == HICBC_LINEAGE_RECONCILIATION_COMMIT
+            and changed == HICBC_LINEAGE_RECONCILIATION_PATHS
+            and identity
+            == [
+                HICBC_LINEAGE_RECONCILIATION_COMMIT,
+                HICBC_LINEAGE_RECONCILIATION_PARENT,
+            ]
+        )
         assert (
             is_s5c_refresh
             or is_entitlement_reconciliation
             or is_live_provenance_reconciliation
+            or is_hicbc_lineage_reconciliation
         ), (
             f"scope drift in package commit {commit}: {drift}; expected either "
             f"W9 evidence-only paths {sorted(S1_EVIDENCE_PATHS)} or the exact "
             "one-generation S5C evidence-dependency refresh or the exact "
             "accepted W9/W10 entitlement evidence reconciliation or the exact "
-            "accepted live provenance reconciliation"
+            "accepted live provenance reconciliation or the exact HICBC "
+            "downstream lineage reconciliation"
         )
