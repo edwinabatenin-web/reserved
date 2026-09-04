@@ -219,8 +219,53 @@ INTEGRATED_COMMIT_IDENTITIES = {
     "W10-S5C": "3c63e64e478957ce04ee1154363c2eae94b82b30",
 }
 
+# The latest inspected snapshot is immutable provenance, not a moving HEAD
+# sentinel. Later unrelated accepted work does not invalidate this evidence.
+SOURCE_SNAPSHOT_COMMIT = "d3c0f53f785a4fca75e54c466032244ee2bbb2b3"
+SOURCE_SNAPSHOT_TREE = "68cacad8f926a790b43af44e4a77bd61e7fe4594"
+HISTORICAL_S3A_SHA256 = "da68058811e1f1f3974851f3f85703c7b2d79e05695ed88c2980251a3c649469"
+ACCEPTED_SOURCE_PROVENANCE = {
+    "HICBC": (
+        "7674b2f756f621ae9a8d1fe18063f634be90c367",
+        "74ba3b743864cd4efbcb8df2041c095f49da1d47",
+        "91cb4c2f14bce089db1f92f656c8cbc1d85639b7",
+        "f25a90a98be39f41cbb71138d3d68bf3b96f6427",
+        {
+            "docs/HICBC_LINKED_MUTUAL_CONSENT_JOURNEY_EVIDENCE.md",
+            "docs/HICBC_PARTNER_SUPPORT.md",
+            "reserved/database.py",
+            "reserved/templates/v2/hicbc_link.html",
+            "reserved/web/hicbc.py",
+            "tests/test_hicbc_linked_account.py",
+        },
+    ),
+    "W8 handoff / W9-S3A migration": (
+        "5ba53dccc8c608ff9c61a6913fa29704141c38a2",
+        "f25a90a98be39f41cbb71138d3d68bf3b96f6427",
+        SOURCE_SNAPSHOT_COMMIT,
+        "5e6ea885a371bb15aaba3bf8abb5bb81a99f6c2e",
+        {
+            "docs/W8_S2C_ANNUAL_CASH_CUSTOMER_HANDOFF_EVIDENCE.md",
+            "docs/W9_S3A_ANNUAL_POSITION_PERSISTENCE_CONTRACT.md",
+            "reserved/annual_position_persistence_contract.py",
+            "reserved/services/w8_annual_cash_customer_handoff.py",
+            "tests/test_annual_position_authenticated_owner_adapter.py",
+            "tests/test_annual_position_persistence_contract.py",
+            "tests/test_annual_position_projection_repository_adapter.py",
+            "tests/test_annual_position_repository_contract.py",
+            "tests/test_internal_tax_boundary.py",
+            "tests/test_w8_annual_cash_customer_handoff.py",
+            "tests/test_w8_progressive_assurance_s2.py",
+        },
+    ),
+}
+
 SOURCE_SHA256 = {
-    "reserved/annual_position_persistence_contract.py": "da68058811e1f1f3974851f3f85703c7b2d79e05695ed88c2980251a3c649469",
+    "reserved/annual_position_persistence_contract.py": "89dd8b658801272b3fc003afd95c11a4b7968aef610a629ea73475807dd6ccb1",
+    "reserved/services/w8_annual_cash_customer_handoff.py": "b6104acc253dbf76aeb13dc417544011b37d98ae674e4c5b05185e0684e546f1",
+    "reserved/database.py": "84d029817a3e05982bdd49857014eb9e314a2677dcc9e1f151c0290ae2eafebc",
+    "reserved/web/hicbc.py": "5f653d3d0567bbc2ec8ecf642128248bce666b541197b8908b10a12a518fb5fc",
+    "reserved/templates/v2/hicbc_link.html": "5bfb075b506f06191a0f64d286316c9a3eba12845043efb6a95e61e7f44b39dd",
     "reserved/annual_position_repository_contract.py": "fa033039500b97bab04f3a047c07ad661c14c49d6167d65396d4d9ab0227053e",
     "reserved/providers/operational_resilience.py": "2ce9c42402fd79bbada2c2e28bc0594d377fe1cbec8825e4d44967c34d2739de",
     "reserved/services/provider_outage_presentation.py": "bd16596d6d63cffead6539e8e810949863b3902affb018b75b913e56e7d6192f",
@@ -304,6 +349,12 @@ SECTION_SEMANTIC_MARKERS = {
         "reserved/annual_position_repository_contract.py",
         "upstream-admission and persistence authority",
         "physical schema, migration, durable repository or database I/O",
+        "exact source type before property or descriptor access",
+        "sealed owner-unbound handoff",
+        "exact source/evidence/as-of/year/geography coherence",
+        "then binds separately supplied authenticated user/business references",
+        "owner_authoritative=False",
+        "not authentication authority",
     ],
     "FLOW-07": [
         "admitted S3A/S3B annual/cash contract boundary",
@@ -328,6 +379,10 @@ SECTION_SEMANTIC_MARKERS = {
         "W9-S3B",
         "physical schema, migration, durable repository or database I/O",
         "upstream-admission and persistence authority",
+        "exact source type is checked before property or descriptor access",
+        "sealed owner-unbound handoff",
+        "before separately supplied authenticated user/business references are bound",
+        "does not authenticate the caller",
     ],
     "TB-08": [
         "W10 S1/S2A/S2B/S3A/S3B",
@@ -344,6 +399,23 @@ SECTION_SEMANTIC_MARKERS = {
         "withdrawal/unlinking",
         "anti-probing",
         "delete_all_hicbc_links_for_user",
+        "five tables",
+        "hicbc_permission_form_bindings",
+        "hicbc_permission_events",
+        "permission_cycle",
+        "Invitation acceptance creates a link only, never permission",
+        "affirmative permission after four notices",
+        "Page status and form-binding issuance are atomic",
+        "consent validation and its write are atomic",
+        "exact link/cycle/user/year/notice/expiry",
+        "Notice-version-aware append-only lifecycle events",
+        "Current link/consent rows control use",
+        "events cannot establish permission",
+        "transition uniqueness includes notice version",
+        "stale/tampered/cross-context/expired bindings fail closed",
+        "never reviving prior permission",
+        "Privacy/retention/legal/target gates remain open",
+        "HICBC_ENABLED",
     ],
     "FLOW-14": [
         "gross income before expenses",
@@ -363,6 +435,10 @@ SECTION_SEMANTIC_MARKERS = {
         "data minimisation",
         "anti-probing controls",
         "notice/withdrawal/unlinking",
+        "exact link/cycle/user/year/notice/expiry",
+        "Current link/consent rows control use",
+        "events are evidence only",
+        "Re-link requires fresh permission from both users",
     ],
     "TB-13": [
         "gross income before expenses",
@@ -381,6 +457,9 @@ SECTION_SEMANTIC_MARKERS = {
         "HICBC-relevant partner evidence",
         "hypothetical/comparative/band probing",
         "withdrawal/unlinking",
+        "Stale/tampered/re-link replay is denied",
+        "Current link/consent rows control use, never lifecycle events",
+        "notice-version-aware append-only evidence only",
     ],
     "TH-20": [
         "qualified, forward-looking indication",
@@ -397,6 +476,9 @@ SECTION_SEMANTIC_MARKERS = {
         "W9-S3A",
         "W9-S3B",
         "No physical schema, durable repository or database I/O",
+        "checks exact source type before property or descriptor access",
+        "sealed owner-unbound handoff/source before binding authenticated ownership",
+        "cannot mint admission",
     ],
     "TH-09": [
         "immutable event identity",
@@ -420,6 +502,11 @@ DECISION_SEMANTIC_MARKERS = {
         "W9-S3B",
         "No physical schema, database I/O or durable annual-position write",
         "denies upstream-admission and persistence authority",
+        "exact source type before property or descriptor access",
+        "sealed owner-unbound handoff",
+        "then binds separately supplied authenticated user/business references",
+        "owner_authoritative=False",
+        "no physical persistence, provider or production authority",
     ],
     "DEC-04": [
         "S3B's in-memory deletion decision is not a deletion executor",
@@ -436,6 +523,23 @@ DECISION_SEMANTIC_MARKERS = {
         "S5A `W10_S5A_PAID_SURFACE_INVENTORY.md`",
         "S5C hardens only the reviewed legacy/internal routes",
         "without deciding paid access",
+    ],
+    "DEC-12": [
+        "separate affirmative permission after four notices",
+        "atomic page/binding issuance and atomic consent validation",
+        "hicbc_links",
+        "hicbc_link_invitations",
+        "hicbc_link_consents",
+        "hicbc_permission_form_bindings",
+        "hicbc_permission_events",
+        "permission_cycle",
+        "exact link/cycle/user/year/notice/expiry",
+        "Current link/consent rows control use",
+        "notice-version-aware append-only lifecycle events are evidence only",
+        "never consent authority",
+        "transition uniqueness includes notice version",
+        "privacy/retention/legal/target gates remain open",
+        "disabled by default behind `HICBC_ENABLED`",
     ],
 }
 
@@ -713,7 +817,7 @@ def test_stale_local_evidence_claims_are_absent():
     )
 
 
-def test_reconciliation_base_and_tree_are_the_exact_current_integration_identity():
+def test_historical_reconciliation_base_and_tree_remain_immutable():
     for path in (DATA_FLOW_DOC, DECISION_DOC, GAP_DOC):
         text = _read(path)
         assert RECONCILIATION_BASE in text, (
@@ -733,15 +837,60 @@ def test_reconciliation_base_and_tree_are_the_exact_current_integration_identity
         )
 
 
-def test_exact_current_source_hashes_match_and_are_recorded():
+def test_exact_inspected_source_hashes_match_and_are_recorded():
     data_flow = _read(DATA_FLOW_DOC)
     for relative_path, expected_hash in SOURCE_SHA256.items():
-        actual_hash = hashlib.sha256((REPO_ROOT / relative_path).read_bytes()).hexdigest()
+        actual_hash = _git_blob_sha256(SOURCE_SNAPSHOT_COMMIT, relative_path)
         assert actual_hash == expected_hash, (
             f"source drift for {relative_path}: {actual_hash} != {expected_hash}"
         )
         assert relative_path in data_flow, f"missing source binding: {relative_path}"
         assert expected_hash in data_flow, f"missing SHA-256 binding: {relative_path}"
+
+
+def test_accepted_hicbc_and_handoff_sources_have_exact_immutable_provenance():
+    """Check accepted source/integration identity, topology and byte equality.
+
+    No current-HEAD equality is required. A later unrelated accepted commit
+    may advance the checkout without rewriting these historical observations.
+    These source packages do not become allowances for evidence-package edits.
+    """
+    tree = subprocess.run(
+        ["git", "rev-parse", f"{SOURCE_SNAPSHOT_COMMIT}^{{tree}}"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert tree == SOURCE_SNAPSHOT_TREE
+    for path in (DATA_FLOW_DOC, DECISION_DOC):
+        assert SOURCE_SNAPSHOT_COMMIT in _read(path)
+        assert SOURCE_SNAPSHOT_TREE in _read(path)
+    for name, (source, source_parent, integrated, integration_parent, paths) in (
+        ACCEPTED_SOURCE_PROVENANCE.items()
+    ):
+        for commit, parent in ((source, source_parent), (integrated, integration_parent)):
+            identity = subprocess.run(
+                ["git", "rev-list", "--parents", "-n", "1", commit],
+                cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            ).stdout.split()
+            assert identity == [commit, parent], name
+            assert set(_changed_paths_for_commit(commit)) == paths, name
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", integrated, SOURCE_SNAPSHOT_COMMIT],
+            cwd=REPO_ROOT, check=True, capture_output=True,
+        )
+        for path in paths:
+            assert _git_blob_sha256(source, path) == _git_blob_sha256(integrated, path)
+        for path in (DATA_FLOW_DOC, DECISION_DOC):
+            assert source in _read(path), name
+            assert integrated in _read(path), name
+
+
+def test_original_s3a_pin_is_preserved_separately_from_accepted_migration():
+    path = "reserved/annual_position_persistence_contract.py"
+    assert _git_blob_sha256(INTEGRATED_COMMIT_IDENTITIES["W9-S3A"], path) == (
+        HISTORICAL_S3A_SHA256
+    )
+    assert HISTORICAL_S3A_SHA256 in _read(DATA_FLOW_DOC)
+    assert SOURCE_SHA256[path] != HISTORICAL_S3A_SHA256
 
 
 def test_live_routes_binding_is_distinct_from_historical_s5c_blob():
@@ -751,7 +900,7 @@ def test_live_routes_binding_is_distinct_from_historical_s5c_blob():
 
     assert CURRENT_ROUTES_COMMIT in data_flow
     assert CURRENT_ROUTES_TREE in data_flow
-    assert hashlib.sha256((REPO_ROOT / path).read_bytes()).hexdigest() == live_hash
+    assert _git_blob_sha256(CURRENT_ROUTES_COMMIT, path) == live_hash
     assert _git_blob_sha256(S5C_EVIDENCE_REFRESH_PARENT, path) == (
         HISTORICAL_S5C_ROUTES_SHA256
     )
@@ -930,15 +1079,39 @@ def test_package_does_not_touch_protected_files():
     assert not protected, f"W9-S1A package touched protected files: {protected}"
 
 
-def test_current_candidate_has_no_scope_drift():
-    changed = _worktree_changed_paths()
+def _candidate_scope_drift(changed: set[str]) -> set[str]:
+    # A different package under development is not the W9 evidence candidate.
+    # Once any W9 evidence file is touched, the full candidate remains scoped;
+    # in particular an accepted product source pin never authorises product
+    # mutations to piggyback on an evidence-only package.
+    if not changed.intersection(S1_EVIDENCE_PATHS):
+        return set()
     allowed = (
         S1_EVIDENCE_PATHS
         if changed <= S1_EVIDENCE_PATHS
         else LIVE_PROVENANCE_RECONCILIATION_PATHS
     )
-    drift = sorted(changed - allowed)
+    return changed - allowed
+
+
+def test_current_candidate_has_no_scope_drift():
+    drift = sorted(_candidate_scope_drift(_worktree_changed_paths()))
     assert not drift, f"current evidence candidate changed unauthorised paths: {drift}"
+
+
+def test_candidate_scope_is_package_bound_and_rejects_product_piggyback():
+    assert not _candidate_scope_drift(S1A_INTRODUCING_PATHS)
+    assert not _candidate_scope_drift({"reserved/providers/unrelated_accepted_work.py"})
+    for product in (
+        "reserved/annual_position_persistence_contract.py",
+        "reserved/services/w8_annual_cash_customer_handoff.py",
+        "reserved/database.py",
+        "reserved/web/hicbc.py",
+        "reserved/templates/v2/hicbc_link.html",
+        "reserved/config.py",
+        "FOUNDER_DECISIONS.md",
+    ):
+        assert product in _candidate_scope_drift(S1A_INTRODUCING_PATHS | {product})
 
 
 def test_reconciliation_scope_truthfully_includes_the_gap_register():

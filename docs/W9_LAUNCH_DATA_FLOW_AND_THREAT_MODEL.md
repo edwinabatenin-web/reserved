@@ -12,6 +12,17 @@ another readiness authority, or alter production/readiness state.
 - Evidence cut-off: 4 September 2026 at exact integration commit
   `81ae02044cccd921d98a0d1fc2360e1c4a983ab1`, tree
   `ac5922e7aae0016a54f78a8645a244ac83eae0d2`.
+- Narrow HICBC/W8–W9 reconciliation snapshot: accepted integration
+  `d3c0f53f785a4fca75e54c466032244ee2bbb2b3`, tree
+  `68cacad8f926a790b43af44e4a77bd61e7fe4594`. HICBC mutual-permission
+  source `7674b2f756f621ae9a8d1fe18063f634be90c367` was integrated as
+  `91cb4c2f14bce089db1f92f656c8cbc1d85639b7`; owner-unbound W8 handoff
+  and W9-S3A migration source `5ba53dccc8c608ff9c61a6913fa29704141c38a2`
+  was integrated as `d3c0f53f785a4fca75e54c466032244ee2bbb2b3`.
+  These are immutable inspected checkpoints, not a requirement that HEAD
+  remain fixed. Historical W9-S1A/S3A and route-evidence pins remain unchanged.
+  This refresh changes only this document, the decision dossier and their
+  evidence test; it does not amend the gap register or close any external gate.
 - Narrow live-current W10 route-evidence refresh: accepted integration commit
   `95dd628e27f7261282f2ecf55d4cf29720329b91`, tree
   `559bfe4c77c5e5f3bf59553d91c78c614ac060ff`. The accepted S5C product
@@ -45,13 +56,21 @@ another readiness authority, or alter production/readiness state.
 
 ### Exact current-state source binding
 
-The evidence statements newly reconciled below are bound to these exact
-repository-local sources at the commit/tree above. SHA-256 is over file bytes.
-The binding proves only which local evidence was inspected.
+The table records the latest inspected source bytes at the narrow reconciliation
+snapshot `d3c0f53f785a4fca75e54c466032244ee2bbb2b3`; SHA-256 is over file bytes.
+Verification reads that immutable snapshot, not whichever later unrelated
+accepted commit happens to be HEAD. It proves only which local evidence was
+inspected, not continued live-state equivalence or activation authority.
+The original S3A source at `c489c25bab669c64e1c11d28caf29fcde9678fdd` retains
+historical SHA-256 `da68058811e1f1f3974851f3f85703c7b2d79e05695ed88c2980251a3c649469`.
 
 | Evidence boundary | Source | SHA-256 |
 | --- | --- | --- |
-| W9-S3A admitted projection | `reserved/annual_position_persistence_contract.py` | `da68058811e1f1f3974851f3f85703c7b2d79e05695ed88c2980251a3c649469` |
+| W9-S3A admitted projection after owner-unbound handoff migration | `reserved/annual_position_persistence_contract.py` | `89dd8b658801272b3fc003afd95c11a4b7968aef610a629ea73475807dd6ccb1` |
+| W8 exact-source owner-unbound handoff | `reserved/services/w8_annual_cash_customer_handoff.py` | `b6104acc253dbf76aeb13dc417544011b37d98ae674e4c5b05185e0684e546f1` |
+| HICBC five-table permission lifecycle | `reserved/database.py` | `84d029817a3e05982bdd49857014eb9e314a2677dcc9e1f151c0290ae2eafebc` |
+| HICBC authenticated permission routes | `reserved/web/hicbc.py` | `5f653d3d0567bbc2ec8ecf642128248bce666b541197b8908b10a12a518fb5fc` |
+| HICBC four-notice affirmative form | `reserved/templates/v2/hicbc_link.html` | `5bfb075b506f06191a0f64d286316c9a3eba12845043efb6a95e61e7f44b39dd` |
 | W9-S3B detached repository contract | `reserved/annual_position_repository_contract.py` | `fa033039500b97bab04f3a047c07ad661c14c49d6167d65396d4d9ab0227053e` |
 | W9-S4A outage/recovery contract | `reserved/providers/operational_resilience.py` | `2ce9c42402fd79bbada2c2e28bc0594d377fe1cbec8825e4d44967c34d2739de` |
 | W9-S4B local presentation | `reserved/services/provider_outage_presentation.py` | `bd16596d6d63cffead6539e8e810949863b3902affb018b75b913e56e7d6192f` |
@@ -178,9 +197,9 @@ canonical blocker/reference.
 | Trust boundary crossed | Application ↔ detached persistence-contract boundary; no physical database/persistence boundary is crossed |
 | Processing purpose | Compute the annual tax position with provenance and uncertainty attached |
 | Allowed destination | The W9-S3A minimised owner/business/year/nation/purpose-bound admitted projection and W9-S3B detached structural candidate; neither is authority for a physical datastore write |
-| Present storage behaviour | W9-S3A (`c489c25bab669c64e1c11d28caf29fcde9678fdd`) and W9-S3B (`110a90043dfc770c70059482be9d7b7e237749a6`) are integrated contract evidence. S3A admits an exact minimised projection; S3B models logical records and in-memory create/CAS/deletion decisions while explicitly denying upstream-admission and persistence authority. There is no physical schema, migration, durable repository or database I/O |
+| Present storage behaviour | W9-S3A (historical `c489c25bab669c64e1c11d28caf29fcde9678fdd`, migrated by accepted `d3c0f53f785a4fca75e54c466032244ee2bbb2b3`) and W9-S3B (`110a90043dfc770c70059482be9d7b7e237749a6`) are integrated contract evidence. S3A admits an exact minimised projection; S3B models logical records and in-memory create/CAS/deletion decisions while explicitly denying upstream-admission and persistence authority. There is no physical schema, migration, durable repository or database I/O |
 | Unresolved target storage/retention/deletion | Exact field inventory, lawful basis, retention periods, legal-hold exceptions, backup-expiry schedule, datastore, encryption/key custody, migration, production access and activation remain unresolved (`FD-W9-001`) |
-| Existing control | `reserved/annual_position_persistence_contract.py`, `reserved/annual_position_repository_contract.py` and their tests bind minimisation, exact money identity, owner scope, supersession structure and fail-closed reads; `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md` still records the `tax_calculations` stub as unsuitable |
+| Existing control | `reserved/annual_position_persistence_contract.py`, `reserved/annual_position_repository_contract.py` and their tests bind minimisation, exact money identity, owner scope, supersession structure and fail-closed reads. S3A checks the exact source type before property or descriptor access, validates the sealed owner-unbound handoff and exact source/evidence/as-of/year/geography coherence, then binds separately supplied authenticated user/business references. The W8 handoff is `owner_authoritative=False`, has no user/business identity, and is not authentication authority; a caller-supplied owner-bound customer result is not admission input. `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md` still records the `tax_calculations` stub as unsuitable |
 | Threat/failure mode | Stale data and false certainty; evidence tampering; cross-owner/tenant leakage; injection/schema drift |
 | Current fail-closed state | No durable annual-position write is authorised. S3B's upstream admission and persistence authority remain false until field lifecycle, lawful basis, retention, backup, datastore, custody, migration and activation gates are satisfied |
 | Exact closure evidence | Approved minimised field inventory, purpose, provenance/uncertainty representation, owner schema, datastore/encryption and migration rules |
@@ -304,11 +323,11 @@ canonical blocker/reference.
 | Trust boundary crossed | Linked-customer account ↔ linked-customer account; application ↔ database/persistence |
 | Processing purpose | Compute each user's own HICBC position using the minimum partner evidence needed, without revealing either partner's precise ANI, band, bonus, relative salary or calculated personal tax |
 | Allowed destination | Owner-bound HICBC calculation and each user's own presentation only; no avoidable cross-user financial disclosure |
-| Present storage behaviour | Linked-HICBC persistence is implemented and integrated: `hicbc_links` (normalised active/revoked pair per tax year), single-use `hicbc_link_invitations` (SHA-256 hashed tokens) and versioned `hicbc_link_consents` (per-participant `hicbc-notice-v1` with `withdrawn_at`). Invitation create/accept, revoke/unlink and account-deletion hooks (`delete_all_hicbc_links_for_user`) exist with authenticated routes at `/v2/hicbc/link/*`; no partner financial value is stored in a link row |
+| Present storage behaviour | Accepted `91cb4c2f14bce089db1f92f656c8cbc1d85639b7` implements five tables: `hicbc_links` (normalised pair/year and `permission_cycle`), single-use hashed `hicbc_link_invitations`, versioned `hicbc_link_consents` (`hicbc-notice-v1`, `withdrawn_at`), hashed short-lived `hicbc_permission_form_bindings` and `hicbc_permission_events`. Invitation acceptance creates a link only, never permission. Each participant separately gives affirmative permission after four notices. Authenticated `/v2/hicbc/link/*` routes and `delete_all_hicbc_links_for_user` exist; account deletion cascades to permission, form-binding and event history. No partner financial value is stored in a link row |
 | Unresolved target storage/retention/deletion | Independent lawful-basis/transparency/privacy review, documented anti-probing and minimisation controls, retention/deletion schedule and target cross-account acceptance for the implemented linked-HICBC records remain unresolved |
-| Existing control | `test_hicbc_linked_account.py`, `test_hicbc_partner.py`, `test_hicbc_partner_privacy.py` and related contracts bind owner scoping, no cross-user access, CSRF, no-store and no raw partner values in logs/analytics |
+| Existing control | `test_hicbc_linked_account.py`, `test_hicbc_partner.py`, `test_hicbc_partner_privacy.py` and related contracts bind owner scoping, no cross-user access, CSRF, no-store and no raw partner values in logs/analytics. Page status and form-binding issuance are atomic; consent validation and its write are atomic. The binding checks exact link/cycle/user/year/notice/expiry. Notice-version-aware append-only lifecycle events record consent, withdrawal, unlink and re-link as evidence only (append-only through the application API, not deletion-proof storage); transition uniqueness includes notice version, preserving same-version idempotency and later-notice history. Current link/consent rows control use; events cannot establish permission |
 | Threat/failure mode | Cross-owner/tenant leakage; inferential/probing disclosure of partner finances; false determinate HICBC; retention/deletion failure |
-| Current fail-closed state | Linked evidence cannot appear falsely determinate or actionable; unknown partner/Child Benefit facts fail safe as insufficient facts; withdrawal/unlinking reverts the affected result |
+| Current fail-closed state | `HICBC_ENABLED` remains disabled by default. Exactly one active link and both current non-withdrawn authoritative-notice consent rows are required; stale/tampered/cross-context/expired bindings fail closed. Unlink invalidates permission; re-link increments `permission_cycle`, invalidates old consent/bindings and requires both users to consent again, never reviving prior permission. Linked evidence cannot appear falsely determinate or actionable; unknown partner/Child Benefit facts fail safe as insufficient facts; withdrawal/unlinking reverts the affected result. Privacy/retention/legal/target gates remain open |
 | Exact closure evidence | Documented lawful basis, transparency, purpose limitation, minimisation, withdrawal/unlinking, deletion and anti-probing controls plus cross-account privacy tests |
 | Canonical blocker/reference | `DATA-01`, `DATA-02`, `AUTH-03`; `HICBC_PARTNER_SUPPORT.md`; decision dossier `W9-DEC-12` |
 
@@ -374,6 +393,11 @@ schema, migration, durable repository or database I/O; S3B explicitly lacks
 upstream-admission and persistence authority. Durable annual-position and
 source-evidence storage therefore remains blocked (`PERSIST-01`, `PERSIST-02`,
 `DATA-01`).
+At S3A admission the exact source type is checked before property or descriptor
+access; the sealed owner-unbound handoff and exact source context are validated
+before separately supplied authenticated user/business references are bound.
+The W8 handoff is not owner authority, and this contract does not authenticate
+the caller or grant physical persistence, provider or production authority.
 
 ### TB-04 — Application ↔ unresolved secret/token custody boundary
 
@@ -432,6 +456,11 @@ Protected by separate affirmative consent from both users, strict purpose
 limitation, data minimisation, no cross-user disclosure, anti-probing controls
 and auditable notice/withdrawal/unlinking. Documented lawful basis and privacy
 review remain required before activation (`DATA-01`, `DATA-02`).
+Invitation acceptance is not permission: separate affirmative permission follows
+four notices. Atomic page/binding issuance and atomic consent validation bind
+exact link/cycle/user/year/notice/expiry. Current link/consent rows control use;
+notice-version-aware append-only lifecycle events are evidence only. Re-link
+requires fresh permission from both users; `HICBC_ENABLED` remains disabled.
 
 ### TB-13 — MTD indication boundary (customer facts ↔ formal HMRC determination)
 
@@ -485,6 +514,9 @@ structural contract bind provenance/uncertainty and fail-closed reads without
 authorising persistence. No physical schema, durable repository or database I/O
 exists; `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md` still rejects the
 `tax_calculations` stub.
+S3A checks exact source type before property or descriptor access and validates
+the sealed owner-unbound handoff/source before binding authenticated ownership;
+a reconstructed, mutated or context-substituted handoff cannot mint admission.
 
 ### TH-07 — Credential/token exposure
 
@@ -566,6 +598,11 @@ release gate preserve blockers; configuration alone cannot activate a provider.
 Mitigation: mutual affirmative consent from both users; owner-scoped minimal
 HICBC-relevant partner evidence (ANI and claimant status only); no repeated
 hypothetical/comparative/band probing; withdrawal/unlinking reverts the result.
+Stale/tampered/re-link replay is denied by the exact form binding and
+`permission_cycle`; four notices precede each separate affirmative permission.
+Current link/consent rows control use, never lifecycle events, which are
+notice-version-aware append-only evidence only. Privacy/retention/legal/target
+gates remain open and the feature remains disabled by default.
 Missing: documented lawful basis, transparency, minimisation, withdrawal/
 unlinking, deletion and anti-probing privacy review (`DATA-01`, `DATA-02`).
 
