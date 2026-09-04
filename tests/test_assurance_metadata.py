@@ -261,7 +261,20 @@ def test_build_metadata_records_identity_and_october_status(canonical_result):
     meta = GEN.build_metadata(canonical_result)
     assert meta["status"] == "deterministic_engine_remediation_gate_passed"
     assert meta["october_launch_candidate"]["status"] == "not_ready"
-    assert meta["october_launch_candidate"]["blocker_count"] == 16
+    assert meta["october_launch_candidate"]["blocker_count"] == 18
+    assert meta["october_launch_candidate"]["supported_calculation_families"] == [
+        "paye_multiple_employment",
+        "sole_trade",
+        "uk_property",
+        "foreign_property",
+        "dividends",
+        "savings",
+        "pension_treatment",
+        "student_loan_pgl",
+        "evidence_reconciliation",
+        "hicbc",
+        "blind_persons_allowance",
+    ]
     assert meta["engine_version"] == "4.0.0"
     assert meta["rules_version"] == "uk-2026-27-v4"
     assert meta.get("period_of_assessment") is None  # removed in favour of tax_year
@@ -275,6 +288,44 @@ def test_build_metadata_records_identity_and_october_status(canonical_result):
     assert meta["component_inventory"]
     assert meta["assurance_implementation_identity"]
     assert meta["canonical_result_digest"]
+
+
+def test_build_metadata_preserves_subscription_billing_blocker(canonical_result):
+    from reserved_west import release_gate as rg
+
+    expected = next(
+        blocker
+        for blocker in rg.OCTOBER_LAUNCH_COMPONENTS
+        if blocker["id"] == "subscription_billing"
+    )
+    meta = GEN.build_metadata(canonical_result)
+    actual = next(
+        blocker
+        for blocker in meta["october_launch_candidate"]["blocking_components"]
+        if blocker["id"] == "subscription_billing"
+    )
+
+    assert actual == expected
+    assert actual["state"] == "not_implemented"
+
+
+def test_build_metadata_preserves_poa_sa_customer_language_blocker(canonical_result):
+    from reserved_west import release_gate as rg
+
+    expected = next(
+        blocker
+        for blocker in rg.OCTOBER_LAUNCH_COMPONENTS
+        if blocker["id"] == "poa_sa_cash_obligation_customer_language"
+    )
+    meta = GEN.build_metadata(canonical_result)
+    actual = next(
+        blocker
+        for blocker in meta["october_launch_candidate"]["blocking_components"]
+        if blocker["id"] == "poa_sa_cash_obligation_customer_language"
+    )
+
+    assert actual == expected
+    assert actual["state"] == "evidence_missing"
 
 
 # ── F2: semantic validation of canonical evidence ─────────────────────────────
@@ -700,4 +751,3 @@ def test_rejects_correct_aggregate_with_incorrect_distribution(canonical_result,
     assert sum(c["classification_counts"].values()) == total  # aggregate unchanged
     with pytest.raises(RuntimeError, match="authoritative"):
         GEN.load_canonical_result(_write_result(tmp_path, r))
-

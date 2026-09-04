@@ -105,7 +105,7 @@ def test_exact_contract_rejects_duplicate_id():
 def test_october_inventory_is_complete_and_fail_closed():
     octo = rg.october_launch_candidate()
     assert octo["status"] == "not_ready"
-    assert octo["blocker_count"] == 16
+    assert octo["blocker_count"] == 18
     assert octo["blocker_count"] == len(octo["blocking_components"])
     ids = [b["id"] for b in octo["blocking_components"]]
     for required in (
@@ -118,16 +118,30 @@ def test_october_inventory_is_complete_and_fail_closed():
         "yapily_ais",
         "yapily_pis",
         "mtd_indication",
+        "poa_sa_cash_obligation_customer_language",
         "evidence_persistence_and_deletion",
         "privacy_security_review",
         "target_environment_testing",
         "operational_readiness",
+        "subscription_billing",
         "hicbc_manual_privacy_retention_legal",
         "hicbc_linked_consent_privacy_security",
         "hicbc_annual_integration_assurance",
     ):
         assert required in ids
-    assert octo["supported_calculation_families"]
+    assert octo["supported_calculation_families"] == [
+        "paye_multiple_employment",
+        "sole_trade",
+        "uk_property",
+        "foreign_property",
+        "dividends",
+        "savings",
+        "pension_treatment",
+        "student_loan_pgl",
+        "evidence_reconciliation",
+        "hicbc",
+        "blind_persons_allowance",
+    ]
 
 
 def test_october_inventory_validation_passes():

@@ -104,6 +104,8 @@ OCTOBER_LAUNCH_COMPONENTS = [
      "note": "Customer-authorised payment initiation is not end-to-end verified."},
     {"id": "mtd_indication", "state": "not_executable",
      "note": "Customer MTD indication is not independently assured for October."},
+    {"id": "poa_sa_cash_obligation_customer_language", "state": "evidence_missing",
+     "note": "The Founder-required Payments on Account/Self Assessment cash-obligation capability lacks the representative customer-language/UX evidence required by W2 terminal check 12."},
     {"id": "evidence_persistence_and_deletion", "state": "not_implemented",
      "note": "Evidence persistence/deletion controls are not implemented."},
     {"id": "privacy_security_review", "state": "evidence_missing",
@@ -112,8 +114,10 @@ OCTOBER_LAUNCH_COMPONENTS = [
      "note": "Suite has not been repeated in the target runtime."},
     {"id": "operational_readiness", "state": "not_implemented",
      "note": "Monitoring, backups, incident response and rollback are not evidenced."},
+    {"id": "subscription_billing", "state": "not_implemented",
+     "note": "FD-W10-001/002/003 require October subscription billing, but the W10 completion map remains at 0/8 complete slices and 0/13 terminal checks, with provider, policy, persistence, entitlement-enforcement, security, target and release evidence still open."},
     {"id": "hicbc_manual_privacy_retention_legal", "state": "privacy_retention_review_required",
-     "note": "HICBC manual partner-estimate privacy notice, lawful basis and retention schedule await founder/legal/privacy approval."},
+     "note": "The mandatory internal privacy/retention review for the HICBC manual partner-estimate journey is not yet accepted; external legal/privacy advice is required only if that review identifies a material unresolved issue."},
     {"id": "hicbc_linked_consent_privacy_security", "state": "privacy_retention_review_required",
      "note": "HICBC linked-account consent, cross-account authorisation and privacy/security evidence await independent review."},
     {"id": "hicbc_annual_integration_assurance", "state": "not_executable",
@@ -133,6 +137,8 @@ OCTOBER_CALCULATION_FAMILIES = [
     "pension_treatment",
     "student_loan_pgl",
     "evidence_reconciliation",
+    "hicbc",
+    "blind_persons_allowance",
 ]
 
 # Narrow gate status strings (purpose-specific, never "release_gate_passed").
