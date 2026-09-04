@@ -20,10 +20,10 @@ W9_TEXT = W9_MAP.read_text(encoding="utf-8")
 START = "<!-- W10-COMPLETION-MAP-RECONCILIATION-BEGIN -->"
 END = "<!-- W10-COMPLETION-MAP-RECONCILIATION-END -->"
 
-BASE = "22512f29ed17dbc9a13a8741891345eb54513d05"
-BASE_TREE = "155ac33d0ee11b8f7836ff82c0055d694313f57c"
+BASE = "7a1dbdbb27b2132d62c92ea4b965e81436f72f85"
+BASE_TREE = "64463d3d586c31fd8757907399132f73caa2455f"
 BASE_PARENTS = (
-    "a07e98698b534fe3f6ee38aa1edbc4b5a00dc45d",
+    "824b3060c950ce7f623d29aeadc53ede34b6c565",
 )
 Q1_Q2_CHECKPOINT = "2f0e8f0bb3377341b97dbfa760f9fb6aa529d3c9"
 Q1_Q2_INTEGRATION = "e78a3a4bfaef16357512ec01f4e7c9619932e95f"
@@ -89,6 +89,24 @@ EXPECTED_COMPONENTS = {
             "tests/test_w10_s2c_policy_evidence.py",
             "tests/test_w9_security_evidence.py",
         ),
+    },
+    "W10-S5D-product": {
+        "accepted_checkpoint": "88a3c879fbacad9e3f9feebe02764499f1f53daa",
+        "accepted_tree": "24f83e9560588676b1c89cd87194245a2f24580b",
+        "integration_commit": "824b3060c950ce7f623d29aeadc53ede34b6c565",
+        "integration_tree": "531790238038eee6f8bcea284dec2ee46f3ee443",
+        "paths": (
+            "docs/W10_S5D_PAID_ACCESS_GUARD.md",
+            "reserved/billing/paid_access_guard.py",
+            "tests/test_w10_paid_access_guard.py",
+        ),
+    },
+    "W10-S5D-lineage-correction": {
+        "accepted_checkpoint": "64600d9764209e2bdae8b2d72350c3a424fe4c98",
+        "accepted_tree": "64463d3d586c31fd8757907399132f73caa2455f",
+        "integration_commit": "7a1dbdbb27b2132d62c92ea4b965e81436f72f85",
+        "integration_tree": "64463d3d586c31fd8757907399132f73caa2455f",
+        "paths": ("tests/test_w10_paid_access_guard.py",),
     },
     "W10-S7A": {
         "accepted_checkpoint": "699aba7facddf935b0b71797bca0abf17628dff9",
@@ -305,6 +323,11 @@ EXPECTED_HISTORICAL_MAP_BINDINGS = (
         "tree": "bbd545baba7e93c160716df7246cec8152ca7944",
         "sha256": "f5c3e945e3b77a35c0716f8018deb19a831fbe3b10596236d46cdd5c45e0892e",
     },
+    {
+        "commit": "47d2ae9c1faf220789bc8ec75f7898c3dca4651a",
+        "tree": "5d9ab24a68832482ceb3314ca335b54f102ea4da",
+        "sha256": "19628e1c8638356d8250986830697e764be1aa0e9c02df958817607d2544fabf",
+    },
 )
 ALLOWED_CANDIDATE_PATHS = {
     "docs/W9_COMPLETION_MAP.md",
@@ -366,7 +389,7 @@ def test_candidate_is_confined_to_the_authorised_map_and_dedicated_test() -> Non
 
 def test_reconciliation_is_bound_to_exact_clean_merge_base_without_head_lock() -> None:
     data = reconciliation()
-    assert data["schema_version"] == "W10-completion-map/2026-09-04/reconciliation-7"
+    assert data["schema_version"] == "W10-completion-map/2026-09-04/reconciliation-8"
     assert data["reconciliation_base"] == {
         "commit": BASE,
         "tree": BASE_TREE,
@@ -576,6 +599,8 @@ def test_post_entitlement_components_bind_exact_integration_blobs_and_paths() ->
         "W10-S3A-hardening",
         "W9-W10-entitlement-evidence-reconciliation",
         "W9-evidence-package-history-correction",
+        "W10-S5D-product",
+        "W10-S5D-lineage-correction",
     )
 
     for name in names:
@@ -620,6 +645,38 @@ def test_s3d_records_exact_three_path_source_and_descendant_safe_correction() ->
             cwd=ROOT,
             check=True,
         )
+
+
+def test_s5d_records_exact_route_less_kernel_and_lineage_correction() -> None:
+    components = reconciliation()["components"]
+    product = components["W10-S5D-product"]
+    correction = components["W10-S5D-lineage-correction"]
+
+    assert tuple(product["paths_sha256"]) == (
+        "docs/W10_S5D_PAID_ACCESS_GUARD.md",
+        "reserved/billing/paid_access_guard.py",
+        "tests/test_w10_paid_access_guard.py",
+    )
+    assert tuple(correction["paths_sha256"]) == (
+        "tests/test_w10_paid_access_guard.py",
+    )
+    assert git_text("show", "-s", "--format=%P", correction["accepted_checkpoint"]) == (
+        product["integration_commit"]
+    )
+    assert git_text("show", "-s", "--format=%P", correction["integration_commit"]) == (
+        product["integration_commit"]
+    )
+
+    for statement in (
+        "route-less provider-neutral guard kernel",
+        "exact 25 paid endpoints",
+        "`FD-W10-003` lifecycle and `FD-W10-004` withdrawal consequences",
+        "no authoritative runtime adapter, persistence, provider admission, route wiring or live enforcement",
+        "S5 is therefore partial, not complete",
+        "0/8 slices complete",
+        "terminal gate remains 0/13",
+    ):
+        assert statement in TEXT
 
 
 def test_finite_slice_and_terminal_denominators_remain_structurally_exact() -> None:
@@ -755,7 +812,8 @@ def test_current_state_is_partial_non_authorising_and_keeps_every_gate_open() ->
         "implements only the disabled-first, owner-bound, no-transfer local decision",
         "no authenticated adapter, durable",
         "S5C implements five bounded",
-        "paid boundary is policy-settled, but no server-side paid-boundary or entitlement guard exists",
+        "S5D adds the independently reviewed route-less provider-neutral guard kernel",
+        "no authoritative runtime adapter, persistence, provider admission, route wiring or live enforcement",
         "No S2 component supplies runtime/provider/persistence/refund/enforcement/launch assurance",
         "S2 remains incomplete",
         "post-S2D/S5C reconciliation is integrated",
