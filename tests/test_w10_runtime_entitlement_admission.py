@@ -23,6 +23,8 @@ import reserved.billing.runtime_entitlement_admission as subject
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "91cb4c2f14bce089db1f92f656c8cbc1d85639b7"
 BASE_TREE = "a68a1120dfcc98295839bbea1f1c65c223376ec0"
+SOURCE_CHECKPOINT = "b458f2df20aa29aa73b1cc56de2126cb1c26405a"
+SOURCE_SENTINEL_CORRECTION_MESSAGE = "Bind W10 S3C source checkpoint identity"
 OWNED_PATHS = {
     "docs/W10_S3C_RUNTIME_ENTITLEMENT_ADMISSION.md",
     "reserved/billing/runtime_entitlement_admission.py",
@@ -235,12 +237,35 @@ def s5d_result(prior, current, *, at=None):
     return dict(s5d.validate_paid_access_decision(decision))
 
 
-def test_candidate_is_exact_three_uncommitted_paths_on_declared_base():
-    assert git_text("rev-parse", "HEAD") == BASE
-    assert git_text("rev-parse", "HEAD^{tree}") == BASE_TREE
+def test_candidate_or_source_checkpoint_is_exactly_scoped_to_declared_base():
+    head = git_text("rev-parse", "HEAD")
     changed = git_text("diff", "--name-only", "HEAD").splitlines()
     untracked = git_text("ls-files", "--others", "--exclude-standard").splitlines()
-    assert set(changed + untracked) <= OWNED_PATHS
+    if head == BASE:
+        assert set(changed + untracked) <= OWNED_PATHS
+        assert git_text("rev-parse", "HEAD^{tree}") == BASE_TREE
+        return
+    if head == SOURCE_CHECKPOINT:
+        assert git_text("rev-parse", "HEAD^") == BASE
+        assert set(
+            git_text(
+                "diff", "--name-only", f"{BASE}..{SOURCE_CHECKPOINT}"
+            ).splitlines()
+        ) == OWNED_PATHS
+        if changed or untracked:
+            assert changed == ["tests/test_w10_runtime_entitlement_admission.py"]
+            assert untracked == []
+        return
+    assert git_text("rev-parse", "HEAD^") == SOURCE_CHECKPOINT
+    assert len(git_text("rev-list", "--parents", "-n", "1", "HEAD").split()) == 2
+    assert git_text("show", "-s", "--format=%s", "HEAD") == (
+        SOURCE_SENTINEL_CORRECTION_MESSAGE
+    )
+    assert git_text("diff", "--name-only", f"{SOURCE_CHECKPOINT}..HEAD").splitlines() == [
+        "tests/test_w10_runtime_entitlement_admission.py"
+    ]
+    assert changed == []
+    assert untracked == []
 
 
 def test_exact_call_shapes_are_keyword_only_and_pair_is_s5d_compatible():
