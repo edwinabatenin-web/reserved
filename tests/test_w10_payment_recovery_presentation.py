@@ -479,7 +479,7 @@ def test_evidence_binds_exact_authority_and_baseline_without_claiming_admission(
         assert required in evidence.lower()
 
 
-def test_candidate_changes_only_three_new_s6e_paths():
+def test_package_scope_is_bounded_before_and_after_checkpoint():
     changed = subprocess.run(
         ["git", "diff", "--name-only", "HEAD"],
         cwd=ROOT,
@@ -494,4 +494,45 @@ def test_candidate_changes_only_three_new_s6e_paths():
         capture_output=True,
         text=True,
     ).stdout.splitlines()
-    assert set(changed + untracked) == ALLOWED_PATHS
+    candidate_paths = set(changed + untracked)
+    if candidate_paths:
+        assert candidate_paths <= ALLOWED_PATHS
+        assert all((ROOT / path).is_file() for path in ALLOWED_PATHS)
+        return
+
+    introduction_commits = {
+        subprocess.run(
+            [
+                "git",
+                "log",
+                "--diff-filter=A",
+                "-1",
+                "--format=%H",
+                "--",
+                path,
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        for path in ALLOWED_PATHS
+    }
+    assert len(introduction_commits) == 1
+    introduction_commit = introduction_commits.pop()
+    assert introduction_commit
+    introduced_paths = subprocess.run(
+        [
+            "git",
+            "diff-tree",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            introduction_commit,
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert set(introduced_paths) == ALLOWED_PATHS
