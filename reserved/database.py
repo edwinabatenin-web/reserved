@@ -1623,6 +1623,34 @@ def get_hicbc_estimate(user_id: int, tax_year: str) -> dict | None:
     return dict(row) if row else None
 
 
+@contextmanager
+def hicbc_manual_preview_read(user_id: int, tax_year: str):
+    """Serialise a manual preview against owner/year evidence and link changes.
+
+    Hold the short transaction through calculation: withdrawal/relink and
+    estimate changes cannot commit between admission and result construction.
+    No partner financial row is read and no data is written. Any active link,
+    including ambiguous/multiple or unconsented links, blocks this manual path.
+    """
+    if type(user_id) is not int or user_id <= 0 or type(tax_year) is not str:
+        raise ValueError("Invalid preview owner/year")
+    with _connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        owner = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+        if owner is None:
+            raise ValueError("Invalid preview owner/year")
+        row = conn.execute(
+            "SELECT * FROM hicbc_estimates WHERE user_id = ? AND tax_year = ?",
+            (user_id, tax_year),
+        ).fetchone()
+        linked = conn.execute(
+            "SELECT 1 FROM hicbc_links WHERE (user_low_id = ? OR user_high_id = ?) "
+            "AND tax_year = ? AND status = ? LIMIT 1",
+            (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE),
+        ).fetchone()
+        yield (dict(row) if row else None), linked is not None
+
+
 def delete_hicbc_estimate(user_id: int, tax_year: str) -> bool:
     """Delete the HICBC partner estimate for ``user_id``/``tax_year``.
 

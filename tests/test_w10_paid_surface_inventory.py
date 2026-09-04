@@ -55,6 +55,7 @@ EXPECTED_CLASSIFICATION_MEMBERS = {
         "web.robots_txt",
     },
     "authenticated_product_candidate_pending_founder_decision": {
+        "hicbc.annual_preview",
         "hicbc.delete_estimate",
         "hicbc.index",
         "hicbc.link_accept",
@@ -165,6 +166,7 @@ EXPECTED_GUARD_MEMBERS = {
         "web.settings",
     },
     "production_404_nonproduction_customer_session": {
+        "hicbc.annual_preview",
         "v2.sandbox_checklist",
     },
 }
@@ -286,7 +288,7 @@ def test_exact_endpoint_classifications_and_category_counts_are_bound():
     }
     assert expected_counts == {
         "public_infrastructure_auth_legal_support": 14,
-        "authenticated_product_candidate_pending_founder_decision": 25,
+        "authenticated_product_candidate_pending_founder_decision": 26,
         "billing_purchase_return_recovery_candidate": 2,
         "internal_admin_unknown_requiring_reconciliation": 11,
     }
@@ -325,8 +327,8 @@ def test_inventory_exactly_matches_registry_with_optional_blueprint_on(monkeypat
         if route["registration"] == "hicbc_feature_enabled"
     ]
     assert actual == expected
-    assert len(conditional) == data["route_counts"]["hicbc_feature_enabled_additional"] == 8
-    assert len(actual) == data["route_counts"]["hicbc_feature_enabled_total"] == 52
+    assert len(conditional) == data["route_counts"]["hicbc_feature_enabled_additional"] == 9
+    assert len(actual) == data["route_counts"]["hicbc_feature_enabled_total"] == 53
 
 
 def test_customer_and_founder_decorator_guards_match_inventory():

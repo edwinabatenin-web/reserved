@@ -30,9 +30,11 @@ import json
 import logging
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, g, jsonify, redirect, render_template, request, session, url_for
 
-from reserved.auth import require_auth
+from reserved.auth import require_auth, is_production_environment
+from reserved.config import hicbc_enabled, hicbc_annual_preview_enabled
+from reserved.services.hicbc_annual_source_runtime import own_ani_from_manual_annual
 from reserved.database import (
     HICBC_NOTICE_VERSION,
     accept_hicbc_link_invitation,
@@ -44,6 +46,7 @@ from reserved.database import (
     get_hicbc_link_permission_view,
     get_profile_by_user,
     has_mutual_hicbc_link_consent,
+    hicbc_manual_preview_read,
     record_hicbc_link_consent_from_binding,
     revoke_hicbc_link,
     save_hicbc_estimate,
@@ -459,6 +462,12 @@ def build_responsibility(user_id: int, tax_year: str) -> dict:
     raw_profile = get_profile_by_user(user_id)
     user_ani = _customer_ani_from_row(raw_profile, tax_year)
     row = get_hicbc_estimate(user_id, tax_year)
+    linked_evidence = _linked_partner_evidence(user_id, tax_year)
+    return _responsibility_from_sources(user_ani, row, linked_evidence, tax_year)
+
+
+def _responsibility_from_sources(user_ani, row, linked_evidence, tax_year):
+    """Existing evidence semantics shared by legacy and bounded annual callers."""
 
     has_partner = None
     manual_evidence = None
@@ -472,7 +481,6 @@ def build_responsibility(user_id: int, tax_year: str) -> dict:
         if has_partner is True:
             manual_evidence = _partner_evidence_from_row(row)
 
-    linked_evidence = _linked_partner_evidence(user_id, tax_year)
     if linked_evidence is not None:
         has_partner = True  # an active, mutually consented link affirms a partner
 
@@ -539,6 +547,42 @@ def result_json():
     tax_year = configured_tax_year()
     built = build_responsibility(g.user_id, tax_year)
     return jsonify(built["view"])
+
+
+def _unique_preview_fields(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("Duplicate annual field")
+        value[key] = item
+    return value
+
+
+@hicbc.post("/annual-preview")
+@require_auth
+def annual_preview():
+    """Disabled-first, non-production manual own-ANI preview; no persistence."""
+    if (is_production_environment() or not hicbc_enabled()
+            or not hicbc_annual_preview_enabled()):
+        abort(404)
+    tax_year = configured_tax_year()
+    closed = _responsibility_from_sources(None, None, None, tax_year)["view"]
+    if (request.args or not request.is_json or request.content_length is None
+            or request.content_length > 8192):
+        return jsonify(closed), 400
+    try:
+        payload = json.loads(request.get_data(), object_pairs_hook=_unique_preview_fields)
+        with hicbc_manual_preview_read(g.user_id, tax_year) as (row, active_link):
+            if active_link:
+                # Arbitrary first-person scenarios must not probe linked finances.
+                # No linked operand or permission detail is read or returned.
+                return jsonify(closed), 409
+            own_ani = own_ani_from_manual_annual(payload, tax_year)
+            view = _responsibility_from_sources(own_ani, row, None, tax_year)["view"]
+            return jsonify(view)
+    except (ValueError, TypeError, InvalidOperation, RecursionError):
+        # Fixed existing indeterminate view: no reflected facts or exception text.
+        return jsonify(closed), 400
 
 
 @hicbc.post("/estimate")

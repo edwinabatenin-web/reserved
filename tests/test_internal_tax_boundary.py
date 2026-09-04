@@ -163,6 +163,9 @@ def _handoff_call_target(value: ast.expr) -> str:
 
 
 def test_internal_annual_components_are_not_imported_by_customer_layers():
+    permitted_hicbc_source = ROOT / "reserved/services/hicbc_annual_source_runtime.py"
+    assert permitted_hicbc_source.is_file() and not permitted_hicbc_source.is_symlink()
+    assert permitted_hicbc_source.resolve(strict=True) == permitted_hicbc_source
     permitted_handoff = (
         ROOT / "reserved" / "services" / "w8_annual_cash_customer_handoff.py"
     )
@@ -182,6 +185,8 @@ def test_internal_annual_components_are_not_imported_by_customer_layers():
             text = path.read_text(errors="ignore")
             if path == permitted_handoff:
                 violations.extend(_named_annual_cash_handoff_violations(text))
+            elif path == permitted_hicbc_source:
+                violations.extend(_named_hicbc_source_violations(text))
             else:
                 for marker in INTERNAL_MODULE_MARKERS:
                     if marker in text:
@@ -190,6 +195,77 @@ def test_internal_annual_components_are_not_imported_by_customer_layers():
         "Internal annual components require separate persistence/API/customer "
         "approval before exposure: " + "; ".join(violations)
     )
+
+
+def _named_hicbc_source_violations(source):
+    """One named annual-engine caller, never a directory-wide exception."""
+    allowed_imports = {
+        ("decimal", "Decimal", None),
+        ("reserved.engines.integrated_annual_position", "calculate_annual_position", None),
+    }
+    allowed_calls = {
+        "re.compile", "frozenset", "type", "set", "ValueError", "_MONEY.fullmatch",
+        "calculate_annual_position", "ani.is_finite",
+    }
+    violations = []
+    tree = ast.parse(source)
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if [(a.name, a.asname) for a in node.names] != [("re", None)]:
+                violations.append("unauthorised import")
+        if isinstance(node, ast.ImportFrom):
+            if node.level or any((node.module, a.name, a.asname) not in allowed_imports for a in node.names):
+                violations.append("unauthorised from-import")
+        if isinstance(node, ast.Call) and _handoff_call_target(node.func) not in allowed_calls:
+            violations.append("unauthorised call")
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            if node.value.id == "result" and node.attr not in {"adjusted_net_income", "unsupported_families"}:
+                violations.append("annual result exposure")
+        if isinstance(node, ast.Return) and ast.unparse(node.value) != "ani":
+            violations.append("only own ANI may leave source")
+        if isinstance(node, ast.Name) and node.id in {"getattr", "globals", "locals", "__builtins__"}:
+            violations.append("dynamic access")
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            parent = parents.get(node)
+            if node.id == "result" and not isinstance(parent, ast.Attribute):
+                violations.append("annual result escaped into alias or operand")
+            if node.id == "calculate_annual_position" and not (
+                isinstance(parent, ast.Call) and parent.func is node
+            ):
+                violations.append("annual producer aliased")
+    return violations
+
+
+def test_named_hicbc_source_rejects_extra_internal_calls_and_exposure():
+    for mutation in (
+        "from reserved.engines.integrated_annual_position import AnnualPositionResult",
+        "from reserved.engines import integrated_annual_position as engine",
+        "from .hidden import calculate_annual_position",
+        "import importlib", "__import__('os')", "getattr(result, 'total_liability')",
+        "jsonify(result)", "result.total_liability", "leak = result.__dict__",
+        "def leak():\n return result", "other = calculate_annual_position\nother({})",
+        "def leak():\n ani = result\n return ani",
+    ):
+        assert _named_hicbc_source_violations(mutation), mutation
+
+
+def test_manual_annual_source_has_only_the_named_request_caller():
+    source = ROOT / "reserved/services/hicbc_annual_source_runtime.py"
+    caller = ROOT / "reserved/web/hicbc.py"
+    for path in (ROOT / "reserved").rglob("*.py"):
+        if path in {source, caller}:
+            continue
+        text = path.read_text()
+        assert "own_ani_from_manual_annual" not in text, path
+        assert "hicbc_annual_source_runtime" not in text, path
+    tree = ast.parse(caller.read_text())
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Name) and node.func.id == "own_ani_from_manual_annual"]
+    preview = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                   and node.name == "annual_preview")
+    assert len(calls) == 1 and calls[0] in list(ast.walk(preview))
+    assert ast.unparse(calls[0]) == "own_ani_from_manual_annual(payload, tax_year)"
 
 
 def test_named_annual_cash_handoff_rejects_expanded_imports_and_calls():

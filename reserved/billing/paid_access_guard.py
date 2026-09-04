@@ -62,6 +62,7 @@ PAID_ENDPOINTS = (
     "hicbc.link_invite",
     "hicbc.link_revoke",
     "hicbc.result_json",
+    "hicbc.annual_preview",
 )
 
 

@@ -16,6 +16,11 @@ def hicbc_enabled() -> bool:
     return _parse_hicbc_enabled(os.environ.get("HICBC_ENABLED", ""))
 
 
+def hicbc_annual_preview_enabled() -> bool:
+    """Separate disabled-first switch, never inferred from the HICBC gate."""
+    return os.environ.get("HICBC_ANNUAL_PREVIEW_ENABLED", "") == "1"
+
+
 class Config:
     # ── Core ──────────────────────────────────────────────────────────────────
     SECRET_KEY        = os.environ.get("SESSION_SECRET", "reserved-local-preview-only")

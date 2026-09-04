@@ -3,7 +3,7 @@
 ## Status and scope
 
 This package supplies a pure, provider-neutral, route-less paid-access decision
-kernel for the exact W10-S2F/S5A paid boundary. It covers 25 paid endpoints in
+kernel for the exact W10-S2F/S5A paid boundary. It covers 26 paid endpoints in
 the accepted S5A class
 `authenticated_product_candidate_pending_founder_decision` and produces a
 deterministic allow/deny candidate for one endpoint, authenticated owner,
@@ -15,6 +15,13 @@ other provider, read or write a database, persist a decision, activate billing,
 or create production/launch authority. It does not complete W10-S3 or W10-S5.
 
 Source identity:
+
+The source checkpoints below remain historical S5D provenance. The later
+HICBC annual-source candidate at base `5d91ae0c83bf696cb650d90daa8d25417e466157`
+adds only the new endpoint's classification and matching inventory tests; it
+does not claim to wire this kernel into that endpoint. Original source-history
+assertions are preserved, and the exact candidate path allowance applies only
+to the named dirty implementation branch/base, not clean descendants.
 
 - base commit: `6f3cb30d1bedcebe930084d56c64ab83ff719d5a`;
 - base tree: `ef36688a8bd07a58b98aa54412cd14b1d7c7d86c`;
@@ -56,6 +63,8 @@ The exact paid set is:
 23. `hicbc.link_invite`
 24. `hicbc.link_revoke`
 25. `hicbc.result_json`
+26. `hicbc.annual_preview` — independently gated non-production manual source;
+    classification only, not runtime entitlement enforcement.
 
 The public/auth/legal/support class, billing purchase/return/recovery class and
 the separately reconciled internal/admin/closed class are deliberately absent.

@@ -18,7 +18,9 @@ and live paid-entitlement enforcement remain **not started**, and W10-S5
 remains incomplete. S5A is inventory evidence only.
 
 The registry has 44 always-registered rules. Enabling the disabled-by-default
-HICBC feature gate adds 8 owner-authenticated rules, producing 52 total. Flask's
+HICBC feature gate adds 9 owner-authenticated rules, producing 53 total. The
+annual-preview rule additionally requires its own strict switch and denies
+production; its paid classification does not wire runtime entitlement. Flask's
 implicit `HEAD` and `OPTIONS` methods are omitted; the listed methods are the
 declared customer-visible method set.
 
@@ -61,12 +63,12 @@ only when `HICBC_ENABLED` is explicitly enabled.
   "route_hardening_changes": true,
   "route_counts": {
     "always": 44,
-    "hicbc_feature_enabled_additional": 8,
-    "hicbc_feature_enabled_total": 52
+    "hicbc_feature_enabled_additional": 9,
+    "hicbc_feature_enabled_total": 53
   },
   "classification_counts": {
     "public_infrastructure_auth_legal_support": 14,
-    "authenticated_product_candidate_pending_founder_decision": 25,
+    "authenticated_product_candidate_pending_founder_decision": 26,
     "billing_purchase_return_recovery_candidate": 2,
     "internal_admin_unknown_requiring_reconciliation": 11
   },
@@ -74,10 +76,10 @@ only when `HICBC_ENABLED` is explicitly enabled.
     "reserved/__init__.py": "5f35d6d88542218cd8d5dbdac9662ef6711768ae5a3749a92d779325b42a2f34",
     "reserved/api/routes.py": "9d865764b222c0985b27c23707a7cea8a8327152795deb14e91a27feef081364",
     "reserved/auth.py": "adfe50a348a94e1f1a7405a41d92ec39b5d1a9db8c92b64222410701af39ae91",
-    "reserved/config.py": "707e8fedb9b647fe86eff3158befed28d837640b46e84636369d9cdeffb9194a",
+    "reserved/config.py": "1156bc1d25ba6a65f3a482ebd8802c41e1053a70695cff612486b2b636d4d062",
     "reserved/extensions.py": "ef35d3ec969e299a1c8221b5636bcf44590189175b0ad0c83e88d38ded35b2a0",
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
-    "reserved/web/hicbc.py": "5f653d3d0567bbc2ec8ecf642128248bce666b541197b8908b10a12a518fb5fc",
+    "reserved/web/hicbc.py": "b56bbb2172852ede8bf8b184402cbd4b50b9d35663a2a9680a1a163bee7a07ca",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
     "reserved/web/v2.py": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228"
   },
@@ -601,6 +603,16 @@ only when `HICBC_ENABLED` is explicitly enabled.
       "csrf": "not_applicable",
       "classification": "authenticated_product_candidate_pending_founder_decision",
       "note": "Feature-gated authenticated HICBC result API."
+    },
+    {
+      "endpoint": "hicbc.annual_preview",
+      "rule": "/v2/hicbc/annual-preview",
+      "methods": ["POST"],
+      "registration": "hicbc_feature_enabled",
+      "guard": "production_404_nonproduction_customer_session",
+      "csrf": "global",
+      "classification": "authenticated_product_candidate_pending_founder_decision",
+      "note": "Separate strict annual-preview switch; active linked accounts refused. No runtime paid guard or annual-total publication."
     }
   ]
 }
