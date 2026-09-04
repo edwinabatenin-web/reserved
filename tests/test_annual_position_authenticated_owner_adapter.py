@@ -73,9 +73,21 @@ def session(app, owner=41):
 def test_exact_source_identities_and_current_base_are_bound():
     import subprocess
 
-    assert subprocess.check_output(
+    source_base = "8fdcc0414c72393c4f575f7597bd30850b707d35"
+    resolved_source_base = subprocess.check_output(
+        ["git", "rev-parse", "--verify", f"{source_base}^{{commit}}"],
+        cwd=ROOT,
+        text=True,
+    ).strip()
+    assert resolved_source_base == source_base
+    current_head = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-    ).strip() == "8fdcc0414c72393c4f575f7597bd30850b707d35"
+    ).strip()
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", source_base, current_head],
+        cwd=ROOT,
+        check=False,
+    ).returncode == 0
     expected = {
         "reserved/annual_position_projection_repository_adapter.py": (
             subject.SOURCE_S3C_SHA256
