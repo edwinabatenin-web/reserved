@@ -5,13 +5,15 @@ and does not import fixtures or helpers from any other test module.  It proves
 coexistence and fail-closed behaviour on the existing integrated lineage. The
 provider-to-tax handoff is asserted to be confined to its exact named boundary
 rather than fabricated or globally absent; the presentation/persistence and
-geography-admission handoffs remain recorded as absent non-passing gates.
+geography-admission handoffs are exercised at their integrated bounded states,
+while physical persistence and provider activation remain non-passing gates.
 """
 
 from __future__ import annotations
 
 import ast
 import re
+import subprocess
 from dataclasses import dataclass, fields
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -717,6 +719,78 @@ def test_w8_terminal_gate_is_distinct_from_historical_s2_assurance():
         "integrated", "launch_evidence_complete", "launch_ready",
     ):
         assert f"`{assurance_state}`" in text
+
+
+def test_w8_map_records_post_s3d_sources_without_advancing_primary_states():
+    text = _w8_map_text()
+    normalised = " ".join(text.split())
+    assert "Evidence cut-off: 4 September 2026" in text
+    assert "7fcc5be531c5a4331e6a7ff65ce18a33e1772766" in text
+    expected_ancestors = (
+        "c489c25bab669c64e1c11d28caf29fcde9678fdd",
+        "110a90043dfc770c70059482be9d7b7e237749a6",
+        "5f5a948891e1e812a5c74ff6c7266d153bb492fa",
+        "584ff7f31009913706d3427c38a986bbfa6799d2",
+        "5f7b76408a5d72b71be71d0e5d6c7a6edde260b7",
+        "b8ce971f4dc6b8a1ced10e9b490be68d481752de",
+    )
+    for commit in expected_ancestors:
+        assert commit in text
+        assert subprocess.run(
+            ["git", "merge-base", "--is-ancestor", commit, "HEAD"],
+            cwd=_root(),
+            check=False,
+            capture_output=True,
+            text=True,
+        ).returncode == 0, f"documented source {commit} must be in current ancestry"
+
+    assert "W9-S3A-D non-durable" in text
+    assert "S3D supplies the signed-session runtime owner" in text
+    assert (
+        "does not authenticate or authorise the separately supplied business reference"
+        in normalised
+    )
+    assert (
+        "S6E payment-recovery, S6F cancellation, S6G initial pending/failed and S6H"
+        in normalised
+    )
+    assert (
+        "Neither this evidence nor the W9-S3A-D chain advances a W8 delivery-slice "
+        "primary state"
+        in normalised
+    )
+    assert "future authenticated runtime-owner adapter" not in text
+
+
+def test_w8_map_preserves_post_s3d_gates_and_finite_completion_counts():
+    text = _w8_map_text()
+    for gate in (
+        "authenticated owner-to-business membership",
+        "physical datastore/schema and migration",
+        "atomic durable I/O",
+        "lifecycle/legal",
+        "encryption/key-custody",
+        "target-runtime evidence",
+        "provider-custody",
+        "authenticated-transport",
+        "provider sandbox",
+        "Founder authority for merge, release and go-live",
+    ):
+        assert gate in text
+
+    assert "Progress at the evidence cut-off is **2/5 delivery slices (40%)**" in text
+    terminal = _w8_map_section("Overall W8 terminal completion gate")
+    terminal_numbers = re.findall(r"(?m)^(\d+)\.", terminal)
+    assert terminal_numbers == [str(number) for number in range(1, 11)]
+    assert "The terminal gate is **not passed**" in terminal
+    for human_gate in (
+        "human",
+        "customer-language",
+        "customer-journey",
+        "accessibility",
+    ):
+        assert human_gate in terminal
+    assert "Provider and geography evidence states do not advance" in text
 
 
 # ── Local helpers (production contracts only) ────────────────────────────────

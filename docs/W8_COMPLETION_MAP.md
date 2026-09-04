@@ -1,7 +1,8 @@
 # W8 completion map — progressive integration
 
-Evidence cut-off: 3 September 2026. Current integration identity:
-`be978a32a55954d6fe2888c830253a35fbf9852b`. This finite map governs
+Evidence cut-off: 4 September 2026. Current integration identity:
+`b8ce971f4dc6b8a1ced10e9b490be68d481752de` (tree
+`7fcc5be531c5a4331e6a7ff65ce18a33e1772766`). This finite map governs
 completion of W8; earlier W8-S2 planning evidence does not override the
 subsequently reviewed and integrated production handoffs recorded below.
 
@@ -41,7 +42,7 @@ bounded assurance only and never advance a delivery slice.
 | Evidence boundary | Evidence state |
 |---|---|
 | Accounting evidence through annual tax and annual-to-cash composition, including source identity and duplicate/double-count controls | integrated |
-| Approved annual/cash result through the non-persistent customer/API boundary, including missing, stale, conflicting and discrepant evidence | integrated sub-boundary; persistence remains open |
+| Approved annual/cash result through the customer/API boundary and bounded W9-S3A-D non-durable contract/adapter chain, including missing, stale, conflicting and discrepant evidence | integrated sub-boundary; persistence remains open |
 | Supported-geography admission and exact geography provenance through the customer result | integrated |
 | HICBC ambiguity is non-actionable and MTD incomplete evidence fails closed | synthetic_coexistence_evidence |
 | Reviewed FreeAgent invoice record, Xero invoice/observation/adapter result and QuickBooks invoice observation/adapter result coexist in one synthetic process | synthetic_coexistence_evidence |
@@ -51,6 +52,31 @@ bounded assurance only and never advance a delivery slice.
 The provider evidence proves only each unequal reviewed public boundary. It
 does not claim a FreeAgent canonical adapter, enabled transport, credential,
 network, customer or production capability.
+
+The W9-S3 persistence chain is now bounded through four independently reviewed
+and integrated non-durable layers: S3A at
+`c489c25bab669c64e1c11d28caf29fcde9678fdd`, S3B at
+`110a90043dfc770c70059482be9d7b7e237749a6`, S3C integrated at
+`5f5a948891e1e812a5c74ff6c7266d153bb492fa`, and S3D integrated at
+`5f7b76408a5d72b71be71d0e5d6c7a6edde260b7`, followed by the exact source-
+ancestry correction at `b8ce971f4dc6b8a1ced10e9b490be68d481752de`.
+S3D supplies the signed-session runtime owner to S3C; it does not authenticate
+or authorise the separately supplied business reference. The chain remains
+pure/in-memory and does not select or operate a physical datastore, schema,
+migration or durable I/O boundary.
+
+Accepted early-W8/W10 lifecycle-composition evidence is integrated at
+`584ff7f31009913706d3427c38a986bbfa6799d2`. It composes the detached S6E
+payment-recovery, S6F cancellation, S6G initial pending/failed and S6H
+initial-paid presentation contracts through test-only projection helpers. It
+is local compatibility evidence only: it supplies no provider admission,
+persistence, runtime access, customer delivery, target, accessibility or
+release assurance. Neither this evidence nor the W9-S3A-D chain advances a W8
+delivery-slice primary state.
+
+Provider and geography evidence states do not advance at this cut-off. The
+previously recorded provider and supported-geography boundaries retain their
+existing state and every external/activation gate remains open.
 
 ## W8 delivery slices
 
@@ -62,7 +88,7 @@ denominator.
 | # | Smallest coherent delivery slice and why needed | Current state |
 |---|---|---|
 | 1 | Provider-neutral canonical accounting input → annual-tax handoff; joins reviewed canonical accounting evidence to the production calculation boundary without source loss or double counting | **integrated and independently reviewed**; contextual handoff is present at `5c17c62...`, with the current exact geography/provenance reinforcement at `33aa569...`; provider acquisition remains slice 4 |
-| 2 | Approved annual/cash result → customer/API/persistence handoff; makes the integrated result usable while keeping internal tax objects non-public | **partial**; the public result/API, annual-cash customer handoff and tax-year binding are integrated and independently reviewed through `a3164e7...`, but approved durable persistence is intentionally absent pending the W9 data-lifecycle boundary |
+| 2 | Approved annual/cash result → customer/API/persistence handoff; makes the integrated result usable while keeping internal tax objects non-public | **partial**; the public result/API, annual-cash customer handoff and tax-year binding are integrated and independently reviewed through `a3164e7...`; W9-S3A-D now supplies a bounded non-durable projection/repository/adapter/runtime-owner chain through `b8ce971...`, but owner-to-business membership, physical persistence and its lifecycle evidence remain open |
 | 3 | Enforced geography admission before actionable calculation; rejects Scotland/Scottish and every unsupported jurisdiction instead of silently ignoring geography facts | **integrated and independently reviewed** at `33aa569...`; canonical artefact parity is corrected and passing at `be978a3...` |
 | 4 | Enabled reviewed provider adapters and bounded customer journeys; provides the real acquisition path while preserving each provider's unequal reviewed contract | **partial, not integrated as an enabled journey**; provider contracts and several network-inert adapters are reviewed, but credential custody, authenticated transport, provider sandbox evidence and deliberate enablement remain open |
 | 5 | End-to-end multi-provider/mixed-income assembly over slices 1–4; proves the complete W8 production path without duplicate economic events | **planned; correctly waiting for completed slices 2 and 4** |
@@ -76,9 +102,12 @@ round any remaining slice up.
 ## Dependencies and authority
 
 - Slices 1 and 3 have satisfied their local implementation, review and
-  integration dependencies on the current lineage. Slice 2's non-persistent
-  customer/API boundary is integrated, but its persistence boundary depends on
-  the approved W9 durable-data lifecycle. Slice 4 depends on the separately
+  integration dependencies on the current lineage. Slice 2's customer/API and
+  bounded W9-S3A-D non-durable boundaries are integrated, but completion still
+  depends on explicit authenticated owner-to-business membership; an approved
+  physical datastore/schema and migration; atomic durable I/O; and accepted
+  lifecycle/legal, retention/deletion, encryption/key-custody, access-audit,
+  recovery and target-runtime evidence. Slice 4 depends on the separately
   governed provider-custody, authenticated-transport, sandbox and enablement
   gates recorded in the FreeAgent, Xero and QuickBooks completion maps. Slice 5
   depends on completed slices 2 and 4 and must not simulate either dependency
@@ -95,8 +124,9 @@ round any remaining slice up.
 
 - Slices 1 and 3 are complete at the integrated-engineering level and must
   remain regression-protected rather than reopened for ordinary later work.
-  Slice 2's reviewed non-persistent handoff must remain protected while W9 owns
-  the missing durable-data decision and implementation.
+  Slice 2's reviewed public and W9-S3A-D non-durable handoffs must remain
+  protected while W9 owns the missing business-membership, physical datastore,
+  durable implementation and lifecycle/target evidence.
 - Provider-specific work inside slice 4 may run in parallel when it owns
   separate provider modules/tests. Changes to shared accounting contracts,
   canonical identity/normalisation or fixtures are serial and require one
@@ -124,11 +154,12 @@ excludes unbounded provider/Founder waits.
 | 5 | 8–14 working days | 2–4 weeks | 7–12 working days |
 
 The original effort ranges are retained as historical planning evidence. The
-remaining W8 boundary spans the persistence remainder of slice 2 plus slices
+remaining W8 boundary spans the physical-persistence remainder of slice 2 plus slices
 4–5: at most **28–53 working days** of the original active estimate before
 crediting the already-complete non-persistent S2 work. Slice 4's provider and
-security queues and W9's persistence decision are the dominant elapsed-time
-risks. Completed work is not rebooked as remaining effort.
+security queues and W9's business-membership, datastore, lifecycle and target
+evidence are the dominant elapsed-time risks. Completed work is not rebooked
+as remaining effort.
 
 ## Geography closure
 
@@ -155,8 +186,9 @@ these finite checks pass on one exact candidate:
 4. Geography admission rejects Scotland/Scottish and all other unsupported
    geography before any actionable result, with accepted scope positively
    tested.
-5. Customer/API/persistence behavior uses only the approved public result and
-   preserves the internal-tax non-exposure boundary.
+5. Customer/API/persistence behavior uses only the approved public result,
+   preserves the internal-tax non-exposure boundary and binds every durable
+   access to authenticated owner-to-business membership.
 6. Target-runtime and applicable provider-sandbox evidence passes with approved
    credentials and no synthetic-to-live inference.
 7. Privacy and security review accepts data handling, secrets, access control,
@@ -164,7 +196,9 @@ these finite checks pass on one exact candidate:
 8. Full canonical regression and exact release-artifact parity pass on the
    current lineage; `october_launch_candidate()` no longer reports relevant W8
    blockers.
-9. Independent final review accepts the combined evidence and residual risks.
+9. Independent final review accepts the combined evidence and residual risks;
+   applicable human, customer-language, customer-journey and accessibility
+   evidence is accepted for the exact candidate.
 10. Founder authority for merge, release and go-live is explicit and traceable.
 
 ## Historical W8-S2 assurance package
@@ -176,7 +210,10 @@ the reviewed production evidence for slices 1–3 and do not advance slices 4–
 ## Immediate next action
 
 Keep slices 1 and 3 and the non-persistent S2 handoff regression-protected.
-Complete slice 2 persistence only through W9's approved durable-data lifecycle.
+Preserve the W9-S3A-D non-durable chain; do not redispatch a generic runtime-
+owner adapter. Complete slice 2 only through separately reviewed owner-to-
+business membership, physical datastore/schema/migration, durable I/O and the
+remaining lifecycle/legal/custody/target-evidence gates.
 Resume slice 4 only through the exact provider completion-map entry gates:
 approved credential/token custody, authenticated disabled-first transport,
 provider sandbox evidence and bounded customer journeys. Do not invent a
