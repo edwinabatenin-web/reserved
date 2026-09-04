@@ -30,10 +30,10 @@ ALLOWED_NEW_PATHS = {
 
 # ── Mandatory structured IDs ──────────────────────────────────────────────────
 
-FLOW_IDS = [f"FLOW-{i:02d}" for i in range(1, 13)]
-TRUST_BOUNDARY_IDS = [f"TB-{i:02d}" for i in range(1, 12)]
-THREAT_IDS = [f"TH-{i:02d}" for i in range(1, 19)]
-DECISION_IDS = [f"DEC-{i:02d}" for i in range(1, 12)]
+FLOW_IDS = [f"FLOW-{i:02d}" for i in range(1, 16)]
+TRUST_BOUNDARY_IDS = [f"TB-{i:02d}" for i in range(1, 15)]
+THREAT_IDS = [f"TH-{i:02d}" for i in range(1, 22)]
+DECISION_IDS = [f"DEC-{i:02d}" for i in range(1, 15)]
 
 FLOW_FIELDS = [
     "Data class",
@@ -66,8 +66,22 @@ DECISION_FIELDS = [
 
 CANONICAL_BLOCKER_REFERENCES = [
     "FD-W10-001",
+    "FD-W10-002",
+    "FD-W10-003",
+    "FD-W9-001",
     "W9_COMPLETION_MAP.md",
     "W9_SECURITY_OPERATIONS_GAP_REGISTER.md",
+    "W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md",
+    "STRIPE_CONNECT_SPEC.md",
+    "W9_PROVIDER_OUTAGE_DEGRADATION_CONTRACT.md",
+    "W9_S4C_MULTI_PROVIDER_OUTAGE_EVIDENCE.md",
+    "HICBC_PARTNER_SUPPORT.md",
+    "MTD_SCOPE_INDICATION_EVIDENCE.md",
+    "MTD_SCOPE_INDICATION_PRESENTATION_EVIDENCE.md",
+    "W8_S3_GEOGRAPHY_ADMISSION_EVIDENCE.md",
+    "W8_S3B_GEOGRAPHY_PROVENANCE_HANDOFF_EVIDENCE.md",
+    "reserved/billing/contracts.py",
+    "reserved/providers/payments/stripe_connect.py",
     "reserved_west/release_gate.py",
     "AUTHENTICATION_READINESS.md",
     "PROVIDER_BOUNDARY_ADOPTION.md",
@@ -93,6 +107,136 @@ CANONICAL_BLOCKER_REFERENCES = [
     "ACT-02",
     "ACT-03",
     "RELEASE-01",
+]
+
+# Immutable reconciliation base and its stale ancestor.  The correction must
+# reconcile both documents to the actual immutable candidate base without
+# rewriting the historical W9-S1A introducing base.
+RECONCILIATION_BASE = "10fb93e2e6ab567a72d2370c1603768a7ac04bb5"
+STALE_RECONCILIATION_BASE = "79351eb02c0b82b19063689d5da460f3f07394b4"
+INTRODUCING_BASE = "dd98c4421707f54eb0b564a85ee77d3ed286d79d"
+
+# Structured semantic invariants that must survive the correction.  These are
+# checked as stable tokens/fragments, not incidental prose, so the test fails on
+# lost reconciliation of newly settled Founder authority, the implemented
+# linked-HICBC surface, the integrated MTD core/renderer, the reviewed geography
+# admission and their remaining gates.
+REQUIRED_SEMANTIC_MARKERS = [
+    "provisional disabled-first subscription baseline",
+    "not Stripe Connect",
+    "Stripe Billing, Checkout and Customer Portal",
+    "payment_recovery",
+    "non-extendable seven-day",
+    "continuing access",
+    "not provider-default behaviour",
+    "observations, not entitlement authority",
+    "W9-S4A",
+    "provider-neutral W10",
+    "FD-W9-001",
+    "FD-W10-002",
+    "FD-W10-003",
+    # Linked-HICBC implemented surface: mutual permission, audit, withdrawal/
+    # unlinking, anti-probing and minimisation.
+    "hicbc_links",
+    "hicbc_link_invitations",
+    "hicbc_link_consents",
+    "hicbc-notice-v1",
+    "withdrawn_at",
+    "delete_all_hicbc_links_for_user",
+    "mutual affirmative permission",
+    "auditable notice/version/who/when",
+    "withdrawal/unlinking",
+    "anti-probing",
+    "minimisation",
+    # MTD indication versus formal HMRC determination plus source/residence/
+    # cessation/timing/exclusion boundaries.
+    "formal determination",
+    "source/residence/cessation/timing/exclusion",
+    "gross-before-expenses",
+    # E/W/NI-only geography admission with Scotland/Ireland exclusion.
+    "E/W/NI",
+    "Scotland and Ireland",
+    "England, Wales and Northern Ireland",
+]
+
+# Bind the newly reconciled semantics to the exact structured sections that
+# assert them.  A global marker search is insufficient: a section could be
+# replaced with plausible placeholder prose while the same words survived in
+# another part of either document.
+SECTION_SEMANTIC_MARKERS = {
+    "FLOW-13": [
+        "version, who, when",
+        "Two authenticated customers separately enabling linked HICBC",
+        "minimum partner evidence",
+        "withdrawal/unlinking",
+        "anti-probing",
+        "delete_all_hicbc_links_for_user",
+    ],
+    "FLOW-14": [
+        "gross income before expenses",
+        "formal determination",
+        "source/residence/cessation/timing/exclusion",
+        "authenticated routing",
+        "recheck scheduling",
+    ],
+    "FLOW-15": [
+        "England, Wales and Northern Ireland",
+        "Scotland and Ireland",
+        "annual tax, cash, reserve and customer presentation",
+        "Customer-source acquisition",
+    ],
+    "TB-12": [
+        "affirmative consent from both users",
+        "data minimisation",
+        "anti-probing controls",
+        "notice/withdrawal/unlinking",
+    ],
+    "TB-13": [
+        "gross income before expenses",
+        "residence/source/Self Assessment/",
+        "exemption/cessation/timing boundaries",
+        "never presented as HMRC's formal",
+    ],
+    "TB-14": [
+        "England, Wales and Northern Ireland only",
+        "Scottish Income Tax",
+        "Ireland/other non-UK jurisdictions",
+    ],
+    "TH-19": [
+        "mutual affirmative consent from both users",
+        "owner-scoped minimal",
+        "HICBC-relevant partner evidence",
+        "hypothetical/comparative/band probing",
+        "withdrawal/unlinking",
+    ],
+    "TH-20": [
+        "qualified, forward-looking indication",
+        "gross income before expenses",
+        "thresholds/start dates and exclusions",
+        'no "MTD ready" customer language',
+    ],
+    "TH-21": [
+        "England/Wales/Northern Ireland admission guard",
+        "Scotland and Ireland excluded",
+        "foreign income/SEPA-ready models do not imply geography support",
+    ],
+}
+
+# Stale local-evidence claims that must never reappear after this correction.
+STALE_CLAIM_FRAGMENTS = [
+    "none yet implemented",
+    "no provider is selected",
+    "explicitly non-selected placeholder",
+    "No billing provider is selected",
+    "outage exercise and degraded-customer tests",
+    "unresolved billing provider",
+    "disabled placeholder",
+    # Stale reconciliation ancestor and false current-state claims.
+    STALE_RECONCILIATION_BASE,
+    "No linked-HICBC persistence is wired",
+    "lifecycle policy (renewal, cancellation, recovery, suspension)",
+    "unresolved lifecycle policies",
+    "lifecycle/refund/VAT policies",
 ]
 
 NON_ACTIVATION_PHRASE = (
@@ -222,6 +366,77 @@ def test_canonical_blocker_references_are_present():
     assert not missing, f"missing canonical blocker reference(s): {missing}"
 
 
+def test_no_duplicate_or_unexpected_section_ids():
+    expected = {
+        "FLOW": FLOW_IDS,
+        "TB": TRUST_BOUNDARY_IDS,
+        "TH": THREAT_IDS,
+        "DEC": DECISION_IDS,
+    }
+    doc_for_prefix = {
+        "FLOW": _read(DATA_FLOW_DOC),
+        "TB": _read(DATA_FLOW_DOC),
+        "TH": _read(DATA_FLOW_DOC),
+        "DEC": _read(DECISION_DOC),
+    }
+    for prefix, expected_ids in expected.items():
+        ids = _section_ids(doc_for_prefix[prefix], prefix)
+        duplicates = sorted({i for i in ids if ids.count(i) > 1})
+        unexpected = sorted(set(ids) - set(expected_ids))
+        assert not duplicates, f"duplicate {prefix} section id(s): {duplicates}"
+        assert not unexpected, (
+            f"unexpected {prefix} section id(s): {unexpected}; "
+            f"expected exactly {expected_ids}"
+        )
+
+
+def test_reconciled_semantic_markers_are_present():
+    text = _combined()
+    missing = [marker for marker in REQUIRED_SEMANTIC_MARKERS if marker not in text]
+    assert not missing, f"missing reconciled semantic marker(s): {missing}"
+
+
+def test_new_reconciled_sections_bind_their_own_semantics():
+    data_flow = _read(DATA_FLOW_DOC)
+    blocks = {}
+    for prefix in ("FLOW", "TB", "TH"):
+        blocks.update(_section_blocks(data_flow, prefix))
+
+    for section_id, required_markers in SECTION_SEMANTIC_MARKERS.items():
+        assert section_id in blocks, f"missing reconciled section: {section_id}"
+        missing = [
+            marker for marker in required_markers if marker not in blocks[section_id]
+        ]
+        assert not missing, (
+            f"{section_id} lost section-bound semantic marker(s): {missing}"
+        )
+
+
+def test_stale_local_evidence_claims_are_absent():
+    text = _combined()
+    present = [frag for frag in STALE_CLAIM_FRAGMENTS if frag in text]
+    assert not present, (
+        f"stale local-evidence claim(s) still present after reconciliation: {present}"
+    )
+
+
+def test_reconciliation_base_is_the_immutable_candidate_base():
+    for path in (DATA_FLOW_DOC, DECISION_DOC):
+        text = _read(path)
+        assert RECONCILIATION_BASE in text, (
+            f"{path.name} is not reconciled to the immutable candidate base "
+            f"{RECONCILIATION_BASE}"
+        )
+        assert STALE_RECONCILIATION_BASE not in text, (
+            f"{path.name} still reconciles to the stale ancestor "
+            f"{STALE_RECONCILIATION_BASE}"
+        )
+        assert INTRODUCING_BASE in text, (
+            f"{path.name} lost the historical W9-S1A introducing base "
+            f"{INTRODUCING_BASE}"
+        )
+
+
 def test_explicit_non_activation_statement_is_present_in_both_documents():
     normalised_phrase = _normalise_whitespace(NON_ACTIVATION_PHRASE)
     for path in (DATA_FLOW_DOC, DECISION_DOC):
@@ -233,14 +448,8 @@ def test_explicit_non_activation_statement_is_present_in_both_documents():
 
 # ── Exact path boundary: the package must not modify protected files ─────────
 
-def _git_changed_paths() -> list[str]:
-    """Return the immutable path set of the W9-S1A introducing commit.
-
-    A worktree status describes whichever later package happens to be under
-    review, not the historical W9-S1A package.  Bind this guard to the unique
-    commit that introduced its own test file so it remains valid after
-    cherry-picks and while unrelated candidates are uncommitted.
-    """
+def _package_introducing_commit() -> str:
+    """Return the unique commit that introduced this test file."""
     introduced = subprocess.run(
         [
             "git", "-C", str(REPO_ROOT), "log", "--diff-filter=A",
@@ -255,16 +464,11 @@ def _git_changed_paths() -> list[str]:
         "W9-S1A package introducing commit is missing or ambiguous: "
         f"found {len(commits)} candidates"
     )
-    commit = commits[0]
+    return commits[0]
 
-    identity = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "rev-list", "--parents", "-n", "1", commit],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.split()
-    assert len(identity) == 2, "W9-S1A package commit must have exactly one parent"
 
+def _changed_paths_for_commit(commit: str) -> list[str]:
+    """Return the NUL-separated path set changed by a single commit."""
     changed = subprocess.run(
         [
             "git", "-C", str(REPO_ROOT), "diff-tree", "--no-commit-id",
@@ -278,6 +482,52 @@ def _git_changed_paths() -> list[str]:
         for raw in changed.stdout.split(b"\0")
         if raw
     ]
+
+
+def _git_changed_paths() -> list[str]:
+    """Return the immutable path set of the W9-S1A introducing commit.
+
+    A worktree status describes whichever later package happens to be under
+    review, not the historical W9-S1A package.  Bind this guard to the unique
+    commit that introduced its own test file so it remains valid after
+    cherry-picks and while unrelated candidates are uncommitted.
+    """
+    commit = _package_introducing_commit()
+
+    identity = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "rev-list", "--parents", "-n", "1", commit],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert len(identity) == 2, "W9-S1A package commit must have exactly one parent"
+
+    return _changed_paths_for_commit(commit)
+
+
+def _package_history_commits() -> list[str]:
+    """Return every commit that touched the package since its introduction.
+
+    Includes the introducing commit and every later commit (through HEAD) that
+    changed at least one authorised package path.  This is the complete
+    correction-history surface over which scope drift must be rejected.
+    """
+    introduced = _package_introducing_commit()
+    commits = [introduced]
+    later = subprocess.run(
+        [
+            "git", "-C", str(REPO_ROOT), "log", "--format=%H",
+            f"{introduced}..HEAD", "--",
+        ]
+        + sorted(ALLOWED_NEW_PATHS),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    commits.extend(
+        line.strip() for line in later.stdout.splitlines() if line.strip()
+    )
+    return commits
 
 
 def _is_protected(path: str) -> bool:
@@ -303,3 +553,19 @@ def test_package_does_not_touch_protected_files():
     changed = _git_changed_paths()
     protected = [p for p in changed if _is_protected(p)]
     assert not protected, f"W9-S1A package touched protected files: {protected}"
+
+
+def test_no_scope_drift_across_package_history():
+    """Every package-touching commit stays inside the three authorised paths.
+
+    A correction commit that touches a readiness/release/completion map or a
+    source/configuration file is scope drift and must fail the package, even if
+    the introducing commit was clean.
+    """
+    for commit in _package_history_commits():
+        changed = set(_changed_paths_for_commit(commit))
+        drift = sorted(changed - ALLOWED_NEW_PATHS)
+        assert not drift, (
+            f"scope drift in package commit {commit}: {drift}; "
+            f"only {sorted(ALLOWED_NEW_PATHS)} may change"
+        )

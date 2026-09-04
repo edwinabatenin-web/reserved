@@ -11,10 +11,18 @@ legal/privacy advice, name an owner not already established, or turn a standard
 engineering suggestion into Founder authority.
 
 - Base commit: `dd98c4421707f54eb0b564a85ee77d3ed286d79d`
+- Evidence cut-off: 4 September 2026 (current integration reconciliation point
+  `10fb93e2e6ab567a72d2370c1603768a7ac04bb5`).
 - Companion document: [W9 launch data-flow and threat model](W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md)
 - Authoritative inputs: [W9 completion map](W9_COMPLETION_MAP.md),
   [W9 gap register](W9_SECURITY_OPERATIONS_GAP_REGISTER.md),
+  [W10 billing authority and policy contract](W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md),
   [Founder Decisions](../FOUNDER_DECISIONS.md).
+- Reconciled Founder authority: `FD-W9-001` (durable minimised owner-bound
+  structured annual position), `FD-W10-002` (provisional Stripe subscription
+  baseline) and `FD-W10-003` (October paid-entitlement lifecycle). These settle
+  policy; they do not close the remaining legal, retention, custody, target,
+  provider or activation gates recorded below.
 
 ## Decision entries
 
@@ -54,11 +62,11 @@ engineering suggestion into Founder authority.
 | --- | --- |
 | Decision ID | W9-DEC-03 |
 | Accountable decision owner/authority | Privacy/security owner (to be named under W9-S4); Founder authorisation for the durable schema |
-| Why it blocks implementation or activation | Durable annual-position/evidence persistence cannot be built without an approved field inventory, purpose, provenance/uncertainty representation and owner schema |
-| Current safe default | Annual-position and evidence remain ephemeral; the `tax_calculations` stub is not used |
-| Options | Minimised owner-bound schema with provenance/integrity markers and immutable audit; or continue ephemeral-only for the October boundary |
+| Why it blocks implementation or activation | `FD-W9-001` settles a durable minimised owner-bound structured annual tax/cash position with evidence references, provenance and uncertainty, but exact field inventory, lawful basis, retention, backups, datastore, key custody, migration and activation remain gated; durable persistence still cannot be built |
+| Current safe default | Annual-position and evidence remain ephemeral; the `tax_calculations` stub is not used; `FD-W9-001` is settled policy, not an approved field inventory |
+| Options | Minimised owner-bound schema with provenance/integrity markers and immutable audit (now the settled policy direction); or continue ephemeral-only until the gated inventory is approved |
 | Trade-offs/risks | Persisting too much enlarges the privacy surface; persisting too little breaks cross-session continuity |
-| Existing constraints/evidence | `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md`; gaps `PERSIST-01`, `PERSIST-02` |
+| Existing constraints/evidence | `FD-W9-001`; `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md`; gaps `PERSIST-01`, `PERSIST-02` |
 | Exact evidence required to decide | Approved field-by-field purpose, provenance/uncertainty representation, owner schema, datastore/encryption and migration rules |
 | Downstream packages affected | W9-S3 persistence; W9-S5 privacy/security acceptance |
 | Gating | Implementation-gating and production-gating |
@@ -69,11 +77,11 @@ engineering suggestion into Founder authority.
 | --- | --- |
 | Decision ID | W9-DEC-04 |
 | Accountable decision owner/authority | Privacy/legal owner (to be named under W9-S4); Founder authorisation for legal-hold exceptions |
-| Why it blocks implementation or activation | Field inventory, lawful purpose, retention periods, supersession, legal-hold exceptions, backup expiry and whole-account erasure are all unresolved |
-| Current safe default | No durable annual-position or raw-document payload is stored; feature-level owner deletion and HICBC hooks only |
+| Why it blocks implementation or activation | Field inventory, lawful purpose, retention periods, supersession, legal-hold exceptions, backup expiry and whole-account erasure are all unresolved; `FD-W9-001` adds a durable minimised structured position to the erasure surface but does not settle its retention/backup rules |
+| Current safe default | No durable annual-position or raw-document payload is stored; feature-level owner deletion and HICBC hooks only; raw payslip originals remain transient (`FD-W9-001`) |
 | Options | Field-by-field retention register with legal exceptions and backup-expiry schedule; or retain ephemeral-only and defer durable storage |
 | Trade-offs/risks | A legal-hold exception without ownership could block erasure indefinitely; under-specified retention risks over-collection |
-| Existing constraints/evidence | Founder Decisions establish minimisation and deletion principles; gaps `DATA-01`, `DATA-02`, `DATA-03`, `AUTH-03` |
+| Existing constraints/evidence | Founder Decisions establish minimisation and deletion principles; `FD-W9-001`; gaps `DATA-01`, `DATA-02`, `DATA-03`, `AUTH-03` |
 | Exact evidence required to decide | Privacy/security owner approval of field-by-field purpose, retention, deletion, exception and backup-expiry register |
 | Downstream packages affected | W9-S3 lifecycle; W9-S4 backup/restore; W9-S5 acceptance |
 | Gating | Production-gating |
@@ -84,11 +92,11 @@ engineering suggestion into Founder authority.
 | --- | --- |
 | Decision ID | W9-DEC-05 |
 | Accountable decision owner/authority | Privacy/security owner (to be named under W9-S4) |
-| Why it blocks implementation or activation | The `secure_deletion_required` marker is not proof of deletion; upload/extraction/storage/failure/retry and backup behaviour do not exist |
+| Why it blocks implementation or activation | The `secure_deletion_required` marker is not proof of deletion; upload/extraction/storage/failure/retry and backup behaviour do not exist; `FD-W9-001` keeps raw payslip originals transient/deleted but does not define the deletion executor/evidence |
 | Current safe default | No raw payslip is uploaded or stored; only typed, bounded fields and a deletion disposition are recorded |
 | Options | Isolated raw-document flow with delete-after-check executor; or continue manual fallback without raw-document persistence |
 | Trade-offs/risks | Storing a raw payslip enlarges exposure; deleting before verification risks losing evidence |
-| Existing constraints/evidence | `reserved/engines/paye_extraction_confirmation.py`; gap `PAYSLIP-01`; `HMRC_PAYE_FALLBACK_COMPLETION_MAP.md` |
+| Existing constraints/evidence | `FD-W9-001`; `reserved/engines/paye_extraction_confirmation.py`; gap `PAYSLIP-01`; `HMRC_PAYE_FALLBACK_COMPLETION_MAP.md` |
 | Exact evidence required to decide | Approved raw-document lifecycle plus deletion executor/evidence; delete-after-check, failure/retry, replacement, no-content-logging and backup-expiry tests |
 | Downstream packages affected | W9-S3 raw-document flow; W9-S5 privacy acceptance |
 | Gating | Implementation-gating and production-gating |
@@ -168,20 +176,66 @@ engineering suggestion into Founder authority.
 | Downstream packages affected | W9-S4 operational resilience; W9-S5 acceptance |
 | Gating | Production-gating |
 
-### DEC-11 — Security-relevant W10 dependencies: billing provider custody/webhook model, entitlement evidence boundary and unresolved lifecycle policies
+### DEC-11 — Security-relevant W10 dependencies: provisional provider custody/webhook model, entitlement evidence boundary and unresolved refund/dispute/chargeback/reversal/VAT and paid-surface policies
 
 | Attribute | Record |
 | --- | --- |
 | Decision ID | W9-DEC-11 |
-| Accountable decision owner/authority | Founder (billing provider and pricing scope); security owner for custody/webhook model |
-| Why it blocks implementation or activation | `FD-W10-001` brings paid subscription into scope but explicitly leaves provider choice, custody/webhook model, entitlement evidence and subordinate lifecycle policies unresolved |
-| Current safe default | No billing provider is selected; Stripe is an explicitly non-selected placeholder; no entitlement or checkout is wired |
-| Options | Select a billing provider and define tokenisation/webhook/entitlement evidence boundary; or defer W10 plumbing until a provider decision exists |
-| Trade-offs/risks | A provider with weak webhook/idempotency could mis-grant entitlement; unresolved refund/VAT/discount policy risks mis-pricing |
-| Existing constraints/evidence | `FD-W10-001`; `STRIPE_CONNECT_SPEC.md`; `reserved/providers/payments/stripe_connect.py` |
-| Exact evidence required to decide | A reviewed provider-neutral W10 contract plus an exact billing-provider custody/webhook and entitlement-evidence decision |
+| Accountable decision owner/authority | Founder (provisional provider and paid-entitlement lifecycle); security owner for custody/webhook model |
+| Why it blocks implementation or activation | `FD-W10-002` selects Stripe Billing, Checkout and Customer Portal as the provisional disabled-first subscription baseline (not Stripe Connect), but terms/DPA/fees, credentials, sandbox/production, VAT/invoice treatment, charging and activation remain gated; `FD-W10-003` settles verified-initial-payment access, automatic renewal, end-of-paid-period cancellation, the seven-day failed-renewal recovery period, suspension after unresolved expiry and no launch trial, but refunds/disputes/chargebacks/reversals, overrides, account recovery, offers, VAT/invoices and the paid-surface inventory remain unresolved |
+| Current safe default | No checkout, entitlement grant, charge or provider credential is wired; Stripe identifiers/statuses are observations, not entitlement authority; `payment_recovery` is a canonical bounded state with a non-extendable seven-day deadline and continuing access, not normally paid and not provider-default behaviour |
+| Options | Accept the provisional Stripe baseline and define tokenisation/webhook/entitlement evidence plus refund/dispute/chargeback/reversal/VAT policies; or replace the provisional provider before activation |
+| Trade-offs/risks | A provider with weak webhook/idempotency could mis-grant entitlement; provider-specific configuration grows migration cost; unresolved refund/VAT policy risks mis-pricing |
+| Existing constraints/evidence | `FD-W10-001`, `FD-W10-002`, `FD-W10-003`; `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md`; `STRIPE_CONNECT_SPEC.md`; `reserved/billing/contracts.py`; `reserved/providers/payments/stripe_connect.py` |
+| Exact evidence required to decide | Accepted provider terms/DPA/fees, sandbox evidence, an exact custody/webhook/entitlement-evidence decision, and explicit refund/dispute/chargeback/reversal/VAT policies |
 | Downstream packages affected | W10 subscription plumbing; W9-S2/S3 custody and lifecycle integration |
 | Gating | Implementation-gating and production-gating |
+
+### DEC-12 — Linked-customer HICBC mutual permission, minimisation, anti-probing, audit, withdrawal/unlinking and deletion
+
+| Attribute | Record |
+| --- | --- |
+| Decision ID | W9-DEC-12 |
+| Accountable decision owner/authority | Founder Decisions already require an auditable linked-HICBC notice/consent record; the privacy/legal owner (to be named under W9-S4) owns the remaining lawful-basis, minimisation, anti-probing, retention/deletion and target-acceptance design |
+| Why it blocks implementation or activation | Linked HICBC requires mutual affirmative permission from two customers, cross-account use of the minimum partner evidence, auditable notice/version/who/when, withdrawal/unlinking and deletion; the implemented `hicbc_links`/`hicbc_link_invitations`/`hicbc_link_consents` surface records this but cannot be production-activated without a documented lawful basis, minimisation, anti-probing and deletion design plus independent privacy/retention/legal review |
+| Current safe default | Linked-HICBC persistence is implemented and integrated (normalised `hicbc_links`, single-use hashed invitations and versioned `hicbc_link_consents` with `withdrawn_at`); it stays disabled by default behind `HICBC_ENABLED`, fails closed on unknown partner/Child Benefit facts, and the manual partner estimate stays bounded third-party data |
+| Options | Production-activate the implemented owner-bound linked record once auditable consent and anti-probing controls are independently reviewed; or keep it disabled by default until the privacy design is approved |
+| Trade-offs/risks | Persisting partner evidence enlarges disclosure/probing surface; refusing to persist limits cross-session continuity |
+| Existing constraints/evidence | Founder Decisions establish minimisation and mutual-consent principles; `reserved/database.py` (`hicbc_links`, `hicbc_link_invitations`, `hicbc_link_consents`, `delete_all_hicbc_links_for_user`); `reserved/web/hicbc.py` (`/v2/hicbc/link/*`); `HICBC_PARTNER_SUPPORT.md`; gaps `DATA-01`, `DATA-02`, `AUTH-03` |
+| Exact evidence required to decide | Documented lawful basis, transparency, purpose limitation, minimisation, withdrawal/unlinking, deletion and anti-probing controls plus cross-account privacy tests |
+| Downstream packages affected | W9-S5 privacy/legal-basis, minimisation/anti-probing, retention/deletion and target cross-account acceptance; focused hardening only if that assurance identifies a defect |
+| Gating | Assurance and production-gating; linked-HICBC persistence is already integrated and remains disabled pending acceptance |
+
+### DEC-13 — Customer MTD scope indication source/residence/cessation/timing/exclusion boundaries and formal-vs-indication distinction
+
+| Attribute | Record |
+| --- | --- |
+| Decision ID | W9-DEC-13 |
+| Accountable decision owner/authority | Privacy/security owner (to be named under W9-S4) |
+| Why it blocks implementation or activation | The integrated MTD core (`reserved/engines/mtd_readiness.py`) and presentation (`reserved/services/mtd_scope_indication.py` plus `mtd_scope_indication_presentation.py`) are implemented and keep the indication distinct from HMRC's formal determination; activation still requires source-acquisition/orchestration, authenticated routing, recheck scheduling, target UX/accessibility, privacy and release acceptance |
+| Current safe default | Integrated core and renderer run ephemerally; gross-before-expenses input; "Worth reviewing" wording; no "MTD ready" or definite-application claim; no filing/submission, authenticated route, source orchestration or recheck schedule is wired |
+| Options | Wire source-acquisition/orchestration, authenticated routing and recheck scheduling to the integrated core/renderer; or keep the indication ephemeral and out of any filing path until target UX/accessibility/privacy/release acceptance |
+| Trade-offs/risks | Overstating applicability risks false certainty; understating it under-serves customers near a threshold |
+| Existing constraints/evidence | `MTD_SCOPE_INDICATION_EVIDENCE.md`; `MTD_SCOPE_INDICATION_PRESENTATION_EVIDENCE.md`; `reserved/engines/mtd_readiness.py`; `reserved/services/mtd_scope_indication.py`; `reserved/services/mtd_scope_indication_presentation.py`; `test_mtd_scope_indication.py`, `test_mtd_scope_indication_presentation.py`, `test_mtd_readiness.py` |
+| Exact evidence required to decide | Source-acquisition/orchestration, authenticated routing, recheck scheduling, target UX/accessibility, privacy and release acceptance for the integrated MTD indication |
+| Downstream packages affected | W9-S3 source acquisition/orchestration, authenticated routing and recheck scheduling; target UX/accessibility/privacy/release acceptance |
+| Gating | Remaining-source-integration and production-gating; the MTD core and customer renderer are already integrated |
+
+### DEC-14 — October geography admission and residence provenance
+
+| Attribute | Record |
+| --- | --- |
+| Decision ID | W9-DEC-14 |
+| Accountable decision owner/authority | Privacy/security owner (to be named under W9-S4) |
+| Why it blocks implementation or activation | October annual/customer flows are constrained to England, Wales and Northern Ireland; the fail-closed E/W/NI admission guard and provenance handoff are integrated and independently reviewed, but no customer/provider path yet supplies a validated geography fact into the annual calculator, and target acceptance remains open |
+| Current safe default | E/W/NI only; Scotland and Ireland are excluded from calculation, reserve and launch claims; foreign income/SEPA-ready models do not imply geography support |
+| Options | Acquire and forward a validated customer geography fact (customer-source acquisition) and obtain target acceptance; or keep geography as a non-durable scope guard until the acquisition path is wired |
+| Trade-offs/risks | Under-validated residence risks admitting Scottish Income Tax/Ireland leakage; over-collecting residence enlarges the privacy surface |
+| Existing constraints/evidence | `W8_S3_GEOGRAPHY_ADMISSION_EVIDENCE.md`; `W8_S3B_GEOGRAPHY_PROVENANCE_HANDOFF_EVIDENCE.md`; `reserved/engines/integrated_annual_position.py` (`_enforce_geography_admission`); `test_w8_geography_admission.py` |
+| Exact evidence required to decide | Customer-source acquisition of a validated E/W/NI geography fact and target acceptance; admission/provenance boundaries are already integrated and reviewed |
+| Downstream packages affected | W9-S3 customer-source acquisition of validated geography; target acceptance |
+| Gating | Remaining-source-integration and production-gating; geography admission and provenance are already integrated and independently reviewed |
+
 
 ## Non-activation and non-duplication statement
 

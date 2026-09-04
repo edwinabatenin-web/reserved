@@ -9,10 +9,19 @@ evidence. It does not implement controls, select vendors or policies, create
 another readiness authority, or alter production/readiness state.
 
 - Base commit: `dd98c4421707f54eb0b564a85ee77d3ed286d79d`
+- Evidence cut-off: 4 September 2026 (current integration reconciliation point
+  `10fb93e2e6ab567a72d2370c1603768a7ac04bb5`).
 - Authoritative planning inputs: [W9 completion map](W9_COMPLETION_MAP.md),
   [W9 security and operations gap register](W9_SECURITY_OPERATIONS_GAP_REGISTER.md),
+  [W10 billing authority and policy contract](W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md),
   [Founder Decisions](../FOUNDER_DECISIONS.md), and the canonical
   `reserved_west/release_gate.py` October blocker inventory.
+- Reconciled Founder authority: `FD-W9-001` (durable minimised owner-bound
+  structured annual position), `FD-W10-002` (provisional Stripe subscription
+  baseline), `FD-W10-003` (October paid-entitlement lifecycle) and `FD-W10-001`
+  (paid subscription model and initial pricing). These settle policy; they do
+  not close the remaining legal, retention, custody, target, provider or
+  activation gates recorded below.
 - State vocabulary: **implemented**, **integrated**, **externally evidenced**,
   **launch-ready** are distinct and are never conflated below.
 
@@ -112,7 +121,7 @@ canonical blocker/reference.
 | Threat/failure mode | Injection; credential/token exposure; logging/exfiltration; retention/deletion failure |
 | Current fail-closed state | The only successful output is an in-memory partial capture; `secure_deletion_required` cannot be relabelled as deletion evidence |
 | Exact closure evidence | Approved raw-document lifecycle plus deletion executor/evidence; delete-after-check, failure/retry, replacement, no-content-logging and backup-expiry tests |
-| Canonical blocker/reference | `PAYSLIP-01`; `HMRC_PAYE_FALLBACK_COMPLETION_MAP.md`; `reserved_west/release_gate.py` `paye_payslip_manual_evidence_journey` |
+| Canonical blocker/reference | `FD-W9-001` (raw payslip originals remain transient/deleted); `PAYSLIP-01`; `HMRC_PAYE_FALLBACK_COMPLETION_MAP.md`; `reserved_west/release_gate.py` `paye_payslip_manual_evidence_journey` |
 
 ### FLOW-06 — Canonical accounting evidence into annual tax calculation, provenance/uncertainty and annual position
 
@@ -124,13 +133,13 @@ canonical blocker/reference.
 | Trust boundary crossed | Application ↔ database/persistence (currently non-persistent) |
 | Processing purpose | Compute the annual tax position with provenance and uncertainty attached |
 | Allowed destination | Ephemeral internal contracts only |
-| Present storage behaviour | Annual calculations, provenance and uncertainty remain intentionally ephemeral; no incidental durable annual-position write exists |
-| Unresolved target storage/retention/deletion | No approved owner-bound annual-position schema, evidence-reference lifecycle, integrity/concurrency design, access audit, retention or erasure path |
+| Present storage behaviour | Annual calculations, provenance and uncertainty remain intentionally ephemeral pending the approved field inventory; `FD-W9-001` settles that October should persist a minimised owner-bound structured annual tax/cash position with evidence references, provenance and uncertainty, but no durable write exists yet because the field inventory is gated |
+| Unresolved target storage/retention/deletion | Exact field inventory, lawful basis, retention periods, legal-hold exceptions, backup-expiry schedule, datastore, encryption/key custody, migration, production access and activation remain unresolved (`FD-W9-001`) |
 | Existing control | `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md` records the `tax_calculations` stub as unsuitable; strict snapshot codec rejects unknown shape and weakened prohibitions |
 | Threat/failure mode | Stale data and false certainty; evidence tampering; cross-owner/tenant leakage; injection/schema drift |
-| Current fail-closed state | Annual-position non-persistence is the correct safe state until the lifecycle design is approved |
+| Current fail-closed state | Annual-position non-persistence remains the correct safe state until the `FD-W9-001` field inventory, lawful basis, retention, backup, datastore, custody, migration and activation gates are satisfied |
 | Exact closure evidence | Approved minimised field inventory, purpose, provenance/uncertainty representation, owner schema, datastore/encryption and migration rules |
-| Canonical blocker/reference | `PERSIST-01`, `PERSIST-02`; `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md`; `reserved_west/release_gate.py` `evidence_persistence_and_deletion` |
+| Canonical blocker/reference | `FD-W9-001`; `PERSIST-01`, `PERSIST-02`; `INTERNAL_ANNUAL_POSITION_PERSISTENCE_READINESS.md`; `reserved_west/release_gate.py` `evidence_persistence_and_deletion` |
 
 ### FLOW-07 — Annual liability into dated cash obligation, reserve gap/surplus and customer presentation
 
@@ -173,18 +182,18 @@ canonical blocker/reference.
 | Attribute | Record |
 | --- | --- |
 | Data class | Plan/offer selection, checkout token, billing/webhook evidence, entitlement state, reconciliation data |
-| Subject/owner | Customer and the unresolved billing provider |
+| Subject/owner | Customer and the provisional billing provider (Stripe Billing/Checkout/Customer Portal baseline) |
 | Source | Customer plan selection and the billing provider checkout/webhook |
-| Trust boundary crossed | Application ↔ unresolved billing provider; browser/customer device ↔ Reserved application |
-| Processing purpose | Sell, grant and administer access under the paid-subscription model established by `FD-W10-001` |
-| Allowed destination | Provider-neutral W10 contracts only (none yet implemented) |
-| Present storage behaviour | No W10 billing/entitlement implementation exists; `FD-W10-001` sets initial pricing (£29 monthly, £156 six-month, £288 yearly) plus special-offer support only |
-| Unresolved target storage/retention/deletion | Billing provider, custody/webhook model, entitlement evidence boundary, renewal/cancellation/failure/entitlement/refund/VAT/discount/partner policies are all unresolved |
-| Existing control | `reserved/providers/payments/stripe_connect.py` is an explicit non-selected, disabled placeholder; `STRIPE_CONNECT_SPEC.md` records Stripe as not selected |
-| Threat/failure mode | Callback/order manipulation; webhook/replay/idempotency errors; payment/cash misdirection; cross-owner/tenant leakage; unsafe activation |
-| Current fail-closed state | No checkout/tokenisation or entitlement grant is wired; payment initiation is disabled |
-| Exact closure evidence | A reviewed, provider-neutral W10 contract plus an exact billing-provider custody/webhook decision |
-| Canonical blocker/reference | `FD-W10-001`; `STRIPE_CONNECT_SPEC.md`; decision dossier `W9-DEC-11` |
+| Trust boundary crossed | Application ↔ provisional billing provider; browser/customer device ↔ Reserved application |
+| Processing purpose | Sell, grant and administer access under the paid-subscription model established by `FD-W10-001`, the provisional Stripe baseline of `FD-W10-002` and the paid-entitlement lifecycle of `FD-W10-003` |
+| Allowed destination | Provider-neutral W10 contracts (the W10-S1A authority contract in `reserved/billing/contracts.py` exists and is provider-neutral); no provider-specific billing/entitlement write exists |
+| Present storage behaviour | The provider-neutral W10-S1A authority contract encodes the three initial plans and a fifteen-key required-policy inventory, network-inert and persistence-free. Stripe Billing, Checkout and Customer Portal are a provisional disabled-first baseline, not Stripe Connect; no checkout, entitlement grant, charge or provider credential is wired |
+| Unresolved target storage/retention/deletion | Provider terms/DPA/fees, credentials, sandbox/production access, VAT/invoice treatment, charging, entitlement/access policy, provider implementation/evidence, refunds/disputes/chargebacks/reversals, overrides, account recovery, offers and the paid-surface inventory remain unresolved; renewal, cancellation, recovery and suspension are settled policy (`FD-W10-003`), not open |
+| Existing control | `reserved/billing/contracts.py` (W10-S1A) and `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md`; `reserved/providers/payments/stripe_connect.py` remains the historical customer-money-movement placeholder, explicitly not subscription authority; `STRIPE_CONNECT_SPEC.md` records Stripe Connect as not selected |
+| Threat/failure mode | Callback/order manipulation; webhook/replay/idempotency errors; payment/cash misdirection; cross-owner/tenant leakage; unsafe activation; provider status copied into entitlement |
+| Current fail-closed state | No checkout/tokenisation, credential, charge or entitlement grant is wired; Stripe identifiers/statuses are observations, not entitlement authority; `payment_recovery` is a bounded non-extendable state, not provider-default behaviour |
+| Exact closure evidence | Reviewed provider-neutral W10 contract (exists), accepted provider terms/DPA/fees, sandbox evidence, and an exact custody/webhook/entitlement-evidence decision |
+| Canonical blocker/reference | `FD-W10-001`, `FD-W10-002`, `FD-W10-003`; `W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md`; `STRIPE_CONNECT_SPEC.md`; decision dossier `W9-DEC-11` |
 
 ### FLOW-10 — Intended persistence, evidence references, logs, monitoring, support access and incident handling
 
@@ -215,12 +224,12 @@ canonical blocker/reference.
 | Processing purpose | Erase account data, apply retention/supersession, expire backups, and restore when required |
 | Allowed destination | Cross-store erasure and backup/restore tooling (unresolved) |
 | Present storage behaviour | Feature-level owner deletion and HICBC deletion hooks exist; no whole-account erasure; backups/restore are not evidenced |
-| Unresolved target storage/retention/deletion | Field inventory, lawful purpose, retention periods, supersession, legal-hold, backup expiry and deletion evidence are unresolved |
-| Existing control | Founder Decisions establish minimisation and deletion principles; `database.py` uses FK cascades in places |
+| Unresolved target storage/retention/deletion | Exact field inventory, lawful purpose, retention periods, supersession, legal-hold, backup expiry and deletion evidence remain unresolved; `FD-W9-001` adds a durable minimised structured position to the erasure surface but does not settle its retention/backup rules |
+| Existing control | Founder Decisions establish minimisation and deletion principles; `FD-W9-001` keeps raw payslip originals transient; `database.py` uses FK cascades in places |
 | Threat/failure mode | Retention/deletion failure; backup/restore leakage; cross-owner/tenant leakage |
-| Current fail-closed state | No durable annual-position or raw-document payload is stored, so erasure surface is currently bounded |
+| Current fail-closed state | No durable annual-position or raw-document payload is stored yet, so the erasure surface is currently bounded; the `FD-W9-001` structured position remains gated until its field inventory and retention/backup rules are approved |
 | Exact closure evidence | Approved retention/erasure schedule, backup expiry, whole-account erasure and raw-document deletion evidence |
-| Canonical blocker/reference | `DATA-01`, `DATA-02`, `DATA-03`, `AUTH-03`; `reserved_west/release_gate.py` `hicbc_manual_privacy_retention_legal` |
+| Canonical blocker/reference | `FD-W9-001`; `DATA-01`, `DATA-02`, `DATA-03`, `AUTH-03`; `reserved_west/release_gate.py` `hicbc_manual_privacy_retention_legal` |
 
 ### FLOW-12 — Target-runtime, operational-owner and release/activation boundaries
 
@@ -239,6 +248,61 @@ canonical blocker/reference.
 | Current fail-closed state | A green local suite does not authorise merge/release/go-live; production/provider activation is a Founder gate |
 | Exact closure evidence | Immutable target identity, complete required suite, failure paths, browser journeys and Founder authorisation |
 | Canonical blocker/reference | `ACT-01`, `ACT-02`, `ACT-03`, `RUNTIME-01`, `RELEASE-01`; `reserved_west/release_gate.py` |
+
+### FLOW-13 — Linked-customer HICBC mutual permission and cross-account use
+
+| Attribute | Record |
+| --- | --- |
+| Data class | Linked-HICBC consent/notice record (version, who, when), link relationship, minimal HICBC-relevant partner evidence (ANI and claimant status only), derived customer HICBC outcome |
+| Subject/owner | Two linked customers (each data subject owns their own account) |
+| Source | Two authenticated customers separately enabling linked HICBC; each account's own evidence |
+| Trust boundary crossed | Linked-customer account ↔ linked-customer account; application ↔ database/persistence |
+| Processing purpose | Compute each user's own HICBC position using the minimum partner evidence needed, without revealing either partner's precise ANI, band, bonus, relative salary or calculated personal tax |
+| Allowed destination | Owner-bound HICBC calculation and each user's own presentation only; no avoidable cross-user financial disclosure |
+| Present storage behaviour | Linked-HICBC persistence is implemented and integrated: `hicbc_links` (normalised active/revoked pair per tax year), single-use `hicbc_link_invitations` (SHA-256 hashed tokens) and versioned `hicbc_link_consents` (per-participant `hicbc-notice-v1` with `withdrawn_at`). Invitation create/accept, revoke/unlink and account-deletion hooks (`delete_all_hicbc_links_for_user`) exist with authenticated routes at `/v2/hicbc/link/*`; no partner financial value is stored in a link row |
+| Unresolved target storage/retention/deletion | Independent lawful-basis/transparency/privacy review, documented anti-probing and minimisation controls, retention/deletion schedule and target cross-account acceptance for the implemented linked-HICBC records remain unresolved |
+| Existing control | `test_hicbc_linked_account.py`, `test_hicbc_partner.py`, `test_hicbc_partner_privacy.py` and related contracts bind owner scoping, no cross-user access, CSRF, no-store and no raw partner values in logs/analytics |
+| Threat/failure mode | Cross-owner/tenant leakage; inferential/probing disclosure of partner finances; false determinate HICBC; retention/deletion failure |
+| Current fail-closed state | Linked evidence cannot appear falsely determinate or actionable; unknown partner/Child Benefit facts fail safe as insufficient facts; withdrawal/unlinking reverts the affected result |
+| Exact closure evidence | Documented lawful basis, transparency, purpose limitation, minimisation, withdrawal/unlinking, deletion and anti-probing controls plus cross-account privacy tests |
+| Canonical blocker/reference | `DATA-01`, `DATA-02`, `AUTH-03`; `HICBC_PARTNER_SUPPORT.md`; decision dossier `W9-DEC-12` |
+
+### FLOW-14 — Customer MTD scope indication (distinct from formal HMRC determination)
+
+| Attribute | Record |
+| --- | --- |
+| Data class | Sole-trader, UK-property and foreign-property gross income before expenses; MTD qualifying-income combination; forward-looking indication |
+| Subject/owner | Customer |
+| Source | Customer-supplied income facts and current-year information |
+| Trust boundary crossed | Browser/customer device ↔ Reserved application |
+| Processing purpose | Produce a qualified, forward-looking "Could Making Tax Digital apply to you?" indication, distinct from HMRC's formal determination |
+| Allowed destination | Customer-facing MTD indication presentation only; never a filing, submission or "MTD ready" claim |
+| Present storage behaviour | The integrated MTD core (`reserved/engines/mtd_readiness.py` assessment engine) and presentation (`reserved/services/mtd_scope_indication.py` service plus `mtd_scope_indication_presentation.py` renderer) exist and run ephemerally; no MTD filing, quarterly-update submission, final declaration, authenticated route or agent service is implemented |
+| Unresolved target storage/retention/deletion | No approved durable MTD-indication record; source-acquisition/orchestration, authenticated routing, recheck scheduling, target UX/accessibility, privacy and release acceptance remain open |
+| Existing control | `test_mtd_scope_indication.py`, `test_mtd_scope_indication_presentation.py`, `test_mtd_readiness.py` bind gross-before-expenses input, applicable thresholds/start dates, source/residence/cessation/timing/exclusion completeness and the formal-HMRC-determination distinction; unknown facts fail closed |
+| Threat/failure mode | Stale data and false certainty; formal-vs-indication conflation; exclusion/residence/cessation/timing error; injection/schema drift |
+| Current fail-closed state | Unknown facts are not silently zero; material indications use "Worth reviewing" and never state MTD definitely applies; customer language never uses "MTD ready" and never presents a local indication as HMRC's formal determination |
+| Exact closure evidence | Source-acquisition/orchestration, an authenticated route, recheck scheduling, target UX/accessibility, privacy and release acceptance for the integrated MTD indication |
+| Canonical blocker/reference | `MTD_SCOPE_INDICATION_EVIDENCE.md`; `MTD_SCOPE_INDICATION_PRESENTATION_EVIDENCE.md`; decision dossier `W9-DEC-13` |
+
+### FLOW-15 — October geography admission as an annual/customer-flow constraint
+
+| Attribute | Record |
+| --- | --- |
+| Data class | Customer jurisdiction/residence (England/Wales/Northern Ireland versus Scotland/Ireland/other) |
+| Subject/owner | Customer |
+| Source | Customer-provided residence/jurisdiction facts during onboarding/estimate |
+| Trust boundary crossed | Browser/customer device ↔ Reserved application |
+| Processing purpose | Admit only England, Wales and Northern Ireland into the October annual/customer-flow scope; exclude Scotland and Ireland from calculation, reserve and launch claims |
+| Allowed destination | Scope-admission guard applied to annual tax, cash, reserve and customer presentation |
+| Present storage behaviour | The fail-closed E/W/NI geography admission guard (`_enforce_geography_admission` in `reserved/engines/integrated_annual_position.py`) and the provenance handoff are integrated and independently reviewed; geography is a scope constraint and no durable geography record is required beyond provenance needs |
+| Unresolved target storage/retention/deletion | Customer-source acquisition (no customer/provider path yet supplies a validated geography fact into the annual calculator) and target acceptance remain open; admission/provenance are already integrated and reviewed |
+| Existing control | `test_w8_geography_admission.py`, `W8_S3_GEOGRAPHY_ADMISSION_EVIDENCE.md`, `W8_S3B_GEOGRAPHY_PROVENANCE_HANDOFF_EVIDENCE.md` bind E/W/NI scope and exclude Scotland/Ireland |
+| Threat/failure mode | Out-of-scope geography treated as supported; Scottish Income Tax or Ireland leakage; false launch claim |
+| Current fail-closed state | Scotland and Ireland are not treated as supported October geography; foreign income/SEPA-ready models do not imply geography support |
+| Exact closure evidence | Customer-source acquisition of a validated E/W/NI geography fact and target acceptance; the admission and provenance boundaries are already integrated and reviewed |
+| Canonical blocker/reference | `W8_S3_GEOGRAPHY_ADMISSION_EVIDENCE.md`; `W8_S3B_GEOGRAPHY_PROVENANCE_HANDOFF_EVIDENCE.md`; decision dossier `W9-DEC-14` |
+
 
 ## Mandatory trust boundaries
 
@@ -285,11 +349,13 @@ AIS read-only flow separated from payment initiation. Live methods raise
 `NotImplementedError`; `TrackOnlyProvider` cannot move money. `yapily_ais` and
 `yapily_pis` are `externally_blocked`.
 
-### TB-08 — Application ↔ unresolved billing provider
+### TB-08 — Application ↔ provisional billing provider
 
-Provider-neutral W10 boundary only; no provider is selected. Stripe is an
-explicitly non-selected placeholder. All subordinate billing policy is
-unresolved (`FD-W10-001`, decision dossier `W9-DEC-11`).
+Provider-neutral W10 boundary exists (the W10-S1A authority contract in
+`reserved/billing/contracts.py`). Stripe Billing, Checkout and Customer Portal
+are the provisional disabled-first subscription baseline (`FD-W10-002`), not
+Stripe Connect. Subordinate billing policy and activation remain unresolved
+(`FD-W10-001`, `FD-W10-002`, `FD-W10-003`, decision dossier `W9-DEC-11`).
 
 ### TB-09 — Runtime ↔ logs/monitoring/support operators
 
@@ -306,6 +372,28 @@ restoration are not evidenced (`REC-01`, `DATA-03`).
 Local/synthetic evidence does not prove target operation. Production/provider
 activation and merge/release/go-live remain separate Founder gates (`ACT-02`,
 `ACT-03`, `RELEASE-01`, `RUNTIME-01`).
+
+### TB-12 — Linked-customer account ↔ linked-customer account
+
+The linked-HICBC boundary between two authenticated customers' accounts.
+Protected by separate affirmative consent from both users, strict purpose
+limitation, data minimisation, no cross-user disclosure, anti-probing controls
+and auditable notice/withdrawal/unlinking. Documented lawful basis and privacy
+review remain required before activation (`DATA-01`, `DATA-02`).
+
+### TB-13 — MTD indication boundary (customer facts ↔ formal HMRC determination)
+
+The indication uses gross income before expenses from sole-trader, UK-property
+and foreign-property sources, respects residence/source/Self Assessment/
+exemption/cessation/timing boundaries, and is never presented as HMRC's formal
+determination. Unknown facts fail closed.
+
+### TB-14 — October geography admission boundary
+
+England, Wales and Northern Ireland only; Scottish Income Tax and the wider
+Scottish position, and Ireland/other non-UK jurisdictions, are outside the
+October calculation, reserve recommendation and launch claims.
+
 
 ## Mandatory threat classes
 
@@ -380,8 +468,12 @@ Mitigation: none deployed; backups/restore are unresolved (`REC-01`, `DATA-03`).
 
 ### TH-14 — Availability/provider outage
 
-Mitigation: bounded fail-close in provider contracts. Missing: outage exercise
-and degraded-customer tests (`OUTAGE-01`).
+Mitigation: integrated W9-S4A–E fail-closed provider outage/recovery contract,
+local/synthetic single- and multi-provider presentation and coordination, and a
+synthetic outage exercise exist (`W9_PROVIDER_OUTAGE_DEGRADATION_CONTRACT.md`,
+`W9_S4C_MULTI_PROVIDER_OUTAGE_EVIDENCE.md`, `W9_S4D_*`, `W9_S4E_*`). Missing:
+target/sandbox/real-provider outage and degraded-customer exercise acceptance
+(`OUTAGE-01`).
 
 ### TH-15 — Privilege escalation
 
@@ -395,13 +487,36 @@ dependency-review evidence (`RUNTIME-01`).
 
 ### TH-17 — Payment/cash misdirection
 
-Mitigation: `TrackOnlyProvider` rejects non-track-only instructions; Stripe is a
-disabled placeholder; Yapily AIS is separated from PIS.
+Mitigation: `TrackOnlyProvider` rejects non-track-only instructions; Stripe
+Billing/Checkout/Customer Portal is a provisional disabled-first subscription
+baseline while Stripe Connect remains a disabled money-movement placeholder;
+Yapily AIS is separated from PIS.
 
 ### TH-18 — Unsafe activation
 
 Mitigation: fail-closed `readiness.py`/identity readiness and the canonical
 release gate preserve blockers; configuration alone cannot activate a provider.
+
+### TH-19 — Partner-data disclosure / inferential probing (linked HICBC)
+
+Mitigation: mutual affirmative consent from both users; owner-scoped minimal
+HICBC-relevant partner evidence (ANI and claimant status only); no repeated
+hypothetical/comparative/band probing; withdrawal/unlinking reverts the result.
+Missing: documented lawful basis, transparency, minimisation, withdrawal/
+unlinking, deletion and anti-probing privacy review (`DATA-01`, `DATA-02`).
+
+### TH-20 — MTD formal-vs-indication conflation / false certainty
+
+Mitigation: qualified, forward-looking indication; gross income before expenses;
+thresholds/start dates and exclusions applied; "Worth reviewing" wording;
+no "MTD ready" customer language. Missing: target customer-presentation acceptance.
+
+### TH-21 — Out-of-scope geography leakage
+
+Mitigation: England/Wales/Northern Ireland admission guard;
+Scotland and Ireland excluded; foreign income/SEPA-ready models do not imply geography support.
+Missing: target provenance handoff acceptance.
+
 
 ## Non-activation and non-duplication statement
 
