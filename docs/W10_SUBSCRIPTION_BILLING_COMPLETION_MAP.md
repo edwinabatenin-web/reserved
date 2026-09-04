@@ -7,10 +7,11 @@
 **Original planning commit:** `b15d3fcfa423192e1a8a2e8d0a49851b366518f4`
 
 **Current integration reconciliation point:**
-`79351eb02c0b82b19063689d5da460f3f07394b4` (tree
-`36f167cb5aaf97299cdde9f8d7fe056bfdf32d0c`)
+`9e8f94a9906f0c9d5c85b47223d20c34be499e1c` (tree
+`0351fc341ebe4220c173da064c4aaf8db143b394`)
 
-**Current status:** **S1 implemented and integrated; S6 partially implemented
+**Current status:** **S1 independently reviewed and integrated; S2 partially
+implemented as a provider/runtime-neutral authority candidate; S6 partially implemented
 and integrated; 0/8 slices complete on the strict accepted-evidence denominator;
 not launch-ready.**
 
@@ -30,21 +31,37 @@ approval. `FOUNDER_DECISIONS.md` is authoritative where older material differs.
 - Special discounts and offers must be supportable.
 - Unrelated commerce, marketplace and reseller scope is not authorised.
 
+### Settled provisional provider and lifecycle authority (`FD-W10-002` / `FD-W10-003`)
+
+- Stripe Billing, Stripe Checkout and Stripe Customer Portal form the
+  provisional disabled-first subscription baseline; Stripe Connect is excluded.
+- Paid access starts only after verified successful initial payment and renews
+  automatically for the selected paid plan.
+- Cancellation stops future renewal while ordinary access continues through the
+  already-paid period.
+- The first verified failed-renewal observation enters the explicit canonical
+  `payment_recovery` state for exactly seven calendar days. Ordinary access may
+  continue during that bounded state; duplicate/repeated failures cannot extend
+  it; verified recovery returns to ordinary paid state; unresolved expiry
+  suspends ordinary access.
+- No October free trial or free tier is authorised.
+- Provider events and labels are observations, never direct entitlement flags.
+- This authority remains provisional and does not accept provider terms, approve
+  credentials, activate billing, settle VAT/invoice treatment or authorise a
+  charge.
+
 ### Genuinely unresolved subordinate policy
 
-The Founder decision explicitly does **not** settle the billing provider,
-renewal behaviour, cancellation timing, failed-payment or grace handling,
-entitlement start/end, refunds, post-settlement dispute/chargeback/reversal
-handling, tax invoicing or presentation beyond the VAT-inclusive prices,
-promotion/discount mechanics, or partner-offer handling.
-The launch access boundary (which surfaces require an active entitlement),
-trial/free-access behaviour, plan changes/proration, billing-account recovery
-and manual overrides must likewise be made explicit if required; none may be
-silently inferred from a provider default. These are implementation policies or
-decisions for the appropriate product, finance/tax, legal, security and
-operational owners. Escalate new scope, consequential external commitments,
-material exceptions and high-risk business judgement for Founder authority;
-ordinary implementation detail and review are not Founder gates.
+Six settled policy keys are now explicit. Nine policy keys remain unresolved:
+refunds; tax invoicing/additional VAT presentation; promotion/discount mechanics;
+partner-offer handling; the exact paid-access surface; plan changes/proration;
+billing-account recovery; manual overrides; and post-settlement dispute,
+chargeback or reversal consequences. None may be silently inferred from a
+provider default. These are implementation policies or decisions for the
+appropriate product, finance/tax, legal, security and operational owners.
+Escalate new scope, consequential external commitments, material exceptions and
+high-risk business judgement for Founder authority; ordinary implementation
+detail and review are not Founder gates.
 
 ## Baseline finding and owned outcome
 
@@ -75,8 +92,8 @@ must not reuse either domain contract as if it were subscription billing.
 
 | Slice | Smallest coherent outcome | Current state | Dependencies and completion evidence |
 |---|---|---|---|
-| **W10-S1 — authority and provider-neutral contract** | Encode the versioned initial plan catalogue and a fail-closed inventory of required policy inputs, while representing discounts/offers only as a required capability. | **Implemented and integrated at `c09dac2...`; completion evidence still partial.** The exact authority contract, billing boundary and adversarial tests exist. No durable package record located by this reconciliation proves the fresh independent-review disposition, so the slice is not yet counted complete. | Preserve the integrated contract and reconcile or repeat only the missing independent review. S2 policy closure must not mutate the versioned `FD-W10-001` snapshot or infer provider defaults. |
-| **W10-S2 — provider and policy closure** | Record the selected billing provider and every launch lifecycle/access/promotion/invoice and post-settlement dispute/chargeback/reversal policy needed by later slices, with decision owner and rationale. | **Unresolved; no provider selected.** | Provider evidence and appropriate product, finance/tax, legal, security and operational review. Complete only when no runtime behaviour relies on an undocumented provider default; production contracting/commitment and consequential choices retain their applicable authority gates. |
+| **W10-S1 — authority and provider-neutral contract** | Encode the versioned initial plan catalogue and a fail-closed inventory of required policy inputs, while representing discounts/offers only as a required capability. | **Independently reviewed, checkpointed and integrated at `9e8f94a...`.** Exact authority, billing boundary, adversarial integrity and affected/full regression evidence passed. The slice remains short of launch-evidence-complete because later provider/target evidence is outside S1. | Preserve the exact integrated S1 authority and its 15-key denominator. S2 must consume its closure-bound validation/projector protocol, never mutable raw attributes or provider defaults. |
+| **W10-S2 — provider and policy closure** | Record the selected billing provider and every launch lifecycle/access/promotion/invoice and post-settlement dispute/chargeback/reversal policy needed by later slices, with decision owner and rationale. | **S2 partially implemented as W10-S2A authority evidence: six settled policy keys and the provisional Stripe capability boundary are encoded; nine policy keys remain unresolved. S2 remains incomplete.** The candidate is provider/runtime-neutral and does not activate billing. | Independent acceptance/integration of S2A; provider terms/DPA/fees and appropriate product, finance/tax, legal, security and operational review for the nine remaining keys. Complete only when no runtime behaviour relies on an undocumented provider default. |
 | **W10-S3 — durable billing and entitlement core** | Implement the owner-bound catalogue/version reference, billing account, subscription and settlement observations, event inbox, audit/reconciliation record and policy-derived entitlement boundary, including post-settlement dispute/chargeback/reversal observations without assuming their access consequence. | **Not started.** | S1 and the relevant S2 policies; W9 datastore, retention, encryption/key-custody and erasure decisions. Migrations, ownership/concurrency, ordered-event, duplicate/replay, dispute/chargeback/reversal, correction and deletion/retention tests; independent schema/security review. |
 | **W10-S4 — provider adapter and collection lifecycle** | Implement disabled-first provider customer/checkout/management, verified webhooks, reconciliation and offer primitives against the provider-neutral core. | **Not started.** | S2 provider selection/contract; S3 identities; approved credential custody; current official provider contract and sandbox access. Synthetic contract tests plus successful, declined, delayed, duplicate, replayed, out-of-order, forged, refunded, post-settlement disputed/charged-back/reversed and recovered sandbox evidence. No configuration or credential alone may enable it. |
 | **W10-S5 — server-side access and administration** | Apply the approved entitlement decision, including explicitly approved post-settlement dispute/chargeback/reversal consequences, to every in-scope paid surface and supply least-privilege, audited support/admin correction tools. | **Not started.** | S2 access/lifecycle/override policy and S3 entitlement API; can use synthetic events while S4 proceeds. Route inventory, cross-user, stale/unknown status, dispute/chargeback/reversal, revocation, cache, concurrent update, bypass and audited-override tests; authentication and client-side hiding must never substitute for server enforcement. |
@@ -106,9 +123,10 @@ rather than growing the map for ordinary fixes.
 
 ## Dependencies, parallelism and collision boundaries
 
-1. Preserve the integrated S1 contract and reconcile or repeat only its missing
-   independent-review evidence. S2 provider diligence and policy drafting may
-   run in parallel, but S2 closes only through explicit decisions.
+1. Preserve the independently reviewed integrated S1 contract. S2A encodes the
+   six settled provider/lifecycle inputs without closing S2. Provider diligence
+   and the nine remaining policies may run in parallel, but S2 closes only
+   through explicit accepted evidence.
 2. S3 follows the relevant S1/S2 contracts. S4 and S5 can then run in parallel:
    S4 owns provider translation, while S5 consumes only synthetic or canonical
    billing observations and entitlement decisions.
@@ -216,10 +234,11 @@ W10 is complete only when all thirteen checks pass:
 
 ## Current next action
 
-W10-S1A is already implemented and integrated. The next action is to obtain or
-repeat a fresh independent review of that exact contract and then record the
-smallest set of explicit S2 provider and customer-lifecycle decisions needed by
-S3-S6.
+W10-S1A is independently reviewed and integrated. The current S2A candidate
+records the six settled provider and paid-lifecycle decisions while preserving
+the nine unresolved keys. The next action is independent S2A review/integration,
+followed by provider-neutral S3 design against the explicit lifecycle subset and
+bounded work to close the remaining S2 evidence without inventing defaults.
 
 No provider adapter, credential, persistence migration, access grant or checkout
 package follows merely from the S1 contract. Provider-specific implementation
@@ -239,7 +258,8 @@ accounts, handle credentials, charge money, merge, deploy or go live. A required
 launch policy may describe a deliberately unsupported case; unsupported
 sophistication does not create another slice unless authoritative scope changes.
 
-**Map disposition:** **S1 implemented and integrated and S6 partially
-implemented/integrated; strict completion remains 0/8 pending independently
-accepted S1 evidence, S2 policy closure and each slice's remaining completion
-evidence.** Target evidence and launch authority remain open.
+**Map disposition:** **S1 independently reviewed and integrated; S2 partially
+implemented with six settled policy keys and nine policy keys unresolved; S6
+partially implemented/integrated; strict completion remains 0/8 pending S2
+policy closure and each slice's remaining completion evidence.** Target evidence
+and launch authority remain open.
