@@ -752,6 +752,9 @@ def test_w9_map_records_s3e_without_moving_any_launch_gate() -> None:
     assert "authoritative membership source or physical repository" in W9_TEXT
     assert "does not select a datastore, retention or custody policy" in W9_TEXT
     assert "prove\ntarget membership or persistence" in W9_TEXT
+    assert "exact 18-blocker inventory" in W9_TEXT
+    assert "8f19639c0598df5f7885a4081a21c6a42765f2ec" in W9_TEXT
+    assert "16-blocker inventory" not in W9_TEXT
     assert "future authenticated runtime-owner adapter" not in W9_TEXT
     assert "S3C authenticated non-durable adapter" not in W9_TEXT
     assert "authenticates an exact S3A projection" not in W9_TEXT
