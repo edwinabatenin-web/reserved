@@ -6,6 +6,7 @@ import ast
 import hashlib
 import inspect
 import json
+import subprocess
 import types
 from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
@@ -125,8 +126,18 @@ def test_exact_base_contract_and_source_hashes():
     projected = dict(subject.project_portal_intent_contract())
     assert projected["candidate_base_commit"] == BASE
     assert projected["candidate_base_tree"] == TREE
-    for _, path, expected, _ in projected["source_bindings"]:
-        assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == expected
+    for source_id, path, expected, accepted_at in projected["source_bindings"]:
+        if source_id == "entitlement_separation":
+            blob = subprocess.run(
+                ["git", "show", f"{accepted_at}:{path}"], cwd=ROOT, check=True,
+                stdout=subprocess.PIPE,
+            ).stdout
+            assert hashlib.sha256(blob).hexdigest() == expected
+        else:
+            assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == expected
+    assert hashlib.sha256((ROOT / "reserved/billing/entitlement_core.py").read_bytes()).hexdigest() == (
+        "201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415"
+    )
     assert projected["return_destination_allowlist"] == (DESTINATION,)
 
 

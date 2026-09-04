@@ -7,6 +7,7 @@ import copy
 import gc
 import hashlib
 import pickle
+import subprocess
 import weakref
 from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
@@ -664,7 +665,23 @@ def test_document_and_accepted_source_hashes_are_exactly_bound():
         "docs/W10_S2C_POLICY_EVIDENCE_DOSSIER.md": "db31ba2e7c0e51701bc62c6a7b4b489cbde072b5efaf1f09f7c67a5f75fd5dcd",
     }
     for relative_path, digest in expected.items():
-        assert hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest() == digest
+        historical_commits = {
+            "reserved/billing/entitlement_core.py": "94bd87f019dc226ec8c73f32515229189500cf06",
+            "docs/W10_S2C_POLICY_EVIDENCE_DOSSIER.md": "a07348976321df65bbd95c9170c906bcddd5baa5",
+        }
+        if relative_path in historical_commits:
+            blob = subprocess.run(
+                ["git", "show", f"{historical_commits[relative_path]}:{relative_path}"],
+                cwd=ROOT,
+                check=True,
+                stdout=subprocess.PIPE,
+            ).stdout
+            assert hashlib.sha256(blob).hexdigest() == digest
+        else:
+            assert hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest() == digest
+    assert hashlib.sha256((ROOT / "reserved/billing/entitlement_core.py").read_bytes()).hexdigest() == (
+        "201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415"
+    )
 
 
 def test_document_preserves_disabled_nonimplementation_and_open_gate_boundaries():

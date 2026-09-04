@@ -154,3 +154,14 @@ entitlement, sandbox or production activation. It does not complete W10-S4 or
 make W10 or Reserved launch-ready.
 
 No Stripe SDK or provider dependency is imported by the contract.
+
+## Post-entitlement-core reconciliation
+
+The embedded S3A binding remains the exact historical source reviewed at this
+candidate's base. The accepted hardened core is source checkpoint
+`b990d514a929c37b3f999137a0e383d05c37f0df`, integrated as
+`48a97042fc0e17997bf2d23a4687e79c20b74b9e`, with current SHA-256
+`201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415`.
+Its detached zero-authority lifecycle and fixed history/date behaviour do not
+turn this intent into admission, payment, provider, entitlement, persistence
+or activation authority. Q1/Q2/Q3 and all external/target gates remain open.

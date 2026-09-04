@@ -465,10 +465,16 @@ def test_evidence_binds_exact_authority_and_baseline_without_claiming_admission(
         ),
     }
     for relative_path, expected_sha256 in expected.items():
-        assert hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest() == (
-            expected_sha256
-        )
+        if relative_path == "reserved/billing/entitlement_core.py":
+            blob = subprocess.run(
+                ["git", "show", f"94bd87f019dc226ec8c73f32515229189500cf06:{relative_path}"],
+                cwd=ROOT, check=True, stdout=subprocess.PIPE,
+            ).stdout
+            assert hashlib.sha256(blob).hexdigest() == expected_sha256
+        else:
+            assert hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest() == expected_sha256
         assert expected_sha256 in evidence
+    assert "201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415" in evidence
     for required in (
         "detached",
         "untrusted structural facts",

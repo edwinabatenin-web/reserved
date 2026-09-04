@@ -124,7 +124,7 @@ checkpoint from the commit that integrated identical package blobs.
       "path": "reserved/billing/entitlement_core.py",
       "accepted_commit": "94bd87f019dc226ec8c73f32515229189500cf06",
       "sha256": "b46b797614b57047e64f6f6597b1c788b9ab15db90653b07add31b4bbb03cb3b",
-      "binding": "live"
+      "binding": "historical_at_cutoff"
     },
     {
       "id": "SRC-08",
@@ -600,3 +600,15 @@ retention duration, key custodian, target runtime or provider configuration. It
 does not answer Q1, Q2 or Q3, amend Founder Decisions or completion maps, close
 W10-S7, assert security assurance, approve residual risk, authorise release or
 make Reserved launch-ready.
+
+## Post-entitlement-core reconciliation
+
+SRC-07 is now explicitly historical at the threat-model cutoff. The accepted
+hardened entitlement core is source checkpoint
+`b990d514a929c37b3f999137a0e383d05c37f0df`, integrated as
+`48a97042fc0e17997bf2d23a4687e79c20b74b9e`, with current SHA-256
+`201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415`.
+It provides detached zero-authority structural lifecycle candidates and fixed
+history/date behaviour only. It grants no provider, persistence, custody,
+entitlement, target or activation authority, closes none of Q1/Q2/Q3, and does
+not constitute security or launch assurance.

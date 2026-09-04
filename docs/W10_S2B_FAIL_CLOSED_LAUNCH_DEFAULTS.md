@@ -86,3 +86,14 @@ stale callback/id-reuse safety, detached immutable projections, absence of I/O,
 and absence of provider/database/route dependencies. The build-time copy probes
 and 1,000-copy stress regression both return the private registry to the single
 live canonical handle; collected handle state is not retained.
+
+## Post-entitlement-core reconciliation
+
+The S3A row remains the exact historical source bound by this package. Its
+accepted hardened source checkpoint is `b990d514a929c37b3f999137a0e383d05c37f0df`,
+integrated as `48a97042fc0e17997bf2d23a4687e79c20b74b9e`, and current SHA-256 is
+`201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415`.
+The core now supplies only detached zero-authority structural lifecycle
+candidates with fixed history/date behaviour. It changes no default, settles
+none of Q1/Q2/Q3, and supplies no provider, target, persistence or activation
+evidence.

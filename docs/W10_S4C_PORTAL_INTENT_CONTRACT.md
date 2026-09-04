@@ -94,3 +94,15 @@ remain open. This package neither answers them nor treats Customer Portal as
 authority to change them.
 
 No Stripe SDK or non-standard provider dependency is imported.
+
+## Post-entitlement-core reconciliation
+
+The embedded S3A binding preserves the historical source reviewed at this
+candidate's base. The accepted hardened core is source checkpoint
+`b990d514a929c37b3f999137a0e383d05c37f0df`, integrated as
+`48a97042fc0e17997bf2d23a4687e79c20b74b9e`, with current SHA-256
+`201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415`.
+Its detached zero-authority lifecycle and fixed history/date behaviour grant
+this Portal intent no authentication, provider-session, persistence, recovery,
+entitlement or activation authority. Q1/Q2/Q3 and external/target gates remain
+open.

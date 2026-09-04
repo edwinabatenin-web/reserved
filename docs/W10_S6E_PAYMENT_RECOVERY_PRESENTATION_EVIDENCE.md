@@ -105,3 +105,14 @@ Only these new paths are authorised:
 - `docs/W10_S6E_PAYMENT_RECOVERY_PRESENTATION_EVIDENCE.md`
 
 The candidate must stop uncommitted for fresh independent re-review.
+
+## Post-entitlement-core reconciliation
+
+The entitlement-core row remains the historical S6E source. The accepted
+hardened core is source checkpoint `b990d514a929c37b3f999137a0e383d05c37f0df`,
+integrated as `48a97042fc0e17997bf2d23a4687e79c20b74b9e`, with current SHA-256
+`201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415`.
+Its fixed history/date behaviour preserves start-inclusive/deadline-exclusive
+copy semantics, while its detached zero-authority status supplies no upstream
+admission, live rendering, delivery, entitlement, provider, persistence or
+activation authority. Q1/Q2/Q3 and all external/target gates remain open.

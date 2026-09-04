@@ -196,3 +196,14 @@ standard-library-only implementation; and accepted-source hashes.
 
 The tests perform no database, file persistence, migration, network, SDK,
 credential, customer-data, route, entitlement or provider operation.
+
+## Post-entitlement-core reconciliation
+
+The S3A source row above remains the historical source reviewed by S2D. The
+accepted hardened core is source checkpoint `b990d514a929c37b3f999137a0e383d05c37f0df`,
+integrated as `48a97042fc0e17997bf2d23a4687e79c20b74b9e`, with current SHA-256
+`201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415`.
+Its detached zero-authority structural lifecycle and fixed history/date
+behaviour grant no S2D authentication, persistence, provider, recovery,
+entitlement or activation authority and close none of Q1/Q2/Q3 or the external
+and target gates.

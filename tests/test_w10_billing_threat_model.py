@@ -62,7 +62,7 @@ EXPECTED_SOURCES = {
         "reserved/billing/entitlement_core.py",
         "94bd87f019dc226ec8c73f32515229189500cf06",
         "b46b797614b57047e64f6f6597b1c788b9ab15db90653b07add31b4bbb03cb3b",
-        "live",
+        "historical_at_cutoff",
     ),
     "SRC-08": (
         "reserved/billing/event_inbox_contract.py",

@@ -9,6 +9,7 @@ import gc
 import hashlib
 import inspect
 import pickle
+import subprocess
 import weakref
 from pathlib import Path
 from types import FunctionType
@@ -98,9 +99,16 @@ def test_exact_contract_identity_and_accepted_source_hashes():
         "5bc29bcb30c95ea7a5a9430104653b366d709eb6"
     )
     assert projected["accepted_sources"] == EXPECTED_SOURCES
-    for _, _, relative_path, expected_hash, _ in EXPECTED_SOURCES:
-        actual = hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest()
+    for _, accepted_commit, relative_path, expected_hash, _ in EXPECTED_SOURCES:
+        blob = subprocess.run(
+            ["git", "show", f"{accepted_commit}:{relative_path}"], cwd=ROOT,
+            check=True, stdout=subprocess.PIPE,
+        ).stdout
+        actual = hashlib.sha256(blob).hexdigest()
         assert actual == expected_hash
+    assert hashlib.sha256((ROOT / "reserved/billing/entitlement_core.py").read_bytes()).hexdigest() == (
+        "201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415"
+    )
 
 
 def test_exact_policy_partition_remains_incomplete_with_five_unresolved_keys():

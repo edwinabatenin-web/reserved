@@ -7,6 +7,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DOSSIER = ROOT / "docs" / "W10_S2C_POLICY_EVIDENCE_DOSSIER.md"
@@ -37,7 +39,7 @@ REPO_SOURCES = {
         "48cefde6e995f160f6d0d0199cc287c4d7359f4c891e88ca251a65a661b75544"
     ),
     "docs/W10_S2B_FAIL_CLOSED_LAUNCH_DEFAULTS.md": (
-        "b41626accc9867d7fa17f7ac51b9ac50a380c7f6190e1b37c425030fbaf0d51a"
+        "617ca21d3555bef8944f9d4173c0dc432816817fb2a73d9f1566380bbf8b9703"
     ),
     "docs/W10_S3A_ENTITLEMENT_TRANSITION_EVIDENCE.md": (
         "07fced7c7ca2f2ecb48541bb2e25db177651ecfb13dd75bda21b08a084e3bda8"
@@ -59,6 +61,8 @@ HISTORICAL_S5A_SOURCES = {
 }
 
 HISTORICAL_MAP = "docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md"
+HISTORICAL_ENTITLEMENT_EVIDENCE = "docs/W10_S3A_ENTITLEMENT_TRANSITION_EVIDENCE.md"
+HISTORICAL_ENTITLEMENT_COMMIT = "94bd87f019dc226ec8c73f32515229189500cf06"
 WRONG_MAP_COMMIT = "81ae02044cccd921d98a0d1fc2360e1c4a983ab1"
 
 
@@ -82,6 +86,11 @@ def assert_historical_hash(commit: str, relative_path: str, expected_hash: str):
     )
 
 
+def assert_live_hash(path: Path, expected_hash: str):
+    actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert actual_hash == expected_hash, f"stale live S2C source: {path}"
+
+
 def test_exact_base_tree_date_and_non_authority_status_are_explicit():
     assert BASE in TEXT
     assert TREE in TEXT
@@ -97,15 +106,40 @@ def test_exact_integrated_repository_sources_remain_hash_bound():
         assert relative_path in TEXT
         assert expected_hash in TEXT
         if relative_path == HISTORICAL_MAP:
-            # The dossier reviewed the map at BASE. Later truthful reconciliations
-            # may change the live map without rewriting that historical evidence.
             assert_historical_hash(BASE, relative_path, expected_hash)
-        else:
-            # Immutable authority/product inputs remain deliberately live-bound:
-            # current drift must continue to invalidate the S2C evidence check.
-            assert hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest() == (
-                expected_hash
+        elif relative_path == HISTORICAL_ENTITLEMENT_EVIDENCE:
+            assert_historical_hash(
+                HISTORICAL_ENTITLEMENT_COMMIT, relative_path, expected_hash
             )
+        else:
+            assert_live_hash(ROOT / relative_path, expected_hash)
+    assert "fafd93c1a8fa65428bd3af19c1f35e9b47b10f38f68312721e6f2a5e14943f0d" in TEXT
+
+
+def test_live_source_drift_still_fails_closed(tmp_path):
+    relative_path = "docs/W10_S2A_PROVIDER_LIFECYCLE_AUTHORITY_EVIDENCE.md"
+    source = ROOT / relative_path
+    assert_live_hash(source, REPO_SOURCES[relative_path])
+
+    altered = tmp_path / source.name
+    altered.write_bytes(source.read_bytes() + b"\nsynthetic-drift\n")
+    with pytest.raises(AssertionError, match="stale live S2C source"):
+        assert_live_hash(altered, REPO_SOURCES[relative_path])
+
+
+def test_only_changed_s3a_evidence_uses_exact_historical_checkpoint():
+    expected_hash = REPO_SOURCES[HISTORICAL_ENTITLEMENT_EVIDENCE]
+    assert_historical_hash(
+        HISTORICAL_ENTITLEMENT_COMMIT,
+        HISTORICAL_ENTITLEMENT_EVIDENCE,
+        expected_hash,
+    )
+    assert hashlib.sha256(
+        (ROOT / HISTORICAL_ENTITLEMENT_EVIDENCE).read_bytes()
+    ).hexdigest() == "fafd93c1a8fa65428bd3af19c1f35e9b47b10f38f68312721e6f2a5e14943f0d"
+    assert expected_hash != hashlib.sha256(
+        (ROOT / HISTORICAL_ENTITLEMENT_EVIDENCE).read_bytes()
+    ).hexdigest()
 
 
 def test_historical_map_provenance_survives_reconciliation_but_rejects_forgery():

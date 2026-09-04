@@ -45,7 +45,7 @@ are not silently made as engineering defaults.
 | R-02 | `5612f7a33f27f09d1fa988f15dfdffbe77a72705` | `docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md` | `7af205f420c2cf3a9039fff7aad1af65e55221005231b2fabe3bd99c94f96c4d` | Exact five-key remainder, accepted S5A prerequisite status, strict 0/8 status and completion gates. |
 | R-03 | `c09dac2eac097347357b3d4fc252977a0b8115a3` | `docs/W10_BILLING_AUTHORITY_AND_POLICY_CONTRACT.md` | `e5911c70199727beba888175f5f31a208a4418eb16cae7978e8b52fa57d688ce` | Fifteen-key policy denominator and non-inference rule. |
 | R-04 | `5464bfac7bec6b3456d1895b2355a7e8ce86859b` | `docs/W10_S2A_PROVIDER_LIFECYCLE_AUTHORITY_EVIDENCE.md` | `48cefde6e995f160f6d0d0199cc287c4d7359f4c891e88ca251a65a661b75544` | Six Founder-settled S2 keys and provisional Stripe boundary. |
-| R-05 | `1033c9fbef008dcd33125a0b14e7fb18b8846d19` | `docs/W10_S2B_FAIL_CLOSED_LAUNCH_DEFAULTS.md` | `b41626accc9867d7fa17f7ac51b9ac50a380c7f6190e1b37c425030fbaf0d51a` | Four ordinary defaults and exact five-key unresolved remainder. |
+| R-05 | current descendant reconciliation (historical source checkpoint `1033c9fbef008dcd33125a0b14e7fb18b8846d19`) | `docs/W10_S2B_FAIL_CLOSED_LAUNCH_DEFAULTS.md` | `617ca21d3555bef8944f9d4173c0dc432816817fb2a73d9f1566380bbf8b9703` | Four ordinary defaults and exact five-key unresolved remainder; still live-drift checked. |
 | R-06 | `94bd87f019dc226ec8c73f32515229189500cf06` | `docs/W10_S3A_ENTITLEMENT_TRANSITION_EVIDENCE.md` | `07fced7c7ca2f2ecb48541bb2e25db177651ecfb13dd75bda21b08a084e3bda8` | Entitlement transition boundary; refunds/disputes remain excluded. |
 | R-07 | `5bc29bcb30c95ea7a5a9430104653b366d709eb6` | `docs/W10_S3B_EVENT_INBOX_CONTRACT.md` | `4e28d354dcff1bb5e44f7c01fa17a7712c209df3010fbb722bb8fbf28ac88182` | Detached inbox shapes; unknown/refund/dispute/reversal inputs reconcile with zero direct entitlement effect. |
 | R-08 | `2ad4a63dd1f10ba38859050b47245c28390667d8` | `docs/W10_S4A_STRIPE_DISABLED_FIRST_CONTRACT_EVIDENCE.md` | `da9881c5625cf1f338b8f2626d0b6c4806594508784f84c64a0160c94706111a` | Network-inert Stripe edge, webhook/provider-observation limits and unresolved consequences. |
@@ -391,3 +391,13 @@ then produce one accepted S2 closure artifact that binds the accepted S5A
 identity, specialist sign-offs, exact policy versions and all fifteen S2 keys.
 Provider configuration, runtime implementation and activation remain separate
 later packages.
+
+## Post-entitlement-core evidence reconciliation
+
+R-06 remains the exact historical evidence reviewed by S2C. Hardened S3A
+evidence is accepted at source checkpoint `b990d514a929c37b3f999137a0e383d05c37f0df`,
+integrated as `48a97042fc0e17997bf2d23a4687e79c20b74b9e`, with current SHA-256
+`fafd93c1a8fa65428bd3af19c1f35e9b47b10f38f68312721e6f2a5e14943f0d`.
+It documents detached zero-authority structural lifecycle candidates and fixed
+history/date behaviour. It answers none of Q1/Q2/Q3, changes no denominator,
+and closes no provider, target, persistence or activation evidence.

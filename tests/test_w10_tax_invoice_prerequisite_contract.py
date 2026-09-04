@@ -6,6 +6,7 @@ import ast
 import builtins
 import hashlib
 import inspect
+import subprocess
 from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 
@@ -151,8 +152,15 @@ def test_exact_contract_identity_tree_and_repository_source_hashes():
         "26b1aa6a1302195770534dc41caf099bcdd7cb06"
     )
     assert projected["repository_sources"] == EXPECTED_REPOSITORY_SOURCES
-    for _, relative_path, expected_hash, _ in EXPECTED_REPOSITORY_SOURCES:
-        actual = hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest()
+    for source_id, relative_path, expected_hash, _ in EXPECTED_REPOSITORY_SOURCES:
+        if source_id == "specialist_gate_dossier":
+            blob = subprocess.run(
+                ["git", "show", f"a07348976321df65bbd95c9170c906bcddd5baa5:{relative_path}"],
+                cwd=ROOT, check=True, stdout=subprocess.PIPE,
+            ).stdout
+            actual = hashlib.sha256(blob).hexdigest()
+        else:
+            actual = hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest()
         assert actual == expected_hash
 
 

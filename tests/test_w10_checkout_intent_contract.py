@@ -6,6 +6,7 @@ import ast
 import hashlib
 import inspect
 import json
+import subprocess
 from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from types import FunctionType
@@ -140,8 +141,18 @@ def test_exact_base_contract_sources_and_no_completion_claim():
     assert projected["candidate_base_commit"] == BASE
     assert projected["candidate_base_tree"] == TREE
     assert projected["source_bindings"] == EXPECTED_SOURCES
-    for _, path, expected_hash, _ in EXPECTED_SOURCES:
-        assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == expected_hash
+    for source_id, path, expected_hash, accepted_at in EXPECTED_SOURCES:
+        if source_id == "entitlement_transition_contract":
+            blob = subprocess.run(
+                ["git", "show", f"{accepted_at}:{path}"], cwd=ROOT, check=True,
+                stdout=subprocess.PIPE,
+            ).stdout
+            assert hashlib.sha256(blob).hexdigest() == expected_hash
+        else:
+            assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == expected_hash
+    assert hashlib.sha256((ROOT / "reserved/billing/entitlement_core.py").read_bytes()).hexdigest() == (
+        "201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415"
+    )
     assert projected["assurance_status"] == (
         "contract_only_not_checkout_provider_entitlement_s4_or_launch_assurance"
     )
