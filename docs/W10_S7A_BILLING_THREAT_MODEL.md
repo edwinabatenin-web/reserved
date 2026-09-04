@@ -37,6 +37,9 @@ Git blob at the row's declared accepted commit, as admitted by this evidence
 cut-off, so later truthful reconciliation does not rewrite historical
 provenance. The package topology separately distinguishes a reviewed source
 checkpoint from the commit that integrated identical package blobs.
+The live `SRC-24` route binding is refreshed at accepted integration commit
+`c5e560045ed3d62f02c894e931464c3d7294e99f`; the separate accepted S5C
+historical product checkpoint remains unchanged.
 
 <!-- W10-S7A-REGISTER-BEGIN -->
 ```json
@@ -241,8 +244,8 @@ checkpoint from the commit that integrated identical package blobs.
     {
       "id": "SRC-24",
       "path": "reserved/web/routes.py",
-      "accepted_commit": "3c63e64e478957ce04ee1154363c2eae94b82b30",
-      "sha256": "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed",
+      "accepted_commit": "c5e560045ed3d62f02c894e931464c3d7294e99f",
+      "sha256": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
       "binding": "live"
     },
     {

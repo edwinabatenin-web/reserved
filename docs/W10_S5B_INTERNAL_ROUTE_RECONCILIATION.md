@@ -4,6 +4,10 @@
 
 **Evidence cut-off:** 4 September 2026
 
+**Live source checkpoint:**
+`c5e560045ed3d62f02c894e931464c3d7294e99f` (tree
+`bcdbec9108c3c0904139eca278c03fe0f6914db2`)
+
 **Accepted S5C product checkpoint:**
 `3c63e64e478957ce04ee1154363c2eae94b82b30`
 
@@ -81,8 +85,8 @@ disposition forward by name alone.
 ```json
 {
   "schema_version": "W10-S5B/2026-09-04/v2",
-  "repository_head": "3c63e64e478957ce04ee1154363c2eae94b82b30",
-  "repository_tree": "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7",
+  "repository_head": "c5e560045ed3d62f02c894e931464c3d7294e99f",
+  "repository_tree": "bcdbec9108c3c0904139eca278c03fe0f6914db2",
   "accepted_s5a_commit": "9c0760192bb2420b90e57ec7313f69bbe52cbf74",
   "accepted_s5b_commit": "051ae665a0cc94f6e9cdbbc728c621825c7769fe",
   "accepted_s5c_product_checkpoint": "3c63e64e478957ce04ee1154363c2eae94b82b30",
@@ -102,7 +106,7 @@ disposition forward by name alone.
     "FOUNDER_DECISIONS.md": "03765242c39354ffe57834da8a4a4e5b0dbbdacf5278731e560dea55ae3722d4",
     "docs/API_CONTRACT_GAP_REPORT.md": "b0eeeea6357e88dd1db59dd5ddf2d4e4e712f79f73d3a61c52838cda390ac85f",
     "docs/TECHNICAL_ARCHITECTURE.md": "7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79",
-    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "5d1d957f53edf04898df8064ee5825a5ab9a55091daf2fed8b292f54db596601",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "64894dbfb74b0faa16b8b4c824f79b021675caf57a391c9a19c269a0f914c7c9",
     "reserved/__init__.py": "5f35d6d88542218cd8d5dbdac9662ef6711768ae5a3749a92d779325b42a2f34",
     "reserved/providers/banking/yapily.py": "885d021f20f8a76b5f2d26ed692f1e2cae4a7c9764c885da286a61c1c2b68475",
     "reserved/security.py": "73a5d20f1aa69fafda1ab4a9d6c01668fc9a465686e2d8198f8649364e43ae2b",
@@ -112,9 +116,9 @@ disposition forward by name alone.
     "reserved/templates/tax_assurance.html": "ea7e838a32da6738be947892b6280b6e16367b369c43f85dc9dee74ce007b83e",
     "reserved/templates/v2/sandbox_checklist.html": "dad35c55d8557e114db120e9dfd8108503e3b8d5c834b0a48f5edb2bda1f6d38",
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
-    "reserved/web/routes.py": "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed",
+    "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
     "reserved/web/v2.py": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228",
-    "tests/test_w10_paid_surface_inventory.py": "adf2044d4c72bb7985e4fed90ecb771aa1d88719bb39aac9ce47c70c4371b512"
+    "tests/test_w10_paid_surface_inventory.py": "aa1c40ad19dc737df07ec24cc9304ece57ad27f741694b6b4688400c7e448c87"
   },
   "s5c_implemented_treatments": {
     "web.calculate": {

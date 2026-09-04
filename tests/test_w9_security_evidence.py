@@ -32,7 +32,22 @@ S1A_INTRODUCING_PATHS = {
 S1_EVIDENCE_PATHS = S1A_INTRODUCING_PATHS | {
     "docs/W9_SECURITY_OPERATIONS_GAP_REGISTER.md",
 }
+LIVE_PROVENANCE_RECONCILIATION_PATHS = {
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md",
+    "docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md",
+    "docs/W10_S7A_BILLING_THREAT_MODEL.md",
+    "docs/W9_LAUNCH_DATA_FLOW_AND_THREAT_MODEL.md",
+    "tests/test_w10_billing_threat_model.py",
+    "tests/test_w10_internal_route_reconciliation.py",
+    "tests/test_w10_paid_surface_inventory.py",
+    "tests/test_w9_security_evidence.py",
+}
 S5C_EVIDENCE_REFRESH_PARENT = "3c63e64e478957ce04ee1154363c2eae94b82b30"
+CURRENT_ROUTES_COMMIT = "c5e560045ed3d62f02c894e931464c3d7294e99f"
+CURRENT_ROUTES_TREE = "bcdbec9108c3c0904139eca278c03fe0f6914db2"
+HISTORICAL_S5C_ROUTES_SHA256 = (
+    "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed"
+)
 S5C_EVIDENCE_REFRESH_PATHS = {
     "docs/W10_S5A_PAID_SURFACE_INVENTORY.md",
     "docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md",
@@ -193,10 +208,10 @@ SOURCE_SHA256 = {
     "reserved/billing/entitlement_core.py": "201c92c1093b663b786a5e49a1c2ca0d714f3fe6fdaebf18c0c7d486ef25f415",
     "reserved/billing/event_inbox_contract.py": "4dc0b6bb8b109854531dc1b9d492255e98dca805822cd5e0257f0fdf9b0ca8ed",
     "reserved/billing/stripe_disabled_first_contract.py": "87a84c5ec77f25e12667b5466052b4a84ee6e01a6b075df643202d95aec98638",
-    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "5d1d957f53edf04898df8064ee5825a5ab9a55091daf2fed8b292f54db596601",
-    "docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md": "4ba7324883e6aa27081e47ffa6f1c0a1fde99a5f175375a4aae289ce5b7a5917",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "64894dbfb74b0faa16b8b4c824f79b021675caf57a391c9a19c269a0f914c7c9",
+    "docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md": "3cbf1325ef388412dee1a766c13965a00347ba0f517417318b33338f6d261f56",
     "docs/W10_S5C_INTERNAL_ROUTE_HARDENING_EVIDENCE.md": "221b244e687611dfa3e55e67051cb9ffab59ef6fcd9f02d8c5c865611439d1f5",
-    "reserved/web/routes.py": "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed",
+    "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
     "reserved/web/v2.py": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228",
     "docs/W9_S1_INDEPENDENT_REVIEW_EVIDENCE.md": "b824cdd5d493fadcb3c3cb476da78fd12265fe9b6d5fb0b3de4051cd569f663b",
 }
@@ -484,6 +499,17 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _git_blob_sha256(commit: str, relative_path: str) -> str:
+    result = subprocess.run(
+        ["git", "show", f"{commit}:{relative_path}"],
+        cwd=REPO_ROOT,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return hashlib.sha256(result.stdout).hexdigest()
+
+
 def _combined() -> str:
     return _read(DATA_FLOW_DOC) + "\n" + _read(DECISION_DOC) + "\n" + _read(GAP_DOC)
 
@@ -693,6 +719,20 @@ def test_exact_current_source_hashes_match_and_are_recorded():
         assert expected_hash in data_flow, f"missing SHA-256 binding: {relative_path}"
 
 
+def test_live_routes_binding_is_distinct_from_historical_s5c_blob():
+    path = "reserved/web/routes.py"
+    live_hash = SOURCE_SHA256[path]
+    data_flow = _read(DATA_FLOW_DOC)
+
+    assert CURRENT_ROUTES_COMMIT in data_flow
+    assert CURRENT_ROUTES_TREE in data_flow
+    assert hashlib.sha256((REPO_ROOT / path).read_bytes()).hexdigest() == live_hash
+    assert _git_blob_sha256(S5C_EVIDENCE_REFRESH_PARENT, path) == (
+        HISTORICAL_S5C_ROUTES_SHA256
+    )
+    assert live_hash != HISTORICAL_S5C_ROUTES_SHA256
+
+
 def test_integrated_slice_identities_are_exactly_bound():
     data_flow = _read(DATA_FLOW_DOC)
     for slice_name, commit in INTEGRATED_COMMIT_IDENTITIES.items():
@@ -866,8 +906,14 @@ def test_package_does_not_touch_protected_files():
 
 
 def test_current_candidate_has_no_scope_drift():
-    drift = sorted(_worktree_changed_paths() - S1_EVIDENCE_PATHS)
-    assert not drift, f"current W9-S1B candidate changed unauthorised paths: {drift}"
+    changed = _worktree_changed_paths()
+    allowed = (
+        S1_EVIDENCE_PATHS
+        if changed <= S1_EVIDENCE_PATHS
+        else LIVE_PROVENANCE_RECONCILIATION_PATHS
+    )
+    drift = sorted(changed - allowed)
+    assert not drift, f"current evidence candidate changed unauthorised paths: {drift}"
 
 
 def test_reconciliation_scope_truthfully_includes_the_gap_register():

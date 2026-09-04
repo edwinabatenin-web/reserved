@@ -20,6 +20,7 @@ S2D_SOURCE = "1d70e550f685b9c1a4636caf3be75debce500219"
 S2D_INTEGRATED = "509c5360d453e23a0732e4e9d4637385eef20ef6"
 S5C_PRODUCT = "3c63e64e478957ce04ee1154363c2eae94b82b30"
 S5C_EVIDENCE = "e3959964ca08bd5afb6f75feab4ec0fdc83a9423"
+CURRENT_ROUTES_COMMIT = "c5e560045ed3d62f02c894e931464c3d7294e99f"
 
 EXPECTED_SOURCES = {
     "SRC-01": (
@@ -162,8 +163,8 @@ EXPECTED_SOURCES = {
     ),
     "SRC-24": (
         "reserved/web/routes.py",
-        S5C_PRODUCT,
-        "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed",
+        CURRENT_ROUTES_COMMIT,
+        "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
         "live",
     ),
     "SRC-25": (
@@ -320,13 +321,29 @@ def test_exact_source_commit_hash_and_binding_register_is_not_substitutable():
     assert sources == EXPECTED_SOURCES
 
     for source_id, (path, accepted_commit, expected_hash, binding) in sources.items():
-        assert is_ancestor(accepted_commit), f"non-ancestor evidence source: {source_id}"
+        descendant = CURRENT_ROUTES_COMMIT if binding == "live" else HEAD
+        assert is_ancestor(
+            accepted_commit, descendant
+        ), f"non-ancestor evidence source: {source_id}"
         actual_hash = (
             hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
             if binding == "live"
             else git_blob_sha256(accepted_commit, path)
         )
         assert actual_hash == expected_hash, f"stale evidence source: {source_id} {path}"
+
+
+def test_live_routes_binding_does_not_rewrite_historical_s5c_provenance():
+    path, accepted_commit, expected_hash, binding = EXPECTED_SOURCES["SRC-24"]
+    historical_hash = (
+        "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed"
+    )
+
+    assert accepted_commit == CURRENT_ROUTES_COMMIT
+    assert binding == "live"
+    assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == expected_hash
+    assert git_blob_sha256(S5C_PRODUCT, path) == historical_hash
+    assert expected_hash != historical_hash
 
 
 def test_historical_binding_survives_descendant_change_and_rejects_wrong_provenance():

@@ -42,6 +42,9 @@ EXPECTED_PRODUCT_PATH_HASHES = {
         "20a754059b817eb33e5c83ae3edbe551c92c2bafbbbeeca39ed2c709900db3c8"
     ),
 }
+CURRENT_ROUTES_SHA256 = (
+    "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd"
+)
 
 EXPECTED = {
     "web.calculate": (
@@ -306,17 +309,22 @@ def test_exact_metadata_preserves_incomplete_s5_and_no_new_founder_question():
     data = s5b()
     assert data["schema_version"] == "W10-S5B/2026-09-04/v2"
     assert data["repository_head"] == (
-        "3c63e64e478957ce04ee1154363c2eae94b82b30"
+        "c5e560045ed3d62f02c894e931464c3d7294e99f"
     )
-    assert data["repository_tree"] == "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7"
+    assert data["repository_tree"] == "bcdbec9108c3c0904139eca278c03fe0f6914db2"
     assert data["accepted_s5a_commit"] == (
         "9c0760192bb2420b90e57ec7313f69bbe52cbf74"
     )
     assert data["accepted_s5b_commit"] == (
         "051ae665a0cc94f6e9cdbbc728c621825c7769fe"
     )
-    assert data["accepted_s5c_product_checkpoint"] == data["repository_head"]
-    assert data["accepted_s5c_product_tree"] == data["repository_tree"]
+    assert data["accepted_s5c_product_checkpoint"] == (
+        "3c63e64e478957ce04ee1154363c2eae94b82b30"
+    )
+    assert data["accepted_s5c_product_tree"] == (
+        "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7"
+    )
+    assert data["accepted_s5c_product_checkpoint"] != data["repository_head"]
     assert data["reconciliation_status"] == (
         "accepted_reconciliation_with_implemented_s5c_treatments"
     )
@@ -422,9 +430,9 @@ def test_s5c_checkpoint_binds_exact_product_diff_hashes_and_disposition():
     }
     assert data["product_changed_paths_sha256"] == EXPECTED_PRODUCT_PATH_HASHES
     for relative_path, expected_hash in EXPECTED_PRODUCT_PATH_HASHES.items():
-        assert hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest() == (
-            expected_hash
-        )
+        assert git_blob_sha256(
+            data["accepted_product_commit"], relative_path
+        ) == expected_hash
     changed = subprocess.run(
         [
             "git",
@@ -441,6 +449,17 @@ def test_s5c_checkpoint_binds_exact_product_diff_hashes_and_disposition():
         text=True,
     ).stdout.splitlines()
     assert set(changed) == set(EXPECTED_PRODUCT_PATH_HASHES)
+
+
+def test_s5c_historical_routes_blob_is_distinct_from_live_s5b_binding():
+    path = "reserved/web/routes.py"
+    historical_commit = s5c()["accepted_product_commit"]
+    historical_hash = EXPECTED_PRODUCT_PATH_HASHES[path]
+    live_hash = hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+
+    assert git_blob_sha256(historical_commit, path) == historical_hash
+    assert s5b()["source_sha256"][path] == live_hash == CURRENT_ROUTES_SHA256
+    assert historical_hash != live_hash
 
 
 def test_s5c_treatments_match_current_s5b_guards_reachability_and_treatment():

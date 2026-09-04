@@ -225,9 +225,9 @@ def test_inventory_metadata_is_non_authorising_and_s5_remains_incomplete():
     data = inventory()
     assert data["schema_version"] == "W10-S5A/2026-09-04/v2"
     assert data["integration_commit"] == (
-        "3c63e64e478957ce04ee1154363c2eae94b82b30"
+        "c5e560045ed3d62f02c894e931464c3d7294e99f"
     )
-    assert data["integration_tree"] == "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7"
+    assert data["integration_tree"] == "bcdbec9108c3c0904139eca278c03fe0f6914db2"
     assert data["inventory_status"] == "evidence_only_no_paid_boundary_decision"
     assert data["s5_status"] == (
         "incomplete_prerequisite_route_hardening_implemented"

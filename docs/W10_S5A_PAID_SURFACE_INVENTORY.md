@@ -2,12 +2,13 @@
 
 ## Status and boundary
 
-This is an exact route inventory refreshed at the accepted clean W10-S5C
-product checkpoint `3c63e64e478957ce04ee1154363c2eae94b82b30` (tree
-`ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7`). It is evidence for the still
+This is an exact live route inventory refreshed at accepted integration commit
+`c5e560045ed3d62f02c894e931464c3d7294e99f` (tree
+`bcdbec9108c3c0904139eca278c03fe0f6914db2`). It is evidence for the still
 unresolved W10 paid-access-surface decision. It does not decide which customer
 product surfaces require paid entitlement or implement an entitlement gate.
-The independently accepted S5C prerequisite route hardening is implemented;
+The S5C prerequisite route hardening is implemented and remains pinned to its
+historical product checkpoint `3c63e64e478957ce04ee1154363c2eae94b82b30`;
 the paid-boundary decision and paid-entitlement enforcement remain **not
 started**, and W10-S5 remains incomplete. S5A is inventory evidence only.
 
@@ -46,8 +47,8 @@ only when `HICBC_ENABLED` is explicitly enabled.
 ```json
 {
   "schema_version": "W10-S5A/2026-09-04/v2",
-  "integration_commit": "3c63e64e478957ce04ee1154363c2eae94b82b30",
-  "integration_tree": "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7",
+  "integration_commit": "c5e560045ed3d62f02c894e931464c3d7294e99f",
+  "integration_tree": "bcdbec9108c3c0904139eca278c03fe0f6914db2",
   "inventory_status": "evidence_only_no_paid_boundary_decision",
   "s5_status": "incomplete_prerequisite_route_hardening_implemented",
   "paid_boundary_status": "unresolved_founder_decision",
@@ -72,7 +73,7 @@ only when `HICBC_ENABLED` is explicitly enabled.
     "reserved/extensions.py": "ef35d3ec969e299a1c8221b5636bcf44590189175b0ad0c83e88d38ded35b2a0",
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
     "reserved/web/hicbc.py": "5eb230d3a894a70881b3d46e66c26eee67c1cd077529179229375ebb0ec2efa0",
-    "reserved/web/routes.py": "f1d8f6ea3730c8962899a0ffa4d7a78b8c8791693ca03c0d19e0feb8cec42bed",
+    "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
     "reserved/web/v2.py": "dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228"
   },
   "routes": [
