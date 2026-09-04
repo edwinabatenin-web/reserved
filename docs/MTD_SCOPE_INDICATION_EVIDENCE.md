@@ -121,3 +121,43 @@ Tests run with bytecode generation and pytest cache disabled. Final results:
 
 `git diff --check` and final SHA-256 hashes are recorded after the final run;
 this evidence file does not embed its own self-referential hash.
+
+## Temporal-copy correction candidate — 5 September 2026
+
+The preceding package identity, wording and verification record are historical
+and retained unchanged. This bounded correction is on branch
+`astra/mtd-temporal-copy`, base
+`f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b`, tree
+`cd5293096cc592b0fd05d1d0c93d2811496daa6a`, under
+`work/mtd-temporal-copy-authority.md`. It awaits a different independent
+reviewer; it is not an acceptance or activation claim.
+
+Copy contract `reserved-mtd-scope-indication/1.1` supersedes only the universal
+future-start wording above. The material summary is now exactly **Making Tax
+Digital may apply from the tax year shown.** The negative summary likewise
+refers to **the tax year shown**, retaining **This is not a promise of exemption
+or future non-applicability.** Unknown facts retain the unchanged incomplete
+summary and suppressed monetary conclusions.
+
+This avoids calling the existing 2024/25 assessment's 6 April 2026 start
+unconditionally future. The 2025/26 and 2026/27 assessments still carry their
+existing 6 April 2027 and 6 April 2028 starts, respectively. Thresholds remain
+£50,000, £30,000 and £20,000; strict threshold, approaching, eligibility,
+completeness and annualisation behavior is unchanged. There is no clock, new
+rule table, source admission, forecast, route, persistence or filing behavior.
+
+Authority references the owning task's primary-source check of
+[HMRC eligibility and start dates](https://www.gov.uk/guidance/find-out-if-and-when-you-need-to-use-making-tax-digital-for-income-tax).
+This implementation performed no external verification or provider access.
+Founder Decisions remain byte-identical at SHA-256
+`78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f`.
+
+The four-file MTD service/presentation/readiness/literal matrix passed **151**
+tests. The expanded presentation/authentication/structural matrix passed
+**408** tests, including those 151; exact commands are recorded in the companion
+presentation evidence correction below. Historical full-suite counts above
+were not rerun and are not counts for this candidate.
+
+This correction supports but does not complete the missing authenticated,
+source-supported MTD customer journey or close launch, privacy, target or
+activation gates.

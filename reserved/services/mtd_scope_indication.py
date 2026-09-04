@@ -20,7 +20,7 @@ import weakref
 from reserved.engines import mtd_readiness as _engine
 
 
-CONTRACT_VERSION = "reserved-mtd-scope-indication/1.0"
+CONTRACT_VERSION = "reserved-mtd-scope-indication/1.1"
 FEATURE_LABEL = "Could Making Tax Digital apply to you?"
 
 
@@ -156,14 +156,14 @@ def _build_boundary():
     more_information = "More information needed"
     worth_reviewing = "Worth reviewing"
     not_currently_indicated = "Not currently indicated"
-    material_summary = "Making Tax Digital may apply in a future tax year."
+    material_summary = "Making Tax Digital may apply from the tax year shown."
     incomplete_summary = (
         "We cannot provide an indication until the relevant income and "
         "eligibility information is complete."
     )
     not_scope_summary = (
         "Based on the information checked, this does not currently indicate "
-        "that Making Tax Digital may apply from the future tax year shown. "
+        "that Making Tax Digital may apply from the tax year shown. "
         "This is not a promise of exemption or future non-applicability."
     )
     gross_basis = "The threshold uses qualifying gross income before expenses."

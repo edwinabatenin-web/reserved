@@ -106,3 +106,44 @@ final SHA-256 hashes were checked at freeze:
 
 This document omits its own self-referential hash; it is supplied with the
 candidate handoff.
+
+## Temporal-copy correction candidate — 5 September 2026
+
+All earlier identities, hashes and verification counts remain historical.
+This correction shares base `f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b`
+with the companion service correction and awaits a different independent
+reviewer. Exactly six paths change: the service and renderer, their two tests
+and these two evidence records. The engine, template, Founder Decisions,
+routes and configuration are unchanged.
+
+The renderer consumes copy contract `reserved-mtd-scope-indication/1.1`.
+Its captured exact vocabulary matches the issuer's neutral **Making Tax
+Digital may apply from the tax year shown.** summary and qualified negative
+summary. Version 1.0 projections are refused; stale positive/negative summaries
+are refused even when labelled 1.1; a valid summary paired with the wrong
+headline also yields the unchanged generic refusal. This is not post-render
+replacement, a projector bypass or a renderer-owned date rule.
+
+Twenty-one new live issuer-to-handle-to-renderer cases cover all three supported
+assessment years crossed with above-threshold, approaching, below, exempt,
+unknown eligibility, unknown income and unsupported completeness states.
+They assert exact existing periods, dates and thresholds, neutral qualified
+copy, preserved gross/planning explanations, no filing action, and incomplete
+money suppression. Eight new hostile projection cases exercise old copy, old
+version, both together and mismatched approved copy for positive and negative
+states. Existing type, mutation, anti-forgery, escaping and binding tests remain.
+
+Verification from the candidate root (bytecode/cache disabled):
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /private/tmp/reserved-venv/bin/python -m pytest -q -p no:cacheprovider tests/test_mtd_scope_indication.py tests/test_mtd_scope_indication_presentation.py tests/test_mtd_readiness.py tests/test_mtd_approved_literal_audit.py
+PYTHONDONTWRITEBYTECODE=1 /private/tmp/reserved-venv/bin/python -m pytest -o addopts='' -q -p no:cacheprovider tests/test_mtd_scope_indication.py tests/test_mtd_scope_indication_presentation.py tests/test_mtd_readiness.py tests/test_mtd_approved_literal_audit.py tests/test_dashboard.py tests/test_auth.py tests/test_auth_claims.py tests/test_west_independence_structure.py tests/test_paye_reconciliation_presentation.py tests/test_provider_outage_presentation.py tests/test_provider_outage_coordination_presentation.py
+git diff --check
+```
+
+Results: **151 focused passed; 408 expanded passed**, with the expanded count
+including the focused tests. No full-suite, real-browser, production or
+provider assurance is claimed. Final six-path hashes and the ordinary tracked
+`git diff --no-ext-diff` SHA-256 are supplied in the frozen handoff, avoiding
+self-referential document hashes. No authenticated source-admission journey,
+source completeness rule or activation gate is supplied by this copy change.

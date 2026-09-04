@@ -83,10 +83,10 @@ def test_exact_threshold_is_material_and_exposes_rule_derived_start_date(
     year, threshold, mandatory_from, effective_start
 ):
     result = mapping(present((source(gross=threshold),), year=year))
-    assert result["contract_version"] == CONTRACT_VERSION
+    assert result["contract_version"] == CONTRACT_VERSION == "reserved-mtd-scope-indication/1.1"
     assert result["feature_label"] == "Could Making Tax Digital apply to you?"
     assert result["headline"] == "Worth reviewing"
-    assert result["summary"] == "Making Tax Digital may apply in a future tax year."
+    assert result["summary"] == "Making Tax Digital may apply from the tax year shown."
     assert result["assessment_tax_year"] == year
     assert result["mandatory_from_tax_year"] == mandatory_from
     assert result["effective_start_date"] == effective_start
@@ -113,7 +113,7 @@ def test_one_penny_over_each_threshold_is_worth_reviewing(year, threshold):
         )
     )
     assert result["headline"] == "Worth reviewing"
-    assert result["summary"] == "Making Tax Digital may apply in a future tax year."
+    assert result["summary"] == "Making Tax Digital may apply from the tax year shown."
     assert result["distance_from_threshold"] == Decimal("-0.01")
     assert result["filing_action_available"] is False
 
@@ -196,6 +196,8 @@ def test_below_material_position_is_qualified_and_never_promises_exclusion():
     result = mapping(present((source(gross=Decimal("10000.00")),)))
     assert result["headline"] == "Not currently indicated"
     assert "does not currently indicate" in result["summary"]
+    assert "may apply from the tax year shown." in result["summary"]
+    assert "future tax year" not in result["summary"]
     assert "not a promise of exemption or future non-applicability" in result["summary"]
     assert result["information_complete"] is True
 
@@ -209,7 +211,7 @@ def test_over_threshold_unregistered_nonexempt_position_is_still_material():
         )
     )
     assert result["headline"] == "Worth reviewing"
-    assert result["summary"] == "Making Tax Digital may apply in a future tax year."
+    assert result["summary"] == "Making Tax Digital may apply from the tax year shown."
 
 
 @pytest.mark.parametrize("registered", [True, False])
