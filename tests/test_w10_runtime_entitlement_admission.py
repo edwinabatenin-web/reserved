@@ -25,6 +25,12 @@ BASE = "91cb4c2f14bce089db1f92f656c8cbc1d85639b7"
 BASE_TREE = "a68a1120dfcc98295839bbea1f1c65c223376ec0"
 SOURCE_CHECKPOINT = "b458f2df20aa29aa73b1cc56de2126cb1c26405a"
 SOURCE_SENTINEL_CORRECTION_MESSAGE = "Bind W10 S3C source checkpoint identity"
+INTEGRATION_BASE = "05134e536d0428e0bcdfab96a109d64f46d2d9a4"
+INTEGRATION_SOURCE_CHECKPOINT = "be417aed05a99199ee2bc54679ca598551947f95"
+INTEGRATION_SENTINEL_CHECKPOINT = "e145e43631f9a03df70a378ac1eafbdf3974afa9"
+INTEGRATION_LINEAGE_CORRECTION_MESSAGE = (
+    "Bind W10 S3C integration checkpoint identity"
+)
 OWNED_PATHS = {
     "docs/W10_S3C_RUNTIME_ENTITLEMENT_ADMISSION.md",
     "reserved/billing/runtime_entitlement_admission.py",
@@ -255,6 +261,37 @@ def test_candidate_or_source_checkpoint_is_exactly_scoped_to_declared_base():
         if changed or untracked:
             assert changed == ["tests/test_w10_runtime_entitlement_admission.py"]
             assert untracked == []
+        return
+    if head == INTEGRATION_SENTINEL_CHECKPOINT:
+        assert git_text("rev-parse", "HEAD^") == INTEGRATION_SOURCE_CHECKPOINT
+        assert git_text("rev-parse", "HEAD^^") == INTEGRATION_BASE
+        assert set(
+            git_text(
+                "diff",
+                "--name-only",
+                f"{INTEGRATION_BASE}..{INTEGRATION_SOURCE_CHECKPOINT}",
+            ).splitlines()
+        ) == OWNED_PATHS
+        assert git_text("show", "-s", "--format=%s", "HEAD") == (
+            SOURCE_SENTINEL_CORRECTION_MESSAGE
+        )
+        assert git_text(
+            "diff", "--name-only", f"{INTEGRATION_SOURCE_CHECKPOINT}..HEAD"
+        ).splitlines() == ["tests/test_w10_runtime_entitlement_admission.py"]
+        if changed or untracked:
+            assert changed == ["tests/test_w10_runtime_entitlement_admission.py"]
+            assert untracked == []
+        return
+    if git_text("rev-parse", "HEAD^") == INTEGRATION_SENTINEL_CHECKPOINT:
+        assert len(git_text("rev-list", "--parents", "-n", "1", "HEAD").split()) == 2
+        assert git_text("show", "-s", "--format=%s", "HEAD") == (
+            INTEGRATION_LINEAGE_CORRECTION_MESSAGE
+        )
+        assert git_text(
+            "diff", "--name-only", f"{INTEGRATION_SENTINEL_CHECKPOINT}..HEAD"
+        ).splitlines() == ["tests/test_w10_runtime_entitlement_admission.py"]
+        assert changed == []
+        assert untracked == []
         return
     assert git_text("rev-parse", "HEAD^") == SOURCE_CHECKPOINT
     assert len(git_text("rev-list", "--parents", "-n", "1", "HEAD").split()) == 2
