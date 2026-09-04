@@ -40,15 +40,21 @@ checkpoint from the commit that integrated identical package blobs.
 The live `SRC-24` route binding is refreshed at accepted integration commit
 `c5e560045ed3d62f02c894e931464c3d7294e99f`; the separate accepted S5C
 historical product checkpoint remains unchanged.
-The separate live `SRC-16` v2 binding now names the accepted manual PAYE
-capture/review checkpoint `f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b`.
-Its reviewed thirteen-path delta adds the disabled non-production route and
-dashboard discovery; it does not replace the historical S5C product/evidence
-topology or close any threat, control, gap or activation gate. Historical S5C
+The separate live `SRC-16` v2 binding now names the accepted manual MTD
+scope-indication checkpoint `730db03e9d952a43df2f6d7b638b5a893600ec89`,
+with digest `15b0893514d4e6a5daab935d602aa1d2aa899617f401ed7dbabc704ab91ef563`.
+Its independently reviewed thirteen-path delta adds the disabled non-production
+manual form, factual admission and genuine issuer/renderer journey, with dashboard
+discovery. This binding reconciliation does not replace historical evidence or
+close any threat, control, gap, broader MTD completion or activation gate.
+The earlier accepted PAYE capture/review checkpoint remains distinct history:
+`f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b`, v2 digest
+`be6247e5f9aa91cfbdc3a4d028fbf4b3c4911eaf98dcd1f7b383b28998838236`.
+Historical S5C
 `v2.py` remains bound to its own blob digest
 `dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228`,
-which differs from the live PAYE source. SRC-24 retains its independent source
-commit and digest rather than being relabelled as PAYE evidence.
+which differs from both PAYE and live MTD source. SRC-24 retains its independent
+source commit and digest rather than being relabelled as PAYE or MTD evidence.
 
 <!-- W10-S7A-REGISTER-BEGIN -->
 ```json
@@ -197,8 +203,8 @@ commit and digest rather than being relabelled as PAYE evidence.
     {
       "id": "SRC-16",
       "path": "reserved/web/v2.py",
-      "accepted_commit": "f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b",
-      "sha256": "be6247e5f9aa91cfbdc3a4d028fbf4b3c4911eaf98dcd1f7b383b28998838236",
+      "accepted_commit": "730db03e9d952a43df2f6d7b638b5a893600ec89",
+      "sha256": "15b0893514d4e6a5daab935d602aa1d2aa899617f401ed7dbabc704ab91ef563",
       "binding": "live"
     },
     {

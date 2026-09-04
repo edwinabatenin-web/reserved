@@ -72,6 +72,13 @@ from reserved.database import (
 from reserved.extensions import csrf
 from reserved.config import paye_manual_baseline_enabled
 from reserved.services.paye_manual_baseline import review_manual_baseline
+from reserved.config import mtd_manual_scope_enabled
+from reserved.services.mtd_manual_source_admission import (
+    admit_manual_mtd, manual_year_metadata, QUESTIONS as MTD_QUESTIONS,
+    SPECIAL_FACTS as MTD_SPECIAL_FACTS, SCREEN_YEARS as MTD_SCREEN_YEARS,
+    ROW_CHOICES as MTD_ROW_CHOICES,
+)
+from reserved.services.mtd_scope_indication_presentation import render_mtd_scope_indication as _render_manual_mtd
 from reserved.matching.engine import MatchingEngine
 from reserved.billing.contracts import INITIAL_BILLING_AUTHORITY
 from reserved.providers.banking.classifier import TransactionCategory
@@ -566,6 +573,7 @@ def dashboard_view():
         liability      = _dash["liability"],
         is_demo        = _dash["is_demo"],
         paye_manual_available=(paye_manual_baseline_enabled() and not is_production_environment()),
+        mtd_manual_available=(mtd_manual_scope_enabled() and not is_production_environment()),
     )
 
 
@@ -600,6 +608,43 @@ def paye_manual_baseline():
             status = 400
     return render_template("v2/paye_manual_baseline.html", tax_year=year,
                            review=review, error=error), status
+
+
+@v2.route("/mtd/scope-indication", methods=["GET", "POST"])
+@require_auth
+def mtd_manual_scope():
+    """Self-reported completed-year scope only, no saved or formal MTD status."""
+    if is_production_environment() or not mtd_manual_scope_enabled():
+        abort(404)
+    if type(g.user_id) is not int or g.user_id <= 0 or get_user(g.user_id) is None:
+        abort(403)
+    if request.args:
+        abort(400)
+    as_of = datetime.now(timezone.utc).date()
+    fragment = None
+    explanation = None
+    status = 200
+    if request.method == "POST":
+        try:
+            if (request.mimetype != "application/x-www-form-urlencoded"
+                    or request.content_length is None or request.content_length > 32768
+                    or request.files or any(len(request.form.getlist(key)) != 1 for key in request.form)):
+                raise ValueError("Invalid form")
+            fields = request.form.to_dict()
+            fields.pop("csrf_token", None)
+            handle, supported = admit_manual_mtd(fields, as_of=as_of)
+            if not supported:
+                explanation = "This manual pathway needs complete submitted, unamended full-year actuals and the supported individual, residence, exemption and continuing-source facts. Check unknown or unsupported answers; this is not a finding that you are exempt."
+        except (ValueError, TypeError, InvalidOperation):
+            status = 400
+            explanation = "We could not use that form. Check the dates, gross amounts and choices. Do not include identifiers, calculated results or extra fields."
+            handle, _ = admit_manual_mtd({}, as_of=as_of)
+        # Only the genuine live issuer handle enters the accepted renderer.
+        fragment = Markup(_render_manual_mtd(handle))
+    return render_template("v2/mtd_manual_scope.html", fragment=fragment, explanation=explanation,
+                           as_of=as_of, metadata=manual_year_metadata(as_of), questions=MTD_QUESTIONS,
+                           special_facts=MTD_SPECIAL_FACTS, screen_years=MTD_SCREEN_YEARS,
+                           row_choices=MTD_ROW_CHOICES), status
 
 
 @v2.get("/connections")

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Could Making Tax Digital apply to you? — Reserved{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Limited manual preview</p><h1>Could Making Tax Digital apply to you?</h1><p>Self-reported planning information, checked as of {{ as_of }}. Not saved or verified by HMRC.</p></div></section>
+<section class="panel">
+    <p>This is not a formal HMRC status, filing service, annual tax estimate, cash reserve recommendation or entitlement decision.</p>
+    <p>Qualifying categories are sole-trader gross income and your relevant share of UK and foreign property gross income before expenses. Employment, dividends, savings, gains and ordinary partnership profit are excluded here. Do not add these as qualifying sources.</p>
+    {% if fragment is not none %}
+        {% if explanation %}<div class="flash flash-error" role="alert">{{ explanation }}</div>{% endif %}
+        {{ fragment }}
+        <p>Only the named supported manual circumstances have been checked. Other source treatments, current-year annualisation, amendments and existing MTD continuation need separate supported evidence.</p>
+        <a href="{{ url_for('v2.mtd_manual_scope') }}">Change facts or start a fresh indication</a>
+    {% else %}
+    <h2>Completed-year facts</h2>
+    <p>Use an original, unamended submitted return. Drafts, forecasts, partial-year records and uncertain circumstances cannot produce a numeric indication in this pathway.</p>
+    <table><caption>Use the dates for your selected assessment tax year</caption><thead><tr><th>Assessment tax year</th><th>Source period</th><th>Applicable mandatory start</th><th>NI/return submission boundary</th></tr></thead><tbody>
+    {% for year, start, end, mandatory, boundary in metadata %}<tr><td>{{ year|replace('-', '/') }}</td><td>{{ start }} to {{ end }}</td><td>{{ mandatory }}</td><td>{{ boundary }}</td></tr>{% endfor %}
+    </tbody></table>
+    <p>The boundary is the earlier of the applicable mandatory start and today. Your submitted return must be after the assessment year ended and on or before that boundary.</p>
+    <form method="post" action="{{ url_for('v2.mtd_manual_scope') }}" autocomplete="off" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <fieldset><legend>Return, capacity and circumstances</legend>
+            <label for="assessment-year">Assessment tax year</label><select id="assessment-year" name="assessment_year"><option value="">Choose or leave unknown</option>{% for year, start, end, mandatory, boundary in metadata %}<option value="{{ year }}">{{ year|replace('-', '/') }} actuals</option>{% endfor %}</select>
+            <label for="submitted-on">Date this original return was submitted</label><input id="submitted-on" name="submitted_on" type="date">
+            {% for name, label, choices in questions %}
+            <label for="{{ name }}">{{ label }}</label><select id="{{ name }}" name="{{ name }}"><option value="">Choose or leave unknown</option>{% for choice in choices %}<option value="{{ choice }}">{{ choice|replace('_', ' ')|capitalize }}</option>{% endfor %}</select>
+            {% endfor %}
+        </fieldset>
+        <fieldset><legend>Separate special-return and exemption facts</legend>
+            <p>For 2024/25 give actual facts; for 2025/26 and 2026/27 include relevant actual, known or expected circumstances. Each answer is separate. Do not provide medical details, NI numbers or reasons. A yes or unknown means this simple pathway needs more information; it does not mean an exemption is granted or continues into later years.</p>
+            {% for year in screen_years %}<details><summary>Special facts for {{ year|replace('-', '/') }}</summary>
+                {% for name, label in special_facts %}<label for="{{ name }}_{{ year }}">{{ label }} in {{ year|replace('-', '/') }}?</label><select id="{{ name }}_{{ year }}" name="{{ name }}_{{ year }}"><option value="unknown">Unknown</option><option value="no">No</option><option value="yes">Yes</option></select>{% endfor %}
+            </details>{% endfor %}
+        </fieldset>
+        <fieldset><legend>Your qualifying sources — up to 12 distinct businesses</legend>
+            <p>List every sole trade separately, but combine all UK properties into one UK-property business and all foreign properties into one foreign-property business. Use only your own gross share, never a whole joint amount, profit or an assumed half share. Equal amounts can belong to different businesses.</p>
+            <p>Leave unused rows entirely blank. If you have no qualifying sources, leave all rows unused and confirm the inventory only if that is accurate. If you have more than 12, do not omit or combine distinct trades to fit: answer No to the complete-inventory question. Missing amounts stay unknown; enter 0 only for a known zero.</p>
+            {% for number in range(1, 13) %}<details {% if number == 1 %}open{% endif %}><summary>Source {{ number }}</summary>
+                <label for="source_{{ number }}_kind">Kind of source {{ number }}</label><select id="source_{{ number }}_kind" name="source_{{ number }}_kind"><option value="">Unused or unknown</option>{% for choice in row_choices.kind %}<option value="{{ choice }}">{{ choice|replace('_', ' ')|capitalize }}</option>{% endfor %}</select>
+                <label for="source_{{ number }}_gross_income">Your gross income before expenses (£), no commas</label><input id="source_{{ number }}_gross_income" name="source_{{ number }}_gross_income" type="text" inputmode="decimal" maxlength="13">
+                <label for="source_{{ number }}_period_start">Source period start</label><input id="source_{{ number }}_period_start" name="source_{{ number }}_period_start" type="date">
+                <label for="source_{{ number }}_period_end">Source period end</label><input id="source_{{ number }}_period_end" name="source_{{ number }}_period_end" type="date">
+                {% for name in ('lifecycle', 'amount_basis') %}<label for="source_{{ number }}_{{ name }}">{{ name|replace('_', ' ')|capitalize }}</label><select id="source_{{ number }}_{{ name }}" name="source_{{ number }}_{{ name }}"><option value="">Unused or unknown</option>{% for choice in row_choices[name] %}<option value="{{ choice }}">{{ choice|replace('_', ' ')|capitalize }}</option>{% endfor %}</select>{% endfor %}
+            </details>{% endfor %}
+        </fieldset>
+        <button type="submit">Check this manual indication — do not save</button>
+    </form>
+    {% endif %}
+    <p><a href="{{ url_for('v2.dashboard_view') }}">Back to dashboard</a></p>
+</section>
+{% endblock %}

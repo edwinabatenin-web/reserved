@@ -67,6 +67,7 @@ EXPECTED_CLASSIFICATION_MEMBERS = {
         "v2.connections",
         "v2.dashboard_view",
         "v2.paye_manual_baseline",
+        "v2.mtd_manual_scope",
         "v2.index",
         "v2.invoices",
         "v2.invoices_seed",
@@ -132,6 +133,7 @@ EXPECTED_GUARD_MEMBERS = {
         "v2.dashboard_view",
         "v2.index",
         "v2.paye_manual_baseline",
+        "v2.mtd_manual_scope",
         "v2.invoices",
         "v2.invoices_seed",
         "v2.optimise_calculate",
@@ -290,7 +292,7 @@ def test_exact_endpoint_classifications_and_category_counts_are_bound():
     }
     assert expected_counts == {
         "public_infrastructure_auth_legal_support": 14,
-        "authenticated_product_candidate_pending_founder_decision": 27,
+        "authenticated_product_candidate_pending_founder_decision": 28,
         "billing_purchase_return_recovery_candidate": 2,
         "internal_admin_unknown_requiring_reconciliation": 11,
     }
@@ -317,7 +319,7 @@ def test_inventory_exactly_matches_registry_with_optional_blueprint_off(monkeypa
     }
     actual = build_registry(monkeypatch, hicbc_enabled=False)
     assert actual == expected
-    assert len(actual) == data["route_counts"]["always"] == 45
+    assert len(actual) == data["route_counts"]["always"] == 46
 
 
 def test_inventory_exactly_matches_registry_with_optional_blueprint_on(monkeypatch):
@@ -330,7 +332,7 @@ def test_inventory_exactly_matches_registry_with_optional_blueprint_on(monkeypat
     ]
     assert actual == expected
     assert len(conditional) == data["route_counts"]["hicbc_feature_enabled_additional"] == 9
-    assert len(actual) == data["route_counts"]["hicbc_feature_enabled_total"] == 54
+    assert len(actual) == data["route_counts"]["hicbc_feature_enabled_total"] == 55
 
 
 def test_customer_and_founder_decorator_guards_match_inventory():
