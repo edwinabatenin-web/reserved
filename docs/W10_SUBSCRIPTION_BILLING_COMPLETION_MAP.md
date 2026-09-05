@@ -15,6 +15,10 @@ classifications. The subsequently accepted local paid-set installer, source
 covers all 28 settled paid endpoints when HICBC is registered, or the 19
 non-HICBC endpoints when it is absent; it does not register or enable HICBC.
 Default application wiring, production enforcement and full S5 remain open.
+The explicit local recovery panel is also accepted at source
+`6feb9abf5fd4a3f457f739afb3f1211aa17ca052`, integrated at
+`2908dd878b14aecd391096a54db27a432a98a24a`. It connects genuine synthetic
+admission to the existing authenticated plans page; full S6 remains open.
 The earlier reconciliation-9 register and its status/next-action narrative below
 remain historical snapshots; their absence-of-durability statements must not
 erase the subsequently accepted local primitive. No authenticated production
@@ -1202,3 +1206,42 @@ operational/support assurance and deliberate activation remain open. No default
 wiring, live customer enforcement, new policy or acceptance of separately
 active recovery-page work is claimed. Strict completion remains 0/8, terminal
 0/13 and W9 0/5; October remains not_ready with 18 blockers.
+
+## Accepted local recovery-page composition — 5 September 2026
+
+The preceding paid-set section records its historical freeze; the recovery
+candidate has since been independently accepted. Source
+`6feb9abf5fd4a3f457f739afb3f1211aa17ca052`, tree
+`82c3657b4f5148dab93301fbafc9972f0855b740`, has sole parent
+`c165544f5e3d37d6d46b3cc74a39eba486af5c17`. Integration
+`2908dd878b14aecd391096a54db27a432a98a24a`, tree
+`20461d9d7d22b20254abcdba89920d3d84cddfff`, preserves it with prior map
+checkpoint `5a9b60bc9ad40197aa4d6e3c53cc6403a7d1f976`. Exact five-path hashes,
+independent disposition and checkpoint authority are in the parent workspace's
+`work/w10-billing-recovery-checkpoint.md`; candidate-stage detail remains in
+`docs/W10_LOCAL_BILLING_RECOVERY_VIEW_EVIDENCE.md`.
+
+Explicit non-production installation connects actual authenticated
+`GET /v2/plans` to independent synthetic membership, disposable S3D history,
+genuine S3C admission, immutable outcome matching and full snapshot recheck.
+Only currently effective verified-renewal-failure recovery produces fixed S6E
+copy with its admitted exclusive deadline. Missing, stale, changed, withdrawn,
+cross-scope or unadmitted evidence produces no status claim. Prices, route
+identity, authentication, no-store, paid-set/dashboard and CSRF behavior remain;
+plans are not paid-gated. No action or notification is introduced.
+
+Independent review passed 209 focused tests, 2,238 affected tests plus six
+unsuppressed historical dirty-path sentinels, ten extra time/session/query
+requests and an admission-time recovery-to-paid mutation challenge. Root's
+different clean-source matrix passed all 2,214 tests, including those sentinels
+unchanged. Canonical session 53127 on exact integration `2908dd8...` passed
+9,167 root, 13 artifact, 23 parity and 138 options tests with RW3 true and no
+root failures/errors/skips. That run predates this documentation-only edit.
+
+This is accepted local request/template evidence, not browser/human assurance,
+default activation, real membership, provider-authenticated ingress or custody.
+The existing date-based admission semantics are preserved; ordinary arbitrary-
+second provider ingress and its recovery-time interpretation are not established
+by this component. S6/W10 remain incomplete. Strict 0/8, terminal 0/13, W9 0/5
+and October not_ready/18 blockers remain unchanged. No pending Founder policy
+or Stripe source-specification proposal is treated as accepted implementation.
