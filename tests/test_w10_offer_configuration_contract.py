@@ -12,6 +12,7 @@ import json
 import math
 import os
 import pickle
+import subprocess
 from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from types import FunctionType
@@ -212,8 +213,14 @@ def test_exact_base_sources_and_bounded_assurance_claim():
     assert contract["candidate_base_commit"] == BASE
     assert contract["candidate_base_tree"] == TREE
     assert contract["source_bindings"] == EXPECTED_SOURCES
-    for _source_id, path, expected_hash, _accepted_at in EXPECTED_SOURCES:
-        assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == expected_hash
+    for _source_id, path, expected_hash, accepted_at in EXPECTED_SOURCES:
+        blob = subprocess.run(
+            ["git", "show", f"{accepted_at}:{path}"],
+            cwd=ROOT,
+            check=True,
+            stdout=subprocess.PIPE,
+        ).stdout
+        assert hashlib.sha256(blob).hexdigest() == expected_hash
     assert contract["assurance_status"] == (
         "contract_only_not_offer_policy_runtime_provider_checkout_entitlement_or_s4_completion"
     )
