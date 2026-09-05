@@ -27,7 +27,7 @@ assertions, and launch-readiness claims.
 |---|---|---|
 | FA-S1 | Official company, invoice-list and pagination contract captured as a network-inert source validator (exact API-origin + per-field schema validation) with synthetic tests | Implemented, independently reviewed and locally integrated on the isolated overnight branch at `76b9b6c`; not merged to main, pushed, deployed or enabled |
 | FA-S2 | Encrypted token custody and authenticated user/company binding | Not started |
-| FA-S3 | Disabled-first read-only adapter and canonical invoice mapping | Not started |
+| FA-S3 | Disabled-first read-only adapter and canonical invoice mapping | Offline single-item non-sales-tax GBP mapping implementation candidate; uncommitted and pending independent review. Authenticated transport remains unimplemented; FA-S3 is not complete |
 | FA-S4 | Pagination, refresh, disconnect, error and resilience handling | Network-inert contract sub-slice independently reviewed, checkpointed at `d096177b493ac341f15072e5d1daa5e5ca6d7c7f` and locally integrated; HTTP/secret-custody portions remain in FA-S2/FA-S3 |
 | FA-S5 | Synthetic sandbox execution and independent evidence review | Not started |
 | FA-S6 | Customer/target-environment integration and launch assurance | Not started |
@@ -89,7 +89,7 @@ or Control Plane state.
 |---|---|---|---|
 | FA-S1 | Already-captured OAuth contract (`freeagent_oauth_contract.py`) | Official FreeAgent documentation only | Complete and locally integrated on the isolated overnight branch at `76b9b6c`; not merged to main or activated |
 | FA-S2 | FA-S1 identity facts | External key management decision | Sequential after FA-S1 review |
-| FA-S3 | FA-S1 schema facts | None beyond FA-S1 | Sequential after FA-S2 binding |
+| FA-S3 | FA-S1 schema facts and reviewed item semantics | FA-S2 for authenticated live integration | Explicit 5 September offline mapping split described below; live transport remains sequential after FA-S2 binding |
 | FA-S4 | FA-S1 pagination facts, existing OAuth contract (`freeagent_oauth_contract.py`), shared sync contracts | None | Network-inert contract sub-slice reviewed, checkpointed and locally integrated; full HTTP/secret-custody portion sequential after FA-S2/FA-S3 |
 | FA-S5 | FA-S2/FA-S3/FA-S4 | Sandbox access and independent reviewer | After adapter slices |
 | FA-S6 | FA-S5 | Customer/target environment and reviewer | Final gate |
@@ -124,7 +124,8 @@ Current gate position: items 1–2 are addressed by the independently reviewed,
 locally integrated FA-S1 checkpoint. Item 5 is advanced only by the reviewed,
 locally integrated network-inert FA-S4 contract sub-slice (pure
 pagination/refresh/disconnect/error decisions); the HTTP and
-secret-custody execution of item 5 remains with FA-S2/FA-S3. Items 3–4 and
+secret-custody execution of item 5 remains with FA-S2/FA-S3. Item 4 has an
+uncommitted offline mapping candidate only; it is not closed. Items 3 and
 6–8 are not started. This is 1 of 6 declared implementation slices complete
 (17%), plus a network-inert FA-S4 sub-slice, and 2 of 8 terminal checks
 addressed (with item 5 partially advanced, not closed). These are denominators,
@@ -142,6 +143,39 @@ are separate workstreams and do not move their implementation into FreeAgent.
 ## Immediate action
 
 Preserve FA-S1 and the FA-S4 network-inert contract sub-slice as independently
-reviewed local integrations. The next declared slice is FA-S2 (encrypted token
-custody and user/company binding); starting it requires its own bounded package,
-authority and external custody decision.
+reviewed local integrations. Independently review the four-path offline mapping
+candidate below. FA-S2 (encrypted token custody and user/company binding)
+still requires its own bounded package, authority and external custody decision;
+the offline mapping does not bypass it for live integration.
+
+## Explicit offline FA-S3 mapping split — 5 September 2026
+
+Owning authority `work/freeagent-invoice-mapping-authority.md` separates pure
+source-to-canonical mapping from FA-S3's authenticated transport dependency on
+FA-S2. This is a bounded existing October implementation subcomponent, not
+permission to enable the placeholder provider, access credentials or assert
+company membership. The immutable candidate base is
+`9d36b218bbd15728c120cbe7055bb0b5c7890b10`; Founder Decisions remain unchanged.
+
+`reserved/providers/accounting/freeagent_invoice_adapter.py` reuses FA-S1,
+binds unresolved source/context evidence, and genuinely normalises one
+source-identified Products/Services item for the explicit non-sales-tax GBP
+subset with exact arithmetic. Its public result is source evidence plus the
+final canonical document, not an independently reusable semantic-result
+contract. Balances and statuses remain provider assertions; correction,
+settlement and lifecycle are unknown, and no recognition candidate is created.
+See `docs/FREEAGENT_INVOICE_ADAPTER_EVIDENCE.md` for source facts, conservative
+restrictions and the explicit correction-state finalization boundary.
+The focused pre-acceptance correction rejects the evidenced invoice/contact/
+project/property/bank-account/recurring-invoice/company/category/stock namespaces
+(including their subpaths) as item identities. This limited resource exclusion
+does not authenticate otherwise admissible item URLs; the evidence document
+records the exact set and remaining unknown-namespace limitation.
+
+The candidate owns that new adapter, its new test file, its evidence document
+and this map only. It is uncommitted implementation pending a different
+independent reviewer, not accepted/integrated evidence. No complete slice or
+terminal check is added: 1/6 complete and 2/8 terminal checks addressed remain
+the declared position. General invoice forms, tax/discount/CIS/FX semantics,
+authenticated company binding, transport/custody, operational ingestion,
+sandbox/customer/target evidence and all activation gates remain open.
