@@ -2,6 +2,17 @@
 
 ## Status and authority
 
+**Current accepted-evidence update (5 September 2026):** the disposable-local
+S3D transactional repository is independently accepted and integrated at
+`26831400fcb0ee638761b589b3bbbf0e239427dd`; see the final reconciliation section
+for its exact source and limits. Current paid-route inventory is 46 always /
+55 HICBC-enabled routes and 28 paid classifications, not active paid guarding.
+The earlier reconciliation-9 register and its status/next-action narrative below
+remain historical snapshots; their absence-of-durability statements must not
+erase the subsequently accepted local primitive. No authenticated production
+billing persistence or custody is established. Strict completion stays 0/8,
+terminal 0/13, W9 0/5; October remains not_ready with 18 blockers.
+
 **Evidence cut-off:** 4 September 2026
 
 **Original planning commit:** `b15d3fcfa423192e1a8a2e8d0a49851b366518f4`
@@ -990,11 +1001,11 @@ OpenSSL/negative probes. It advances a local S4 prerequisite, not S4 completion.
 
 The accepted HICBC annual runtime `bb06354...` and frontend source
 `315248807667868ff52dffce2ab0dab599e651dc`, integrated at `bed02d9...`, refresh
-live S5A/S5B bindings. Current S5A has 53 routes with HICBC enabled and 26 paid
+live S5A/S5B bindings. At that historical cut-off S5A had 53 routes with HICBC enabled and 26 paid
 endpoints; this is classification only, not runtime entitlement enforcement.
 The manual preview remains disabled-first, non-production and non-persistent;
-its source-adapter claimant-`none` defect is separately open. Billing repository
-correction is also still pending independent acceptance and is not promoted here
+its source-adapter claimant-`none` defect was separately open. Billing repository
+correction was also pending independent acceptance at that cut-off and was not promoted there
 to durable application billing. No accepted-but-unreviewed result is inferred.
 
 At this inspected lineage the full canonical internal gate passes 7,934 root
@@ -1003,3 +1014,89 @@ blockers. Strict completion remains 0/8, terminal 0/13 and W9 0/5. Preserve all
 specialist, custody, retention, physical persistence, authenticated membership,
 provider, human, target and Founder activation/release gates. No new slice,
 policy, authority or launch claim is introduced by this evidence refresh.
+
+## Accepted local repository and route-history reconciliation — 5 September 2026
+
+This update is based on clean integration
+`26831400fcb0ee638761b589b3bbbf0e239427dd`, tree
+`2f717f551e91ae95819a5f981902bacdfac12ad9`. The older machine-readable
+register is preserved byte-for-byte as historical evidence; its earlier review
+does not cover this new prose. No denominator, terminal check or threat is closed.
+
+### W10-S3D: accepted disposable-local persistence, not production custody
+
+The three-path repository source is
+`d2b42073ba9099a13912e9e8f0ccfc731f119528`, tree
+`061f87c67f1b6f280ff51109bbf26e4b57088868`, sole parent
+`064eac2d339038b942897c6e58e24cf496c1d7ae`. Integration `26831400...`
+preserves this source as its second parent, alongside first parent
+`7faa4dcf7b04c7ad59718b3724b17d9f1297b393`, with exactly the accepted blobs:
+
+| Path | SHA-256 |
+|---|---|
+| `reserved/billing/local_billing_repository.py` | `469825766f1ae5058128dfa270bc9ab06327f786bd1e8ba05b923d3d6accef5e` |
+| `tests/test_w10_local_billing_repository.py` | `8d0179223b34333697cece3f7b28e86fd0c9cd6ff1458be2d698d6e19f912c62` |
+| `docs/W10_S3D_LOCAL_BILLING_REPOSITORY.md` | `c9c303511065d611c556e5aaf3bd39cf7eb8e83ee66517100bca3c9040c6a2ee` |
+
+The implementation is an opt-in, caller-path, file-backed SQLite primitive for
+disposable synthetic use. It supplies persistent structural journal/head and
+reconciliation records, transactional append/head advancement, duplicate and
+predecessor/order checks, rollback, strict schema validation and bounded
+consistent reads across cooperating connections. This is real local durability,
+not another purely in-memory contract. Supplied owner/account/subscription
+identifiers and content hashes remain structural facts, not authenticated
+membership, provider authenticity or resistance to a hostile datastore owner.
+
+The owning record `work/w10-s3d-local-repository-checkpoint.md` in the parent
+workspace supersedes the candidate-pending status in the historical package
+evidence. It records independent review, 80 focused passes, schema and WAL-read
+probes, and 373 clean source affected passes including the unchanged historical
+dirty-scope sentinel. Those are bounded engineering results, not production
+custody or application deployment assurance.
+
+S3 remains partial. Authenticated owner/billing membership and source admission,
+production datastore/custody/encryption, retention/erasure/backup handling,
+application migrations, authoritative ingress, globally authoritative runtime
+state and paid-route enforcement remain outstanding. This local schema does
+not select the application datastore, grant entitlement or activate a provider.
+The existing S3A/S3B/S3C and S5D boundaries are not relabelled as durable or
+provider-authenticated by association.
+
+### Accepted route/source changes after the historical cut-off
+
+The HICBC claimant-none adapter correction is accepted at
+`269c5427eac573cd73b4f9e5054675c8a40533db`, integrated at
+`f3729c21b681cf4e6b2d70ba63421f2d3a3dee7d`. It maps affirmative no entitlement
+to the existing None/zero engine input without repairing stored claimant facts;
+unknown and contradictory facts remain insufficient. It closes that narrow
+adapter defect, not HICBC privacy, persistence, annual-journey or launch gates.
+Source evidence is `docs/HICBC_NO_CLAIMANT_ADAPTER_EVIDENCE.md` and the owning
+`work/hicbc-no-claimant-checkpoint.md` record.
+
+Accepted manual PAYE entry/review source
+`f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b` and manual MTD source
+`730db03e9d952a43df2f6d7b638b5a893600ec89` extend the inventory to **46
+always-registered / 55 HICBC-enabled routes and 28 paid classifications**.
+Both remain independently disabled, non-production, unsaved manual pathways;
+classification is not runtime entitlement enforcement. The current counts are
+in `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` and the accepted S5B/S5D consumers.
+Earlier 25/26-paid and 53-route figures above remain historical, not current.
+
+MTD source-binding reconciliation
+`573a204a687dc41c1608d4d5f631d167fc01bc91`, integrated with the manual journey at
+`7faa4dcf7b04c7ad59718b3724b17d9f1297b393`, binds S7A live SRC-16 to the accepted
+MTD `v2.py` digest
+`15b0893514d4e6a5daab935d602aa1d2aa899617f401ed7dbabc704ab91ef563`.
+PAYE, S5C, preview and SRC-24 historical/independent source anchors remain
+distinct. No general current-HEAD equality requirement is introduced.
+
+### Integrated evidence and remaining disposition
+
+The owning task collected canonical session 72446 at clean `26831400...`:
+exit zero; **8,319 root tests passed, zero failures/errors/skips**, 13 artifact,
+23 parity and 138 options tests passed, with mandatory RW3 true. This records
+that exact integrated run, not a rerun by this map author and not review of
+the subsequently edited map. October remains **not_ready, 18 blockers**.
+S3 and W10 remain incomplete; strict completion is **0/8**, terminal **0/13**
+and W9 **0/5**. Provider, authenticated custody/membership, specialist,
+privacy/security, human/target and Founder activation/release gates remain open.
