@@ -11,6 +11,7 @@ import json
 import re
 import threading
 import uuid
+import weakref
 
 from reserved.auth import is_production_environment
 from .stripe_signature_verifier import verify_stripe_signature
@@ -24,6 +25,7 @@ _LOCK = threading.RLock()
 # It is not a second durable witness and is not real process-restart recovery.
 _SCOPES = {}
 _AUTHORITIES = {}
+_CANCELLATION_FACTS = weakref.WeakKeyDictionary()
 _ID = re.compile(r'[a-z][a-z0-9]*_[A-Za-z0-9]{1,100}\Z')
 _PLANS = {'monthly': (2900, 'month', 1), 'six_month': (15600, 'month', 6),
           'yearly': (28800, 'year', 1)}
@@ -59,6 +61,8 @@ class BindingSnapshot:
     active: bool
     consumed: bool
     accepted: tuple | None
+    lifecycle_head: str | None
+    cancellation: tuple | None
 
 
 @dataclass(frozen=True)
@@ -66,6 +70,23 @@ class IngressResult:
     disposition: str
     committed: bool | None
     fact: object = None
+
+
+class CancellationFact:
+    """Opaque live handle for one authenticated scheduled-end control."""
+    __slots__ = ('__weakref__',)
+
+    def __new__(cls):
+        raise TypeError('live issuance only')
+
+    def __copy__(self):
+        raise TypeError('not copyable')
+
+    def __deepcopy__(self, memo):
+        raise TypeError('not copyable')
+
+    def __reduce__(self):
+        raise TypeError('not serialisable')
 
 
 def _identifier(value, prefix=None):
@@ -94,6 +115,11 @@ def _effective_hmac_key(key):
 
 def _timestamp(value):
     return datetime.fromtimestamp(_integer(value), timezone.utc)
+
+
+def _verified_signature(raw_body, signature_header, state, received):
+    return verify_stripe_signature(raw_body, signature_header, state['signing_keys'],
+                                   now=int(received.timestamp()))
 
 
 def _approved_period_end(start, plan):
@@ -195,13 +221,13 @@ class SyntheticInitialAuthority:
             if source_scope in _SCOPES or not repository.empty():
                 raise InitialIngressError('scope or store is not pristine')
             instance, epoch = uuid.uuid4().hex, uuid.uuid4().hex
-            snapshot = BindingSnapshot(instance, epoch, 1, True, False, None)
+            snapshot = BindingSnapshot(instance, epoch, 1, True, False, None, None, None)
             state = dict(publication=(snapshot, None), store=repository.store_id, physical=repository.physical_identity, user=user_id, scope=scope,
                          customer=customer, item=item, price=price, plan=plan, endpoint=endpoint,
                          account=account, signing_keys=signing_keys, receipt_key=receipt_key,
                          receipt_key_id=receipt_key_id, signing_key_ids=signing_key_ids,
                          retrieve=retrieve, retrieval_code=getattr(retrieve, '__code__', None),
-                         last_clock=None, commit_seen=set())
+                         last_clock=None, commit_seen=set(), control_fact=None)
             _AUTHORITIES[self] = state
             _SCOPES[source_scope] = instance
 
@@ -372,11 +398,20 @@ def _lineage(authority, repository, snapshot):
 
 
 def _accepted_lineage(authority, repository, snapshot):
-    lineage = _lineage(authority, repository, snapshot)
+    state = _check(authority, snapshot)
+    if (type(repository) is not ProvenanceRepository or repository.store_id != state['store']
+            or repository.physical_identity != state['physical']):
+        raise InitialIngressError('wrong store')
+    lineage, control, lifecycle_head = repository.read_lifecycle(
+        snapshot.instance, state['receipt_key'])
     if not lineage or snapshot.accepted is None:
         raise InitialIngressError('missing accepted lineage')
     receipt, head = lineage[-1]
-    if snapshot.accepted != (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head):
+    expected_control = (None if control is None else
+        (repository.store_id, control['receipt_id'], control['fact_id'], lifecycle_head))
+    if (snapshot.accepted != (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head)
+            or snapshot.lifecycle_head != lifecycle_head
+            or snapshot.cancellation != expected_control):
         raise InitialIngressError('obsolete authentic receipt')
     return lineage
 
@@ -398,7 +433,7 @@ def current_fact(authority, repository, *, user_id, now):
             selected = receipt
     if selected is None:
         raise InitialIngressError('no effective verified period')
-    current_head = lineage[-1][1]
+    current_head = snapshot.lifecycle_head
     _check(authority, snapshot)
     return exact._issue(exact._ISSUER, authority, repository, snapshot.revision,
                         current_head, selected)
@@ -411,7 +446,7 @@ def _validate_live_fact(fact_state, now=None):
     lineage = _accepted_lineage(authority, repository, snapshot)
     selected = next((receipt for receipt, _ in lineage if receipt['sequence'] == sequence), None)
     if (snapshot.revision != revision or state['scope'][0] != owner
-            or lineage[-1][1] != current_head or selected is None
+            or snapshot.lifecycle_head != current_head or selected is None
             or canonical(selected) != material
             or start != datetime.fromisoformat(selected['access_start'])
             or end != datetime.fromisoformat(selected['service_end'])):
@@ -428,7 +463,7 @@ def allows_paid_request(authority, repository, *, user_id, now):
         admitted = exact.admit_initial(fact, authority=authority, owner=state['scope'][0], now=now)
         _, revision, head, _, _, _ = exact._projection(admitted)
         lineage = _accepted_lineage(authority, repository, snapshot)
-        if revision != snapshot.revision or lineage[-1][1] != head:
+        if revision != snapshot.revision or snapshot.lifecycle_head != head:
             return False
         _check(authority, snapshot, now)  # access-decision linearization point
         return not is_production_environment()
@@ -450,7 +485,7 @@ def _ingest_paid_invoice(authority, repository, raw_body, signature_header, *, c
                     or reservation['predecessor'] != snapshot.accepted):
                 raise InitialIngressError('changed reservation')
             published = replace(snapshot, revision=snapshot.revision + 1,
-                                consumed=True, accepted=accepted)
+                                consumed=True, accepted=accepted, lifecycle_head=head)
             state['publication'] = (published, None)
             return published
 
@@ -467,7 +502,7 @@ def _ingest_paid_invoice(authority, repository, raw_body, signature_header, *, c
         # Renewal independently repeats signature verification through this
         # single dependency call site before reserving a successor.
         for _ in range(2 if sequence == 2 else 1):
-            if not verify_stripe_signature(raw_body, signature_header, state['signing_keys'], now=int(received.timestamp())):
+            if not _verified_signature(raw_body, signature_header, state, received):
                 raise InitialIngressError('signature refusal')
         event = _parse(raw_body)
         if (event['object'] != 'event' or event['type'] != 'invoice.paid' or event['livemode'] is not False
@@ -514,6 +549,7 @@ def _ingest_paid_invoice(authority, repository, raw_body, signature_header, *, c
                 prior_receipt, prior_head = predecessor
                 if (snapshot.accepted != (repository.store_id, prior_receipt['receipt_id'],
                                           prior_receipt['fact_id'], prior_head)
+                        or snapshot.lifecycle_head != prior_head or snapshot.cancellation is not None
                         or service_start != datetime.fromisoformat(prior_receipt['service_end'])
                         or service_end != _approved_period_end(service_start, state['plan'])):
                     raise InitialIngressError('wrong or noncontiguous predecessor')
@@ -536,7 +572,7 @@ def _ingest_paid_invoice(authority, repository, raw_body, signature_header, *, c
                 return IngressResult('reconciliation_required', True)
             if snapshot.accepted == (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head):
                 fact = exact._issue(exact._ISSUER, authority, repository,
-                                    snapshot.revision, head, receipt)
+                                    snapshot.revision, snapshot.lifecycle_head, receipt)
                 return IngressResult('admitted', True, fact)
             _, reservation = state['publication']
             if (reservation is None or reservation['material'] != canonical(receipt)
@@ -619,7 +655,7 @@ def _ingest_paid_invoice(authority, repository, raw_body, signature_header, *, c
             raise InitialIngressError('changed publication')
         _check(authority, published)
         fact = exact._issue(exact._ISSUER, authority, repository,
-                            published.revision, head, receipt)
+                            published.revision, published.lifecycle_head, receipt)
         return IngressResult('admitted', True, fact)
     except Exception:
         disposition = ('commit_outcome_unknown' if committed is None else
@@ -635,3 +671,307 @@ def ingest_initial_payment(authority, repository, raw_body, signature_header, *,
 def ingest_successful_renewal(authority, repository, raw_body, signature_header, *, clock):
     return _ingest_paid_invoice(authority, repository, raw_body, signature_header, clock=clock,
                                 billing_reason='subscription_cycle', sequence=2)
+
+
+def _cancellation_projection(state, subscription, *, verified_at):
+    """Validate and minimise the supported Basil scheduled-end object."""
+    if type(subscription) is not dict:
+        raise InitialIngressError('subscription object required')
+    scope = state['scope']
+    absent = ('schedule', 'pause_collection', 'trial_start', 'trial_end',
+              'trial_settings', 'pending_update', 'discount', 'promotion_code',
+              'offer')
+    empty = ('discounts', 'promotion_codes', 'offers')
+    if (subscription.get('id') != scope[2] or subscription.get('object') != 'subscription'
+            or subscription.get('livemode') is not False
+            or subscription.get('customer') != state['customer']
+            or subscription.get('status') != 'active'
+            or subscription.get('collection_method') != 'charge_automatically'
+            or subscription.get('cancel_at_period_end') is not True
+            or any(name not in subscription or subscription[name] is not None
+                   for name in absent)
+            or any(name not in subscription or type(subscription[name]) is not list
+                   or subscription[name] != [] for name in empty)):
+        raise InitialIngressError('unsupported scheduled cancellation')
+    details = subscription.get('cancellation_details')
+    if (type(details) is not dict or details.get('reason') != 'cancellation_requested'
+            or any(name not in ('reason', 'comment', 'feedback') for name in details)
+            or any(value is not None and (type(value) is not str or len(value) > 160)
+                   for name, value in details.items() if name != 'reason')):
+        raise InitialIngressError('unsupported cancellation reason')
+    item = _single_list(subscription.get('items'))
+    price = item.get('price')
+    item_absent = ('discount', 'promotion_code', 'offer')
+    item_empty = ('discounts', 'promotion_codes', 'offers')
+    if (item.get('id') != state['item'] or item.get('object') != 'subscription_item'
+            or item.get('subscription') != scope[2] or _integer(item.get('quantity')) != 1
+            or type(price) is not dict or price.get('id') != state['price']
+            or item.get('proration') is not False
+            or any(name not in item or item[name] is not None for name in item_absent)
+            or any(name not in item or type(item[name]) is not list or item[name] != []
+                   for name in item_empty)):
+        raise InitialIngressError('unsupported subscription item')
+    start = _timestamp(item.get('current_period_start'))
+    end = _timestamp(item.get('current_period_end'))
+    if not start < end:
+        raise InitialIngressError('invalid item period')
+    if 'cancel_at' not in subscription:
+        raise InitialIngressError('missing cancellation boundary')
+    cancel_at = subscription['cancel_at']
+    if cancel_at is not None and _timestamp(cancel_at) != end:
+        raise InitialIngressError('custom cancellation boundary')
+    canceled_at = subscription.get('canceled_at')
+    if canceled_at is not None:
+        canceled = _timestamp(canceled_at)
+        if canceled > verified_at or canceled >= end:
+            raise InitialIngressError('invalid cancellation context')
+    return dict(subscription=scope[2], customer=state['customer'], item=state['item'],
+                price=state['price'], livemode=False, status='active',
+                collection_method='charge_automatically', cancel_at_period_end=True,
+                cancellation_reason='cancellation_requested',
+                current_period_start=start.isoformat(), current_period_end=end.isoformat(),
+                cancel_at=cancel_at, canceled_at=canceled_at)
+
+
+def _issue_cancellation_fact(authority, repository, snapshot, receipt, head):
+    with _LOCK:
+        state = _check(authority, snapshot)
+        cached = state['control_fact']
+        repository_identity = (repository.store_id, repository.physical_identity)
+        expected = (repository_identity, snapshot.revision, head, canonical(receipt))
+        if cached is not None:
+            value, material = cached
+            if material != expected:
+                raise InitialIngressError('changed cancellation fact cache')
+            # An authorised reopen of the same exact physical store refreshes
+            # only the live reader used to reauthenticate the original handle.
+            _CANCELLATION_FACTS[value] = (authority, repository, snapshot.revision,
+                                          head, canonical(receipt))
+            return value
+        value = object.__new__(CancellationFact)
+        _CANCELLATION_FACTS[value] = (authority, repository, snapshot.revision, head,
+                                      canonical(receipt))
+        state['control_fact'] = (value, expected)
+    return value
+
+
+def cancellation_fact_details(fact):
+    """Return only the conservative effect after reauthenticating the live handle."""
+    with _LOCK:
+        if type(fact) is not CancellationFact or fact not in _CANCELLATION_FACTS:
+            raise InitialIngressError('not a live cancellation fact')
+        authority, repository, revision, head, material = _CANCELLATION_FACTS[fact]
+    snapshot = authority.snapshot()
+    state = _check(authority, snapshot)
+    lineage, control, lifecycle_head = repository.read_lifecycle(snapshot.instance,
+                                                                  state['receipt_key'])
+    if (snapshot.revision != revision or snapshot.lifecycle_head != head
+            or lifecycle_head != head or control is None or canonical(control) != material
+            or not lineage):
+        raise InitialIngressError('stale cancellation fact')
+    _check(authority, snapshot)
+    return dict(disposition='subscription_scheduled_to_end_at_paid_period_boundary',
+                exclusive_service_end=control['service_end'],
+                paid_receipt_id=control['paid_receipt_id'],
+                paid_fact_id=control['paid_fact_id'])
+
+
+def ingest_scheduled_cancellation(authority, repository, raw_body, signature_header, *, clock):
+    """Admit one signed, provider-confirmed end at the current paid boundary."""
+    def publish(snapshot, receipt, head):
+        with _LOCK:
+            state = _check(authority, snapshot)
+            current, reservation = state['publication']
+            accepted = (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head)
+            if (current != snapshot or reservation is None
+                    or reservation.get('kind') != 'scheduled_cancellation'
+                    or reservation.get('material') != canonical(receipt)
+                    or reservation.get('revision') != snapshot.revision
+                    or reservation.get('predecessor') != snapshot.lifecycle_head):
+                raise InitialIngressError('changed cancellation reservation')
+            published = replace(snapshot, revision=snapshot.revision + 1,
+                                consumed=True, lifecycle_head=head, cancellation=accepted)
+            state['publication'] = (published, None)
+            return published
+
+    committed = False
+    attempt = 'scheduled_cancellation'
+    try:
+        if is_production_environment():
+            raise InitialIngressError('local bounded lifecycle only')
+        snapshot = authority.snapshot()
+        received = exact.utc(clock())
+        state = _check(authority, snapshot, received)
+        if (type(repository) is not ProvenanceRepository or repository.store_id != state['store']
+                or repository.physical_identity != state['physical']):
+            raise InitialIngressError('wrong store')
+        if not _verified_signature(raw_body, signature_header, state, received):
+            raise InitialIngressError('signature refusal')
+        event = _parse(raw_body)
+        if (event.get('object') != 'event'
+                or event.get('livemode') is not False or event.get('api_version') != API_VERSION
+                or event.get('account') is not None):
+            raise InitialIngressError('unsupported event')
+        event_id = _identifier(event.get('id'), 'evt')
+        source_time = _timestamp(event.get('created'))
+        if source_time > received:
+            raise InitialIngressError('future source event')
+        raw_digest = hashlib.sha256(raw_body).hexdigest()
+        _, prior_control, _ = repository.read_lifecycle(snapshot.instance,
+                                                         state['receipt_key'])
+        if prior_control is not None and (prior_control['event_id'] != event_id
+                                          or event.get('type') != 'customer.subscription.updated'
+                                          or prior_control['raw_digest'] != raw_digest):
+            repository.record_conflict(snapshot.instance, event_id=event_id,
+                raw_digest=raw_digest,
+                object_key=state['scope'][2] + ':scheduled_cancellation',
+                key=state['receipt_key'])
+            return IngressResult('reconciliation_required', True)
+        if event.get('type') != 'customer.subscription.updated':
+            raise InitialIngressError('unsupported event type')
+        request = event.get('request')
+        if (type(request) is not dict or set(request) - {'id', 'idempotency_key'}
+                or _identifier(request.get('id'), 'req') != request.get('id')):
+            raise InitialIngressError('unsupported source request')
+        idempotency_key = request.get('idempotency_key')
+        if idempotency_key is not None:
+            _ref(idempotency_key)
+        data = event.get('data')
+        if (type(data) is not dict
+                or data.get('previous_attributes') != {'cancel_at_period_end': False}):
+            raise InitialIngressError('missing exact cancellation transition')
+        signed_subscription = data.get('object')
+        signed_projection = _cancellation_projection(
+            state, signed_subscription, verified_at=received)
+        retrieved = _object(state, '/v1/subscriptions/' + state['scope'][2],
+                            state['scope'][2], 'subscription')
+        retrieved_again = _object(state, '/v1/subscriptions/' + state['scope'][2],
+                                  state['scope'][2], 'subscription')
+        if canonical(retrieved) != canonical(retrieved_again):
+            raise InitialIngressError('changed current subscription')
+        completed = exact.utc(clock())
+        retrieved_projection = _cancellation_projection(state, retrieved, verified_at=completed)
+        if signed_projection != retrieved_projection:
+            raise InitialIngressError('snapshot retrieval disagreement')
+        _check(authority, snapshot, completed)
+        lineage = _lineage(authority, repository, snapshot)
+        if not lineage:
+            raise InitialIngressError('missing accepted lineage')
+        paid, paid_head = lineage[-1]
+        if snapshot.accepted != (repository.store_id, paid['receipt_id'], paid['fact_id'], paid_head):
+            raise InitialIngressError('obsolete authentic paid receipt')
+        paid_start = datetime.fromisoformat(paid.get(
+            'service_start', paid['evidence']['service_start']))
+        paid_end = datetime.fromisoformat(paid['service_end'])
+        if (signed_projection['current_period_start'] != paid_start.isoformat()
+                or signed_projection['current_period_end'] != paid_end.isoformat()):
+            raise InitialIngressError('not the authenticated paid boundary')
+        evidence_digest = hashlib.sha256(canonical(
+            (signed_subscription, retrieved))).hexdigest()
+        durable_lineage, control, lifecycle_head = repository.read_lifecycle(
+            snapshot.instance, state['receipt_key'])
+        if durable_lineage != lineage:
+            raise InitialIngressError('changed lifecycle head')
+        if control is not None:
+            committed = True
+            exact_duplicate = (control['event_id'] == event_id
+                and control['raw_digest'] == raw_digest
+                and control['source_evidence_digest'] == evidence_digest
+                and control['paid_head'] == paid_head)
+            if not exact_duplicate:
+                repository.record_conflict(snapshot.instance, event_id=event_id,
+                    raw_digest=raw_digest, object_key=state['scope'][2] + ':scheduled_cancellation',
+                    key=state['receipt_key'])
+                return IngressResult('reconciliation_required', True)
+            expected = (repository.store_id, control['receipt_id'], control['fact_id'], lifecycle_head)
+            if snapshot.cancellation == expected and snapshot.lifecycle_head == lifecycle_head:
+                return IngressResult('admitted', True, _issue_cancellation_fact(
+                    authority, repository, snapshot, control, lifecycle_head))
+            _, reservation = state['publication']
+            if (reservation is None or reservation.get('material') != canonical(control)
+                    or reservation.get('predecessor') != control['predecessor_lifecycle_head']):
+                raise InitialIngressError('durable cancellation lacks exact reservation')
+            receipt, head = control, lifecycle_head
+            snapshot = state['publication'][0]
+        else:
+            if snapshot.lifecycle_head != paid_head or snapshot.cancellation is not None:
+                raise InitialIngressError('obsolete lifecycle head')
+            if not received < paid_end or not completed < paid_end:
+                raise InitialIngressError('paid boundary is no longer current')
+            if attempt in state['commit_seen']:
+                raise InitialIngressError('consumed uncertain attempt')
+            material = dict(version='reserved-scheduled-cancellation-receipt/1',
+                store=repository.store_id, binding=snapshot.instance, epoch=snapshot.epoch,
+                binding_revision=snapshot.revision, owner=state['scope'][0],
+                scope=list(state['scope']), endpoint=state['endpoint'], account=state['account'],
+                api_version=API_VERSION, livemode=False, receipt_key_id=state['receipt_key_id'],
+                signing_key_ids=list(state['signing_key_ids']), event_id=event_id,
+                object_key=state['scope'][2] + ':scheduled_cancellation', raw_digest=raw_digest,
+                source_evidence_digest=evidence_digest, received_at=received.isoformat(),
+                source_created_at=source_time.isoformat(),
+                verification_completed_at=completed.isoformat(), request_id=request['id'],
+                cancellation_reason='cancellation_requested', subscription=state['scope'][2],
+                customer=state['customer'], item=state['item'], price=state['price'],
+                service_start=paid_start.isoformat(), service_end=paid_end.isoformat(),
+                paid_sequence=paid['sequence'], paid_receipt_id=paid['receipt_id'],
+                paid_fact_id=paid['fact_id'], paid_head=paid_head,
+                predecessor_lifecycle_head=snapshot.lifecycle_head,
+                disposition='subscription_scheduled_to_end_at_paid_period_boundary')
+            receipt = dict(material)
+            receipt['fact_id'] = identity('scheduled-cancellation-fact/1', material)
+            receipt['receipt_id'] = identity('scheduled-cancellation-receipt/1', material)
+            with _LOCK:
+                _check(authority, snapshot)
+                current, reservation = state['publication']
+                if reservation is None:
+                    reserved = replace(snapshot, revision=snapshot.revision + 1, consumed=True)
+                    reservation = dict(kind=attempt, material=canonical(receipt),
+                                       predecessor=snapshot.lifecycle_head,
+                                       revision=reserved.revision)
+                    state['publication'] = (reserved, reservation)
+                    snapshot = reserved
+                else:
+                    receipt = json.loads(reservation['material'])
+                    snapshot = current
+                    if (reservation.get('kind') != attempt
+                            or reservation.get('predecessor') != snapshot.lifecycle_head
+                            or receipt.get('raw_digest') != raw_digest
+                            or receipt.get('event_id') != event_id
+                            or receipt.get('source_evidence_digest') != evidence_digest):
+                        raise InitialIngressError('different reserved proposal')
+            predecessor = lineage[-1]
+            try:
+                receipt, head = repository.commit_cancellation(
+                    receipt, predecessor, state['receipt_key'])
+                committed = True
+            except CommitOutcomeError as error:
+                committed = error.committed
+                raise
+            except Exception:
+                committed = None
+                try:
+                    _, durable, head = repository.read_lifecycle(
+                        snapshot.instance, state['receipt_key'])
+                    if durable is not None and durable == receipt:
+                        committed = True
+                except Exception:
+                    pass
+                raise
+            finally:
+                with _LOCK:
+                    if committed is not False:
+                        state['commit_seen'].add(attempt)
+        if repository.read_lifecycle(snapshot.instance, state['receipt_key'])[1:] != (receipt, head):
+            raise InitialIngressError('changed committed cancellation')
+        published = publish(snapshot, receipt, head)
+        _check(authority, published)
+        if repository.read_lifecycle(published.instance, state['receipt_key'])[1:] != (receipt, head):
+            raise InitialIngressError('changed cancellation publication')
+        _accepted_lineage(authority, repository, published)
+        _check(authority, published)
+        fact = _issue_cancellation_fact(authority, repository, published, receipt, head)
+        return IngressResult('admitted', True, fact)
+    except Exception:
+        disposition = ('commit_outcome_unknown' if committed is None else
+                       ('committed_but_unadmitted' if committed else 'refused'))
+        return IngressResult(disposition, committed)

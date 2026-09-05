@@ -1,8 +1,8 @@
-"""Disposable exact-instant paid-lineage store, never a live authority.
+"""Disposable exact-instant paid-lineage/lifecycle store, never a live authority.
 
-Version two preserves the accepted sequence-one receipt meaning while adding one
-immutable ordinary successor and one independently readable current head. There
-is deliberately no v1 migration or durable RAM-authority reconstruction.
+Version three preserves both accepted paid receipt meanings while making one
+immutable scheduled-cancellation control part of the store format. There is
+deliberately no v1/v2 migration or durable RAM-authority reconstruction.
 """
 import hashlib
 import hmac
@@ -13,8 +13,10 @@ import threading
 import uuid
 from pathlib import Path
 
-VERSION = 'reserved-paid-lineage-provenance/2'
+VERSION = 'reserved-paid-lineage-provenance/3'
 _DOMAIN = b'reserved-paid-lineage-receipt/2\x00'
+_CONTROL_DOMAIN = b'reserved-paid-lineage-cancellation-control/1\x00'
+_CONTROL_SCOPE = 'paid-lineage-cancellation-scope/1:'
 _TABLES = (
     'CREATE TABLE metadata (version TEXT NOT NULL, store TEXT NOT NULL)',
     'CREATE TABLE units (binding TEXT NOT NULL, sequence INTEGER NOT NULL,'
@@ -71,6 +73,18 @@ def _receipt_head(receipt):
     return identity('paid-lineage-head/2', {
         'receipt_id': receipt['receipt_id'], 'fact_id': receipt['fact_id'],
         'predecessor_head': receipt['predecessor_head'], 'sequence': receipt['sequence'],
+    })
+
+
+def _control_scope(store, binding):
+    return _CONTROL_SCOPE + hashlib.sha256(canonical((store, binding))).hexdigest()
+
+
+def _control_head(receipt):
+    return identity('paid-lineage-cancellation-head/1', {
+        'receipt_id': receipt['receipt_id'], 'fact_id': receipt['fact_id'],
+        'predecessor_lifecycle_head': receipt['predecessor_lifecycle_head'],
+        'paid_head': receipt['paid_head'],
     })
 
 
@@ -206,6 +220,41 @@ class ProvenanceRepository:
             return None
         return lineage[sequence - 1]
 
+    def read_lifecycle(self, binding, key):
+        """Authenticate the paid lineage and its optional immutable control head."""
+        with self._lock:
+            self._metadata()
+            lineage = self.read_lineage(binding, key)
+            if not lineage:
+                return (), None, None
+            scope = _control_scope(self.store_id, binding)
+            rows = self._db.execute(
+                'SELECT identity,body,mac FROM dispositions WHERE identity LIKE ?',
+                (_CONTROL_SCOPE + '%',)).fetchall()
+            if not rows:
+                return lineage, None, lineage[-1][1]
+            if len(rows) != 1 or rows[0][0] != scope:
+                raise ProvenanceError('ambiguous lifecycle control')
+            raw = rows[0][1].encode('ascii')
+            if (len(raw) > 16384 or not hmac.compare_digest(
+                    rows[0][2], hmac.new(key, _CONTROL_DOMAIN + raw, 'sha256').hexdigest())):
+                raise ProvenanceError('inauthentic lifecycle control')
+            receipt = json.loads(raw)
+            paid, paid_head = lineage[-1]
+            if (canonical(receipt) != raw or receipt.get('version') != 'reserved-scheduled-cancellation-receipt/1'
+                    or receipt.get('store') != self.store_id or receipt.get('binding') != binding
+                    or receipt.get('paid_receipt_id') != paid['receipt_id']
+                    or receipt.get('paid_fact_id') != paid['fact_id']
+                    or receipt.get('paid_head') != paid_head
+                    or receipt.get('paid_sequence') != paid['sequence']
+                    or receipt.get('predecessor_lifecycle_head') != paid_head
+                    or receipt.get('receipt_id') != identity('scheduled-cancellation-receipt/1', {
+                        key: value for key, value in receipt.items() if key not in ('receipt_id', 'fact_id')})
+                    or receipt.get('fact_id') != identity('scheduled-cancellation-fact/1', {
+                        key: value for key, value in receipt.items() if key not in ('receipt_id', 'fact_id')})):
+                raise ProvenanceError('lifecycle control scope mismatch')
+            return lineage, receipt, _control_head(receipt)
+
     @staticmethod
     def _values(receipt, raw, mac, head):
         evidence = receipt['evidence']
@@ -249,6 +298,10 @@ class ProvenanceRepository:
                     else:
                         if lineage != (predecessor,):
                             raise ProvenanceError('prior-head mismatch')
+                        if self._db.execute(
+                                'SELECT count(*) FROM dispositions WHERE identity LIKE ?',
+                                (_CONTROL_SCOPE + '%',)).fetchone()[0] != 0:
+                            raise ProvenanceError('lifecycle-head compare-and-swap failed')
                         prior_receipt, prior_head = predecessor
                         cursor = self._db.execute(
                             'UPDATE current_heads SET sequence=?,receipt_id=?,fact_id=?,head=? '
@@ -281,17 +334,76 @@ class ProvenanceRepository:
     def commit_successor(self, receipt, predecessor, key):
         return self.commit_initial(receipt, key, predecessor)
 
+    def commit_cancellation(self, receipt, predecessor, key):
+        """CAS the exact paid/lifecycle head to one immutable cancellation control."""
+        with self._lock:
+            self._usable()
+        if (type(receipt) is not dict or type(predecessor) is not tuple or len(predecessor) != 2
+                or type(key) is not bytes or len(key) < 32):
+            raise ProvenanceError('invalid lifecycle control input')
+        material = {name: value for name, value in receipt.items()
+                    if name not in ('receipt_id', 'fact_id')}
+        if (receipt.get('version') != 'reserved-scheduled-cancellation-receipt/1'
+                or receipt.get('store') != self.store_id
+                or receipt.get('receipt_id') != identity('scheduled-cancellation-receipt/1', material)
+                or receipt.get('fact_id') != identity('scheduled-cancellation-fact/1', material)):
+            raise ProvenanceError('invalid lifecycle control scope')
+        raw = canonical(receipt)
+        if len(raw) > 16384:
+            raise ProvenanceError('oversized lifecycle control')
+        head = _control_head(receipt)
+        mac = hmac.new(key, _CONTROL_DOMAIN + raw, 'sha256').hexdigest()
+        scope = _control_scope(self.store_id, receipt['binding'])
+        with self._lock:
+            outcome = None
+            try:
+                self._db.execute('BEGIN IMMEDIATE')
+                self._metadata()
+                lineage, control, lifecycle_head = self.read_lifecycle(receipt['binding'], key)
+                if control is not None:
+                    if control != receipt or lifecycle_head != head:
+                        raise ProvenanceError('reconciliation required')
+                else:
+                    if not lineage or lineage[-1] != predecessor or lifecycle_head != predecessor[1]:
+                        raise ProvenanceError('lifecycle-head compare-and-swap failed')
+                    if (receipt.get('paid_receipt_id') != predecessor[0]['receipt_id']
+                            or receipt.get('paid_fact_id') != predecessor[0]['fact_id']
+                            or receipt.get('paid_head') != predecessor[1]
+                            or receipt.get('paid_sequence') != predecessor[0]['sequence']
+                            or receipt.get('predecessor_lifecycle_head') != predecessor[1]):
+                        raise ProvenanceError('wrong lifecycle predecessor')
+                    self._db.execute('INSERT INTO dispositions VALUES (?,?,?)',
+                                     (scope, raw.decode('ascii'), mac))
+                self._db.execute('COMMIT')
+                outcome = True
+                readback = self.read_lifecycle(receipt['binding'], key)
+                if readback[1:] != (receipt, head):
+                    raise ProvenanceError('committed lifecycle control unavailable')
+                return receipt, head
+            except Exception:
+                if outcome is not True:
+                    try:
+                        if self._db.in_transaction:
+                            self._db.execute('ROLLBACK')
+                            outcome = False
+                    except Exception:
+                        outcome = None
+                if outcome is None:
+                    self._poisoned = True
+                    self.close()
+                raise CommitOutcomeError(outcome) from None
+
     def record_conflict(self, binding, *, event_id, raw_digest, object_key, key):
         """Durable minimised reconciliation disposition; never changes the head."""
         with self._lock:
             self._usable()
             self._db.execute('BEGIN IMMEDIATE')
             try:
-                unit = self.read(binding, key)
-                if unit is None:
+                lineage, _, compared_head = self.read_lifecycle(binding, key)
+                if not lineage:
                     raise ProvenanceError('no scoped historical unit')
                 body = dict(version=VERSION, store=self.store_id, binding=binding, event_id=event_id,
-                            raw_digest=raw_digest, object_key=object_key, compared_head=unit[1],
+                            raw_digest=raw_digest, object_key=object_key, compared_head=compared_head,
                             disposition='reconciliation_required')
                 raw = canonical(body)
                 if len(raw) > 2048 or self._db.execute('SELECT count(*) FROM dispositions').fetchone()[0] >= 1000:
