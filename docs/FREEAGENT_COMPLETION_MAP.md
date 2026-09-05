@@ -28,7 +28,7 @@ assertions, and launch-readiness claims.
 |---|---|---|
 | FA-S1 | Official company, invoice-list and pagination contract captured as a network-inert source validator (exact API-origin + per-field schema validation) with synthetic tests | Implemented, independently reviewed and locally integrated on the isolated overnight branch at `76b9b6c`; not merged to main, pushed, deployed or enabled |
 | FA-S2 | Encrypted token custody and authenticated user/company binding | Not started |
-| FA-S3 | Disabled-first read-only adapter and canonical invoice mapping | Offline single-item non-sales-tax GBP subcomponent independently accepted, checkpointed and locally integrated at `7b2b54c4b593bf13b1c12fbccd13c46330ecc9e4`; version 1.1 ordinary multiline continuation is uncommitted and pending independent review (below). Authenticated transport remains unimplemented; FA-S3 is not complete |
+| FA-S3 | Disabled-first read-only adapter and canonical invoice mapping | Offline mapping independently accepted and locally integrated: single-item source `7b2b54c4b593bf13b1c12fbccd13c46330ecc9e4`, multiline 1.1 source `bd68ab48e4394b06470c20c6035384b6f78cd1a4`. Injected acquisition executor is uncommitted and pending independent review (below). Authenticated live transport remains unimplemented; FA-S3 is not complete |
 | FA-S4 | Pagination, refresh, disconnect, error and resilience handling | Network-inert contract sub-slice independently reviewed, checkpointed at `d096177b493ac341f15072e5d1daa5e5ca6d7c7f` and locally integrated; HTTP/secret-custody portions remain in FA-S2/FA-S3 |
 | FA-S5 | Synthetic sandbox execution and independent evidence review | Not started |
 | FA-S6 | Customer/target-environment integration and launch assurance | Not started |
@@ -216,7 +216,7 @@ and activation remain open. The denominators remain **1/6 complete and 2/8
 terminal checks addressed**; no production, legal or live-provider assurance
 is created by this reconciliation.
 
-### Ordinary multiline continuation — uncommitted candidate
+### Ordinary multiline continuation — historical candidate record
 
 Under `work/freeagent-multiline-mapping-authority.md`, base
 `8e57a26e632eb8fa218f3487b6aad166bfd2dc80` (tree
@@ -231,8 +231,41 @@ Only the existing adapter, its tests, versioned evidence and this map change.
 The prior checkpoint/hash table above identifies accepted 1.0 history, not the
 new candidate's source. The source evidence preserves that history and records
 the 1.1 boundary and current **203 focused / 1,734 affected passing tests**.
-The prior root canonical result does not validate this uncommitted candidate;
-different independent review is still required. No new full slice or terminal
+At this original freeze the prior root canonical result did not validate the
+uncommitted candidate and different independent review was still required.
+Its later acceptance is recorded below. No new full slice or terminal
 check is completed: **1/6 and 2/8 remain unchanged**. All FA-S2/live transport,
 broader mapping, completeness/freshness, customer/target and activation gates
 remain open; no provider, settlement, recognition or tax authority is created.
+
+### Accepted multiline checkpoint and injected acquisition candidate
+
+Multiline source `bd68ab48e4394b06470c20c6035384b6f78cd1a4`, tree
+`2a8f3b6d0078c92f807fef8360440497a65cf146`, is independently accepted and locally
+integrated, as recorded in `work/freeagent-multiline-checkpoint.md`. Root's clean
+affected run passed 1,734; its exact integrated canonical run passed 8,522 root,
+13 artifact, 23 parity and 138 options checks, with RW3 true. October remains
+not_ready with 18 blockers. The original candidate record and accepted 1.0
+history above are retained, not reused as acceptance of later code.
+
+On that immutable base, `work/freeagent-read-runtime-authority.md` permits
+`freeagent_read_runtime.py`, its new tests/evidence and this map only. The
+uncommitted injected-test executor performs company and bounded invoice-page
+requests, exact fixture binding checks, accepted source validation and mapping,
+and returns source/count evidence without annual-income completeness or
+authenticated membership authority. It is pending different independent review;
+126 focused and 1,889 affected tests pass after the review-required pagination
+correction: repeated initial destinations and next links without explicit
+advancing page identity refuse before another invoice request; oversized pages
+and contradictory supplied relation identities now refuse too, including a
+terminal response identifying a later last page. Prior freezes passed 1,870
+and 1,881 affected tests. Prior passing tests
+did not establish acceptance; corrected re-review remains pending. See
+`docs/FREEAGENT_READ_RUNTIME_EVIDENCE.md` for the exact environment seam, limits,
+fixture dependency and no-partial-success boundary.
+
+W9-S2 permits work against opaque references; this does not waive FA-S2 for live
+transport. No real token access, custody, provider request, sandbox compatibility,
+physical membership, default database, route or enablement is supplied. Full
+FA-S3 and every provider/customer/target/privacy/security/activation gate remain
+open. **1/6 complete and 2/8 terminal checks addressed remain unchanged.**
