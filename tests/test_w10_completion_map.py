@@ -390,7 +390,9 @@ EXPECTED_HISTORICAL_MAP_BINDINGS = (
 )
 ALLOWED_CANDIDATE_PATHS = {
     MAP_RELATIVE_PATH,
+    "docs/W10_S7A_BILLING_THREAT_MODEL.md",
     "tests/test_w10_completion_map.py",
+    "tests/test_w10_billing_threat_model.py",
 }
 
 
@@ -823,6 +825,27 @@ def test_fd_w10_004_closes_only_the_q3_policy_layer() -> None:
         "S2 remains\nincomplete",
         "0/8 slices complete",
         "terminal gate remains 0/13",
+    ):
+        assert statement in TEXT
+
+
+def test_accepted_full_withdrawal_runtime_is_reconciled_without_moving_gates() -> None:
+    for statement in (
+        "d471704ed4beaf0d663a1a88dbf6f38b9402c14d",
+        "f772c39d481dbd01bbd18cb9c9ecc2b10527170f",
+        "7ce58530b752fca4cb2362e88a30b1d786f11019",
+        "All 28\nsettled paid routes are denied",
+        "exact 27 non-paid routes retain their\nexisting controls",
+        "Restoration is not implemented",
+        "strict **0/8**, terminal **0/13**, W9 **0/5**",
+        "October `not_ready`/18 blockers are unchanged",
+    ):
+        assert statement in TEXT
+
+    for statement in (
+        "provider-authenticated ingress",
+        "sandbox evidence",
+        "customer/human assurance remain open",
     ):
         assert statement in TEXT
 

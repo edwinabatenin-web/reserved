@@ -22,11 +22,14 @@ actually implements it. Contract, inventory and reconciliation evidence is not
 runtime enforcement. Absence of a provider path prevents a billing side effect
 today but is not proof that the future path is safe.
 
-Founder questions **Q1** (refund promise/full-refund access), **Q2** (exact paid
-surface) and **Q3** (verified post-settlement loss/restoration consequence)
-remain unanswered. VAT/invoice treatment and owner-bound no-transfer recovery
-remain specialist gates, not new Founder questions. No provider semantics are
-inferred beyond accepted S2C/S4A evidence.
+The machine-readable register below preserves the exact 4 September cut-off at
+which Founder questions **Q1** (refund promise/full-refund access), **Q2** (exact
+paid surface) and **Q3** (verified post-settlement loss/restoration consequence)
+were unanswered. They have since been resolved at the policy layer; the final
+reconciliation section records the accepted full-withdrawal runtime without
+rewriting that historical register. VAT/invoice treatment and owner-bound
+no-transfer recovery remain specialist gates, not new Founder questions. No
+provider semantics are inferred beyond accepted evidence.
 
 ## Machine-readable register
 
@@ -594,8 +597,9 @@ source commit and digest rather than being relabelled as PAYE or MTD evidence.
 
 ## Cross-cutting closure sequence
 
-The register does not reorder the W10 map. S2 must first obtain the applicable
-specialist evidence and answers to Q1/Q2/Q3. S3 then needs the W9 datastore,
+The historical register does not reorder the W10 map. S2 must obtain the
+remaining applicable specialist evidence; Q1/Q2/Q3 are now resolved only at the
+policy layer. S3 then needs the W9 datastore,
 custody, minimisation, retention/erasure/backup and migration decisions before
 durable billing state. S4 must authenticate provider observations at a
 disabled-first edge. S5 must enforce only the approved Q2 boundary and preserve
@@ -610,12 +614,13 @@ exercised and independently accepted where required.
 
 ## Non-authority statement
 
-This candidate performs no authentication, database or network access and uses
-no credentials, provider account, customer data or production system. It does
+At its historical cut-off this candidate performed no authentication, database
+or network access and used no credentials, provider account, customer data or
+production system. It did
 not implement or expose checkout, portal, webhook, billing recovery, refund,
 admin, entitlement or paid-route behavior. It does not select a datastore,
 retention duration, key custodian, target runtime or provider configuration. It
-does not answer Q1, Q2 or Q3, amend Founder Decisions or completion maps, close
+did not answer Q1, Q2 or Q3, amend Founder Decisions or completion maps, close
 W10-S7, assert security assurance, approve residual risk, authorise release or
 make Reserved launch-ready.
 
@@ -630,3 +635,68 @@ It provides detached zero-authority structural lifecycle candidates and fixed
 history/date behaviour only. It grants no provider, persistence, custody,
 entitlement, target or activation authority, closes none of Q1/Q2/Q3, and does
 not constitute security or launch assurance.
+
+## Post-full-withdrawal runtime reconciliation — 5 September 2026
+
+This section supersedes only the historical statements that Q1/Q2/Q3 remain
+unanswered or that no withdrawal-suspension runtime exists. It does not rewrite
+the frozen JSON register or pretend its earlier reviewer inspected later code.
+Every BT/BG row remains `open_not_security_or_launch_assurance`; W10-S7, W10 and
+launch assurance remain incomplete.
+
+Founder authority `FD-W10-004` is accepted at
+`ab4f8d4d34aa4b80022018b2b15315d5ff72ebb5` and integrated at
+`22512f29ed17dbc9a13a8741891345eb54513d05`. The accepted source checkpoint
+`d471704ed4beaf0d663a1a88dbf6f38b9402c14d` is integrated at
+`f772c39d481dbd01bbd18cb9c9ecc2b10527170f`, tree
+`7ce58530b752fca4cb2362e88a30b1d786f11019`. Its evidence document
+`docs/W10_STRIPE_FULL_WITHDRAWAL_EVIDENCE.md` has SHA-256
+`50d19cb08c9741f2b0f0606180b393b00ae96fd364df71079b5e66309f52a43a`.
+The accepted owner-only provider-evidence and source-admission records are bound
+in the W10 completion map; neither constitutes provider activation, sandbox or
+target evidence.
+
+The following current controls narrow, but do not close, the directly affected
+threats:
+
+- **BT-06 / BG-06 — replay and idempotency:** exact authenticated replay returns
+  the original receipt/fact/head/instant. Changed bytes, object substitution and
+  forged or mismatched disposition identity refuse before admission. Durable
+  production provider-event uniqueness, cross-process replay prevention and
+  lost-acknowledgement reconciliation remain open.
+- **BT-07 / BG-07 — order and substitution:** the current-period paid receipt,
+  exact Charge/PaymentIntent/currency binding, stable two-pass projection and
+  terminal-head checks refuse older, substituted, changing and non-monotonic
+  facts. Provider-to-owner binding and globally ordered target reconciliation
+  remain open.
+- **BT-09 / BG-09 and BT-10 / BG-10 — grant/revocation races:** a successfully
+  admitted full withdrawal is terminal for the local history; stale paid facts
+  and readers cannot mint or retain paid capability after that head. Unknown or
+  conflicting inputs have zero effect. Production admission, globally durable
+  concurrency, cache propagation and target enforcement remain open.
+- **BT-12 / BG-12 — refund ambiguity:** only the frozen successful-full-refund
+  shape can be admitted. Partial, pending, failed, duplicated, wrong-payment,
+  paginated or changing evidence has zero new entitlement effect. Refund
+  execution, mandatory-remedy treatment, accounting/credit-note handling,
+  provider sandbox evidence and customer/support assurance remain open.
+- **BT-13 / BG-13 — post-settlement consequence:** the supported verified full
+  withdrawal now suspends ordinary paid access at the next authoritative local
+  evaluation without another grace period. Ambiguous observations neither
+  suspend valid existing derived access solely on that basis nor create,
+  restore, extend, prolong or strengthen entitlement. Restoration is not
+  implemented; disputes, chargebacks, reinstatement/reversal outcomes and
+  replacement-payment restoration still require separately accepted source,
+  admission, treatment, runbook and target evidence.
+- **BT-20 / BG-20 — route bypass:** the accepted local guard denies all **28**
+  settled paid routes while preserving exactly **27** non-paid routes under
+  existing controls. Default production wiring, provider-authenticated
+  membership, direct-URL/API target evidence and independent target review
+  remain open.
+
+The corrected package passed 48 direct and 879 complete affected tests; its
+clean checkpoint passed a separate 904-test affected matrix. The canonical gate
+on exact integration `f772c39d...` passed 10,025 root tests plus 13 artefact, 23
+parity and 138 options checks, with mandatory RW3 true. These local results are
+not security, privacy, provider, sandbox, human, target, activation, release or
+go-live assurance. No restoration capability or provider-observed entitlement
+authority is claimed.
