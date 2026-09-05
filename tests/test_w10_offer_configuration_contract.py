@@ -1172,13 +1172,50 @@ def test_candidate_cannot_be_consumed_as_checkout_or_stripe_ingress_authority():
         user_id=7,
         now=datetime(2026, 10, 1, 10, 0, tzinfo=timezone.utc),
     ) is False
-    ingress_source = (ROOT / "reserved/billing/local_stripe_initial_payment.py").read_text()
-    assert "invoice['discounts'] != []" in ingress_source
-    assert "line['discounts'] != []" in ingress_source
-    assert "subscription['discounts'] != []" in ingress_source
-    assert hashlib.sha256(ingress_source.encode()).hexdigest() == (
-        "719b31b20cc19fcfcc002caffcad8502bf78c3f74c881a7f104e8c08c186dce3"
-    )
+
+
+@pytest.mark.parametrize(
+    "path,keys,value",
+    (
+        ("/v1/invoices/in_Synthetic", ("discounts",), ["di_Synthetic"]),
+        (
+            "/v1/invoices/in_Synthetic",
+            ("total_discount_amounts",),
+            [{"amount": 1}],
+        ),
+        (
+            "/v1/invoices/in_Synthetic/lines",
+            ("data", 0, "discounts"),
+            ["di_Synthetic"],
+        ),
+        (
+            "/v1/invoices/in_Synthetic/lines",
+            ("data", 0, "discount_amounts"),
+            [{"amount": 1}],
+        ),
+        ("/v1/subscriptions/sub_Synthetic", ("discounts",), ["di_Synthetic"]),
+    ),
+)
+def test_all_provider_offer_carriers_are_behaviorally_refused(
+    tmp_path, path, keys, value
+):
+    from tests.test_w10_stripe_initial_payment_ingress import Harness
+
+    harness = Harness(tmp_path / "offer-carrier.db")
+    try:
+        target = harness.data[path]
+        for key in keys[:-1]:
+            target = target[key]
+        target[keys[-1]] = value
+
+        result = harness.ingest()
+
+        assert result.disposition == "refused"
+        assert result.fact is None
+        assert harness.repo.empty()
+        assert harness.authority.snapshot().accepted is None
+    finally:
+        harness.repo.close()
 
 
 def test_module_is_stdlib_only_has_exact_small_surface_and_no_action_verbs():
