@@ -1101,6 +1101,159 @@ def validate_exact_instant_paid_access_decision(value):
     return state[0]
 
 
+WITHDRAWAL_CONTRACT_VERSION = 'reserved-paid-access-guard/3.0'
+WITHDRAWAL_RUNTIME_DECISION_PROTOCOL_VERSION = 'reserved-runtime-withdrawal-decision/3.0'
+WITHDRAWAL_RUNTIME_ADMISSION_STATUS = 'authoritative_withdrawal_runtime_entitlement_admitted'
+_WITHDRAWAL_RUNTIME_KEYS = (
+    'protocol_version', 'decision_identity', 'admission_status', 'authenticated',
+    'runtime_access_authority', 'owner_id', 'billing_account_id', 'subscription_id',
+    'source_fact_id', 'predecessor_paid_fact_id', 'lifecycle_head', 'state',
+    'ordinary_access', 'transition_effective_at_utc',
+    'recovery_deadline_exclusive_at_utc', 'derivation_kind', 'withdrawal_attribution',
+)
+_WITHDRAWAL_GUARDS = {}
+_WITHDRAWAL_DECISIONS = {}
+
+
+class FullWithdrawalPaidAccessGuardHandle:
+    __slots__ = ('__weakref__',)
+    def __new__(cls, *args, **kwargs):
+        raise TypeError('full-withdrawal guards are binder-issued only')
+    def __copy__(self): raise TypeError('not copyable')
+    def __deepcopy__(self, memo): raise TypeError('not copyable')
+    def __reduce__(self): raise TypeError('not serialisable')
+
+
+class FullWithdrawalPaidAccessDecisionHandle:
+    __slots__ = ('__weakref__',)
+    def __new__(cls, *args, **kwargs):
+        raise TypeError('full-withdrawal decisions are evaluator-issued only')
+    def __copy__(self): raise TypeError('not copyable')
+    def __deepcopy__(self, memo): raise TypeError('not copyable')
+    def __reduce__(self): raise TypeError('not serialisable')
+
+
+def _withdrawal_runtime(value):
+    runtime = _v2_pairs(value, _WITHDRAWAL_RUNTIME_KEYS, 'full-withdrawal runtime')
+    transition = _v2_utc(runtime['transition_effective_at_utc'])
+    textual = ('owner_id', 'billing_account_id', 'subscription_id')
+    if (runtime['protocol_version'] != WITHDRAWAL_RUNTIME_DECISION_PROTOCOL_VERSION
+            or runtime['admission_status'] != WITHDRAWAL_RUNTIME_ADMISSION_STATUS
+            or runtime['authenticated'] is not True
+            or runtime['runtime_access_authority'] is not True
+            or runtime['state'] != 'suspended' or runtime['ordinary_access'] is not False
+            or runtime['recovery_deadline_exclusive_at_utc'] is not None
+            or runtime['derivation_kind'] != 'verified_full_withdrawal'
+            or runtime['withdrawal_attribution'] != 'current_subscription_period'
+            or any(type(runtime[name]) is not str or _EXACT_OWNER.fullmatch(runtime[name]) is None
+                   or any(marker in runtime[name].casefold() for marker in _EXACT_SECRET_MARKERS)
+                   for name in textual)
+            or type(runtime['source_fact_id']) is not str
+            or _re.fullmatch(r'full-withdrawal-fact/1:[0-9a-f]{64}',
+                             runtime['source_fact_id']) is None
+            or type(runtime['predecessor_paid_fact_id']) is not str
+            or _EXACT_PAID_ID.fullmatch(runtime['predecessor_paid_fact_id']) is None
+            or type(runtime['lifecycle_head']) is not str
+            or _re.fullmatch(r'paid-lineage-full-withdrawal-head/1:[0-9a-f]{64}',
+                             runtime['lifecycle_head']) is None
+            or type(runtime['decision_identity']) is not str
+            or _re.fullmatch(r'runtime-withdrawal-entitlement/3:[0-9a-f]{64}',
+                             runtime['decision_identity']) is None):
+        raise PaidAccessGuardError('invalid full-withdrawal runtime')
+    material = tuple(runtime[name] for name in _WITHDRAWAL_RUNTIME_KEYS
+                     if name != 'decision_identity')
+    normalized = tuple(item.isoformat() if type(item) is _datetime else item
+                       for item in material)
+    payload = _json.dumps(normalized, sort_keys=True, separators=(',', ':'),
+                          ensure_ascii=True, allow_nan=False).encode('ascii')
+    expected = 'runtime-withdrawal-entitlement/3:' + _hashlib.sha256(payload).hexdigest()
+    if runtime['decision_identity'] != expected:
+        raise PaidAccessGuardError('full-withdrawal runtime identity mismatch')
+    return runtime, transition
+
+
+def bind_full_withdrawal_paid_access_guard(
+        *, validate_runtime_entitlement, project_runtime_entitlement):
+    validator = _v2_function_snapshot(validate_runtime_entitlement)
+    projector = _v2_function_snapshot(project_runtime_entitlement)
+    if validate_runtime_entitlement is project_runtime_entitlement:
+        raise ValueError('full-withdrawal validator and projector must be distinct')
+    handle = object.__new__(FullWithdrawalPaidAccessGuardHandle)
+    identity = id(handle)
+    def remove(reference, expected=identity):
+        current = _WITHDRAWAL_GUARDS.get(expected)
+        if type(current) is tuple and len(current) == 3 and current[2] is reference:
+            _WITHDRAWAL_GUARDS.pop(expected, None)
+    reference = _weakref.ref(handle, remove)
+    _WITHDRAWAL_GUARDS[identity] = (validator, projector, reference)
+    return handle
+
+
+def evaluate_full_withdrawal_paid_access(guard, *, endpoint, authenticated_owner_id,
+        current_runtime_entitlement, evaluated_at_utc):
+    evaluated = _v2_utc(evaluated_at_utc)
+    binding = _WITHDRAWAL_GUARDS.get(id(guard))
+    runtime = None
+    transition = None
+    reason = None
+    if type(endpoint) is not str or endpoint not in frozenset(PAID_ENDPOINTS):
+        reason = 'endpoint_not_in_paid_boundary'
+    elif (type(authenticated_owner_id) is not str
+            or _EXACT_OWNER.fullmatch(authenticated_owner_id) is None):
+        reason = 'authenticated_owner_unavailable'
+    elif (type(guard) is not FullWithdrawalPaidAccessGuardHandle
+            or type(binding) is not tuple or binding[2]() is not guard
+            or not _v2_function_unchanged(binding[0])
+            or not _v2_function_unchanged(binding[1])):
+        reason = 'bound_runtime_authority_changed'
+    else:
+        try:
+            validated = binding[0][0](current_runtime_entitlement)
+            if validated != binding[1][0](current_runtime_entitlement):
+                raise PaidAccessGuardError('runtime projection disagrees')
+            runtime, transition = _withdrawal_runtime(validated)
+        except Exception:
+            reason = 'runtime_entitlement_invalid'
+    if reason is None and runtime['owner_id'] != authenticated_owner_id:
+        reason = 'cross_owner_entitlement'
+    if reason is None:
+        reason = ('allowed_before_full_withdrawal' if evaluated < transition
+                  else 'denied_verified_full_withdrawal')
+    allowed = reason == 'allowed_before_full_withdrawal'
+    values = dict(contract_version=WITHDRAWAL_CONTRACT_VERSION,
+        endpoint=endpoint if type(endpoint) is str else None,
+        authenticated_owner_id=(authenticated_owner_id
+            if type(authenticated_owner_id) is str else None),
+        runtime_entitlement_identity=(None if runtime is None else runtime['decision_identity']),
+        state=('unknown' if runtime is None else runtime['state']), allowed=allowed,
+        reason=reason, evaluated_at_utc=evaluated, provider_contacted=False,
+        persisted=False, route_wiring_active=False)
+    projection = tuple((name, values[name]) for name in _EXACT_DECISION_KEYS)
+    handle = object.__new__(FullWithdrawalPaidAccessDecisionHandle)
+    identity = id(handle)
+    def remove(reference, expected=identity):
+        current = _WITHDRAWAL_DECISIONS.get(expected)
+        if type(current) is tuple and len(current) == 2 and current[1] is reference:
+            _WITHDRAWAL_DECISIONS.pop(expected, None)
+    reference = _weakref.ref(handle, remove)
+    _WITHDRAWAL_DECISIONS[identity] = (projection, reference)
+    return handle
+
+
+def validate_full_withdrawal_paid_access_decision(value):
+    state = _WITHDRAWAL_DECISIONS.get(id(value))
+    if (type(value) is not FullWithdrawalPaidAccessDecisionHandle or type(state) is not tuple
+            or state[1]() is not value):
+        raise PaidAccessGuardError('not a full-withdrawal paid-access decision')
+    values = _v2_pairs(state[0], _EXACT_DECISION_KEYS, 'full-withdrawal decision')
+    if (values['contract_version'] != WITHDRAWAL_CONTRACT_VERSION
+            or type(values['allowed']) is not bool
+            or any(values[name] is not False for name in
+                   ('provider_contacted', 'persisted', 'route_wiring_active'))):
+        raise PaidAccessGuardError('invalid full-withdrawal paid-access decision')
+    return state[0]
+
+
 __all__ = (
     "CONTRACT_VERSION",
     "EXACT_INSTANT_CONTRACT_VERSION",
@@ -1122,4 +1275,12 @@ __all__ = (
     "evaluate_paid_access",
     "validate_exact_instant_paid_access_decision",
     "validate_paid_access_decision",
+    "WITHDRAWAL_CONTRACT_VERSION",
+    "WITHDRAWAL_RUNTIME_DECISION_PROTOCOL_VERSION",
+    "WITHDRAWAL_RUNTIME_ADMISSION_STATUS",
+    "FullWithdrawalPaidAccessDecisionHandle",
+    "FullWithdrawalPaidAccessGuardHandle",
+    "bind_full_withdrawal_paid_access_guard",
+    "evaluate_full_withdrawal_paid_access",
+    "validate_full_withdrawal_paid_access_decision",
 )

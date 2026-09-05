@@ -964,6 +964,220 @@ def project_exact_instant_runtime_entitlement(value):
     return validate_exact_instant_runtime_entitlement(value)
 
 
+# The successful-full-withdrawal protocol is versioned separately so accepted
+# recovery readers continue to reject it and its no-deadline meaning.
+WITHDRAWAL_CONTRACT_VERSION = 'reserved-w10-runtime-entitlement-admission/3.0'
+WITHDRAWAL_BILLING_FACT_PROTOCOL_VERSION = 'reserved-owner-bound-billing-withdrawal-fact/3.0'
+WITHDRAWAL_BILLING_FACT_ADMISSION_STATUS = (
+    'authoritative_owner_bound_billing_withdrawal_fact_admitted')
+WITHDRAWAL_RUNTIME_DECISION_PROTOCOL_VERSION = 'reserved-runtime-withdrawal-decision/3.0'
+WITHDRAWAL_RUNTIME_ADMISSION_STATUS = 'authoritative_withdrawal_runtime_entitlement_admitted'
+_WITHDRAWAL_FACT_KEYS = (
+    'protocol_version', 'fact_identity', 'admission_status', 'authenticated',
+    'billing_fact_authority', 'provider_observation_direct_authority', 'owner_id',
+    'billing_account_id', 'subscription_id', 'source_fact_id',
+    'predecessor_paid_fact_id', 'lifecycle_head', 'state', 'ordinary_access',
+    'transition_effective_at_utc', 'recovery_deadline_exclusive_at_utc',
+    'derivation_kind', 'withdrawal_attribution',
+)
+_WITHDRAWAL_RUNTIME_KEYS = (
+    'protocol_version', 'decision_identity', 'admission_status', 'authenticated',
+    'runtime_access_authority', 'owner_id', 'billing_account_id', 'subscription_id',
+    'source_fact_id', 'predecessor_paid_fact_id', 'lifecycle_head', 'state',
+    'ordinary_access', 'transition_effective_at_utc',
+    'recovery_deadline_exclusive_at_utc', 'derivation_kind', 'withdrawal_attribution',
+)
+_WITHDRAWAL_BINDINGS = {}
+_WITHDRAWAL_RUNTIMES = {}
+
+
+class FullWithdrawalRuntimeAdmissionHandle:
+    __slots__ = ('__weakref__',)
+    def __new__(cls, *args, **kwargs):
+        raise TypeError('full-withdrawal admission handles are binder-issued only')
+    def __copy__(self):
+        raise TypeError('not copyable')
+    def __deepcopy__(self, memo):
+        raise TypeError('not copyable')
+    def __reduce__(self):
+        raise TypeError('not serialisable')
+
+
+class FullWithdrawalRuntimeEntitlementHandle:
+    __slots__ = ('__weakref__',)
+    def __new__(cls, *args, **kwargs):
+        raise TypeError('full-withdrawal runtime handles are adapter-issued only')
+    def __copy__(self):
+        raise TypeError('not copyable')
+    def __deepcopy__(self, memo):
+        raise TypeError('not copyable')
+    def __reduce__(self):
+        raise TypeError('not serialisable')
+
+
+def _parse_withdrawal_fact(value):
+    fact = _exact_pairs(value, _WITHDRAWAL_FACT_KEYS, 'full-withdrawal billing fact')
+    transition = _exact_utc_v2(fact['transition_effective_at_utc'], 'withdrawal transition')
+    if (fact['protocol_version'] != WITHDRAWAL_BILLING_FACT_PROTOCOL_VERSION
+            or fact['admission_status'] != WITHDRAWAL_BILLING_FACT_ADMISSION_STATUS
+            or fact['authenticated'] is not True or fact['billing_fact_authority'] is not True
+            or fact['provider_observation_direct_authority'] is not False
+            or fact['state'] != 'suspended' or fact['ordinary_access'] is not False
+            or fact['recovery_deadline_exclusive_at_utc'] is not None
+            or fact['derivation_kind'] != 'verified_full_withdrawal'
+            or fact['withdrawal_attribution'] != 'current_subscription_period'
+            or type(fact['fact_identity']) is not str
+            or not _re.fullmatch(r'billing-withdrawal-fact/3:[0-9a-f]{64}', fact['fact_identity'])
+            or type(fact['source_fact_id']) is not str
+            or not _re.fullmatch(r'full-withdrawal-fact/1:[0-9a-f]{64}', fact['source_fact_id'])
+            or type(fact['predecessor_paid_fact_id']) is not str
+            or _EXACT_PAID_ID.fullmatch(fact['predecessor_paid_fact_id']) is None
+            or type(fact['lifecycle_head']) is not str
+            or not _re.fullmatch(r'paid-lineage-full-withdrawal-head/1:[0-9a-f]{64}',
+                                 fact['lifecycle_head'])):
+        raise RuntimeEntitlementAdmissionError('invalid full-withdrawal fact')
+    for name in ('owner_id', 'billing_account_id', 'subscription_id'):
+        if (type(fact[name]) is not str or _EXACT_IDENTIFIER.fullmatch(fact[name]) is None
+                or any(marker in fact[name].casefold() for marker in _EXACT_SECRET_MARKERS)):
+            raise RuntimeEntitlementAdmissionError('invalid full-withdrawal scope')
+    material = tuple(fact[name] for name in _WITHDRAWAL_FACT_KEYS if name != 'fact_identity')
+    if fact['fact_identity'] != _exact_identity('billing-withdrawal-fact/3', material):
+        raise RuntimeEntitlementAdmissionError('full-withdrawal fact identity mismatch')
+    return fact
+
+
+def _parse_withdrawal_runtime(value):
+    runtime = _exact_pairs(value, _WITHDRAWAL_RUNTIME_KEYS, 'full-withdrawal runtime')
+    _exact_utc_v2(runtime['transition_effective_at_utc'], 'withdrawal runtime transition')
+    if (runtime['protocol_version'] != WITHDRAWAL_RUNTIME_DECISION_PROTOCOL_VERSION
+            or runtime['admission_status'] != WITHDRAWAL_RUNTIME_ADMISSION_STATUS
+            or runtime['authenticated'] is not True
+            or runtime['runtime_access_authority'] is not True
+            or runtime['state'] != 'suspended' or runtime['ordinary_access'] is not False
+            or runtime['recovery_deadline_exclusive_at_utc'] is not None
+            or runtime['derivation_kind'] != 'verified_full_withdrawal'
+            or runtime['withdrawal_attribution'] != 'current_subscription_period'
+            or any(type(runtime[name]) is not str
+                   or _EXACT_IDENTIFIER.fullmatch(runtime[name]) is None
+                   or any(marker in runtime[name].casefold()
+                          for marker in _EXACT_SECRET_MARKERS)
+                   for name in ('owner_id', 'billing_account_id', 'subscription_id'))
+            or type(runtime['source_fact_id']) is not str
+            or _re.fullmatch(r'full-withdrawal-fact/1:[0-9a-f]{64}',
+                             runtime['source_fact_id']) is None
+            or type(runtime['predecessor_paid_fact_id']) is not str
+            or _EXACT_PAID_ID.fullmatch(runtime['predecessor_paid_fact_id']) is None
+            or type(runtime['lifecycle_head']) is not str
+            or _re.fullmatch(r'paid-lineage-full-withdrawal-head/1:[0-9a-f]{64}',
+                             runtime['lifecycle_head']) is None
+            or type(runtime['decision_identity']) is not str
+            or not _re.fullmatch(r'runtime-withdrawal-entitlement/3:[0-9a-f]{64}',
+                                 runtime['decision_identity'])):
+        raise RuntimeEntitlementAdmissionError('invalid full-withdrawal runtime')
+    material = tuple(runtime[name] for name in _WITHDRAWAL_RUNTIME_KEYS
+                     if name != 'decision_identity')
+    if runtime['decision_identity'] != _exact_identity(
+            'runtime-withdrawal-entitlement/3', material):
+        raise RuntimeEntitlementAdmissionError('full-withdrawal runtime identity mismatch')
+    return runtime
+
+
+def bind_full_withdrawal_runtime_entitlement_admission(
+        *, validate_admitted_billing_fact, project_admitted_billing_fact):
+    validator = _exact_function_snapshot(validate_admitted_billing_fact)
+    projector = _exact_function_snapshot(project_admitted_billing_fact)
+    if validate_admitted_billing_fact is project_admitted_billing_fact:
+        raise ValueError('full-withdrawal validator and projector must be distinct')
+    handle = object.__new__(FullWithdrawalRuntimeAdmissionHandle)
+    identity_value = id(handle)
+    def remove(reference, expected=identity_value):
+        current = _WITHDRAWAL_BINDINGS.get(expected)
+        if type(current) is tuple and len(current) == 3 and current[2] is reference:
+            _WITHDRAWAL_BINDINGS.pop(expected, None)
+    reference = _weakref.ref(handle, remove)
+    _WITHDRAWAL_BINDINGS[identity_value] = (validator, projector, reference)
+    return handle
+
+
+def admit_full_withdrawal_runtime_entitlement(admission, *, authenticated_owner_id,
+        billing_account_id, subscription_id, admitted_billing_fact, evaluated_at_utc):
+    _exact_utc_v2(evaluated_at_utc, 'withdrawal evaluation')
+    binding = _WITHDRAWAL_BINDINGS.get(id(admission))
+    if (type(admission) is not FullWithdrawalRuntimeAdmissionHandle
+            or type(binding) is not tuple or binding[2]() is not admission
+            or not _exact_function_unchanged(binding[0])
+            or not _exact_function_unchanged(binding[1])):
+        raise RuntimeEntitlementAdmissionError('invalid full-withdrawal admission binding')
+    try:
+        validated = binding[0][0](admitted_billing_fact)
+        projected = binding[1][0](admitted_billing_fact)
+    except Exception as exc:
+        raise RuntimeEntitlementAdmissionError(
+            'full-withdrawal billing fact unavailable') from exc
+    if validated != projected:
+        raise RuntimeEntitlementAdmissionError('full-withdrawal projection disagrees')
+    fact = _parse_withdrawal_fact(validated)
+    if tuple(fact[name] for name in ('owner_id', 'billing_account_id', 'subscription_id')) != (
+            authenticated_owner_id, billing_account_id, subscription_id):
+        raise RuntimeEntitlementAdmissionError('cross-scope full-withdrawal fact')
+    runtime = dict(protocol_version=WITHDRAWAL_RUNTIME_DECISION_PROTOCOL_VERSION,
+        decision_identity='', admission_status=WITHDRAWAL_RUNTIME_ADMISSION_STATUS,
+        authenticated=True, runtime_access_authority=True, owner_id=fact['owner_id'],
+        billing_account_id=fact['billing_account_id'], subscription_id=fact['subscription_id'],
+        source_fact_id=fact['source_fact_id'],
+        predecessor_paid_fact_id=fact['predecessor_paid_fact_id'],
+        lifecycle_head=fact['lifecycle_head'], state='suspended', ordinary_access=False,
+        transition_effective_at_utc=fact['transition_effective_at_utc'],
+        recovery_deadline_exclusive_at_utc=None,
+        derivation_kind='verified_full_withdrawal',
+        withdrawal_attribution='current_subscription_period')
+    material = tuple(runtime[name] for name in _WITHDRAWAL_RUNTIME_KEYS
+                     if name != 'decision_identity')
+    runtime['decision_identity'] = _exact_identity('runtime-withdrawal-entitlement/3', material)
+    projection = tuple((name, runtime[name]) for name in _WITHDRAWAL_RUNTIME_KEYS)
+    handle = object.__new__(FullWithdrawalRuntimeEntitlementHandle)
+    identity_value = id(handle)
+    def remove(reference, expected=identity_value):
+        current = _WITHDRAWAL_RUNTIMES.get(expected)
+        if type(current) is tuple and len(current) == 4 and current[3] is reference:
+            _WITHDRAWAL_RUNTIMES.pop(expected, None)
+    reference = _weakref.ref(handle, remove)
+    _WITHDRAWAL_RUNTIMES[identity_value] = (projection, admitted_billing_fact,
+                                            admission, reference)
+    return handle
+
+
+def validate_full_withdrawal_runtime_entitlement(value):
+    state = _WITHDRAWAL_RUNTIMES.get(id(value))
+    if (type(value) is not FullWithdrawalRuntimeEntitlementHandle
+            or type(state) is not tuple or state[3]() is not value):
+        raise RuntimeEntitlementAdmissionError('not a full-withdrawal runtime entitlement')
+    binding = _WITHDRAWAL_BINDINGS.get(id(state[2]))
+    if (type(binding) is not tuple or binding[2]() is not state[2]
+            or not _exact_function_unchanged(binding[0])
+            or not _exact_function_unchanged(binding[1])):
+        raise RuntimeEntitlementAdmissionError('full-withdrawal authority changed')
+    try:
+        validated = binding[0][0](state[1])
+        projected = binding[1][0](state[1])
+    except Exception as exc:
+        raise RuntimeEntitlementAdmissionError(
+            'full-withdrawal billing fact unavailable') from exc
+    if validated != projected:
+        raise RuntimeEntitlementAdmissionError('full-withdrawal projection disagrees')
+    fact = _parse_withdrawal_fact(validated)
+    runtime = _parse_withdrawal_runtime(state[0])
+    if (runtime['source_fact_id'] != fact['source_fact_id']
+            or runtime['lifecycle_head'] != fact['lifecycle_head']
+            or runtime['transition_effective_at_utc'] != fact['transition_effective_at_utc']):
+        raise RuntimeEntitlementAdmissionError('full-withdrawal source changed')
+    return state[0]
+
+
+def project_full_withdrawal_runtime_entitlement(value):
+    return validate_full_withdrawal_runtime_entitlement(value)
+
+
 __all__ = (
     "BILLING_FACT_ADMISSION_STATUS",
     "BILLING_FACT_PROTOCOL_VERSION",
@@ -991,4 +1205,15 @@ __all__ = (
     "project_exact_instant_runtime_entitlement",
     "validate_runtime_entitlement",
     "validate_exact_instant_runtime_entitlement",
+    "WITHDRAWAL_CONTRACT_VERSION",
+    "WITHDRAWAL_BILLING_FACT_PROTOCOL_VERSION",
+    "WITHDRAWAL_BILLING_FACT_ADMISSION_STATUS",
+    "WITHDRAWAL_RUNTIME_DECISION_PROTOCOL_VERSION",
+    "WITHDRAWAL_RUNTIME_ADMISSION_STATUS",
+    "FullWithdrawalRuntimeAdmissionHandle",
+    "FullWithdrawalRuntimeEntitlementHandle",
+    "bind_full_withdrawal_runtime_entitlement_admission",
+    "admit_full_withdrawal_runtime_entitlement",
+    "validate_full_withdrawal_runtime_entitlement",
+    "project_full_withdrawal_runtime_entitlement",
 )

@@ -22,7 +22,7 @@ def test_exact_v2_store_and_independent_current_head(renewal):
     assert renewal.renew(now=renewal.initial_end).disposition == 'admitted'
     lineage = renewal.repo.read_lineage(initial_snapshot.instance, RECEIPT_KEY)
     first, second = lineage
-    assert VERSION == 'reserved-paid-lineage-provenance/4'
+    assert VERSION == 'reserved-paid-lineage-provenance/5'
     assert first == initial[0] and second[0]['sequence'] == 2
     assert second[0]['predecessor_receipt_id'] == first[0]['receipt_id']
     assert second[0]['predecessor_fact_id'] == first[0]['fact_id']

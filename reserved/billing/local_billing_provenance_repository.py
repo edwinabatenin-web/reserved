@@ -1,9 +1,10 @@
 """Disposable exact-instant paid-lineage/lifecycle store, never a live authority.
 
-Version four preserves both accepted paid receipt meanings while making
-scheduled cancellation and failed renewal contend through one authenticated
-lifecycle-control head. There is deliberately no older-store migration or
-durable RAM-authority reconstruction.
+Version five preserves every version-four meaning and adds one append-only
+full-withdrawal successor.  A withdrawal may follow the paid head directly or
+one compatible scheduled-cancellation control; it can never skip a failed
+renewal or another terminal control.  There is deliberately no older-store
+migration or durable RAM-authority reconstruction.
 """
 import hashlib
 import hmac
@@ -15,10 +16,16 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-VERSION = 'reserved-paid-lineage-provenance/4'
+VERSION = 'reserved-paid-lineage-provenance/5'
 _DOMAIN = b'reserved-paid-lineage-receipt/2\x00'
 _CONTROL_DOMAIN = b'reserved-paid-lineage-lifecycle-control/2\x00'
 _CONTROL_SCOPE = 'paid-lineage-lifecycle-scope/2:'
+_CONFLICT_DOMAIN = b'paid-lineage-conflict/2\x00'
+_CONFLICT_PREFIX = 'paid-lineage-conflict/2:'
+_CONFLICT_FIELDS = frozenset({
+    'version', 'store', 'binding', 'event_id', 'raw_digest', 'object_key',
+    'compared_head', 'disposition',
+})
 _TABLES = (
     'CREATE TABLE metadata (version TEXT NOT NULL, store TEXT NOT NULL)',
     'CREATE TABLE units (binding TEXT NOT NULL, sequence INTEGER NOT NULL,'
@@ -69,6 +76,35 @@ def identity(domain, value):
     return domain + ':' + hashlib.sha256(canonical(value)).hexdigest()
 
 
+def _decode_conflict(store, row, key):
+    """Authenticate one bounded reconciliation row before using its event ID."""
+    if (type(row) is not tuple or len(row) != 3 or type(key) is not bytes
+            or len(key) < 32):
+        raise ProvenanceError('invalid reconciliation row')
+    row_identity, text, mac = row
+    try:
+        raw = text.encode('ascii')
+        body = json.loads(raw)
+    except (AttributeError, UnicodeError, ValueError, TypeError):
+        raise ProvenanceError('invalid reconciliation row') from None
+    if (type(row_identity) is not str or not row_identity.startswith(_CONFLICT_PREFIX)
+            or len(raw) > 2048 or type(mac) is not str
+            or not hmac.compare_digest(mac, hmac.new(key, _CONFLICT_DOMAIN + raw,
+                                                     'sha256').hexdigest())
+            or type(body) is not dict or set(body) != _CONFLICT_FIELDS
+            or canonical(body) != raw
+            or row_identity != identity('paid-lineage-conflict/2', body)
+            or body.get('version') != VERSION or body.get('store') != store
+            or body.get('disposition') != 'reconciliation_required'
+            or any(type(body.get(name)) is not str or not body[name] for name in
+                   ('binding', 'event_id', 'raw_digest', 'object_key', 'compared_head'))
+            or len(body['raw_digest']) != 64
+            or any(character not in '0123456789abcdef'
+                   for character in body['raw_digest'])):
+        raise ProvenanceError('inauthentic reconciliation row')
+    return body
+
+
 def _receipt_head(receipt):
     if receipt['sequence'] == 1:
         return identity('initial-head/1', receipt)
@@ -86,6 +122,7 @@ def _control_head(receipt):
     domains = {
         'reserved-scheduled-cancellation-receipt/1': 'paid-lineage-cancellation-head/1',
         'reserved-failed-renewal-receipt/1': 'paid-lineage-failed-renewal-head/1',
+        'reserved-full-withdrawal-receipt/1': 'paid-lineage-full-withdrawal-head/1',
     }
     domain = domains.get(receipt.get('version'))
     if domain is None:
@@ -102,6 +139,8 @@ def _control_identity_domains(receipt):
         return 'scheduled-cancellation-receipt/1', 'scheduled-cancellation-fact/1'
     if receipt.get('version') == 'reserved-failed-renewal-receipt/1':
         return 'failed-renewal-receipt/1', 'failed-renewal-fact/1'
+    if receipt.get('version') == 'reserved-full-withdrawal-receipt/1':
+        return 'full-withdrawal-receipt/1', 'full-withdrawal-fact/1'
     raise ProvenanceError('unsupported lifecycle control')
 
 
@@ -109,6 +148,81 @@ _FAILED_RENEWAL_ADMISSION_FIELDS = frozenset({
     'failure_verified_at_utc', 'recovery_deadline_exclusive_at_utc',
     'receipt_id', 'fact_id',
 })
+
+_WITHDRAWAL_ADMISSION_FIELDS = frozenset({
+    'withdrawal_verified_at_utc', 'receipt_id', 'fact_id',
+})
+
+
+def _withdrawal_proposal(receipt):
+    return {name: value for name, value in receipt.items()
+            if name not in _WITHDRAWAL_ADMISSION_FIELDS}
+
+
+def _validate_withdrawal_evidence(receipt):
+    required = {
+        'version', 'store', 'binding', 'epoch', 'binding_revision', 'owner',
+        'scope', 'endpoint', 'account', 'api_version', 'livemode',
+        'receipt_key_id', 'signing_key_ids', 'event_id', 'object_key',
+        'raw_digest', 'source_evidence_digest', 'received_at',
+        'source_created_at', 'subscription', 'customer', 'invoice', 'line',
+        'payment', 'intent', 'charge', 'refunds', 'amount', 'currency',
+        'paid_sequence', 'paid_receipt_id', 'paid_fact_id', 'paid_head',
+        'predecessor_lifecycle_head', 'disposition', 'source_shape',
+        'paid_service_start', 'paid_service_end',
+    }
+    if (not required <= receipt.keys()
+            or receipt.get('version') != 'reserved-full-withdrawal-receipt/1'
+            or receipt.get('disposition') != 'verified_full_withdrawal'
+            or receipt.get('source_shape') != 'successful_full_refund'):
+        raise ProvenanceError('invalid full-withdrawal control')
+    identities = ('invoice', 'line', 'payment', 'intent', 'charge')
+    if any(type(receipt[name]) is not str or not receipt[name] for name in identities):
+        raise ProvenanceError('invalid full-withdrawal evidence identity')
+    refunds = receipt['refunds']
+    if (type(refunds) is not list or not 1 <= len(refunds) <= 100
+            or any(type(value) is not str or not value for value in refunds)
+            or len(set(refunds)) != len(refunds) or refunds != sorted(refunds)
+            or type(receipt['amount']) is not int or not 0 < receipt['amount'] <= 10**12
+            or type(receipt['currency']) is not str or not receipt['currency']
+            or type(receipt.get('paid_sequence')) is not int
+            or receipt['paid_sequence'] not in (1, 2)
+            or type(receipt.get('binding_revision')) is not int
+            or receipt['binding_revision'] < 1):
+        raise ProvenanceError('invalid full-withdrawal evidence values')
+    for name in ('raw_digest', 'source_evidence_digest'):
+        value = receipt[name]
+        if (type(value) is not str or len(value) != 64
+                or any(character not in '0123456789abcdef' for character in value)):
+            raise ProvenanceError('invalid full-withdrawal digest')
+    try:
+        received = datetime.fromisoformat(receipt['received_at'])
+        source_created = datetime.fromisoformat(receipt['source_created_at'])
+        paid_start = datetime.fromisoformat(receipt['paid_service_start'])
+        paid_end = datetime.fromisoformat(receipt['paid_service_end'])
+    except (TypeError, ValueError):
+        raise ProvenanceError('invalid full-withdrawal instants') from None
+    if (any(type(value) is not datetime or value.tzinfo is not timezone.utc
+            for value in (received, source_created, paid_start, paid_end))
+            or source_created > received or not paid_start < paid_end):
+        raise ProvenanceError('invalid full-withdrawal instant values')
+
+
+def _validate_withdrawal(receipt):
+    _validate_withdrawal_evidence(receipt)
+    if not _WITHDRAWAL_ADMISSION_FIELDS <= receipt.keys():
+        raise ProvenanceError('invalid full-withdrawal admission fields')
+    try:
+        verified = datetime.fromisoformat(receipt['withdrawal_verified_at_utc'])
+        paid_start = datetime.fromisoformat(receipt['paid_service_start'])
+        paid_end = datetime.fromisoformat(receipt['paid_service_end'])
+        received = datetime.fromisoformat(receipt['received_at'])
+    except (TypeError, ValueError):
+        raise ProvenanceError('invalid full-withdrawal admission instant') from None
+    if (any(type(value) is not datetime or value.tzinfo is not timezone.utc
+            for value in (verified, paid_start, paid_end, received))
+            or verified < received or not paid_start <= verified < paid_end):
+        raise ProvenanceError('withdrawal is not in current paid period')
 
 
 def _failed_renewal_proposal(receipt):
@@ -314,44 +428,76 @@ class ProvenanceRepository:
 
     def read_lifecycle(self, binding, key):
         """Authenticate the paid lineage and its optional immutable control head."""
+        lineage, controls, lifecycle_head = self.read_lifecycle_chain(binding, key)
+        return lineage, (controls[-1] if controls else None), lifecycle_head
+
+    def read_lifecycle_chain(self, binding, key):
+        """Authenticate the complete bounded lifecycle-control chain."""
         with self._lock:
             self._metadata()
             lineage = self.read_lineage(binding, key)
             if not lineage:
-                return (), None, None
+                return (), (), None
             scope = _control_scope(self.store_id, binding)
             rows = self._db.execute(
                 'SELECT identity,body,mac FROM dispositions WHERE identity LIKE ?',
-                (_CONTROL_SCOPE + '%',)).fetchall()
-            if not rows:
-                return lineage, None, lineage[-1][1]
-            if len(rows) != 1 or rows[0][0] != scope:
+                (scope + '%',)).fetchall()
+            foreign = self._db.execute(
+                'SELECT count(*) FROM dispositions WHERE identity LIKE ? AND identity NOT LIKE ?',
+                (_CONTROL_SCOPE + '%', scope + '%')).fetchone()[0]
+            if foreign:
                 raise ProvenanceError('ambiguous lifecycle control')
-            raw = rows[0][1].encode('ascii')
-            if (len(raw) > 16384 or not hmac.compare_digest(
-                    rows[0][2], hmac.new(key, _CONTROL_DOMAIN + raw, 'sha256').hexdigest())):
-                raise ProvenanceError('inauthentic lifecycle control')
-            receipt = json.loads(raw)
+            if not rows:
+                return lineage, (), lineage[-1][1]
+            if len(rows) not in (1, 2):
+                raise ProvenanceError('ambiguous lifecycle control')
             paid, paid_head = lineage[-1]
-            try:
-                receipt_domain, fact_domain = _control_identity_domains(receipt)
-                if receipt.get('version') == 'reserved-failed-renewal-receipt/1':
-                    _validate_failed_renewal(receipt)
-            except ProvenanceError:
-                raise ProvenanceError('lifecycle control scope mismatch') from None
-            if (canonical(receipt) != raw
-                    or receipt.get('store') != self.store_id or receipt.get('binding') != binding
-                    or receipt.get('paid_receipt_id') != paid['receipt_id']
-                    or receipt.get('paid_fact_id') != paid['fact_id']
-                    or receipt.get('paid_head') != paid_head
-                    or receipt.get('paid_sequence') != paid['sequence']
-                    or receipt.get('predecessor_lifecycle_head') != paid_head
-                    or receipt.get('receipt_id') != identity(receipt_domain, {
-                        key: value for key, value in receipt.items() if key not in ('receipt_id', 'fact_id')})
-                    or receipt.get('fact_id') != identity(fact_domain, {
-                        key: value for key, value in receipt.items() if key not in ('receipt_id', 'fact_id')})):
+            decoded = []
+            for row_identity, body, stored_mac in rows:
+                raw = body.encode('ascii')
+                if (len(raw) > 16384 or not hmac.compare_digest(
+                        stored_mac, hmac.new(key, _CONTROL_DOMAIN + raw, 'sha256').hexdigest())):
+                    raise ProvenanceError('inauthentic lifecycle control')
+                receipt = json.loads(raw)
+                try:
+                    receipt_domain, fact_domain = _control_identity_domains(receipt)
+                    if receipt.get('version') == 'reserved-failed-renewal-receipt/1':
+                        _validate_failed_renewal(receipt)
+                    elif receipt.get('version') == 'reserved-full-withdrawal-receipt/1':
+                        _validate_withdrawal(receipt)
+                except ProvenanceError:
+                    raise ProvenanceError('lifecycle control scope mismatch') from None
+                material = {key: value for key, value in receipt.items()
+                            if key not in ('receipt_id', 'fact_id')}
+                if (canonical(receipt) != raw
+                        or receipt.get('store') != self.store_id
+                        or receipt.get('binding') != binding
+                        or receipt.get('paid_receipt_id') != paid['receipt_id']
+                        or receipt.get('paid_fact_id') != paid['fact_id']
+                        or receipt.get('paid_head') != paid_head
+                        or receipt.get('paid_sequence') != paid['sequence']
+                        or receipt.get('receipt_id') != identity(receipt_domain, material)
+                        or receipt.get('fact_id') != identity(fact_domain, material)):
+                    raise ProvenanceError('lifecycle control scope mismatch')
+                decoded.append((receipt, _control_head(receipt), row_identity))
+            first = next((item for item in decoded if
+                          item[0].get('predecessor_lifecycle_head') == paid_head), None)
+            if first is None or first[2] != scope:
                 raise ProvenanceError('lifecycle control scope mismatch')
-            return lineage, receipt, _control_head(receipt)
+            chain = [first]
+            if len(decoded) == 2:
+                second = next((item for item in decoded if item is not first), None)
+                if (second is None
+                        or second[0].get('version') != 'reserved-full-withdrawal-receipt/1'
+                        or first[0].get('version') != 'reserved-scheduled-cancellation-receipt/1'
+                        or second[0].get('predecessor_lifecycle_head') != first[1]
+                        or second[2] != scope + ':' + hashlib.sha256(
+                            second[0]['predecessor_lifecycle_head'].encode('ascii')).hexdigest()):
+                    raise ProvenanceError('broken lifecycle-control chain')
+                chain.append(second)
+            if len(chain) != len(decoded):
+                raise ProvenanceError('ambiguous lifecycle control')
+            return lineage, tuple(item[0] for item in chain), chain[-1][1]
 
     @staticmethod
     def _values(receipt, raw, mac, head):
@@ -585,6 +731,112 @@ class ProvenanceRepository:
                     self.close()
                 raise CommitOutcomeError(outcome) from None
 
+    def commit_full_withdrawal(self, proposal, predecessor, key, admission_clock):
+        """Atomically admit one verified full withdrawal at the Reserved clock.
+
+        ``predecessor`` is the exact paid unit plus the expected current
+        lifecycle head and optional compatible cancellation receipt. Exact
+        replay returns the durable receipt without sampling the clock.
+        """
+        with self._lock:
+            self._usable()
+        if (type(proposal) is not dict or type(predecessor) is not tuple
+                or len(predecessor) != 3 or type(predecessor[0]) is not tuple
+                or len(predecessor[0]) != 2 or type(key) is not bytes or len(key) < 32
+                or not callable(admission_clock)
+                or any(name in proposal for name in _WITHDRAWAL_ADMISSION_FIELDS)):
+            raise ProvenanceError('invalid full-withdrawal proposal')
+        _validate_withdrawal_evidence(proposal)
+        paid_unit, expected_head, expected_control = predecessor
+        scope = _control_scope(self.store_id, proposal['binding'])
+        with self._lock:
+            outcome = None
+            try:
+                self._db.execute('BEGIN IMMEDIATE')
+                self._metadata()
+                lineage, controls, lifecycle_head = self.read_lifecycle_chain(
+                    proposal['binding'], key)
+                current = controls[-1] if controls else None
+                if (current is not None
+                        and current.get('version') == 'reserved-full-withdrawal-receipt/1'):
+                    if _withdrawal_proposal(current) != proposal:
+                        raise ProvenanceError('reconciliation required')
+                    receipt, head = current, lifecycle_head
+                else:
+                    if (not lineage or lineage[-1] != paid_unit
+                            or lifecycle_head != expected_head
+                            or current != expected_control
+                            or (current is not None and current.get('version') !=
+                                'reserved-scheduled-cancellation-receipt/1')):
+                        raise ProvenanceError('lifecycle-head compare-and-swap failed')
+                    paid, paid_head = paid_unit
+                    if (proposal.get('store') != self.store_id
+                            or proposal.get('paid_receipt_id') != paid['receipt_id']
+                            or proposal.get('paid_fact_id') != paid['fact_id']
+                            or proposal.get('paid_head') != paid_head
+                            or proposal.get('paid_sequence') != paid['sequence']
+                            or proposal.get('predecessor_lifecycle_head') != expected_head):
+                        raise ProvenanceError('wrong lifecycle predecessor')
+                    verified = admission_clock()
+                    if (type(verified) is not datetime
+                            or verified.tzinfo is not timezone.utc
+                            or verified.utcoffset() != timedelta(0)):
+                        raise ProvenanceError('invalid full-withdrawal admission clock')
+                    receipt = dict(proposal)
+                    receipt['withdrawal_verified_at_utc'] = verified.isoformat()
+                    material = dict(receipt)
+                    receipt['fact_id'] = identity('full-withdrawal-fact/1', material)
+                    receipt['receipt_id'] = identity('full-withdrawal-receipt/1', material)
+                    _validate_withdrawal(receipt)
+                    raw = canonical(receipt)
+                    if len(raw) > 16384:
+                        raise ProvenanceError('oversized lifecycle control')
+                    head = _control_head(receipt)
+                    mac = hmac.new(key, _CONTROL_DOMAIN + raw, 'sha256').hexdigest()
+                    row_identity = (scope if current is None else scope + ':' +
+                        hashlib.sha256(expected_head.encode('ascii')).hexdigest())
+                    self._db.execute('INSERT INTO dispositions VALUES (?,?,?)',
+                                     (row_identity, raw.decode('ascii'), mac))
+                self._db.execute('COMMIT')
+                outcome = True
+                readback = self.read_lifecycle(proposal['binding'], key)
+                if readback[1:] != (receipt, head):
+                    raise ProvenanceError('committed full withdrawal unavailable')
+                return receipt, head
+            except Exception:
+                if outcome is not True:
+                    try:
+                        if self._db.in_transaction:
+                            self._db.execute('ROLLBACK')
+                            outcome = False
+                    except Exception:
+                        outcome = None
+                if outcome is None:
+                    self._poisoned = True
+                    self.close()
+                raise CommitOutcomeError(outcome) from None
+
+    def _conflicts(self, key):
+        rows = self._db.execute(
+            "SELECT identity,body,mac FROM dispositions WHERE identity LIKE ? ORDER BY identity",
+            (_CONFLICT_PREFIX + '%',)).fetchall()
+        if len(rows) > 1000:
+            raise ProvenanceError('disposition bound')
+        return tuple(_decode_conflict(self.store_id, row, key) for row in rows)
+
+    def read_conflict(self, binding, *, event_id, key):
+        """Return the sole authenticated disposition consuming this scoped event ID."""
+        if (type(binding) is not str or not binding or type(event_id) is not str
+                or not event_id):
+            raise ProvenanceError('invalid reconciliation lookup')
+        with self._lock:
+            self._metadata()
+            matches = tuple(body for body in self._conflicts(key)
+                            if body['binding'] == binding and body['event_id'] == event_id)
+            if len(matches) > 1:
+                raise ProvenanceError('ambiguous reconciled event')
+            return None if not matches else dict(matches[0])
+
     def record_conflict(self, binding, *, event_id, raw_digest, object_key, key):
         """Durable minimised reconciliation disposition; never changes the head."""
         with self._lock:
@@ -601,11 +853,12 @@ class ProvenanceRepository:
                 if len(raw) > 2048 or self._db.execute('SELECT count(*) FROM dispositions').fetchone()[0] >= 1000:
                     raise ProvenanceError('disposition bound')
                 digest = identity('paid-lineage-conflict/2', body)
-                mac = hmac.new(key, b'paid-lineage-conflict/2\x00' + raw, 'sha256').hexdigest()
-                existing = self._db.execute('SELECT body,mac FROM dispositions WHERE identity=?', (digest,)).fetchall()
-                if existing and existing != [(raw.decode('ascii'), mac)]:
-                    raise ProvenanceError('changed disposition')
-                if not existing:
+                mac = hmac.new(key, _CONFLICT_DOMAIN + raw, 'sha256').hexdigest()
+                prior = tuple(item for item in self._conflicts(key)
+                              if item['binding'] == binding and item['event_id'] == event_id)
+                if len(prior) > 1 or (prior and prior[0] != body):
+                    raise ProvenanceError('changed reconciled event')
+                if not prior:
                     self._db.execute('INSERT INTO dispositions VALUES (?,?,?)', (digest, raw.decode('ascii'), mac))
                 self._db.execute('COMMIT')
             except Exception:

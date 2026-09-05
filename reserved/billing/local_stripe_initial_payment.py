@@ -1,4 +1,4 @@
-"""Injected synthetic Basil paid and first-failed-renewal reconciliation.
+"""Injected synthetic Basil paid, failure and full-withdrawal reconciliation.
 
 Not a webhook, provider client, credential store, or production bootstrap. The
 Supported paid lineage remains initial payment plus one ordinary renewal. A
@@ -32,6 +32,7 @@ _SCOPES = {}
 _AUTHORITIES = {}
 _CANCELLATION_FACTS = weakref.WeakKeyDictionary()
 _RECOVERY_FACTS = weakref.WeakKeyDictionary()
+_WITHDRAWAL_FACTS = weakref.WeakKeyDictionary()
 _ID = re.compile(r'[a-z][a-z0-9]*_[A-Za-z0-9]{1,100}\Z')
 _PLANS = {'monthly': (2900, 'month', 1), 'six_month': (15600, 'month', 6),
           'yearly': (28800, 'year', 1)}
@@ -70,6 +71,7 @@ class BindingSnapshot:
     lifecycle_head: str | None
     cancellation: tuple | None
     recovery: tuple | None = None
+    withdrawal: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,23 @@ class CancellationFact:
 
 class FailedRenewalFact:
     """Opaque live handle for one authenticated failed-renewal control."""
+    __slots__ = ('__weakref__',)
+
+    def __new__(cls):
+        raise TypeError('live issuance only')
+
+    def __copy__(self):
+        raise TypeError('not copyable')
+
+    def __deepcopy__(self, memo):
+        raise TypeError('not copyable')
+
+    def __reduce__(self):
+        raise TypeError('not serialisable')
+
+
+class FullWithdrawalFact:
+    """Opaque live handle for one authenticated full-withdrawal control."""
     __slots__ = ('__weakref__',)
 
     def __new__(cls):
@@ -245,7 +264,7 @@ class SyntheticInitialAuthority:
             if source_scope in _SCOPES or not repository.empty():
                 raise InitialIngressError('scope or store is not pristine')
             instance, epoch = uuid.uuid4().hex, uuid.uuid4().hex
-            snapshot = BindingSnapshot(instance, epoch, 1, True, False, None, None, None)
+            snapshot = BindingSnapshot(instance, epoch, 1, True, False, None, None, None, None)
             state = dict(publication=(snapshot, None), store=repository.store_id,
                          physical=repository.physical_identity, process=os.getpid(),
                          user=user_id, scope=scope,
@@ -429,21 +448,33 @@ def _accepted_lineage(authority, repository, snapshot):
     if (type(repository) is not ProvenanceRepository or repository.store_id != state['store']
             or repository.physical_identity != state['physical']):
         raise InitialIngressError('wrong store')
-    lineage, control, lifecycle_head = repository.read_lifecycle(
+    lineage, controls, lifecycle_head = repository.read_lifecycle_chain(
         snapshot.instance, state['receipt_key'])
     if not lineage or snapshot.accepted is None:
         raise InitialIngressError('missing accepted lineage')
     receipt, head = lineage[-1]
+    control = controls[-1] if controls else None
     expected_control = (None if control is None else
         (repository.store_id, control['receipt_id'], control['fact_id'], lifecycle_head))
-    expected_cancellation = (expected_control if control is not None
-        and control.get('version') == 'reserved-scheduled-cancellation-receipt/1' else None)
+    cancellation_control = next((item for item in controls if item.get('version') ==
+        'reserved-scheduled-cancellation-receipt/1'), None)
+    expected_cancellation = None
+    # Cancellation's publication tuple uses its own head, not a later
+    # withdrawal head.
+    if cancellation_control is not None:
+        from .local_billing_provenance_repository import _control_head
+        expected_cancellation = (repository.store_id,
+            cancellation_control['receipt_id'], cancellation_control['fact_id'],
+            _control_head(cancellation_control))
     expected_recovery = (expected_control if control is not None
         and control.get('version') == 'reserved-failed-renewal-receipt/1' else None)
+    expected_withdrawal = (expected_control if control is not None
+        and control.get('version') == 'reserved-full-withdrawal-receipt/1' else None)
     if (snapshot.accepted != (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head)
             or snapshot.lifecycle_head != lifecycle_head
             or snapshot.cancellation != expected_cancellation
-            or snapshot.recovery != expected_recovery):
+            or snapshot.recovery != expected_recovery
+            or snapshot.withdrawal != expected_withdrawal):
         raise InitialIngressError('obsolete authentic receipt')
     return lineage
 
@@ -457,6 +488,8 @@ def current_fact(authority, repository, *, user_id, now):
     if type(user_id) is not int or user_id != state['user']:
         raise InitialIngressError('current membership unavailable')
     lineage = _accepted_lineage(authority, repository, snapshot)
+    if snapshot.withdrawal is not None:
+        raise InitialIngressError('paid fact superseded by withdrawal')
     selected = None
     for unit in lineage:
         receipt = unit[0]
@@ -476,6 +509,8 @@ def _validate_live_fact(fact_state, now=None):
     snapshot = authority.snapshot()
     state = _check(authority, snapshot, now)
     lineage = _accepted_lineage(authority, repository, snapshot)
+    if snapshot.withdrawal is not None:
+        raise InitialIngressError('paid fact superseded by withdrawal')
     selected = next((receipt for receipt, _ in lineage if receipt['sequence'] == sequence), None)
     if (snapshot.revision != revision or state['scope'][0] != owner
             or snapshot.lifecycle_head != current_head or selected is None
@@ -494,6 +529,40 @@ def allows_paid_request(authority, repository, *, user_id, now,
         state = _check(authority, snapshot, now)
         if type(user_id) is not int or user_id != state['user']:
             raise InitialIngressError('current membership unavailable')
+        if snapshot.withdrawal is not None:
+            lineage, control, head = repository.read_lifecycle(
+                snapshot.instance, state['receipt_key'])
+            if (not lineage or control is None
+                    or control.get('version') != 'reserved-full-withdrawal-receipt/1'
+                    or snapshot.lifecycle_head != head
+                    or snapshot.withdrawal != (repository.store_id, control['receipt_id'],
+                                               control['fact_id'], head)):
+                raise InitialIngressError('withdrawal lifecycle unavailable')
+            fact = _issue_withdrawal_fact(authority, repository, snapshot, control, head)
+            from . import runtime_entitlement_admission as runtime
+            from . import paid_access_guard as guard_module
+            binding = runtime.bind_full_withdrawal_runtime_entitlement_admission(
+                validate_admitted_billing_fact=validate_full_withdrawal_fact,
+                project_admitted_billing_fact=project_full_withdrawal_fact)
+            entitlement = runtime.admit_full_withdrawal_runtime_entitlement(
+                binding, authenticated_owner_id=state['scope'][0],
+                billing_account_id=state['scope'][1], subscription_id=state['scope'][2],
+                admitted_billing_fact=fact, evaluated_at_utc=now)
+            guard = guard_module.bind_full_withdrawal_paid_access_guard(
+                validate_runtime_entitlement=
+                    runtime.validate_full_withdrawal_runtime_entitlement,
+                project_runtime_entitlement=
+                    runtime.project_full_withdrawal_runtime_entitlement)
+            decision = guard_module.evaluate_full_withdrawal_paid_access(
+                guard, endpoint=endpoint, authenticated_owner_id=state['scope'][0],
+                current_runtime_entitlement=entitlement, evaluated_at_utc=now)
+            allowed = dict(guard_module.validate_full_withdrawal_paid_access_decision(
+                decision))['allowed']
+            _check(authority, snapshot, now)
+            if repository.read_lifecycle(snapshot.instance, state['receipt_key'])[1:] != (
+                    control, head):
+                return False
+            return allowed and not is_production_environment()
         if snapshot.recovery is not None:
             lineage, control, head = repository.read_lifecycle(
                 snapshot.instance, state['receipt_key'])
@@ -1570,6 +1639,385 @@ def ingest_failed_renewal(authority, repository, raw_body, signature_header, *, 
         fact = _issue_failed_renewal_fact(authority, repository, published, receipt, head)
         return IngressResult('admitted', True, fact)
     except Exception:
+        disposition = ('commit_outcome_unknown' if committed is None else
+                       ('committed_but_unadmitted' if committed else 'refused'))
+        return IngressResult(disposition, committed)
+
+
+WITHDRAWAL_FACT_PROTOCOL_VERSION = 'reserved-owner-bound-billing-withdrawal-fact/3.0'
+WITHDRAWAL_FACT_ADMISSION_STATUS = 'authoritative_owner_bound_billing_withdrawal_fact_admitted'
+
+
+def _required_fields(value, names, label):
+    if type(value) is not dict or any(name not in value or value[name] is None for name in names):
+        raise InitialIngressError('incomplete ' + label)
+
+
+def _full_refund_projection(state, paid):
+    evidence = paid['evidence']
+    charge_id = _identifier(evidence['charge'], 'ch')
+    intent_id = _identifier(evidence['intent'], 'pi')
+    amount = _integer(evidence['amount'])
+    if amount <= 0 or evidence['currency'] != 'gbp':
+        raise InitialIngressError('invalid paid receipt amount')
+    charge = _fetch(state, '/v1/charges/' + charge_id)
+    charge_fields = ('id', 'object', 'livemode', 'customer', 'currency',
+        'payment_intent', 'status', 'paid', 'captured', 'amount',
+        'amount_captured', 'refunded', 'amount_refunded', 'disputed')
+    _required_fields(charge, charge_fields, 'withdrawal charge')
+    if (charge['id'] != charge_id or charge['object'] != 'charge'
+            or charge['livemode'] is not False or charge['customer'] != state['customer']
+            or charge['currency'] != evidence['currency']
+            or charge['payment_intent'] != intent_id or charge['status'] != 'succeeded'
+            or charge['paid'] is not True or charge['captured'] is not True
+            or charge['refunded'] is not True or charge['disputed'] is not False):
+        raise InitialIngressError('unverified withdrawal charge')
+    charge_amounts = tuple(_integer(charge[name]) for name in
+                           ('amount', 'amount_captured', 'amount_refunded'))
+    if any(value <= 0 for value in charge_amounts) or charge_amounts != (amount,) * 3:
+        raise InitialIngressError('withdrawal charge amount mismatch')
+    listing = _fetch(state, '/v1/refunds', (('charge', charge_id), ('limit', '100')))
+    _required_fields(listing, ('object', 'url', 'has_more', 'data'), 'refund list')
+    data = listing['data']
+    if (listing['object'] != 'list' or listing['url'] != '/v1/refunds'
+            or listing['has_more'] is not False or type(data) is not list
+            or not 1 <= len(data) <= 100):
+        raise InitialIngressError('incomplete refund enumeration')
+    fields = ('id', 'object', 'amount', 'charge', 'payment_intent',
+              'currency', 'status', 'balance_transaction')
+    projected = []
+    total = 0
+    identifiers = set()
+    for refund in data:
+        _required_fields(refund, fields, 'refund')
+        refund_id = _identifier(refund['id'], 're')
+        if refund_id in identifiers:
+            raise InitialIngressError('duplicate refund')
+        identifiers.add(refund_id)
+        refund_amount = _integer(refund['amount'])
+        if (refund_amount <= 0 or refund['object'] != 'refund'
+                or refund['charge'] != charge_id or refund['payment_intent'] != intent_id
+                or refund['currency'] != evidence['currency']
+                or refund['status'] != 'succeeded'
+                or type(refund['balance_transaction']) is not str
+                or not refund['balance_transaction']):
+            raise InitialIngressError('unsupported refund')
+        _identifier(refund['balance_transaction'], 'txn')
+        total += refund_amount
+        if total > amount:
+            raise InitialIngressError('refund aggregate exceeds capture')
+        projected.append(tuple(refund[name] for name in fields))
+    if total != amount:
+        raise InitialIngressError('partial refund aggregate')
+    projected.sort(key=lambda item: item[0])
+    return (tuple(charge[name] for name in charge_fields),
+            ('list', '/v1/refunds', False, tuple(projected)))
+
+
+def _issue_withdrawal_fact(authority, repository, snapshot, receipt, head):
+    with _LOCK:
+        state = _check(authority, snapshot)
+        repository_identity = (repository.store_id, repository.physical_identity)
+        expected = (repository_identity, snapshot.revision, head, canonical(receipt))
+        cached = state['control_facts'].get('full_withdrawal')
+        if cached is not None:
+            value, material = cached
+            if material != expected:
+                raise InitialIngressError('changed full-withdrawal fact cache')
+            _WITHDRAWAL_FACTS[value] = (authority, repository, snapshot.revision,
+                                        head, canonical(receipt))
+            return value
+        value = object.__new__(FullWithdrawalFact)
+        _WITHDRAWAL_FACTS[value] = (authority, repository, snapshot.revision,
+                                    head, canonical(receipt))
+        state['control_facts']['full_withdrawal'] = (value, expected)
+        return value
+
+
+def _withdrawal_fact_state(fact):
+    with _LOCK:
+        if type(fact) is not FullWithdrawalFact or fact not in _WITHDRAWAL_FACTS:
+            raise InitialIngressError('not a live full-withdrawal fact')
+        authority, repository, revision, head, material = _WITHDRAWAL_FACTS[fact]
+    snapshot = authority.snapshot()
+    state = _check(authority, snapshot)
+    lineage, control, lifecycle_head = repository.read_lifecycle(
+        snapshot.instance, state['receipt_key'])
+    if (snapshot.revision != revision or snapshot.lifecycle_head != head
+            or lifecycle_head != head or control is None
+            or control.get('version') != 'reserved-full-withdrawal-receipt/1'
+            or canonical(control) != material or not lineage
+            or snapshot.withdrawal != (repository.store_id, control['receipt_id'],
+                                       control['fact_id'], head)
+            or snapshot.recovery is not None):
+        raise InitialIngressError('stale full-withdrawal fact')
+    _accepted_lineage(authority, repository, snapshot)
+    _check(authority, snapshot)
+    return state, control, head
+
+
+def _withdrawal_fact_projection(fact):
+    state, control, head = _withdrawal_fact_state(fact)
+    transition = exact.utc(datetime.fromisoformat(control['withdrawal_verified_at_utc']))
+    material = (WITHDRAWAL_FACT_PROTOCOL_VERSION, WITHDRAWAL_FACT_ADMISSION_STATUS,
+        True, True, False, state['scope'][0], state['scope'][1], state['scope'][2],
+        control['fact_id'], control['paid_fact_id'], head, 'suspended', False,
+        transition, None, 'verified_full_withdrawal', 'current_subscription_period')
+    identity_material = tuple(value.isoformat() if type(value) is datetime else value
+                              for value in material)
+    fact_identity = identity('billing-withdrawal-fact/3', identity_material)
+    names = ('protocol_version', 'fact_identity', 'admission_status', 'authenticated',
+        'billing_fact_authority', 'provider_observation_direct_authority', 'owner_id',
+        'billing_account_id', 'subscription_id', 'source_fact_id',
+        'predecessor_paid_fact_id', 'lifecycle_head', 'state', 'ordinary_access',
+        'transition_effective_at_utc', 'recovery_deadline_exclusive_at_utc',
+        'derivation_kind', 'withdrawal_attribution')
+    return tuple(zip(names, (material[0], fact_identity, *material[1:]), strict=True))
+
+
+def validate_full_withdrawal_fact(fact):
+    return _withdrawal_fact_projection(fact)
+
+
+def project_full_withdrawal_fact(fact):
+    return _withdrawal_fact_projection(fact)
+
+
+def full_withdrawal_fact_details(fact):
+    _, control, head = _withdrawal_fact_state(fact)
+    return dict(disposition=control['disposition'], source_shape=control['source_shape'],
+        withdrawal_verified_at_utc=control['withdrawal_verified_at_utc'],
+        paid_service_start=control['paid_service_start'],
+        paid_service_end=control['paid_service_end'], refunds=tuple(control['refunds']),
+        paid_receipt_id=control['paid_receipt_id'], paid_fact_id=control['paid_fact_id'],
+        receipt_id=control['receipt_id'], fact_id=control['fact_id'], lifecycle_head=head)
+
+
+_WITHDRAWAL_ADMISSION_FIELDS = frozenset({
+    'withdrawal_verified_at_utc', 'receipt_id', 'fact_id',
+})
+
+
+def _withdrawal_proposal(receipt):
+    return {name: value for name, value in receipt.items()
+            if name not in _WITHDRAWAL_ADMISSION_FIELDS}
+
+
+def ingest_full_withdrawal(authority, repository, raw_body, signature_header, *, clock):
+    """Admit only the closed successful-full-refund shape."""
+    def publish(snapshot, receipt, head):
+        with _LOCK:
+            state = _check(authority, snapshot)
+            current, reservation = state['publication']
+            accepted = (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head)
+            if (current != snapshot or reservation is None
+                    or reservation.get('kind') != 'full_withdrawal'
+                    or reservation.get('material') != canonical(_withdrawal_proposal(receipt))
+                    or reservation.get('revision') != snapshot.revision
+                    or reservation.get('predecessor') != receipt['predecessor_lifecycle_head']):
+                raise InitialIngressError('changed full-withdrawal reservation')
+            published = replace(snapshot, revision=snapshot.revision + 1, consumed=True,
+                                lifecycle_head=head, withdrawal=accepted)
+            state['publication'] = (published, None)
+            return published
+
+    committed = False
+    attempt = 'full_withdrawal'
+    conflict = None
+    try:
+        if is_production_environment():
+            raise InitialIngressError('local bounded lifecycle only')
+        snapshot = authority.snapshot()
+        received = exact.utc(clock())
+        state = _check(authority, snapshot, received)
+        if (type(repository) is not ProvenanceRepository
+                or repository.store_id != state['store']
+                or repository.physical_identity != state['physical']):
+            raise InitialIngressError('wrong store')
+        for _ in range(2):
+            if not _verified_signature(raw_body, signature_header, state, received):
+                raise InitialIngressError('signature refusal')
+        event = _parse(raw_body)
+        if (event.get('object') != 'event' or event.get('livemode') is not False
+                or event.get('api_version') != API_VERSION or event.get('account') is not None):
+            raise InitialIngressError('unsupported full-withdrawal event')
+        event_id = _identifier(event.get('id'), 'evt')
+        source_time = _timestamp(event.get('created'))
+        if source_time > received:
+            raise InitialIngressError('future source event')
+        data = event.get('data')
+        if type(data) is not dict or type(data.get('object')) is not dict:
+            raise InitialIngressError('wrong full-withdrawal event object')
+        if event.get('type') != 'charge.refunded':
+            unresolved = frozenset({
+                'refund.created', 'refund.updated', 'refund.failed',
+                'charge.dispute.created', 'charge.dispute.updated',
+                'charge.dispute.closed', 'charge.dispute.funds_withdrawn',
+                'charge.dispute.funds_reinstated',
+            })
+            if event.get('type') not in unresolved:
+                raise InitialIngressError('unsupported full-withdrawal event')
+            object_id = _identifier(data['object'].get('id'))
+            repository.record_conflict(snapshot.instance, event_id=event_id,
+                raw_digest=hashlib.sha256(raw_body).hexdigest(),
+                object_key=object_id + ':' + event['type'], key=state['receipt_key'])
+            return IngressResult('reconciliation_required', True)
+        trigger = data['object']
+        if (trigger.get('object') != 'charge' or trigger.get('livemode') is not False):
+            raise InitialIngressError('wrong full-withdrawal trigger')
+        charge_id = _identifier(trigger.get('id'), 'ch')
+        raw_digest = hashlib.sha256(raw_body).hexdigest()
+        object_key = charge_id + ':charge.refunded'
+        reconciled = repository.read_conflict(snapshot.instance, event_id=event_id,
+                                              key=state['receipt_key'])
+        if reconciled is not None:
+            if (reconciled['raw_digest'] != raw_digest
+                    or reconciled['object_key'] != object_key):
+                raise InitialIngressError('changed reconciled withdrawal event')
+            return IngressResult('reconciliation_required', True)
+        lineage = _lineage(authority, repository, snapshot)
+        if not lineage:
+            raise InitialIngressError('missing accepted paid predecessor')
+        paid, paid_head = lineage[-1]
+        if snapshot.accepted != (repository.store_id, paid['receipt_id'],
+                                 paid['fact_id'], paid_head):
+            raise InitialIngressError('obsolete authentic paid predecessor')
+        if charge_id != paid['evidence']['charge']:
+            if any(charge_id == receipt['evidence']['charge']
+                   for receipt, _ in lineage[:-1]):
+                repository.record_conflict(snapshot.instance, event_id=event_id,
+                    raw_digest=raw_digest, object_key=object_key,
+                    key=state['receipt_key'])
+                return IngressResult('reconciliation_required', True)
+            raise InitialIngressError('event is not current paid charge')
+        conflict = (snapshot.instance, event_id, raw_digest,
+                    object_key, state['receipt_key'])
+        durable_lineage, controls, lifecycle_head = repository.read_lifecycle_chain(
+            snapshot.instance, state['receipt_key'])
+        if durable_lineage != lineage:
+            raise InitialIngressError('changed lifecycle lineage')
+        current = controls[-1] if controls else None
+        if current is not None and current.get('version') == 'reserved-full-withdrawal-receipt/1':
+            committed = True
+            if (current.get('event_id') != event_id or current.get('raw_digest') != raw_digest):
+                repository.record_conflict(snapshot.instance, event_id=event_id,
+                    raw_digest=raw_digest, object_key=charge_id + ':charge.refunded',
+                    key=state['receipt_key'])
+                return IngressResult('reconciliation_required', True)
+            expected = (repository.store_id, current['receipt_id'], current['fact_id'], lifecycle_head)
+            if snapshot.withdrawal == expected and snapshot.lifecycle_head == lifecycle_head:
+                return IngressResult('admitted', True, _issue_withdrawal_fact(
+                    authority, repository, snapshot, current, lifecycle_head))
+            _, reservation = state['publication']
+            if (reservation is None or reservation.get('kind') != attempt
+                    or reservation.get('material') != canonical(_withdrawal_proposal(current))):
+                raise InitialIngressError('durable withdrawal lacks exact reservation')
+            receipt, head = current, lifecycle_head
+            snapshot = state['publication'][0]
+        else:
+            if attempt in state['commit_seen']:
+                conflict = None
+                raise InitialIngressError('consumed uncertain full-withdrawal attempt')
+            if (current is not None and current.get('version') !=
+                    'reserved-scheduled-cancellation-receipt/1'):
+                repository.record_conflict(snapshot.instance, event_id=event_id,
+                    raw_digest=raw_digest, object_key=charge_id + ':charge.refunded',
+                    key=state['receipt_key'])
+                return IngressResult('reconciliation_required', True)
+            if (snapshot.lifecycle_head != lifecycle_head or snapshot.recovery is not None
+                    or snapshot.withdrawal is not None):
+                raise InitialIngressError('obsolete lifecycle head')
+            first = _full_refund_projection(state, paid)
+            second = _full_refund_projection(state, paid)
+            if first != second:
+                raise InitialIngressError('changed full-withdrawal observations')
+            charge_projection, refund_projection = first
+            refund_ids = [item[0] for item in refund_projection[3]]
+            evidence_digest = hashlib.sha256(canonical(first)).hexdigest()
+            proposal = dict(version='reserved-full-withdrawal-receipt/1',
+                store=repository.store_id, binding=snapshot.instance, epoch=snapshot.epoch,
+                binding_revision=snapshot.revision, owner=state['scope'][0],
+                scope=list(state['scope']), endpoint=state['endpoint'], account=state['account'],
+                api_version=API_VERSION, livemode=False, receipt_key_id=state['receipt_key_id'],
+                signing_key_ids=list(state['signing_key_ids']), event_id=event_id,
+                object_key=charge_id + ':charge.refunded', raw_digest=raw_digest,
+                source_evidence_digest=evidence_digest, received_at=received.isoformat(),
+                source_created_at=source_time.isoformat(), subscription=state['scope'][2],
+                customer=state['customer'], invoice=paid['evidence']['invoice'],
+                line=paid['evidence']['line'], payment=paid['evidence']['payment'],
+                intent=paid['evidence']['intent'], charge=charge_id, refunds=refund_ids,
+                amount=paid['evidence']['amount'], currency=paid['evidence']['currency'],
+                paid_sequence=paid['sequence'], paid_receipt_id=paid['receipt_id'],
+                paid_fact_id=paid['fact_id'], paid_head=paid_head,
+                predecessor_lifecycle_head=lifecycle_head,
+                paid_service_start=paid['evidence']['service_start'],
+                paid_service_end=paid['service_end'], source_shape='successful_full_refund',
+                disposition='verified_full_withdrawal')
+            with _LOCK:
+                _check(authority, snapshot)
+                current_snapshot, reservation = state['publication']
+                if reservation is None:
+                    reserved = replace(snapshot, revision=snapshot.revision + 1, consumed=True)
+                    reservation = dict(kind=attempt, material=canonical(proposal),
+                        predecessor=lifecycle_head, revision=reserved.revision)
+                    state['publication'] = (reserved, reservation)
+                    snapshot = reserved
+                else:
+                    proposal = json.loads(reservation['material'])
+                    snapshot = current_snapshot
+                    if (reservation.get('kind') != attempt
+                            or reservation.get('predecessor') != lifecycle_head
+                            or proposal.get('event_id') != event_id
+                            or proposal.get('raw_digest') != raw_digest
+                            or proposal.get('source_evidence_digest') != evidence_digest):
+                        raise InitialIngressError('different reserved full withdrawal')
+
+            def admission_clock():
+                verified = exact.utc(clock())
+                _check(authority, snapshot, verified)
+                return verified
+
+            predecessor = (lineage[-1], lifecycle_head, current)
+            try:
+                receipt, head = repository.commit_full_withdrawal(
+                    proposal, predecessor, state['receipt_key'], admission_clock)
+                committed = True
+            except CommitOutcomeError as error:
+                committed = error.committed
+                raise
+            except Exception:
+                committed = None
+                try:
+                    _, durable, durable_head = repository.read_lifecycle(
+                        snapshot.instance, state['receipt_key'])
+                    if durable is not None and _withdrawal_proposal(durable) == proposal:
+                        committed = True
+                        receipt, head = durable, durable_head
+                except Exception:
+                    pass
+                raise
+            finally:
+                with _LOCK:
+                    if committed is not False:
+                        state['commit_seen'].add(attempt)
+        if repository.read_lifecycle(snapshot.instance, state['receipt_key'])[1:] != (receipt, head):
+            raise InitialIngressError('changed committed full withdrawal')
+        published = publish(snapshot, receipt, head)
+        _check(authority, published)
+        if repository.read_lifecycle(published.instance, state['receipt_key'])[1:] != (receipt, head):
+            raise InitialIngressError('changed full-withdrawal publication')
+        _accepted_lineage(authority, repository, published)
+        fact = _issue_withdrawal_fact(authority, repository, published, receipt, head)
+        return IngressResult('admitted', True, fact)
+    except Exception:
+        if committed is False and conflict is not None:
+            try:
+                binding, event_id, raw_digest, object_key, key = conflict
+                repository.record_conflict(binding, event_id=event_id,
+                    raw_digest=raw_digest, object_key=object_key, key=key)
+                return IngressResult('reconciliation_required', True)
+            except Exception:
+                pass
         disposition = ('commit_outcome_unknown' if committed is None else
                        ('committed_but_unadmitted' if committed else 'refused'))
         return IngressResult(disposition, committed)
