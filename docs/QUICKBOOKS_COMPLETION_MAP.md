@@ -15,8 +15,8 @@ passed independent review.
 | Slice | Bounded outcome | Current state |
 |---|---|---|
 | Q-S1 | Pure OAuth request, callback, rotating token-set, and user/realm/credential-reference contract | Independently reviewed, checkpointed, and integrated in the local integration lineage |
-| Q-S2 | HTTP and secret-custody boundary for exchange, refresh, revocation, rotation persistence, and failure handling | Unimplemented |
-| Q-S3 | Authenticated callback integration, one-time state lifecycle, realm ownership checks, reconnect/disconnect behaviour, and protected routes | Unimplemented |
+| Q-S2 | HTTP and secret-custody boundary for exchange, refresh, revocation, rotation persistence, and failure handling | Full slice remains open; uncommitted injected acquisition candidate exercises synthetic exchange/full-set atomic rotation only; independent review pending |
+| Q-S3 | Authenticated callback integration, one-time state lifecycle, realm ownership checks, reconnect/disconnect behaviour, and protected routes | Full slice remains open; uncommitted injected candidate composes consumed state and explicit synthetic realm binding; no authenticated routes or live lifecycle |
 | Q-S4 | Evidence-backed, network-inert QuickBooks CompanyInfo, Invoice and Payment observation contract, without canonical interpretation | Independently reviewed, checkpointed and locally integrated, including the compatible attestation and Payment extension at `110fb74dc1461ddb3bc20247177699219d3b0aef` |
 | Q-S5 | Provider-to-canonical invoice/payment adapter with provenance, pagination/incremental-sync semantics, tax decisions, and adversarial fixtures | Narrow Q-S5A single-line tax-exclusive invoice/single-allocation Payment adapter and Q-S5B bounded query/Invoice-CDC evidence classifier are independently reviewed, checkpointed and locally integrated; snapshot isolation, continuous CDC, general ingestion, and activation remain unimplemented |
 | Q-S6 | End-to-end sandbox evidence, operational monitoring/recovery, privacy/security review, independent assurance, deliberate enablement, and launch decision | Unimplemented |
@@ -66,3 +66,19 @@ Current official evidence supports the tax-field presence used by the existing c
 
 This narrows nothing about Q-S5A and does not implement, integrate, launch, or
 activate QuickBooks or VAT expansion. Q-S2, Q-S3, and Q-S6 remain open.
+
+## Injected acquisition candidate (not accepted or integrated)
+
+`docs/QUICKBOOKS_READ_RUNTIME_EVIDENCE.md` records the four-path candidate on
+immutable base `ea6a0fc217147471b5e247ffd9d9d220e93b37f6`. It executes synthetic
+callback/exchange/full-set atomic refresh, bound CompanyInfo and Invoice query
+requests through injected fixtures and the actual unchanged Q-S4/Q-S5B code.
+Wire digests and optional provider pagination metadata remain distinct from
+local request positions/counts. It ends at unverified query-mechanics evidence;
+Q-S5B's canonical-ingestion prohibition is unchanged. It is not another
+canonical-mapping acceptance, a live authenticated connection or custody proof.
+
+Different independent review and root checkpoint/integration remain pending.
+No full slice or launch gate is closed. Q-S2/Q-S3/full Q-S5/Q-S6, QBO-01,
+production privacy/security, provider validation and deliberate enablement
+remain open. Existing Q-S1/Q-S4/Q-S5A/Q-S5B history above is unchanged.
