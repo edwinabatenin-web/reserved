@@ -251,4 +251,53 @@ def test_implementation_has_no_ingress_storage_clock_or_admission_dependencies()
     for path in (root / "reserved").rglob("*.py"):
         if path == Path(subject.__file__):
             continue
-        assert "stripe_signature_verifier" not in path.read_text(), path
+        _assert_exact_verifier_caller(path.relative_to(root).as_posix(), path.read_text())
+
+
+def _assert_exact_verifier_caller(path, source):
+    """One direct source caller, not a directory exception or dynamic import."""
+    module, symbol = 'stripe_signature_verifier', 'verify_stripe_signature'
+    tree = ast.parse(source)
+    if path != 'reserved/billing/local_stripe_initial_payment.py':
+        assert module not in source and symbol not in source, path
+        # Also reject literal split-module dynamic imports in this source inventory.
+        constants = ''.join(node.value for node in ast.walk(tree)
+                            if isinstance(node, ast.Constant) and type(node.value) is str)
+        assert module not in constants and symbol not in constants, path
+        return
+    assert source.count(module) == 1 and source.count(symbol) == 2
+    references = [node for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module == module]
+    assert len(references) == 1
+    imported = references[0]
+    assert imported.level == 1 and len(imported.names) == 1
+    assert imported.names[0].name == symbol and imported.names[0].asname is None
+    names = [node for node in ast.walk(tree) if isinstance(node, ast.Name) and node.id == symbol]
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Name) and node.func.id == symbol]
+    assert len(names) == len(calls) == 1 and names[0] is calls[0].func
+    assert len(calls[0].args) == 3 and [arg.arg for arg in calls[0].keywords] == ['now']
+
+
+@pytest.mark.parametrize('path,source', [
+    ('reserved/other.py', 'from .stripe_signature_verifier import verify_stripe_signature'),
+    ('reserved/billing/other.py', 'import reserved.billing.stripe_signature_verifier'),
+    ('reserved/other.py', '__import__("stripe_signature_" + "verifier")'),
+    ('reserved/billing/local_stripe_initial_payment.py', 'from .stripe_signature_verifier import *'),
+    ('reserved/billing/local_stripe_initial_payment.py', 'from .stripe_signature_verifier import verify_stripe_signature as check'),
+    ('reserved/billing/local_stripe_initial_payment.py', 'from reserved.billing.stripe_signature_verifier import verify_stripe_signature'),
+    ('reserved/billing/local_stripe_initial_payment.py', 'check = __import__("stripe_signature_verifier").verify_stripe_signature'),
+])
+def test_verifier_inventory_rejects_other_paths_and_import_forms(path, source):
+    with pytest.raises(AssertionError):
+        _assert_exact_verifier_caller(path, source)
+
+
+def test_verifier_inventory_rejects_extra_reference_and_alias():
+    root = Path(__file__).resolve().parents[1]
+    path = 'reserved/billing/local_stripe_initial_payment.py'
+    source = (root / path).read_text()
+    _assert_exact_verifier_caller(path, source)
+    for suffix in ('\nextra = verify_stripe_signature\n', '\nverify_stripe_signature(a,b,c,now=1)\n',
+                   '\nextra = "stripe_signature_verifier"\n'):
+        with pytest.raises(AssertionError):
+            _assert_exact_verifier_caller(path, source + suffix)

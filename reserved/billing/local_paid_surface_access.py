@@ -177,3 +177,44 @@ def install_local_paid_surface_access(app, *, membership_resolver, snapshot_read
     app.view_functions.update(replacements)
     app.extensions[_KEY] = handle
     return handle
+
+
+def install_local_exact_utc_paid_surface_access(app, *, authority, repository, clock):
+    """Distinct initial-only protocol, using a concrete independent witness.
+
+    No arbitrary allow callback; no legacy protocol coercion or default install.
+    The shared marker preserves bidirectional conflicts with the legacy installer.
+    """
+    from reserved.billing.local_stripe_initial_payment import SyntheticInitialAuthority, allows_paid_request
+    from reserved.billing.local_billing_provenance_repository import ProvenanceRepository
+    if (type(app) is not Flask or is_production_environment() or app._got_first_request
+            or _KEY in app.extensions or dashboard._EXTENSION_KEY in app.extensions
+            or type(authority) is not SyntheticInitialAuthority
+            or type(repository) is not ProvenanceRepository or not callable(clock)):
+        raise LocalPaidSurfaceAccessError('explicit local exact protocol required')
+    originals = _registrations(app)
+    authority.snapshot()
+
+    def wrap(original):
+        @require_auth
+        @wraps(original)
+        def guarded(*args, **kwargs):
+            from flask import g
+            from reserved.database import get_user
+            try:
+                user_id = g.get('user_id')
+                allowed = (not is_production_environment() and type(user_id) is int
+                           and get_user(user_id) is not None
+                           and allows_paid_request(authority, repository, user_id=user_id, now=clock()))
+            except Exception:
+                allowed = False
+            if not allowed or is_production_environment():
+                return dashboard._denial_response()
+            return original(*args, **kwargs)
+        return guarded
+
+    replacements = {name: wrap(original) for name, original in originals.items()}
+    handle = object.__new__(LocalPaidSurfaceAccessHandle)
+    app.view_functions.update(replacements)
+    app.extensions[_KEY] = handle
+    return handle
