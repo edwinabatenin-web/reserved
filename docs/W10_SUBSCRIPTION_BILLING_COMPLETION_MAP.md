@@ -9,9 +9,12 @@ for its exact source and limits. The explicit local single-dashboard consumer
 is now independently accepted at `2c50ad61f067c19ba3874555355a16f2d7736adf` and
 integrated at `b0dffedc0ef00ddbf2c8b153cc87dec23aa8e7ec`; see the final section.
 Current paid-route inventory is 46 always / 55 HICBC-enabled routes and 28 paid
-classifications. Only the explicitly installed synthetic/local dashboard is
-guarded by this component; default application and full paid-set enforcement
-remain unchanged/open.
+classifications. The subsequently accepted local paid-set installer, source
+`ac58936e4362f2de68a97b91c01b58ecee71c2f0`, is integrated at
+`c165544f5e3d37d6d46b3cc74a39eba486af5c17`. Explicit synthetic installation
+covers all 28 settled paid endpoints when HICBC is registered, or the 19
+non-HICBC endpoints when it is absent; it does not register or enable HICBC.
+Default application wiring, production enforcement and full S5 remain open.
 The earlier reconciliation-9 register and its status/next-action narrative below
 remain historical snapshots; their absence-of-durability statements must not
 erase the subsequently accepted local primitive. No authenticated production
@@ -1132,8 +1135,70 @@ tree `ba8ad31114a400dc7f63873d4d0b4e84cb982686` passed 9003 root, 13 artifact,
 23 parity and 138 options tests, with RW3 true and no root failures/errors/skips.
 
 This closes the single local consumer component, not S5. The other 27 paid
-classifications are not wired by it. Real membership, provider-authenticated
-ingress, globally authoritative durable state, custody, full paid-set enforcement
-and operational/support boundaries remain open. S3/S5/W10 remain partial;
+classifications are not wired by that single-dashboard component; the subsequent
+local paid-set checkpoint below supplies that separate bounded coverage.
+Real membership, provider-authenticated ingress, globally authoritative durable
+state, custody, production paid-set enforcement and operational/support
+boundaries remain open. S3/S5/W10 remain partial;
 strict completion 0/8, terminal 0/13 and W9 0/5 are unchanged. October remains
 not_ready/18 blockers. No default activation or new customer-treatment policy.
+
+## Accepted local settled paid-set consumer — 5 September 2026
+
+Source `ac58936e4362f2de68a97b91c01b58ecee71c2f0`, tree
+`07a115316d2974d085b985fbf77b727b6ab5a3a7`, has sole parent
+`c935df93f844af86eb820273d691827aac6e1e47`. It is independently reviewed,
+checkpointed and locally integrated at
+`c165544f5e3d37d6d46b3cc74a39eba486af5c17`, tree
+`47feb279ee2324650249ef5f3c2408cdebc8af01`, whose parents are
+`9c0065b6e098e4fd7671466cf30dd2a6e121e296` and that source checkpoint.
+The owning `work/w10-paid-surfaces-checkpoint.md` in the parent workspace
+records acceptance and post-checkpoint verification. The candidate-era
+`docs/W10_LOCAL_PAID_SURFACE_ACCESS_EVIDENCE.md` remains historical evidence;
+its pending-review wording is superseded by that checkpoint, not rewritten.
+
+The explicit `install_local_paid_surface_access` consumer validates and guards
+the exact settled set: 19 v2 endpoints plus nine HICBC endpoints only when
+already registered. It preserves original decorated handlers, authentication,
+feature controls, method dispatch and existing CSRF treatment. Installation
+validates the complete registration set before replacing views; missing,
+partial, aliased, duplicate, late or conflicting installations refuse. It
+reuses the dashboard's full scoped journal/live-fact admission and recheck,
+then applies unchanged S5D to the exact endpoint. Structural rows and hashes
+remain distinct from admitted authority. Excluded purchase/recovery and other
+non-paid surfaces retain their existing controls. Import installs nothing;
+production refuses at installation and request time.
+
+Exact accepted source blobs:
+
+| Path | SHA-256 |
+|---|---|
+| `reserved/billing/local_dashboard_access.py` | `16e034fce956e3d1404f1ce98486cfd23f90125f87008fb11edc4a7ade9754c1` |
+| `reserved/billing/local_paid_surface_access.py` | `530f7b7e0b8088f188ba250b2714fedbf7253549e5b1d1804363f718b58e4359` |
+| `tests/test_w10_local_paid_surface_access.py` | `42a93fca7afd089f2188959b5138c4f84264c5102ab47a72197af90a0ede844d` |
+| `docs/W10_LOCAL_PAID_SURFACE_ACCESS_EVIDENCE.md` | `96c812ae3d2b74e8fd156533d5d2021f0951bc7bea30d692c9047074678e09c3` |
+
+Independent review passed 160 focused tests (115 paid-set and 45 standalone
+dashboard), plus 138 actual method-specific denial requests with zero original
+handler calls. Its broader selection passed 2,189 tests with six unsuppressed
+historical dirty-candidate sentinels. The owning clean-source selection passed
+2,165 tests, including those six sentinels without modification. These are
+different test matrices, not interchangeable counts. Positive actual-request
+coverage includes settings GET/form CSRF/POST/save, JSON calculation and scoped
+scenario POST/DELETE; it is representative, not positive execution of every
+provider-facing handler. No provider-positive execution is established.
+
+The owning canonical session 99848 on exact clean integration `c165544f...`
+completed with 9,118 root tests passed and zero failures/errors/skips, plus
+13 artifact, 23 parity and 138 options passes, mandatory RW3 true. This records
+the accepted integrated runtime, not a test run or independent review of this
+subsequent map edit. The historical JSON register and earlier test snapshots
+remain unchanged.
+
+This completes the bounded explicit synthetic paid-set consumer, not full S5
+or a billing lifecycle journey. Real membership, authenticated billing ingress,
+production custody and globally authoritative state, provider validation,
+operational/support assurance and deliberate activation remain open. No default
+wiring, live customer enforcement, new policy or acceptance of separately
+active recovery-page work is claimed. Strict completion remains 0/8, terminal
+0/13 and W9 0/5; October remains not_ready with 18 blockers.
