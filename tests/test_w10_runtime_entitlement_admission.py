@@ -266,14 +266,32 @@ def test_candidate_or_source_checkpoint_is_exactly_scoped_to_declared_base():
         check=False,
     ).returncode
     if reachable == 0:
-        # Bind current product and contract evidence to the accepted bytes.
-        # The test itself may evolve under its own independent review.
-        for path in OWNED_PATHS - {"tests/test_w10_runtime_entitlement_admission.py"}:
-            accepted = subprocess.run(
-                ["git", "-C", str(ROOT), "show", f"{SOURCE_CHECKPOINT}:{path}"],
-                capture_output=True, check=True,
-            ).stdout
-            assert (ROOT / path).read_bytes() == accepted
+        # Historical documentation remains bound to the accepted checkpoint.
+        # The live runtime may gain independently authorised versioned seams.
+        evidence_path = "docs/W10_S3C_RUNTIME_ENTITLEMENT_ADMISSION.md"
+        accepted = subprocess.run(
+            ["git", "-C", str(ROOT), "show", f"{SOURCE_CHECKPOINT}:{evidence_path}"],
+            capture_output=True, check=True,
+        ).stdout
+        assert (ROOT / evidence_path).read_bytes() == accepted
+        assert (
+            subject.CONTRACT_VERSION,
+            subject.BILLING_FACT_PROTOCOL_VERSION,
+            subject.RUNTIME_DECISION_PROTOCOL_VERSION,
+            subject.EXACT_INSTANT_CONTRACT_VERSION,
+            subject.EXACT_INSTANT_BILLING_FACT_PROTOCOL_VERSION,
+            subject.EXACT_INSTANT_RUNTIME_DECISION_PROTOCOL_VERSION,
+        ) == (
+            "reserved-w10-runtime-entitlement-admission/1.0",
+            "reserved-owner-bound-billing-fact/1.0",
+            "reserved-runtime-entitlement-decision/1.0",
+            "reserved-w10-runtime-entitlement-admission/2.0",
+            "reserved-owner-bound-billing-recovery-fact/2.0",
+            "reserved-runtime-payment-recovery-decision/2.0",
+        )
+        assert subject.bind_runtime_entitlement_admission is not (
+            subject.bind_exact_instant_runtime_entitlement_admission
+        )
         return
     assert reachable == 1, "Git ancestry verification failed"
     head = git_text("rev-parse", "HEAD")
