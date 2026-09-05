@@ -15,8 +15,8 @@ passed independent review.
 | Slice | Bounded outcome | Current state |
 |---|---|---|
 | Q-S1 | Pure OAuth request, callback, rotating token-set, and user/realm/credential-reference contract | Independently reviewed, checkpointed, and integrated in the local integration lineage |
-| Q-S2 | HTTP and secret-custody boundary for exchange, refresh, revocation, rotation persistence, and failure handling | Full slice remains open; uncommitted injected acquisition candidate exercises synthetic exchange/full-set atomic rotation only; independent review pending |
-| Q-S3 | Authenticated callback integration, one-time state lifecycle, realm ownership checks, reconnect/disconnect behaviour, and protected routes | Full slice remains open; uncommitted injected candidate composes consumed state and explicit synthetic realm binding; no authenticated routes or live lifecycle |
+| Q-S2 | HTTP and secret-custody boundary for exchange, refresh, revocation, rotation persistence, and failure handling | Full slice remains open; injected exchange/full-set atomic rotation component independently accepted at `bae7833982706848a210d36831a313288aefd773` and locally integrated at `c935df93f844af86eb820273d691827aac6e1e47`; no real custody or transport |
+| Q-S3 | Authenticated callback integration, one-time state lifecycle, realm ownership checks, reconnect/disconnect behaviour, and protected routes | Full slice remains open; accepted/integrated injected component composes consumed state and explicit synthetic realm binding; no authenticated routes or live lifecycle |
 | Q-S4 | Evidence-backed, network-inert QuickBooks CompanyInfo, Invoice and Payment observation contract, without canonical interpretation | Independently reviewed, checkpointed and locally integrated, including the compatible attestation and Payment extension at `110fb74dc1461ddb3bc20247177699219d3b0aef` |
 | Q-S5 | Provider-to-canonical invoice/payment adapter with provenance, pagination/incremental-sync semantics, tax decisions, and adversarial fixtures | Narrow Q-S5A single-line tax-exclusive invoice/single-allocation Payment adapter and Q-S5B bounded query/Invoice-CDC evidence classifier are independently reviewed, checkpointed and locally integrated; snapshot isolation, continuous CDC, general ingestion, and activation remain unimplemented |
 | Q-S6 | End-to-end sandbox evidence, operational monitoring/recovery, privacy/security review, independent assurance, deliberate enablement, and launch decision | Unimplemented |
@@ -67,7 +67,7 @@ Current official evidence supports the tax-field presence used by the existing c
 This narrows nothing about Q-S5A and does not implement, integrate, launch, or
 activate QuickBooks or VAT expansion. Q-S2, Q-S3, and Q-S6 remain open.
 
-## Injected acquisition candidate (not accepted or integrated)
+## Historical injected acquisition candidate
 
 `docs/QUICKBOOKS_READ_RUNTIME_EVIDENCE.md` records the four-path candidate on
 immutable base `ea6a0fc217147471b5e247ffd9d9d220e93b37f6`. It executes synthetic
@@ -78,7 +78,27 @@ local request positions/counts. It ends at unverified query-mechanics evidence;
 Q-S5B's canonical-ingestion prohibition is unchanged. It is not another
 canonical-mapping acceptance, a live authenticated connection or custody proof.
 
-Different independent review and root checkpoint/integration remain pending.
+At this original candidate freeze, different independent review and root
+checkpoint/integration remained pending; subsequent acceptance is below.
 No full slice or launch gate is closed. Q-S2/Q-S3/full Q-S5/Q-S6, QBO-01,
 production privacy/security, provider validation and deliberate enablement
 remain open. Existing Q-S1/Q-S4/Q-S5A/Q-S5B history above is unchanged.
+
+## Accepted injected acquisition component — 5 September 2026
+
+Source `bae7833982706848a210d36831a313288aefd773`, tree
+`951d6a901d97285f16a97a0a0036ebb40aa2a05e`, is independently accepted and locally
+integrated at `c935df93f844af86eb820273d691827aac6e1e47`. The owning record
+`work/quickbooks-acquisition-checkpoint.md` in the parent workspace records the
+initial aliasing finding, focused correction, independent 197 focused/2192
+affected passes plus 18 mutation probes, and 2192 committed-source passes.
+Detached binding/reference and complete token snapshots prevent dependency
+aliases from rewriting expected facts; committed-but-refused writes make no
+rollback claim. Historical runtime evidence is preserved, not silently edited.
+
+The exact combined integration tree `ba8ad31114a400dc7f63873d4d0b4e84cb982686`
+passed 9003 root, 13 artifact, 23 parity and 138 options tests, with RW3 true.
+This is injected acquisition and Q-S4/Q-S5B unverified observation/mechanics
+acceptance only. Canonical ingestion remains prohibited; no full slice, QBO-01,
+custody, provider, privacy/security or activation gate is closed. October remains
+not_ready with 18 blockers; the declared delivery denominator is unchanged.

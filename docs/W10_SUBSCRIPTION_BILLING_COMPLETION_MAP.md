@@ -5,8 +5,13 @@
 **Current accepted-evidence update (5 September 2026):** the disposable-local
 S3D transactional repository is independently accepted and integrated at
 `26831400fcb0ee638761b589b3bbbf0e239427dd`; see the final reconciliation section
-for its exact source and limits. Current paid-route inventory is 46 always /
-55 HICBC-enabled routes and 28 paid classifications, not active paid guarding.
+for its exact source and limits. The explicit local single-dashboard consumer
+is now independently accepted at `2c50ad61f067c19ba3874555355a16f2d7736adf` and
+integrated at `b0dffedc0ef00ddbf2c8b153cc87dec23aa8e7ec`; see the final section.
+Current paid-route inventory is 46 always / 55 HICBC-enabled routes and 28 paid
+classifications. Only the explicitly installed synthetic/local dashboard is
+guarded by this component; default application and full paid-set enforcement
+remain unchanged/open.
 The earlier reconciliation-9 register and its status/next-action narrative below
 remain historical snapshots; their absence-of-durability statements must not
 erase the subsequently accepted local primitive. No authenticated production
@@ -1100,3 +1105,35 @@ the subsequently edited map. October remains **not_ready, 18 blockers**.
 S3 and W10 remain incomplete; strict completion is **0/8**, terminal **0/13**
 and W9 **0/5**. Provider, authenticated custody/membership, specialist,
 privacy/security, human/target and Founder activation/release gates remain open.
+
+## Accepted local dashboard consumer — 5 September 2026
+
+Source `2c50ad61f067c19ba3874555355a16f2d7736adf`, tree
+`77b44f54b55c7c63b04bf41caeba65e0353983cc`, is integrated at
+`b0dffedc0ef00ddbf2c8b153cc87dec23aa8e7ec`, and preserved in combined integration
+`c935df93f844af86eb820273d691827aac6e1e47`. The exact three-file acceptance and
+post-checkpoint evidence are recorded in `work/dashboard-local-access-checkpoint.md`
+in the parent workspace. Historical worker evidence remains execution_unverified;
+independent repository recovery and local correction do not reclassify that job.
+
+The explicit non-production installer guards the already-registered dashboard
+using current signed-session user lookup, separately supplied synthetic billing
+membership, structural S3D journal and independently admitted live facts through
+unchanged S3C/S5D. Every immutable admitted outcome binds back to its exact
+structural entry; full snapshot recheck and separate identity domains remain.
+The admission-time substitution regression denies before financial reads.
+Real close/reopen and actual settings POST CSRF preservation were verified;
+neither is a process-restart or all-surface assurance claim.
+
+Independent review passed 45 focused tests and 1681 broad behavioral tests plus
+six unsuppressed historical dirty-path sentinels. After the bounded commit, all
+1687 source tests passed without changing those sentinels. Combined integration
+tree `ba8ad31114a400dc7f63873d4d0b4e84cb982686` passed 9003 root, 13 artifact,
+23 parity and 138 options tests, with RW3 true and no root failures/errors/skips.
+
+This closes the single local consumer component, not S5. The other 27 paid
+classifications are not wired by it. Real membership, provider-authenticated
+ingress, globally authoritative durable state, custody, full paid-set enforcement
+and operational/support boundaries remain open. S3/S5/W10 remain partial;
+strict completion 0/8, terminal 0/13 and W9 0/5 are unchanged. October remains
+not_ready/18 blockers. No default activation or new customer-treatment policy.

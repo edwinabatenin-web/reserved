@@ -66,6 +66,15 @@ Xero's injected acquisition component was accepted at
 mapping/normalisation with synthetic dependencies; they establish neither
 authenticated live acquisition nor the complete W8 customer journey.
 
+QuickBooks injected acquisition source `bae7833982706848a210d36831a313288aefd773`
+is subsequently independently accepted and integrated at
+`c935df93f844af86eb820273d691827aac6e1e47`. It executes synthetic callback/full-set
+rotation, CompanyInfo and Invoice requests through unchanged Q-S4/Q-S5B;
+canonical ingestion remains prohibited and query mechanics remain unverified.
+It must not be described as equivalent to FreeAgent/Xero canonical mapping.
+This adds a bounded acquisition component, not an enabled W8 journey. Existing
+W8 delivery states and denominators remain unchanged.
+
 The W9-S3 persistence chain is now bounded through four independently reviewed
 and integrated non-durable layers: S3A at
 `c489c25bab669c64e1c11d28caf29fcde9678fdd`, S3B at
@@ -158,7 +167,7 @@ denominator.
 | 1 | Provider-neutral canonical accounting input → annual-tax handoff; joins reviewed canonical accounting evidence to the production calculation boundary without source loss or double counting | **integrated and independently reviewed**; contextual handoff is present at `5c17c62...`, with the current exact geography/provenance reinforcement at `33aa569...`; provider acquisition remains slice 4 |
 | 2 | Approved annual/cash result → customer/API/persistence handoff; makes the integrated result usable while keeping internal tax objects non-public | **partial**; the historical public result/API and tax-year binding through `a3164e7...` are preserved; the accepted owner-unbound annual-cash handoff and S3A admission migration are integrated at `d3c0f53f785a4fca75e54c466032244ee2bbb2b3`. W9-S3A-D supplies the bounded non-durable projection/repository/adapter/runtime-owner chain through `b8ce971...` with that S3A migration, but authoritative physical owner-to-business membership, physical persistence and its lifecycle evidence remain open |
 | 3 | Enforced geography admission before actionable calculation; rejects Scotland/Scottish and every unsupported jurisdiction instead of silently ignoring geography facts | **integrated and independently reviewed** at `33aa569...`; canonical artefact parity is corrected and passing at `be978a3...` |
-| 4 | Enabled reviewed provider adapters and bounded customer journeys; provides the real acquisition path while preserving each provider's unequal reviewed contract | **partial, not integrated as an enabled journey**; provider contracts, canonical mapping and bounded FreeAgent/Xero injected acquisition executors are independently reviewed and locally integrated as components, but credential custody, authenticated transport, provider sandbox evidence and deliberate enablement remain open |
+| 4 | Enabled reviewed provider adapters and bounded customer journeys; provides the real acquisition path while preserving each provider's unequal reviewed contract | **partial, not integrated as an enabled journey**; provider contracts, canonical mapping, bounded FreeAgent/Xero injected acquisition executors and the QuickBooks observation/query-evidence executor are independently reviewed and locally integrated as components, but credential custody, authenticated transport, provider sandbox evidence and deliberate enablement remain open |
 | 5 | End-to-end multi-provider/mixed-income assembly over slices 1–4; proves the complete W8 production path without duplicate economic events | **planned; correctly waiting for completed slices 2 and 4** |
 
 Progress at the evidence cut-off is **2/5 delivery slices (40%)** at
@@ -282,7 +291,8 @@ Preserve the W9-S3A-D non-durable chain; do not redispatch a generic runtime-
 owner adapter. Complete slice 2 only through separately reviewed owner-to-
 business membership, physical datastore/schema/migration, durable I/O and the
 remaining lifecycle/legal/custody/target-evidence gates.
-Preserve accepted FreeAgent/Xero injected executors; do not redispatch those
+Preserve accepted FreeAgent/Xero and QuickBooks injected executors with their
+distinct mapping/observation boundaries; do not redispatch those
 components. Complete the enabled slice-4 journey through the remaining exact
 provider completion-map entry gates:
 approved credential/token custody, authenticated disabled-first transport,
