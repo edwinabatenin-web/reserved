@@ -1,9 +1,9 @@
-"""Distinct live exact-UTC initial protocol; no legacy date coercion."""
+"""Distinct live exact-UTC two-period protocol; no legacy date coercion."""
 from datetime import datetime, timezone
 import threading
 import weakref
 
-VERSION = 'reserved-exact-utc-initial/1'
+VERSION = 'reserved-exact-utc-paid-lineage/2'
 
 
 def utc(value):
@@ -36,14 +36,23 @@ def _protocol():
         if token is not capability:
             raise ValueError('invalid issuer')
         # Only the concrete postcommit composition calls this private seam.
+        service_start = utc(datetime.fromisoformat(
+            receipt.get('service_start', receipt['evidence']['service_start'])))
         start = utc(datetime.fromisoformat(receipt['access_start']))
         end = utc(datetime.fromisoformat(receipt['service_end']))
-        if start >= end or receipt['sequence'] != 1 or receipt['predecessor'] is not None:
-            raise ValueError('invalid initial interval')
+        sequence = receipt['sequence']
+        if (start < service_start or start >= end or sequence not in (1, 2)
+                or (sequence == 1 and any(receipt.get(name) is not None for name in
+                    ('predecessor', 'predecessor_receipt_id', 'predecessor_fact_id', 'predecessor_head')))
+                or (sequence == 2 and (receipt.get('predecessor') != 1
+                    or not all(type(receipt.get(name)) is str for name in
+                               ('predecessor_receipt_id', 'predecessor_fact_id', 'predecessor_head'))))):
+            raise ValueError('invalid paid period')
         value = object.__new__(Fact)
         with lock:
             from .local_billing_provenance_repository import canonical
-            facts[value] = (authority, revision, head, receipt['owner'], start, end, repository, canonical(receipt))
+            facts[value] = (authority, revision, head, receipt['owner'], start, end,
+                            repository, canonical(receipt), sequence)
         return value
 
     def admit(fact, *, authority, owner, now):

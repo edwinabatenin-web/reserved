@@ -1,10 +1,11 @@
-"""Injected synthetic Basil source reconciliation and independent RAM witness.
+"""Injected synthetic Basil initial and one-successor paid reconciliation.
 
-Not a webhook, provider client, credential store, or production bootstrap.
-Only initial payment is supported. Every other lifecycle remains unresolved here.
+Not a webhook, provider client, credential store, or production bootstrap. The
+only supported lifecycle is initial payment followed by one ordinary renewal.
 """
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+import calendar
 import hashlib
 import json
 import re
@@ -95,6 +96,25 @@ def _timestamp(value):
     return datetime.fromtimestamp(_integer(value), timezone.utc)
 
 
+def _approved_period_end(start, plan):
+    """Apply the fixed catalogue cadence using deterministic UTC calendars.
+
+    The predecessor day is retained when it exists in the target month and is
+    otherwise clamped to that month's final day (including leap February).
+    This is Reserved's bounded validation rule, not a general Stripe semantic.
+    """
+    exact.utc(start)
+    if type(plan) is not str or plan not in _PLANS:
+        raise InitialIngressError('unsupported independent plan')
+    _, interval, count = _PLANS[plan]
+    months = count if interval == 'month' else count * 12
+    ordinal = start.year * 12 + start.month - 1 + months
+    year, zero_month = divmod(ordinal, 12)
+    month = zero_month + 1
+    day = min(start.day, calendar.monthrange(year, month)[1])
+    return start.replace(year=year, month=month, day=day)
+
+
 def _parse(raw):
     if type(raw) is not bytes or len(raw) > 1_048_576:
         raise InitialIngressError('invalid bounded source')
@@ -176,24 +196,27 @@ class SyntheticInitialAuthority:
                 raise InitialIngressError('scope or store is not pristine')
             instance, epoch = uuid.uuid4().hex, uuid.uuid4().hex
             snapshot = BindingSnapshot(instance, epoch, 1, True, False, None)
-            state = dict(snapshot=snapshot, store=repository.store_id, physical=repository.physical_identity, user=user_id, scope=scope,
+            state = dict(publication=(snapshot, None), store=repository.store_id, physical=repository.physical_identity, user=user_id, scope=scope,
                          customer=customer, item=item, price=price, plan=plan, endpoint=endpoint,
                          account=account, signing_keys=signing_keys, receipt_key=receipt_key,
                          receipt_key_id=receipt_key_id, signing_key_ids=signing_key_ids,
                          retrieve=retrieve, retrieval_code=getattr(retrieve, '__code__', None),
-                         last_clock=None, pending=None, commit_seen=False)
+                         last_clock=None, commit_seen=set())
             _AUTHORITIES[self] = state
             _SCOPES[source_scope] = instance
 
     def snapshot(self):
         with _LOCK:
-            return _state(self)['snapshot']
+            return _state(self)['publication'][0]
 
     def revoke(self):
         with _LOCK:
             state = _state(self)
-            snap = state['snapshot']
-            state['snapshot'] = replace(snap, revision=snap.revision + 1, active=False, consumed=True)
+            snap, reservation = state['publication']
+            state['publication'] = (
+                replace(snap, revision=snap.revision + 1, active=False, consumed=True),
+                reservation,
+            )
 
     def lose(self):
         """Simulate loss of the independent authority; scope tombstone remains."""
@@ -210,7 +233,7 @@ def _state(authority):
 def _check(authority, snapshot, now=None):
     with _LOCK:
         state = _state(authority)
-        if (state['snapshot'] != snapshot or not snapshot.active
+        if (state['publication'][0] != snapshot or not snapshot.active
                 or getattr(state['retrieve'], '__code__', None) is not state['retrieval_code']):
             raise InitialIngressError('changed authority')
         if now is not None:
@@ -223,7 +246,7 @@ def _check(authority, snapshot, now=None):
 
 def _fetch(state, path, query=()):
     request = SourceRequest(ORIGIN, path, query, state['account'], state['endpoint'],
-                            API_VERSION, False, state['snapshot'].instance)
+                            API_VERSION, False, state['publication'][0].instance)
     response = state['retrieve'](request)
     if type(response) is not SourceResponse or response.request is not request:
         raise InitialIngressError('unbound retrieval')
@@ -247,16 +270,16 @@ def _single_list(value):
     return value['data'][0]
 
 
-def _reconcile(state, invoice_id):
+def _reconcile(state, invoice_id, billing_reason):
     invoice = _object(state, '/v1/invoices/' + invoice_id, invoice_id, 'invoice')
     scope = state['scope']
     amount, interval, count = _PLANS[state['plan']]
     if (invoice['customer'] != state['customer'] or invoice['status'] != 'paid'
-            or invoice['billing_reason'] != 'subscription_create' or invoice['currency'] != 'gbp'
+            or invoice['billing_reason'] != billing_reason or invoice['currency'] != 'gbp'
             or invoice['collection_method'] != 'charge_automatically'
             or invoice['parent']['type'] != 'subscription_details'
             or invoice['parent']['subscription_details']['subscription'] != scope[2]):
-        raise InitialIngressError('unsupported initial invoice')
+        raise InitialIngressError('unsupported paid invoice')
     for key in ('amount_paid', 'amount_due', 'total'):
         if _integer(invoice[key]) != amount:
             raise InitialIngressError('unreconciled payment amount')
@@ -334,47 +357,64 @@ def _reconcile(state, invoice_id):
     return evidence, canonical((invoice, line, subscription, price, payment, intent, charge))
 
 
-def _unit(authority, repository, snapshot):
+def _lineage(authority, repository, snapshot):
     state = _check(authority, snapshot)
     if (type(repository) is not ProvenanceRepository or repository.store_id != state['store']
             or repository.physical_identity != state['physical']):
         raise InitialIngressError('wrong store')
-    unit = repository.read(snapshot.instance, state['receipt_key'])
-    if unit is None:
-        raise InitialIngressError('missing committed unit')
-    receipt, head = unit
-    if (receipt['epoch'] != snapshot.epoch or receipt['owner'] != state['scope'][0]
-            or receipt['scope'] != list(state['scope']) or receipt['receipt_key_id'] != state['receipt_key_id']
-            or state['pending'] != canonical(receipt)):
-        raise InitialIngressError('receipt binding mismatch')
-    return receipt, head
+    lineage = repository.read_lineage(snapshot.instance, state['receipt_key'])
+    for receipt, _ in lineage:
+        if (receipt['epoch'] != snapshot.epoch or receipt['owner'] != state['scope'][0]
+                or receipt['scope'] != list(state['scope'])
+                or receipt['receipt_key_id'] != state['receipt_key_id']):
+            raise InitialIngressError('receipt binding mismatch')
+    return lineage
+
+
+def _accepted_lineage(authority, repository, snapshot):
+    lineage = _lineage(authority, repository, snapshot)
+    if not lineage or snapshot.accepted is None:
+        raise InitialIngressError('missing accepted lineage')
+    receipt, head = lineage[-1]
+    if snapshot.accepted != (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head):
+        raise InitialIngressError('obsolete authentic receipt')
+    return lineage
 
 
 def current_fact(authority, repository, *, user_id, now):
-    """Reconstruct only a retained independent witness's identical committed fact."""
+    """Issue the effective period bound to the current lineage head and revision."""
     if is_production_environment():
         raise InitialIngressError('local only')
     snapshot = authority.snapshot()
     state = _check(authority, snapshot, now)
-    if type(user_id) is not int or user_id != state['user'] or snapshot.accepted is None:
+    if type(user_id) is not int or user_id != state['user']:
         raise InitialIngressError('current membership unavailable')
-    receipt, head = _unit(authority, repository, snapshot)
-    if snapshot.accepted != (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head):
-        raise InitialIngressError('obsolete authentic receipt')
+    lineage = _accepted_lineage(authority, repository, snapshot)
+    selected = None
+    for unit in lineage:
+        receipt = unit[0]
+        if (datetime.fromisoformat(receipt['access_start']) <= now
+                < datetime.fromisoformat(receipt['service_end'])):
+            selected = receipt
+    if selected is None:
+        raise InitialIngressError('no effective verified period')
+    current_head = lineage[-1][1]
     _check(authority, snapshot)
-    return exact._issue(exact._ISSUER, authority, repository, snapshot.revision, head, receipt)
+    return exact._issue(exact._ISSUER, authority, repository, snapshot.revision,
+                        current_head, selected)
 
 
 def _validate_live_fact(fact_state, now=None):
-    authority, revision, head, owner, start, end, repository, material = fact_state
+    authority, revision, current_head, owner, start, end, repository, material, sequence = fact_state
     snapshot = authority.snapshot()
     state = _check(authority, snapshot, now)
-    receipt, persisted_head = _unit(authority, repository, snapshot)
-    if (snapshot.revision != revision or snapshot.accepted is None
-            or snapshot.accepted[-1] != head or state['scope'][0] != owner
-            or persisted_head != head or canonical(receipt) != material
-            or start != datetime.fromisoformat(receipt['access_start'])
-            or end != datetime.fromisoformat(receipt['service_end'])):
+    lineage = _accepted_lineage(authority, repository, snapshot)
+    selected = next((receipt for receipt, _ in lineage if receipt['sequence'] == sequence), None)
+    if (snapshot.revision != revision or state['scope'][0] != owner
+            or lineage[-1][1] != current_head or selected is None
+            or canonical(selected) != material
+            or start != datetime.fromisoformat(selected['access_start'])
+            or end != datetime.fromisoformat(selected['service_end'])):
         raise InitialIngressError('stale live fact')
     _check(authority, snapshot)
 
@@ -387,7 +427,8 @@ def allows_paid_request(authority, repository, *, user_id, now):
         state = _check(authority, snapshot)
         admitted = exact.admit_initial(fact, authority=authority, owner=state['scope'][0], now=now)
         _, revision, head, _, _, _ = exact._projection(admitted)
-        if revision != snapshot.revision or _unit(authority, repository, snapshot)[1] != head:
+        lineage = _accepted_lineage(authority, repository, snapshot)
+        if revision != snapshot.revision or lineage[-1][1] != head:
             return False
         _check(authority, snapshot, now)  # access-decision linearization point
         return not is_production_environment()
@@ -395,34 +436,39 @@ def allows_paid_request(authority, repository, *, user_id, now):
         return False
 
 
-def ingest_initial_payment(authority, repository, raw_body, signature_header, *, clock):
-    """Reconcile, commit, CAS, recheck, then issue; never claim false rollback."""
-    # Publication is deliberately local to this verified path, not an exported
-    # setter taking caller-selected receipt/head identities. Python frame/closure
-    # introspection or mutation of private module state is not an isolation claim.
+def _ingest_paid_invoice(authority, repository, raw_body, signature_header, *, clock,
+                         billing_reason, sequence):
+    """The sole signed ingress and paid-invoice reconciler for both public entries."""
     def _publish(snapshot, receipt, head):
         with _LOCK:
             state = _check(authority, snapshot)
+            current, reservation = state['publication']
             accepted = (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head)
-            if snapshot.accepted is None:
-                state['snapshot'] = replace(snapshot, revision=snapshot.revision + 1,
-                                            consumed=True, accepted=accepted)
-            elif snapshot.accepted != accepted:
-                raise InitialIngressError('different accepted head')
-            return state['snapshot']
+            if (current != snapshot or reservation is None or reservation['sequence'] != sequence
+                    or reservation['material'] != canonical(receipt)
+                    or reservation['revision'] != snapshot.revision
+                    or reservation['predecessor'] != snapshot.accepted):
+                raise InitialIngressError('changed reservation')
+            published = replace(snapshot, revision=snapshot.revision + 1,
+                                consumed=True, accepted=accepted)
+            state['publication'] = (published, None)
+            return published
 
     committed = False
     try:
-        if is_production_environment():
-            raise InitialIngressError('local only')
+        if is_production_environment() or billing_reason not in ('subscription_create', 'subscription_cycle'):
+            raise InitialIngressError('local bounded lifecycle only')
         snapshot = authority.snapshot()
         received = exact.utc(clock())
         state = _check(authority, snapshot, received)
         if (type(repository) is not ProvenanceRepository or repository.store_id != state['store']
                 or repository.physical_identity != state['physical']):
             raise InitialIngressError('wrong store')
-        if not verify_stripe_signature(raw_body, signature_header, state['signing_keys'], now=int(received.timestamp())):
-            raise InitialIngressError('signature refusal')
+        # Renewal independently repeats signature verification through this
+        # single dependency call site before reserving a successor.
+        for _ in range(2 if sequence == 2 else 1):
+            if not verify_stripe_signature(raw_body, signature_header, state['signing_keys'], now=int(received.timestamp())):
+                raise InitialIngressError('signature refusal')
         event = _parse(raw_body)
         if (event['object'] != 'event' or event['type'] != 'invoice.paid' or event['livemode'] is not False
                 or event['api_version'] != API_VERSION or event.get('account') is not None):
@@ -436,12 +482,12 @@ def ingest_initial_payment(authority, repository, raw_body, signature_header, *,
             raise InitialIngressError('wrong event object')
         event_invoice = event['data']['object']
         if (event_invoice['customer'] != state['customer'] or event_invoice['livemode'] is not False
-                or event_invoice['status'] != 'paid' or event_invoice['billing_reason'] != 'subscription_create'
+                or event_invoice['status'] != 'paid' or event_invoice['billing_reason'] != billing_reason
                 or event_invoice['parent']['type'] != 'subscription_details'
                 or event_invoice['parent']['subscription_details']['subscription'] != state['scope'][2]):
             raise InitialIngressError('event scope mismatch')
-        evidence, observations = _reconcile(state, invoice_id)
-        check_evidence, check_observations = _reconcile(state, invoice_id)
+        evidence, observations = _reconcile(state, invoice_id, billing_reason)
+        check_evidence, check_observations = _reconcile(state, invoice_id, billing_reason)
         if (evidence, observations) != (check_evidence, check_observations):
             raise InitialIngressError('changed source observations')
         completed = exact.utc(clock())
@@ -449,62 +495,114 @@ def ingest_initial_payment(authority, repository, raw_body, signature_header, *,
         if any(datetime.fromisoformat(evidence[key]) > source_time
                for key in ('invoice_paid_at', 'payment_paid_at')):
             raise InitialIngressError('payment occurs after signed success observation')
-        start = max(datetime.fromisoformat(evidence['service_start']), completed)
-        if start >= datetime.fromisoformat(evidence['service_end']):
+        service_start = datetime.fromisoformat(evidence['service_start'])
+        service_end = datetime.fromisoformat(evidence['service_end'])
+        access_start = max(service_start, completed)
+        if access_start >= service_end:
             raise InitialIngressError('expired purchased period')
         raw_digest = hashlib.sha256(raw_body).hexdigest()
-        existing = repository.read(snapshot.instance, state['receipt_key'])
-        if existing is not None:
+        lineage = _lineage(authority, repository, snapshot)
+        predecessor = None
+        if sequence == 1:
+            if snapshot.accepted is not None and (len(lineage) != 1 or state['publication'][1] is not None):
+                raise InitialIngressError('consumed initial scope')
+        elif sequence == 2:
+            if snapshot.accepted is None or not lineage:
+                raise InitialIngressError('accepted predecessor required')
+            if len(lineage) == 1:
+                predecessor = lineage[0]
+                prior_receipt, prior_head = predecessor
+                if (snapshot.accepted != (repository.store_id, prior_receipt['receipt_id'],
+                                          prior_receipt['fact_id'], prior_head)
+                        or service_start != datetime.fromisoformat(prior_receipt['service_end'])
+                        or service_end != _approved_period_end(service_start, state['plan'])):
+                    raise InitialIngressError('wrong or noncontiguous predecessor')
+            elif len(lineage) == 2:
+                predecessor = lineage[0]
+                if service_end != _approved_period_end(service_start, state['plan']):
+                    raise InitialIngressError('cadence-mismatched successor')
+            else:
+                raise InitialIngressError('sequence three remains unsupported')
+        else:
+            raise InitialIngressError('unsupported sequence')
+
+        if len(lineage) >= sequence:
             committed = True
-            receipt, head = existing
+            receipt, head = lineage[sequence - 1]
             if (receipt['raw_digest'] != raw_digest or receipt['event_id'] != event['id']
                     or receipt['evidence'] != evidence or receipt['epoch'] != snapshot.epoch):
                 repository.record_conflict(snapshot.instance, event_id=event['id'], raw_digest=raw_digest,
                     object_key=invoice_id + ':invoice.paid', key=state['receipt_key'])
                 return IngressResult('reconciliation_required', True)
-            # Identical replay does not replace original receipt or verification time.
+            if snapshot.accepted == (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head):
+                fact = exact._issue(exact._ISSUER, authority, repository,
+                                    snapshot.revision, head, receipt)
+                return IngressResult('admitted', True, fact)
+            _, reservation = state['publication']
+            if (reservation is None or reservation['material'] != canonical(receipt)
+                    or reservation['predecessor'] != snapshot.accepted):
+                raise InitialIngressError('durable successor lacks exact reservation')
+            snapshot = state['publication'][0]
         else:
-            if state['commit_seen'] or snapshot.accepted is not None:
-                raise InitialIngressError('consumed initial scope')
-            receipt = dict(version='reserved-initial-receipt/1', store=repository.store_id,
-                binding=snapshot.instance, epoch=snapshot.epoch, binding_revision=snapshot.revision,
-                owner=state['scope'][0], scope=list(state['scope']), endpoint=state['endpoint'],
-                account=state['account'], api_version=API_VERSION, livemode=False,
-                receipt_key_id=state['receipt_key_id'], signing_key_ids=list(state['signing_key_ids']),
-                event_id=event['id'], object_key=invoice_id + ':invoice.paid', raw_digest=raw_digest,
+            if sequence in state['commit_seen']:
+                raise InitialIngressError('consumed uncertain attempt')
+            common = dict(store=repository.store_id, binding=snapshot.instance, epoch=snapshot.epoch,
+                binding_revision=snapshot.revision, owner=state['scope'][0], scope=list(state['scope']),
+                endpoint=state['endpoint'], account=state['account'], api_version=API_VERSION,
+                livemode=False, receipt_key_id=state['receipt_key_id'],
+                signing_key_ids=list(state['signing_key_ids']), event_id=event['id'],
+                object_key=invoice_id + ':invoice.paid', raw_digest=raw_digest,
                 received_at=received.isoformat(), source_created_at=source_time.isoformat(),
-                verification_completed_at=completed.isoformat(), access_start=start.isoformat(),
-                service_end=evidence['service_end'], evidence=evidence,
-                sequence=1, predecessor=None, disposition='verified_initial_payment')
-            receipt['fact_id'] = identity('exact-initial-fact/1', receipt)
-            receipt['receipt_id'] = identity('initial-receipt/1', receipt)
+                verification_completed_at=completed.isoformat(), access_start=access_start.isoformat(),
+                service_end=evidence['service_end'], evidence=evidence)
+            if sequence == 1:
+                # Preserve the accepted v1 receipt/fact identity and field meaning;
+                # only its enclosing newly-created store schema has evolved.
+                receipt = dict(version='reserved-initial-receipt/1', **common,
+                               sequence=1, predecessor=None,
+                               disposition='verified_initial_payment')
+                receipt['fact_id'] = identity('exact-initial-fact/1', receipt)
+                receipt['receipt_id'] = identity('initial-receipt/1', receipt)
+            else:
+                receipt = dict(version='reserved-successful-renewal-receipt/1', **common,
+                    service_start=evidence['service_start'], sequence=2,
+                    predecessor=predecessor[0]['sequence'],
+                    predecessor_receipt_id=predecessor[0]['receipt_id'],
+                    predecessor_fact_id=predecessor[0]['fact_id'], predecessor_head=predecessor[1],
+                    disposition='verified_successful_renewal')
+                receipt['fact_id'] = identity('exact-paid-period-fact/2', receipt)
+                receipt['receipt_id'] = identity('paid-lineage-receipt/2', receipt)
             with _LOCK:
                 _check(authority, snapshot)
-                if state['pending'] is None:
-                    # Irrevocably reserve this exact initial record before the
-                    # external write. A failed attempt may retry only this unit,
-                    # never bootstrap another initial verification time/store.
-                    state['pending'] = canonical(receipt)
-                    snapshot = replace(snapshot, revision=snapshot.revision + 1, consumed=True)
-                    state['snapshot'] = snapshot
+                current, reservation = state['publication']
+                if reservation is None:
+                    reserved = replace(snapshot, revision=snapshot.revision + 1, consumed=True)
+                    reservation = dict(sequence=sequence, material=canonical(receipt),
+                                       predecessor=snapshot.accepted, revision=reserved.revision)
+                    state['publication'] = (reserved, reservation)
+                    snapshot = reserved
                 else:
-                    receipt = json.loads(state['pending'])
-                    if (receipt['raw_digest'] != raw_digest or receipt['event_id'] != event['id']
+                    receipt = json.loads(reservation['material'])
+                    snapshot = current
+                    if (reservation['sequence'] != sequence or reservation['predecessor'] != snapshot.accepted
+                            or receipt['raw_digest'] != raw_digest or receipt['event_id'] != event['id']
                             or receipt['evidence'] != evidence):
-                        raise InitialIngressError('different reserved initial claim')
+                        raise InitialIngressError('different reserved proposal')
             try:
-                receipt, head = repository.commit_initial(receipt, state['receipt_key'])
+                if sequence == 1:
+                    receipt, head = repository.commit_initial(receipt, state['receipt_key'])
+                else:
+                    receipt, head = repository.commit_successor(receipt, predecessor, state['receipt_key'])
                 committed = True
             except CommitOutcomeError as error:
                 committed = error.committed
                 raise
             except Exception:
-                # Arbitrary failure plus absent readback cannot prove rollback.
-                # Positive authenticated readback proves a committed unit;
-                # otherwise preserve uncertainty and prohibit pristine reset.
                 committed = None
                 try:
-                    if repository.read(snapshot.instance, state['receipt_key']) is not None:
+                    durable = repository.read_sequence(snapshot.instance, sequence, state['receipt_key'])
+                    if durable is not None:
+                        receipt, head = durable
                         committed = True
                 except Exception:
                     pass
@@ -512,15 +610,28 @@ def ingest_initial_payment(authority, repository, raw_body, signature_header, *,
             finally:
                 with _LOCK:
                     if committed is not False:
-                        state['commit_seen'] = True
-        if _unit(authority, repository, snapshot) != (receipt, head):
+                        state['commit_seen'].add(sequence)
+        if repository.read_sequence(snapshot.instance, sequence, state['receipt_key']) != (receipt, head):
             raise InitialIngressError('changed committed unit')
         published = _publish(snapshot, receipt, head)
         _check(authority, published)
-        if _unit(authority, repository, published) != (receipt, head):
+        if _accepted_lineage(authority, repository, published)[-1] != (receipt, head):
             raise InitialIngressError('changed publication')
-        fact = current_fact(authority, repository, user_id=state['user'], now=completed)
+        _check(authority, published)
+        fact = exact._issue(exact._ISSUER, authority, repository,
+                            published.revision, head, receipt)
         return IngressResult('admitted', True, fact)
     except Exception:
-        disposition = 'commit_outcome_unknown' if committed is None else ('committed_but_unadmitted' if committed else 'refused')
+        disposition = ('commit_outcome_unknown' if committed is None else
+                       ('committed_but_unadmitted' if committed else 'refused'))
         return IngressResult(disposition, committed)
+
+
+def ingest_initial_payment(authority, repository, raw_body, signature_header, *, clock):
+    return _ingest_paid_invoice(authority, repository, raw_body, signature_header, clock=clock,
+                                billing_reason='subscription_create', sequence=1)
+
+
+def ingest_successful_renewal(authority, repository, raw_body, signature_header, *, clock):
+    return _ingest_paid_invoice(authority, repository, raw_body, signature_header, clock=clock,
+                                billing_reason='subscription_cycle', sequence=2)

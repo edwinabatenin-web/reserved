@@ -1,7 +1,8 @@
-"""Disposable exact-instant initial provenance store, not a live authority.
+"""Disposable exact-instant paid-lineage store, never a live authority.
 
-Receipt MAC keys are supplied independently and never stored. Authentic history
-alone is intentionally insufficient for current access. No legacy migration.
+Version two preserves the accepted sequence-one receipt meaning while adding one
+immutable ordinary successor and one independently readable current head. There
+is deliberately no v1 migration or durable RAM-authority reconstruction.
 """
 import hashlib
 import hmac
@@ -12,20 +13,36 @@ import threading
 import uuid
 from pathlib import Path
 
-VERSION = 'reserved-initial-provenance/1'
-_DOMAIN = b'reserved-initial-receipt/1\x00'
+VERSION = 'reserved-paid-lineage-provenance/2'
+_DOMAIN = b'reserved-paid-lineage-receipt/2\x00'
 _TABLES = (
     'CREATE TABLE metadata (version TEXT NOT NULL, store TEXT NOT NULL)',
-    'CREATE TABLE units (binding TEXT PRIMARY KEY, event_id TEXT UNIQUE NOT NULL,'
-    ' object_key TEXT UNIQUE NOT NULL, receipt TEXT NOT NULL, mac TEXT NOT NULL,'
-    ' head TEXT NOT NULL)',
+    'CREATE TABLE units (binding TEXT NOT NULL, sequence INTEGER NOT NULL,'
+    ' event_id TEXT UNIQUE NOT NULL, object_key TEXT UNIQUE NOT NULL,'
+    ' line_id TEXT UNIQUE NOT NULL, payment_id TEXT UNIQUE NOT NULL,'
+    ' intent_id TEXT UNIQUE NOT NULL, charge_id TEXT UNIQUE NOT NULL,'
+    ' receipt_id TEXT UNIQUE NOT NULL, fact_id TEXT UNIQUE NOT NULL,'
+    ' receipt TEXT NOT NULL, mac TEXT NOT NULL, head TEXT UNIQUE NOT NULL,'
+    ' PRIMARY KEY(binding, sequence), CHECK(sequence IN (1,2)))',
+    'CREATE TABLE current_heads (binding TEXT PRIMARY KEY, sequence INTEGER NOT NULL,'
+    ' receipt_id TEXT UNIQUE NOT NULL, fact_id TEXT UNIQUE NOT NULL, head TEXT UNIQUE NOT NULL,'
+    ' CHECK(sequence IN (1,2)))',
     'CREATE TABLE dispositions (identity TEXT PRIMARY KEY, body TEXT NOT NULL, mac TEXT NOT NULL)',
 )
-_SCHEMA = sorted([('table', 'metadata', 'metadata', _TABLES[0]),
-                  ('table', 'units', 'units', _TABLES[1]),
-                  ('table', 'dispositions', 'dispositions', _TABLES[2]),
-                  ('index', 'sqlite_autoindex_dispositions_1', 'dispositions', None)]
-                 + [('index', 'sqlite_autoindex_units_' + str(n), 'units', None) for n in (1, 2, 3)])
+
+
+def _schema_rows():
+    tables = [('table', name, name, statement) for name, statement in (
+        ('metadata', _TABLES[0]), ('units', _TABLES[1]),
+        ('current_heads', _TABLES[2]), ('dispositions', _TABLES[3]))]
+    indexes = [('index', 'sqlite_autoindex_units_' + str(n), 'units', None) for n in range(1, 11)]
+    indexes += [('index', 'sqlite_autoindex_current_heads_' + str(n), 'current_heads', None)
+                for n in range(1, 5)]
+    indexes += [('index', 'sqlite_autoindex_dispositions_1', 'dispositions', None)]
+    return sorted(tables + indexes)
+
+
+_SCHEMA = _schema_rows()
 
 
 class ProvenanceError(ValueError):
@@ -35,7 +52,7 @@ class ProvenanceError(ValueError):
 class CommitOutcomeError(ProvenanceError):
     """Repository-observed outcome, distinct from an arbitrary delegate error."""
     def __init__(self, committed):
-        super().__init__('initial transaction did not publish a readable unit')
+        super().__init__('paid-lineage transaction did not publish a readable unit')
         self.committed = committed
 
 
@@ -48,12 +65,17 @@ def identity(domain, value):
     return domain + ':' + hashlib.sha256(canonical(value)).hexdigest()
 
 
-class ProvenanceRepository:
-    """One immutable receipt/fact/head unit per independent binding.
+def _receipt_head(receipt):
+    if receipt['sequence'] == 1:
+        return identity('initial-head/1', receipt)
+    return identity('paid-lineage-head/2', {
+        'receipt_id': receipt['receipt_id'], 'fact_id': receipt['fact_id'],
+        'predecessor_head': receipt['predecessor_head'], 'sequence': receipt['sequence'],
+    })
 
-    Public storage methods cannot issue a live fact or populate a RAM witness.
-    SQLite transaction and independent RAM publication are separate domains.
-    """
+
+class ProvenanceRepository:
+    """Exactly one immutable two-period lineage per independent binding."""
     def __init__(self, path, *, create=False):
         if type(path) is not Path and not isinstance(path, Path):
             raise ProvenanceError('explicit local path required')
@@ -112,68 +134,138 @@ class ProvenanceRepository:
     def empty(self):
         with self._lock:
             self._metadata()
+            # Pristine eligibility never comes from this diagnostic. Preserve
+            # its accepted meaning as absence of immutable receipt units.
             return self._db.execute('SELECT count(*) FROM units').fetchone()[0] == 0
 
-    def read(self, binding, key):
+    def _decode(self, binding, row, key):
+        if type(key) is not bytes or len(key) < 32:
+            raise ProvenanceError('invalid receipt key')
+        raw = row[9].encode('ascii')
+        if (len(raw) > 16384
+                or not hmac.compare_digest(row[10], hmac.new(key, _DOMAIN + raw, 'sha256').hexdigest())):
+            raise ProvenanceError('inauthentic receipt')
+        receipt = json.loads(raw)
+        if (canonical(receipt) != raw or receipt['store'] != self.store_id
+                or receipt['binding'] != binding or receipt['sequence'] != row[0]):
+            raise ProvenanceError('receipt scope mismatch')
+        expected = (receipt['event_id'], receipt['object_key'], receipt['evidence']['line'],
+                    receipt['evidence']['payment'], receipt['evidence']['intent'],
+                    receipt['evidence']['charge'], receipt['receipt_id'], receipt['fact_id'])
+        if tuple(row[1:9]) != expected or row[11] != _receipt_head(receipt):
+            raise ProvenanceError('changed receipt identities')
+        return receipt, row[11]
+
+    def read_lineage(self, binding, key):
+        """Authenticate every immutable unit and the sole current-head record."""
         with self._lock:
             self._metadata()
-            rows = self._db.execute('SELECT event_id, object_key, receipt, mac, head FROM units WHERE binding=?',
-                                   (binding,)).fetchall()
-            if len(rows) > 1 or self._db.execute('SELECT count(*) FROM units').fetchone()[0] > 1:
-                raise ProvenanceError('ambiguous store units')
+            rows = self._db.execute(
+                'SELECT sequence,event_id,object_key,line_id,payment_id,intent_id,charge_id,'
+                ' receipt_id,fact_id,receipt,mac,head FROM units WHERE binding=? ORDER BY sequence',
+                (binding,)).fetchall()
+            total = self._db.execute('SELECT count(*) FROM units').fetchone()[0]
+            heads = self._db.execute(
+                'SELECT sequence,receipt_id,fact_id,head FROM current_heads WHERE binding=?', (binding,)).fetchall()
+            if total != len(rows) or len(rows) not in (0, 1, 2):
+                raise ProvenanceError('ambiguous store lineage')
             if not rows:
-                return None
-            row = rows[0]
-            if type(key) is not bytes or len(key) < 32:
-                raise ProvenanceError('invalid receipt key')
-            raw = row[2].encode('ascii')
-            if len(raw) > 16384 or not hmac.compare_digest(row[3], hmac.new(key, _DOMAIN + raw, 'sha256').hexdigest()):
-                raise ProvenanceError('inauthentic receipt')
-            receipt = json.loads(raw)
-            if canonical(receipt) != raw or receipt['store'] != self.store_id or receipt['binding'] != binding:
-                raise ProvenanceError('receipt scope mismatch')
-            if (row[0] != receipt['event_id'] or row[1] != receipt['object_key']
-                    or row[4] != identity('initial-head/1', receipt)):
-                raise ProvenanceError('changed head')
-            return receipt, row[4]
+                if heads:
+                    raise ProvenanceError('detached current head')
+                return ()
+            if len(heads) != 1:
+                raise ProvenanceError('missing or ambiguous current head')
+            units = tuple(self._decode(binding, row, key) for row in rows)
+            for index, (receipt, head) in enumerate(units, 1):
+                if receipt['sequence'] != index:
+                    raise ProvenanceError('noncontiguous lineage')
+                if index == 1:
+                    if any(receipt.get(name) is not None for name in
+                           ('predecessor', 'predecessor_receipt_id', 'predecessor_fact_id', 'predecessor_head')):
+                        raise ProvenanceError('invalid initial predecessor')
+                else:
+                    previous, previous_head = units[index - 2]
+                    if (receipt.get('predecessor') != previous['sequence']
+                            or receipt.get('predecessor_receipt_id') != previous['receipt_id']
+                            or receipt.get('predecessor_fact_id') != previous['fact_id']
+                            or receipt.get('predecessor_head') != previous_head
+                            or receipt['service_start'] != previous['service_end']):
+                        raise ProvenanceError('broken immutable lineage')
+            receipt, head = units[-1]
+            if heads[0] != (receipt['sequence'], receipt['receipt_id'], receipt['fact_id'], head):
+                raise ProvenanceError('changed current head')
+            return units
 
-    def commit_initial(self, receipt, key):
-        """Atomic historical receipt+fact+head; never live admission.
+    def read(self, binding, key):
+        lineage = self.read_lineage(binding, key)
+        return lineage[-1] if lineage else None
 
-        Exact retries return the original unit. Collisions are refused with a
-        fixed disposition, without editing an already accepted unit.
-        """
+    def read_sequence(self, binding, sequence, key):
+        lineage = self.read_lineage(binding, key)
+        if type(sequence) is not int or sequence < 1 or sequence > len(lineage):
+            return None
+        return lineage[sequence - 1]
+
+    @staticmethod
+    def _values(receipt, raw, mac, head):
+        evidence = receipt['evidence']
+        return (receipt['binding'], receipt['sequence'], receipt['event_id'], receipt['object_key'],
+                evidence['line'], evidence['payment'], evidence['intent'], evidence['charge'],
+                receipt['receipt_id'], receipt['fact_id'], raw.decode('ascii'), mac, head)
+
+    def commit_initial(self, receipt, key, predecessor=None):
         with self._lock:
             self._usable()
         if type(receipt) is not dict or type(key) is not bytes or len(key) < 32:
             raise ProvenanceError('invalid receipt input')
         raw = canonical(receipt)
-        if len(raw) > 16384 or receipt['store'] != self.store_id:
+        if len(raw) > 16384 or receipt['store'] != self.store_id or receipt['sequence'] not in (1, 2):
             raise ProvenanceError('invalid receipt scope')
-        head = identity('initial-head/1', receipt)
+        head = _receipt_head(receipt)
         mac = hmac.new(key, _DOMAIN + raw, 'sha256').hexdigest()
         with self._lock:
             outcome = None
             try:
                 self._db.execute('BEGIN IMMEDIATE')
                 self._metadata()
-                existing = self._db.execute('SELECT receipt FROM units WHERE binding=? OR event_id=? OR object_key=?',
-                    (receipt['binding'], receipt['event_id'], receipt['object_key'])).fetchall()
-                if existing:
-                    if existing != [(raw.decode('ascii'),)]:
-                        raise ProvenanceError('reconciliation required')
+                lineage = self.read_lineage(receipt['binding'], key)
+                if receipt['sequence'] == 1:
+                    if predecessor is not None:
+                        raise ProvenanceError('initial predecessor forbidden')
+                    if lineage:
+                        if lineage != ((receipt, head),):
+                            raise ProvenanceError('reconciliation required')
+                    else:
+                        self._db.execute('INSERT INTO units VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                                         self._values(receipt, raw, mac, head))
+                        self._db.execute('INSERT INTO current_heads VALUES (?,?,?,?,?)',
+                            (receipt['binding'], 1, receipt['receipt_id'], receipt['fact_id'], head))
                 else:
-                    self._db.execute('INSERT INTO units VALUES (?, ?, ?, ?, ?, ?)',
-                        (receipt['binding'], receipt['event_id'], receipt['object_key'], raw.decode('ascii'), mac, head))
+                    if type(predecessor) is not tuple or len(predecessor) != 2:
+                        raise ProvenanceError('exact predecessor required')
+                    if len(lineage) == 2:
+                        if lineage[1] != (receipt, head) or lineage[0] != predecessor:
+                            raise ProvenanceError('reconciliation required')
+                    else:
+                        if lineage != (predecessor,):
+                            raise ProvenanceError('prior-head mismatch')
+                        prior_receipt, prior_head = predecessor
+                        cursor = self._db.execute(
+                            'UPDATE current_heads SET sequence=?,receipt_id=?,fact_id=?,head=? '
+                            'WHERE binding=? AND sequence=? AND receipt_id=? AND fact_id=? AND head=?',
+                            (2, receipt['receipt_id'], receipt['fact_id'], head, receipt['binding'], 1,
+                             prior_receipt['receipt_id'], prior_receipt['fact_id'], prior_head))
+                        if cursor.rowcount != 1:
+                            raise ProvenanceError('current-head compare-and-swap failed')
+                        self._db.execute('INSERT INTO units VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                                         self._values(receipt, raw, mac, head))
                 self._db.execute('COMMIT')
                 outcome = True
                 unit = self.read(receipt['binding'], key)
-                if unit is None:
+                if unit != (receipt, head):
                     raise ProvenanceError('committed unit unavailable')
                 return unit
             except Exception:
-                # Empty readback is never proof of noncommit. Only a still-live
-                # transaction followed by successful rollback establishes False.
                 if outcome is not True:
                     try:
                         if self._db.in_transaction:
@@ -182,16 +274,15 @@ class ProvenanceRepository:
                     except Exception:
                         outcome = None
                 if outcome is None:
-                    # A connection with an unresolved transaction can see its
-                    # own uncommitted unit. It can never again be an
-                    # authoritative reader or publisher, even if callers later
-                    # change its authorizer or attempt another rollback.
                     self._poisoned = True
                     self.close()
                 raise CommitOutcomeError(outcome) from None
 
+    def commit_successor(self, receipt, predecessor, key):
+        return self.commit_initial(receipt, key, predecessor)
+
     def record_conflict(self, binding, *, event_id, raw_digest, object_key, key):
-        """Durable minimised reconciliation disposition; never change the head."""
+        """Durable minimised reconciliation disposition; never changes the head."""
         with self._lock:
             self._usable()
             self._db.execute('BEGIN IMMEDIATE')
@@ -205,8 +296,8 @@ class ProvenanceRepository:
                 raw = canonical(body)
                 if len(raw) > 2048 or self._db.execute('SELECT count(*) FROM dispositions').fetchone()[0] >= 1000:
                     raise ProvenanceError('disposition bound')
-                digest = identity('initial-conflict/1', body)
-                mac = hmac.new(key, b'initial-conflict/1\x00' + raw, 'sha256').hexdigest()
+                digest = identity('paid-lineage-conflict/2', body)
+                mac = hmac.new(key, b'paid-lineage-conflict/2\x00' + raw, 'sha256').hexdigest()
                 existing = self._db.execute('SELECT body,mac FROM dispositions WHERE identity=?', (digest,)).fetchall()
                 if existing and existing != [(raw.decode('ascii'), mac)]:
                     raise ProvenanceError('changed disposition')
@@ -214,5 +305,10 @@ class ProvenanceRepository:
                     self._db.execute('INSERT INTO dispositions VALUES (?,?,?)', (digest, raw.decode('ascii'), mac))
                 self._db.execute('COMMIT')
             except Exception:
-                self._db.execute('ROLLBACK')
+                try:
+                    if self._db.in_transaction:
+                        self._db.execute('ROLLBACK')
+                except Exception:
+                    self._poisoned = True
+                    self.close()
                 raise
