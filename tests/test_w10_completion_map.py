@@ -32,6 +32,34 @@ W9_S3D_CORRECTION_TREE = "7fcc5be531c5a4331e6a7ff65ce18a33e1772766"
 S2D_S5C_BASE = "85e1250f53180bb3c1aff111c17101b9e59df080"
 S2D_S5C_TREE = "89a96da31b7a5dbe9bf55c01e875a0d611829e01"
 WRONG_MAP_COMMIT = "81ae02044cccd921d98a0d1fc2360e1c4a983ab1"
+LATEST_CURRENT_INTEGRATION = "c54be2e103e39d0504022f19541c4bcfd3f3bff5"
+LATEST_CURRENT_TREE = "61f3471d23c29354d3ee5477d41f9af9b00074d8"
+RESTORATION_CHECKPOINT = "8d1d3fdd188289c0a39075c4a5d9d2c9b76e7b30"
+RESTORATION_TREE = "4493ef7a46d0c6a9ec609b373696249725e175f5"
+RESTORATION_PARENT = "d4bb9a579c40e0f06710c84654efd98495513370"
+RESTORATION_PATHS = (
+    "docs/W10_STRIPE_LATER_PERIOD_RESTORATION_EVIDENCE.md",
+    "reserved/billing/local_billing_provenance_repository.py",
+    "reserved/billing/local_stripe_initial_payment.py",
+    "reserved/billing/paid_access_guard.py",
+    "reserved/billing/runtime_entitlement_admission.py",
+    "tests/test_w10_billing_provenance_failed_renewal.py",
+    "tests/test_w10_billing_provenance_full_withdrawal.py",
+    "tests/test_w10_billing_provenance_later_period_restoration.py",
+    "tests/test_w10_billing_provenance_successful_renewal.py",
+    "tests/test_w10_exact_utc_later_period_restoration.py",
+    "tests/test_w10_later_period_restoration_paid_surface_access.py",
+    "tests/test_w10_paid_access_guard.py",
+    "tests/test_w10_runtime_entitlement_admission.py",
+    "tests/test_w10_runtime_entitlement_later_period_restoration.py",
+    "tests/test_w10_stripe_later_period_restoration.py",
+)
+LATEST_RESTORATION_START = (
+    "<!-- W10-LATEST-CURRENT-RESTORATION-RECONCILIATION-BEGIN -->"
+)
+LATEST_RESTORATION_END = (
+    "<!-- W10-LATEST-CURRENT-RESTORATION-RECONCILIATION-END -->"
+)
 
 EXPECTED_COMPONENTS = {
     "Founder-Decisions-W10-002-003": {
@@ -390,9 +418,7 @@ EXPECTED_HISTORICAL_MAP_BINDINGS = (
 )
 ALLOWED_CANDIDATE_PATHS = {
     MAP_RELATIVE_PATH,
-    "docs/W10_S7A_BILLING_THREAT_MODEL.md",
     "tests/test_w10_completion_map.py",
-    "tests/test_w10_billing_threat_model.py",
 }
 
 
@@ -429,6 +455,12 @@ def reconciliation() -> dict[str, object]:
     block = TEXT.split(START, 1)[1].split(END, 1)[0]
     payload = block.split("```json", 1)[1].split("```", 1)[0]
     return json.loads(payload)
+
+
+def latest_restoration_reconciliation() -> str:
+    return TEXT.split(LATEST_RESTORATION_START, 1)[1].split(
+        LATEST_RESTORATION_END, 1
+    )[0]
 
 
 def test_candidate_is_confined_to_the_authorised_map_and_dedicated_test() -> None:
@@ -1009,3 +1041,100 @@ def test_current_map_is_deliberately_not_self_hashed() -> None:
         for component in data["components"].values()
         for relative_path in component.get("paths_sha256", {})
     }
+
+
+def test_latest_restoration_reconciliation_binds_exact_source_and_current_lineage(
+) -> None:
+    assert git_text("rev-parse", f"{RESTORATION_CHECKPOINT}^{{tree}}") == (
+        RESTORATION_TREE
+    )
+    assert git_text("show", "-s", "--format=%P", RESTORATION_CHECKPOINT) == (
+        RESTORATION_PARENT
+    )
+    assert changed_paths(RESTORATION_CHECKPOINT) == RESTORATION_PATHS
+
+    assert git_text("rev-parse", f"{LATEST_CURRENT_INTEGRATION}^{{tree}}") == (
+        LATEST_CURRENT_TREE
+    )
+    current_parents = tuple(
+        git_text("show", "-s", "--format=%P", LATEST_CURRENT_INTEGRATION).split()
+    )
+    assert current_parents[0] == RESTORATION_CHECKPOINT
+    subprocess.run(
+        [
+            "git",
+            "merge-base",
+            "--is-ancestor",
+            LATEST_CURRENT_INTEGRATION,
+            "HEAD",
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+
+    latest = latest_restoration_reconciliation()
+    for relative_path in RESTORATION_PATHS:
+        assert f"`{relative_path}`" in latest
+    assert len(re.findall(r"(?m)^\d+\. `", latest)) == 15
+
+
+def test_latest_restoration_reconciliation_supersedes_only_stale_status() -> None:
+    assert TEXT.count(LATEST_RESTORATION_START) == 1
+    assert TEXT.count(LATEST_RESTORATION_END) == 1
+    assert TEXT.index(LATEST_RESTORATION_START) < TEXT.index(
+        "Restoration is not implemented"
+    )
+
+    latest = " ".join(latest_restoration_reconciliation().split())
+    required = (
+        "supersedes, for current status only",
+        "immutable historical evidence of their earlier cut-offs",
+        "81 direct",
+        "879 affected",
+        "2,521 W10 behavioural passes",
+        "10,149 root",
+        "13 artefact",
+        "23 production/artefact parity",
+        "138 Explore Your Options",
+        "RW3 true",
+        "five pre-existing package-specific dirty-worktree scope sentinels",
+        "intentional negative controls",
+        "one sequence-two paid successor",
+        "immutable full-withdrawal control",
+        "complete source projection",
+        "Invoice/type object identity",
+        "signed event",
+        "current paid/lifecycle heads",
+        "transaction-time conflict revalidation",
+        "authenticated source/object/event/current-head checks",
+        "28 paid routes",
+        "27 non-paid routes",
+        "Exact replay is idempotent",
+        "repository-confirmed rollback",
+        "unknown outcome recovers only from an authenticated durable exact sequence-two receipt/head",
+        "not provider evidence",
+        "not complete durable or production billing",
+        "zero direct entitlement authority",
+        "Strict W10 completion remains **0/8**",
+        "terminal gate remains **0/13**",
+        "W9 remains **0/5**",
+        "October remains **`not_ready` with 18 blockers**",
+    )
+    for statement in required:
+        assert statement in latest
+
+    for open_gate in (
+        "live provider authentication or retrieval",
+        "credentials or custody",
+        "production datastore/migration/retention",
+        "globally authoritative ordering",
+        "cross-process replay/fork assurance",
+        "target wiring",
+        "sandbox evidence",
+        "payment execution",
+        "privacy/security",
+        "legal/finance/support/fraud/operations",
+        "customer/human assurance",
+        "activation, release and go-live gate",
+    ):
+        assert open_gate in latest
