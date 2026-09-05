@@ -33,7 +33,7 @@ def test_v5_store_preserves_one_tagged_failed_control_without_paid_sequence_thre
     assert recovery.fail().disposition == 'admitted'
     lineage, control, lifecycle_head = recovery.repo.read_lifecycle(
         recovery.authority.snapshot().instance, RECEIPT_KEY)
-    assert VERSION == 'reserved-paid-lineage-provenance/5'
+    assert VERSION == 'reserved-paid-lineage-provenance/6'
     assert lineage == paid and len(lineage) == 1
     assert control['version'] == 'reserved-failed-renewal-receipt/1'
     assert control['predecessor_lifecycle_head'] == paid[-1][1]

@@ -274,6 +274,25 @@ def test_candidate_is_confined_to_exact_three_owned_paths_and_base():
             "tests/test_w10_paid_access_guard.py",
             "docs/W10_STRIPE_FULL_WITHDRAWAL_EVIDENCE.md",
         }
+    if (changed or untracked) and git_text("branch", "--show-current") == "sol/w10-later-period-restoration":
+        assert git_text("rev-parse", "HEAD") == "d4bb9a579c40e0f06710c84654efd98495513370"
+        allowed |= {
+            "reserved/billing/local_stripe_initial_payment.py",
+            "reserved/billing/local_billing_provenance_repository.py",
+            "reserved/billing/runtime_entitlement_admission.py",
+            "reserved/billing/paid_access_guard.py",
+            "tests/test_w10_stripe_later_period_restoration.py",
+            "tests/test_w10_billing_provenance_later_period_restoration.py",
+            "tests/test_w10_exact_utc_later_period_restoration.py",
+            "tests/test_w10_runtime_entitlement_later_period_restoration.py",
+            "tests/test_w10_later_period_restoration_paid_surface_access.py",
+            "tests/test_w10_billing_provenance_failed_renewal.py",
+            "tests/test_w10_billing_provenance_successful_renewal.py",
+            "tests/test_w10_billing_provenance_full_withdrawal.py",
+            "tests/test_w10_runtime_entitlement_admission.py",
+            "tests/test_w10_paid_access_guard.py",
+            "docs/W10_STRIPE_LATER_PERIOD_RESTORATION_EVIDENCE.md",
+        }
     assert set(changed + untracked) <= allowed
 
     assert git_text("rev-parse", f"{BASE}^{{tree}}") == BASE_TREE
@@ -1162,6 +1181,14 @@ def test_public_api_has_no_io_route_provider_or_entitlement_issuer_surface():
         "bind_full_withdrawal_paid_access_guard",
         "evaluate_full_withdrawal_paid_access",
         "validate_full_withdrawal_paid_access_decision",
+        "RESTORATION_CONTRACT_VERSION",
+        "RESTORATION_RUNTIME_DECISION_PROTOCOL_VERSION",
+        "RESTORATION_RUNTIME_ADMISSION_STATUS",
+        "LaterPeriodRestorationPaidAccessGuardHandle",
+        "LaterPeriodRestorationPaidAccessDecisionHandle",
+        "bind_later_period_restoration_paid_access_guard",
+        "evaluate_later_period_restoration_paid_access",
+        "validate_later_period_restoration_paid_access_decision",
     }
 
 

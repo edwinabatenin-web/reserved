@@ -14,7 +14,7 @@ from tests.test_w10_stripe_full_withdrawal import WithdrawalHarness
 from tests.test_w10_stripe_initial_payment_ingress import RECEIPT_KEY
 
 
-def test_v5_stores_minimised_authenticated_terminal_control(tmp_path):
+def test_v6_preserves_v5_minimised_authenticated_withdrawal_control(tmp_path):
     h = WithdrawalHarness(tmp_path/'withdrawal.db')
     try:
         assert h.ingest().disposition == 'admitted'
@@ -22,7 +22,7 @@ def test_v5_stores_minimised_authenticated_terminal_control(tmp_path):
         assert h.withdraw().disposition == 'admitted'
         lineage, control, head = h.repo.read_lifecycle(
             h.authority.snapshot().instance, RECEIPT_KEY)
-        assert VERSION == 'reserved-paid-lineage-provenance/5'
+        assert VERSION == 'reserved-paid-lineage-provenance/6'
         assert len(lineage) == 1 and control['version'] == 'reserved-full-withdrawal-receipt/1'
         assert head.startswith('paid-lineage-full-withdrawal-head/1:')
         assert control['refunds'] == ['re_1Synthetic', 're_2Synthetic']

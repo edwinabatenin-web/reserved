@@ -1254,6 +1254,177 @@ def validate_full_withdrawal_paid_access_decision(value):
     return state[0]
 
 
+RESTORATION_CONTRACT_VERSION = 'reserved-paid-access-guard/4.0'
+RESTORATION_RUNTIME_DECISION_PROTOCOL_VERSION = (
+    'reserved-runtime-later-period-restoration-decision/1.0')
+RESTORATION_RUNTIME_ADMISSION_STATUS = (
+    'authoritative_later_period_restoration_runtime_entitlement_admitted')
+_RESTORATION_RUNTIME_KEYS = (
+    'protocol_version', 'decision_identity', 'admission_status', 'authenticated',
+    'runtime_access_authority', 'owner_id', 'billing_account_id', 'subscription_id',
+    'source_fact_id', 'predecessor_paid_fact_id', 'withdrawal_fact_id',
+    'lifecycle_head', 'state', 'ordinary_access', 'service_start_utc',
+    'access_start_utc', 'service_end_exclusive_utc',
+    'restoration_verified_at_utc', 'derivation_kind', 'paid_sequence',
+)
+_RESTORATION_GUARDS = {}
+_RESTORATION_DECISIONS = {}
+
+
+class LaterPeriodRestorationPaidAccessGuardHandle:
+    __slots__ = ('__weakref__',)
+    def __new__(cls, *args, **kwargs):
+        raise TypeError('restoration guards are binder-issued only')
+    def __copy__(self): raise TypeError('not copyable')
+    def __deepcopy__(self, memo): raise TypeError('not copyable')
+    def __reduce__(self): raise TypeError('not serialisable')
+
+
+class LaterPeriodRestorationPaidAccessDecisionHandle:
+    __slots__ = ('__weakref__',)
+    def __new__(cls, *args, **kwargs):
+        raise TypeError('restoration decisions are evaluator-issued only')
+    def __copy__(self): raise TypeError('not copyable')
+    def __deepcopy__(self, memo): raise TypeError('not copyable')
+    def __reduce__(self): raise TypeError('not serialisable')
+
+
+def _restoration_runtime(value):
+    runtime = _v2_pairs(value, _RESTORATION_RUNTIME_KEYS,
+                        'later-period restoration runtime')
+    start = _v2_utc(runtime['service_start_utc'])
+    access = _v2_utc(runtime['access_start_utc'])
+    end = _v2_utc(runtime['service_end_exclusive_utc'])
+    verified = _v2_utc(runtime['restoration_verified_at_utc'])
+    if (runtime['protocol_version'] != RESTORATION_RUNTIME_DECISION_PROTOCOL_VERSION
+            or runtime['admission_status'] != RESTORATION_RUNTIME_ADMISSION_STATUS
+            or runtime['authenticated'] is not True
+            or runtime['runtime_access_authority'] is not True
+            or runtime['state'] != 'paid' or runtime['ordinary_access'] is not True
+            or runtime['derivation_kind'] != 'verified_later_period_restoration'
+            or runtime['paid_sequence'] != 2
+            or not start <= access < end or access != max(start, verified)
+            or any(type(runtime[name]) is not str
+                   or _EXACT_OWNER.fullmatch(runtime[name]) is None
+                   or any(marker in runtime[name].casefold()
+                          for marker in _EXACT_SECRET_MARKERS)
+                   for name in ('owner_id', 'billing_account_id', 'subscription_id'))
+            or type(runtime['decision_identity']) is not str
+            or _re.fullmatch(r'runtime-later-period-restoration/1:[0-9a-f]{64}',
+                             runtime['decision_identity']) is None
+            or type(runtime['source_fact_id']) is not str
+            or _re.fullmatch(r'later-period-restoration-fact/1:[0-9a-f]{64}',
+                             runtime['source_fact_id']) is None
+            or type(runtime['predecessor_paid_fact_id']) is not str
+            or _EXACT_PAID_ID.fullmatch(runtime['predecessor_paid_fact_id']) is None
+            or type(runtime['withdrawal_fact_id']) is not str
+            or _re.fullmatch(r'full-withdrawal-fact/1:[0-9a-f]{64}',
+                             runtime['withdrawal_fact_id']) is None
+            or type(runtime['lifecycle_head']) is not str
+            or _re.fullmatch(r'paid-lineage-head/2:[0-9a-f]{64}',
+                             runtime['lifecycle_head']) is None):
+        raise PaidAccessGuardError('invalid later-period restoration runtime')
+    material = tuple(runtime[name] for name in _RESTORATION_RUNTIME_KEYS
+                     if name != 'decision_identity')
+    normalized = tuple(item.isoformat() if type(item) is _datetime else item
+                       for item in material)
+    payload = _json.dumps(normalized, sort_keys=True, separators=(',', ':'),
+                          ensure_ascii=True, allow_nan=False).encode('ascii')
+    expected = ('runtime-later-period-restoration/1:'
+                + _hashlib.sha256(payload).hexdigest())
+    if runtime['decision_identity'] != expected:
+        raise PaidAccessGuardError('restoration runtime identity mismatch')
+    return runtime, access, end
+
+
+def bind_later_period_restoration_paid_access_guard(
+        *, validate_runtime_entitlement, project_runtime_entitlement):
+    validator = _v2_function_snapshot(validate_runtime_entitlement)
+    projector = _v2_function_snapshot(project_runtime_entitlement)
+    if validate_runtime_entitlement is project_runtime_entitlement:
+        raise ValueError('restoration validator and projector must be distinct')
+    handle = object.__new__(LaterPeriodRestorationPaidAccessGuardHandle)
+    identity = id(handle)
+    def remove(reference, expected=identity):
+        current = _RESTORATION_GUARDS.get(expected)
+        if type(current) is tuple and len(current) == 3 and current[2] is reference:
+            _RESTORATION_GUARDS.pop(expected, None)
+    reference = _weakref.ref(handle, remove)
+    _RESTORATION_GUARDS[identity] = (validator, projector, reference)
+    return handle
+
+
+def evaluate_later_period_restoration_paid_access(guard, *, endpoint,
+        authenticated_owner_id, current_runtime_entitlement, evaluated_at_utc):
+    evaluated = _v2_utc(evaluated_at_utc)
+    binding = _RESTORATION_GUARDS.get(id(guard))
+    runtime = None
+    access = end = None
+    reason = None
+    if type(endpoint) is not str or endpoint not in frozenset(PAID_ENDPOINTS):
+        reason = 'endpoint_not_in_paid_boundary'
+    elif (type(authenticated_owner_id) is not str
+            or _EXACT_OWNER.fullmatch(authenticated_owner_id) is None):
+        reason = 'authenticated_owner_unavailable'
+    elif (type(guard) is not LaterPeriodRestorationPaidAccessGuardHandle
+            or type(binding) is not tuple or binding[2]() is not guard
+            or not _v2_function_unchanged(binding[0])
+            or not _v2_function_unchanged(binding[1])):
+        reason = 'bound_runtime_authority_changed'
+    else:
+        try:
+            validated = binding[0][0](current_runtime_entitlement)
+            if validated != binding[1][0](current_runtime_entitlement):
+                raise PaidAccessGuardError('runtime projection disagrees')
+            runtime, access, end = _restoration_runtime(validated)
+        except Exception:
+            reason = 'runtime_entitlement_invalid'
+    if reason is None and runtime['owner_id'] != authenticated_owner_id:
+        reason = 'cross_owner_entitlement'
+    if reason is None:
+        if evaluated < access:
+            reason = 'denied_before_later_period_restoration'
+        elif evaluated >= end:
+            reason = 'denied_after_later_period_expiry'
+        else:
+            reason = 'allowed_verified_later_period_restoration'
+    allowed = reason == 'allowed_verified_later_period_restoration'
+    values = dict(contract_version=RESTORATION_CONTRACT_VERSION,
+        endpoint=endpoint if type(endpoint) is str else None,
+        authenticated_owner_id=(authenticated_owner_id
+            if type(authenticated_owner_id) is str else None),
+        runtime_entitlement_identity=(None if runtime is None
+                                      else runtime['decision_identity']),
+        state=('unknown' if runtime is None else runtime['state']), allowed=allowed,
+        reason=reason, evaluated_at_utc=evaluated, provider_contacted=False,
+        persisted=False, route_wiring_active=False)
+    projection = tuple((name, values[name]) for name in _EXACT_DECISION_KEYS)
+    handle = object.__new__(LaterPeriodRestorationPaidAccessDecisionHandle)
+    identity = id(handle)
+    def remove(reference, expected=identity):
+        current = _RESTORATION_DECISIONS.get(expected)
+        if type(current) is tuple and len(current) == 2 and current[1] is reference:
+            _RESTORATION_DECISIONS.pop(expected, None)
+    reference = _weakref.ref(handle, remove)
+    _RESTORATION_DECISIONS[identity] = (projection, reference)
+    return handle
+
+
+def validate_later_period_restoration_paid_access_decision(value):
+    state = _RESTORATION_DECISIONS.get(id(value))
+    if (type(value) is not LaterPeriodRestorationPaidAccessDecisionHandle
+            or type(state) is not tuple or state[1]() is not value):
+        raise PaidAccessGuardError('not a later-period restoration decision')
+    values = _v2_pairs(state[0], _EXACT_DECISION_KEYS,
+                       'later-period restoration decision')
+    if (values['contract_version'] != RESTORATION_CONTRACT_VERSION
+            or type(values['allowed']) is not bool
+            or any(values[name] is not False for name in
+                   ('provider_contacted', 'persisted', 'route_wiring_active'))):
+        raise PaidAccessGuardError('invalid later-period restoration decision')
+    return state[0]
+
+
 __all__ = (
     "CONTRACT_VERSION",
     "EXACT_INSTANT_CONTRACT_VERSION",
@@ -1283,4 +1454,12 @@ __all__ = (
     "bind_full_withdrawal_paid_access_guard",
     "evaluate_full_withdrawal_paid_access",
     "validate_full_withdrawal_paid_access_decision",
+    "RESTORATION_CONTRACT_VERSION",
+    "RESTORATION_RUNTIME_DECISION_PROTOCOL_VERSION",
+    "RESTORATION_RUNTIME_ADMISSION_STATUS",
+    "LaterPeriodRestorationPaidAccessGuardHandle",
+    "LaterPeriodRestorationPaidAccessDecisionHandle",
+    "bind_later_period_restoration_paid_access_guard",
+    "evaluate_later_period_restoration_paid_access",
+    "validate_later_period_restoration_paid_access_decision",
 )

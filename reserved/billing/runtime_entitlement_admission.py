@@ -1178,6 +1178,242 @@ def project_full_withdrawal_runtime_entitlement(value):
     return validate_full_withdrawal_runtime_entitlement(value)
 
 
+RESTORATION_CONTRACT_VERSION = 'reserved-w10-runtime-entitlement-admission/4.0'
+RESTORATION_BILLING_FACT_PROTOCOL_VERSION = (
+    'reserved-owner-bound-billing-later-period-restoration-fact/1.0')
+RESTORATION_BILLING_FACT_ADMISSION_STATUS = (
+    'authoritative_owner_bound_later_period_restoration_fact_admitted')
+RESTORATION_RUNTIME_DECISION_PROTOCOL_VERSION = (
+    'reserved-runtime-later-period-restoration-decision/1.0')
+RESTORATION_RUNTIME_ADMISSION_STATUS = (
+    'authoritative_later_period_restoration_runtime_entitlement_admitted')
+_RESTORATION_FACT_KEYS = (
+    'protocol_version', 'fact_identity', 'admission_status', 'authenticated',
+    'billing_fact_authority', 'provider_observation_direct_authority', 'owner_id',
+    'billing_account_id', 'subscription_id', 'source_fact_id',
+    'predecessor_paid_fact_id', 'withdrawal_fact_id', 'lifecycle_head', 'state',
+    'ordinary_access', 'service_start_utc', 'access_start_utc',
+    'service_end_exclusive_utc', 'restoration_verified_at_utc',
+    'derivation_kind', 'paid_sequence',
+)
+_RESTORATION_RUNTIME_KEYS = (
+    'protocol_version', 'decision_identity', 'admission_status', 'authenticated',
+    'runtime_access_authority', 'owner_id', 'billing_account_id', 'subscription_id',
+    'source_fact_id', 'predecessor_paid_fact_id', 'withdrawal_fact_id',
+    'lifecycle_head', 'state', 'ordinary_access', 'service_start_utc',
+    'access_start_utc', 'service_end_exclusive_utc',
+    'restoration_verified_at_utc', 'derivation_kind', 'paid_sequence',
+)
+_RESTORATION_BINDINGS = {}
+_RESTORATION_RUNTIMES = {}
+
+
+class LaterPeriodRestorationRuntimeAdmissionHandle:
+    __slots__ = ('__weakref__',)
+    def __new__(cls, *args, **kwargs):
+        raise TypeError('later-period restoration admissions are binder-issued only')
+    def __copy__(self): raise TypeError('not copyable')
+    def __deepcopy__(self, memo): raise TypeError('not copyable')
+    def __reduce__(self): raise TypeError('not serialisable')
+
+
+class LaterPeriodRestorationRuntimeEntitlementHandle:
+    __slots__ = ('__weakref__',)
+    def __new__(cls, *args, **kwargs):
+        raise TypeError('later-period restoration runtimes are adapter-issued only')
+    def __copy__(self): raise TypeError('not copyable')
+    def __deepcopy__(self, memo): raise TypeError('not copyable')
+    def __reduce__(self): raise TypeError('not serialisable')
+
+
+def _parse_restoration_fact(value):
+    fact = _exact_pairs(value, _RESTORATION_FACT_KEYS,
+                        'later-period restoration billing fact')
+    for name in ('owner_id', 'billing_account_id', 'subscription_id'):
+        if (type(fact[name]) is not str
+                or _EXACT_IDENTIFIER.fullmatch(fact[name]) is None
+                or any(marker in fact[name].casefold()
+                       for marker in _EXACT_SECRET_MARKERS)):
+            raise RuntimeEntitlementAdmissionError('invalid restoration scope')
+    start = _exact_utc_v2(fact['service_start_utc'], 'restoration service start')
+    access = _exact_utc_v2(fact['access_start_utc'], 'restoration access start')
+    end = _exact_utc_v2(fact['service_end_exclusive_utc'], 'restoration service end')
+    verified = _exact_utc_v2(fact['restoration_verified_at_utc'],
+                             'restoration verification')
+    if (fact['protocol_version'] != RESTORATION_BILLING_FACT_PROTOCOL_VERSION
+            or fact['admission_status'] != RESTORATION_BILLING_FACT_ADMISSION_STATUS
+            or fact['authenticated'] is not True
+            or fact['billing_fact_authority'] is not True
+            or fact['provider_observation_direct_authority'] is not False
+            or fact['state'] != 'paid' or fact['ordinary_access'] is not True
+            or fact['derivation_kind'] != 'verified_later_period_restoration'
+            or fact['paid_sequence'] != 2
+            or not start <= access < end or access != max(start, verified)
+            or type(fact['fact_identity']) is not str
+            or _re.fullmatch(r'billing-later-period-restoration-fact/1:[0-9a-f]{64}',
+                             fact['fact_identity']) is None
+            or type(fact['source_fact_id']) is not str
+            or _re.fullmatch(r'later-period-restoration-fact/1:[0-9a-f]{64}',
+                             fact['source_fact_id']) is None
+            or type(fact['predecessor_paid_fact_id']) is not str
+            or _EXACT_PAID_ID.fullmatch(fact['predecessor_paid_fact_id']) is None
+            or type(fact['withdrawal_fact_id']) is not str
+            or _re.fullmatch(r'full-withdrawal-fact/1:[0-9a-f]{64}',
+                             fact['withdrawal_fact_id']) is None
+            or type(fact['lifecycle_head']) is not str
+            or _re.fullmatch(r'paid-lineage-head/2:[0-9a-f]{64}',
+                             fact['lifecycle_head']) is None):
+        raise RuntimeEntitlementAdmissionError('invalid later-period restoration fact')
+    material = tuple(fact[name] for name in _RESTORATION_FACT_KEYS
+                     if name != 'fact_identity')
+    if fact['fact_identity'] != _exact_identity(
+            'billing-later-period-restoration-fact/1', material):
+        raise RuntimeEntitlementAdmissionError('restoration fact identity mismatch')
+    return fact
+
+
+def _parse_restoration_runtime(value):
+    runtime = _exact_pairs(value, _RESTORATION_RUNTIME_KEYS,
+                           'later-period restoration runtime')
+    start = _exact_utc_v2(runtime['service_start_utc'], 'service_start_utc')
+    access = _exact_utc_v2(runtime['access_start_utc'], 'access_start_utc')
+    end = _exact_utc_v2(runtime['service_end_exclusive_utc'],
+                        'service_end_exclusive_utc')
+    verified = _exact_utc_v2(runtime['restoration_verified_at_utc'],
+                             'restoration_verified_at_utc')
+    if (runtime['protocol_version'] != RESTORATION_RUNTIME_DECISION_PROTOCOL_VERSION
+            or runtime['admission_status'] != RESTORATION_RUNTIME_ADMISSION_STATUS
+            or runtime['authenticated'] is not True
+            or runtime['runtime_access_authority'] is not True
+            or runtime['state'] != 'paid' or runtime['ordinary_access'] is not True
+            or runtime['derivation_kind'] != 'verified_later_period_restoration'
+            or runtime['paid_sequence'] != 2
+            or not start <= access < end or access != max(start, verified)
+            or any(type(runtime[name]) is not str
+                   or _EXACT_IDENTIFIER.fullmatch(runtime[name]) is None
+                   or any(marker in runtime[name].casefold()
+                          for marker in _EXACT_SECRET_MARKERS)
+                   for name in ('owner_id', 'billing_account_id', 'subscription_id'))
+            or type(runtime['source_fact_id']) is not str
+            or _re.fullmatch(r'later-period-restoration-fact/1:[0-9a-f]{64}',
+                             runtime['source_fact_id']) is None
+            or type(runtime['predecessor_paid_fact_id']) is not str
+            or _EXACT_PAID_ID.fullmatch(runtime['predecessor_paid_fact_id']) is None
+            or type(runtime['withdrawal_fact_id']) is not str
+            or _re.fullmatch(r'full-withdrawal-fact/1:[0-9a-f]{64}',
+                             runtime['withdrawal_fact_id']) is None
+            or type(runtime['lifecycle_head']) is not str
+            or _re.fullmatch(r'paid-lineage-head/2:[0-9a-f]{64}',
+                             runtime['lifecycle_head']) is None
+            or type(runtime['decision_identity']) is not str
+            or _re.fullmatch(r'runtime-later-period-restoration/1:[0-9a-f]{64}',
+                             runtime['decision_identity']) is None):
+        raise RuntimeEntitlementAdmissionError('invalid later-period restoration runtime')
+    material = tuple(runtime[name] for name in _RESTORATION_RUNTIME_KEYS
+                     if name != 'decision_identity')
+    if runtime['decision_identity'] != _exact_identity(
+            'runtime-later-period-restoration/1', material):
+        raise RuntimeEntitlementAdmissionError('restoration runtime identity mismatch')
+    return runtime
+
+
+def bind_later_period_restoration_runtime_entitlement_admission(
+        *, validate_admitted_billing_fact, project_admitted_billing_fact):
+    validator = _exact_function_snapshot(validate_admitted_billing_fact)
+    projector = _exact_function_snapshot(project_admitted_billing_fact)
+    if validate_admitted_billing_fact is project_admitted_billing_fact:
+        raise ValueError('restoration validator and projector must be distinct')
+    handle = object.__new__(LaterPeriodRestorationRuntimeAdmissionHandle)
+    identity_value = id(handle)
+    def remove(reference, expected=identity_value):
+        current = _RESTORATION_BINDINGS.get(expected)
+        if type(current) is tuple and len(current) == 3 and current[2] is reference:
+            _RESTORATION_BINDINGS.pop(expected, None)
+    reference = _weakref.ref(handle, remove)
+    _RESTORATION_BINDINGS[identity_value] = (validator, projector, reference)
+    return handle
+
+
+def admit_later_period_restoration_runtime_entitlement(admission, *,
+        authenticated_owner_id, billing_account_id, subscription_id,
+        admitted_billing_fact, evaluated_at_utc):
+    _exact_utc_v2(evaluated_at_utc, 'restoration evaluation')
+    binding = _RESTORATION_BINDINGS.get(id(admission))
+    if (type(admission) is not LaterPeriodRestorationRuntimeAdmissionHandle
+            or type(binding) is not tuple or binding[2]() is not admission
+            or not _exact_function_unchanged(binding[0])
+            or not _exact_function_unchanged(binding[1])):
+        raise RuntimeEntitlementAdmissionError('invalid restoration admission binding')
+    try:
+        validated = binding[0][0](admitted_billing_fact)
+        projected = binding[1][0](admitted_billing_fact)
+    except Exception as exc:
+        raise RuntimeEntitlementAdmissionError('restoration billing fact unavailable') from exc
+    if validated != projected:
+        raise RuntimeEntitlementAdmissionError('restoration projection disagrees')
+    fact = _parse_restoration_fact(validated)
+    if tuple(fact[name] for name in ('owner_id', 'billing_account_id',
+                                     'subscription_id')) != (
+            authenticated_owner_id, billing_account_id, subscription_id):
+        raise RuntimeEntitlementAdmissionError('cross-scope restoration fact')
+    runtime = dict(protocol_version=RESTORATION_RUNTIME_DECISION_PROTOCOL_VERSION,
+        decision_identity='', admission_status=RESTORATION_RUNTIME_ADMISSION_STATUS,
+        authenticated=True, runtime_access_authority=True,
+        owner_id=fact['owner_id'], billing_account_id=fact['billing_account_id'],
+        subscription_id=fact['subscription_id'], source_fact_id=fact['source_fact_id'],
+        predecessor_paid_fact_id=fact['predecessor_paid_fact_id'],
+        withdrawal_fact_id=fact['withdrawal_fact_id'], lifecycle_head=fact['lifecycle_head'],
+        state='paid', ordinary_access=True, service_start_utc=fact['service_start_utc'],
+        access_start_utc=fact['access_start_utc'],
+        service_end_exclusive_utc=fact['service_end_exclusive_utc'],
+        restoration_verified_at_utc=fact['restoration_verified_at_utc'],
+        derivation_kind='verified_later_period_restoration', paid_sequence=2)
+    material = tuple(runtime[name] for name in _RESTORATION_RUNTIME_KEYS
+                     if name != 'decision_identity')
+    runtime['decision_identity'] = _exact_identity(
+        'runtime-later-period-restoration/1', material)
+    projection = tuple((name, runtime[name]) for name in _RESTORATION_RUNTIME_KEYS)
+    handle = object.__new__(LaterPeriodRestorationRuntimeEntitlementHandle)
+    identity_value = id(handle)
+    def remove(reference, expected=identity_value):
+        current = _RESTORATION_RUNTIMES.get(expected)
+        if type(current) is tuple and len(current) == 4 and current[3] is reference:
+            _RESTORATION_RUNTIMES.pop(expected, None)
+    reference = _weakref.ref(handle, remove)
+    _RESTORATION_RUNTIMES[identity_value] = (
+        projection, admitted_billing_fact, admission, reference)
+    return handle
+
+
+def validate_later_period_restoration_runtime_entitlement(value):
+    state = _RESTORATION_RUNTIMES.get(id(value))
+    if (type(value) is not LaterPeriodRestorationRuntimeEntitlementHandle
+            or type(state) is not tuple or state[3]() is not value):
+        raise RuntimeEntitlementAdmissionError('not a restoration runtime entitlement')
+    binding = _RESTORATION_BINDINGS.get(id(state[2]))
+    if (type(binding) is not tuple or binding[2]() is not state[2]
+            or not _exact_function_unchanged(binding[0])
+            or not _exact_function_unchanged(binding[1])):
+        raise RuntimeEntitlementAdmissionError('restoration authority changed')
+    validated = binding[0][0](state[1])
+    projected = binding[1][0](state[1])
+    if validated != projected:
+        raise RuntimeEntitlementAdmissionError('restoration projection disagrees')
+    fact = _parse_restoration_fact(validated)
+    runtime = _parse_restoration_runtime(state[0])
+    if (runtime['source_fact_id'] != fact['source_fact_id']
+            or runtime['lifecycle_head'] != fact['lifecycle_head']
+            or runtime['access_start_utc'] != fact['access_start_utc']
+            or runtime['service_end_exclusive_utc'] !=
+                fact['service_end_exclusive_utc']):
+        raise RuntimeEntitlementAdmissionError('restoration source changed')
+    return state[0]
+
+
+def project_later_period_restoration_runtime_entitlement(value):
+    return validate_later_period_restoration_runtime_entitlement(value)
+
+
 __all__ = (
     "BILLING_FACT_ADMISSION_STATUS",
     "BILLING_FACT_PROTOCOL_VERSION",
@@ -1216,4 +1452,15 @@ __all__ = (
     "admit_full_withdrawal_runtime_entitlement",
     "validate_full_withdrawal_runtime_entitlement",
     "project_full_withdrawal_runtime_entitlement",
+    "RESTORATION_CONTRACT_VERSION",
+    "RESTORATION_BILLING_FACT_PROTOCOL_VERSION",
+    "RESTORATION_BILLING_FACT_ADMISSION_STATUS",
+    "RESTORATION_RUNTIME_DECISION_PROTOCOL_VERSION",
+    "RESTORATION_RUNTIME_ADMISSION_STATUS",
+    "LaterPeriodRestorationRuntimeAdmissionHandle",
+    "LaterPeriodRestorationRuntimeEntitlementHandle",
+    "bind_later_period_restoration_runtime_entitlement_admission",
+    "admit_later_period_restoration_runtime_entitlement",
+    "validate_later_period_restoration_runtime_entitlement",
+    "project_later_period_restoration_runtime_entitlement",
 )

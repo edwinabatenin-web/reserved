@@ -1081,8 +1081,19 @@ def test_module_has_no_io_provider_route_config_auth_session_or_database_surface
         "bind_full_withdrawal_runtime_entitlement_admission",
         "admit_full_withdrawal_runtime_entitlement",
         "validate_full_withdrawal_runtime_entitlement",
-        "project_full_withdrawal_runtime_entitlement",
-    }
+            "project_full_withdrawal_runtime_entitlement",
+            "RESTORATION_CONTRACT_VERSION",
+            "RESTORATION_BILLING_FACT_PROTOCOL_VERSION",
+            "RESTORATION_BILLING_FACT_ADMISSION_STATUS",
+            "RESTORATION_RUNTIME_DECISION_PROTOCOL_VERSION",
+            "RESTORATION_RUNTIME_ADMISSION_STATUS",
+            "LaterPeriodRestorationRuntimeAdmissionHandle",
+            "LaterPeriodRestorationRuntimeEntitlementHandle",
+            "bind_later_period_restoration_runtime_entitlement_admission",
+            "admit_later_period_restoration_runtime_entitlement",
+            "validate_later_period_restoration_runtime_entitlement",
+            "project_later_period_restoration_runtime_entitlement",
+        }
 
 
 def test_evidence_records_exact_non_authority_and_founder_boundaries():

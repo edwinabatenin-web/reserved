@@ -1,4 +1,4 @@
-"""Injected synthetic Basil paid, failure and full-withdrawal reconciliation.
+"""Injected synthetic Basil paid, failure, withdrawal and restoration reconciliation.
 
 Not a webhook, provider client, credential store, or production bootstrap. The
 Supported paid lineage remains initial payment plus one ordinary renewal. A
@@ -18,7 +18,9 @@ import weakref
 
 from reserved.auth import is_production_environment
 from .stripe_signature_verifier import verify_stripe_signature
-from .local_billing_provenance_repository import ProvenanceRepository, CommitOutcomeError, canonical, identity
+from .local_billing_provenance_repository import (
+    ProvenanceRepository, CommitOutcomeError, canonical, identity, _control_head,
+)
 from . import exact_utc_entitlement as exact
 
 API_VERSION = '2025-03-31.basil'
@@ -33,6 +35,7 @@ _AUTHORITIES = {}
 _CANCELLATION_FACTS = weakref.WeakKeyDictionary()
 _RECOVERY_FACTS = weakref.WeakKeyDictionary()
 _WITHDRAWAL_FACTS = weakref.WeakKeyDictionary()
+_RESTORATION_FACTS = weakref.WeakKeyDictionary()
 _ID = re.compile(r'[a-z][a-z0-9]*_[A-Za-z0-9]{1,100}\Z')
 _PLANS = {'monthly': (2900, 'month', 1), 'six_month': (15600, 'month', 6),
           'yearly': (28800, 'year', 1)}
@@ -117,6 +120,23 @@ class FailedRenewalFact:
 
 class FullWithdrawalFact:
     """Opaque live handle for one authenticated full-withdrawal control."""
+    __slots__ = ('__weakref__',)
+
+    def __new__(cls):
+        raise TypeError('live issuance only')
+
+    def __copy__(self):
+        raise TypeError('not copyable')
+
+    def __deepcopy__(self, memo):
+        raise TypeError('not copyable')
+
+    def __reduce__(self):
+        raise TypeError('not serialisable')
+
+
+class LaterPeriodRestorationFact:
+    """Opaque live handle for the one authenticated later-period restoration."""
     __slots__ = ('__weakref__',)
 
     def __new__(cls):
@@ -342,7 +362,8 @@ def _single_list(value):
     return value['data'][0]
 
 
-def _reconcile(state, invoice_id, billing_reason):
+def _reconcile(state, invoice_id, billing_reason, *, event_created=None,
+               exact_projection=False):
     invoice = _object(state, '/v1/invoices/' + invoice_id, invoice_id, 'invoice')
     scope = state['scope']
     amount, interval, count = _PLANS[state['plan']]
@@ -361,7 +382,9 @@ def _reconcile(state, invoice_id, billing_reason):
             raise InitialIngressError('unsupported payment complication')
     if invoice['discounts'] != [] or invoice['total_discount_amounts'] != []:
         raise InitialIngressError('discount implementation remains open')
-    line = _single_list(_fetch(state, '/v1/invoices/' + invoice_id + '/lines', (('limit', '100'),)))
+    line_listing = _fetch(state, '/v1/invoices/' + invoice_id + '/lines',
+                          (('limit', '100'),))
+    line = _single_list(line_listing)
     if (line['object'] != 'line_item' or line['livemode'] is not False or line['currency'] != 'gbp'
             or _integer(line['quantity']) != 1 or _integer(line['amount']) != amount
             or line['parent']['type'] != 'subscription_item_details'
@@ -394,7 +417,9 @@ def _reconcile(state, invoice_id, billing_reason):
             or price['recurring']['interval'] != interval or _integer(price['recurring']['interval_count']) != count
             or price['recurring']['usage_type'] != 'licensed'):
         raise InitialIngressError('unapproved price')
-    payment = _single_list(_fetch(state, '/v1/invoice_payments', (('invoice', invoice_id), ('limit', '100'))))
+    payment_listing = _fetch(state, '/v1/invoice_payments',
+                             (('invoice', invoice_id), ('limit', '100')))
+    payment = _single_list(payment_listing)
     if (payment['object'] != 'invoice_payment' or payment['livemode'] is not False
             or payment['invoice'] != invoice_id or payment['status'] != 'paid'
             or payment['currency'] != 'gbp' or _integer(payment['amount_paid']) != amount
@@ -421,12 +446,93 @@ def _reconcile(state, invoice_id, billing_reason):
     observed_times = [_timestamp(obj['created']) for obj in (invoice, payment, intent, charge)]
     if observed_times[0] > invoice_paid or any(value > payment_paid for value in observed_times[1:]):
         raise InitialIngressError('contradictory source payment times')
+    if event_created is not None:
+        event_created = exact.utc(event_created)
+        if invoice_paid > event_created or payment_paid > event_created:
+            raise InitialIngressError('payment occurs after signed success observation')
     evidence = dict(invoice=invoice_id, line=line['id'], payment=payment['id'], intent=pi_id,
                     charge=charge_id, amount=amount, currency='gbp', service_start=start.isoformat(),
                     service_end=end.isoformat(), plan=state['plan'], price=state['price'], item=state['item'],
                     invoice_paid_at=invoice_paid.isoformat(), payment_paid_at=payment_paid.isoformat())
-    # Full bounded observations compared only transiently, never persisted.
-    return evidence, canonical((invoice, line, subscription, price, payment, intent, charge))
+    if exact_projection:
+        # Unknown provider fields and JSON key order are deliberately excluded;
+        # only the accepted source-admission projection participates in the
+        # two-pass equality decision.
+        def selected(value, names):
+            return tuple(value[name] for name in names)
+        def optional(value, name):
+            return ('present', value[name]) if name in value else ('absent',)
+        projection = (
+            ('invoice', (
+             *selected(invoice, (
+                'id', 'object', 'livemode', 'customer', 'status',
+                'billing_reason', 'currency', 'collection_method',
+             )),
+             invoice['parent']['type'],
+             invoice['parent']['subscription_details']['subscription'],
+             *selected(invoice, (
+                'amount_paid', 'amount_due', 'total', 'amount_remaining',
+                'amount_overpaid', 'starting_balance',
+                'pre_payment_credit_notes_amount',
+                'post_payment_credit_notes_amount', 'discounts',
+                'total_discount_amounts')),
+             invoice['status_transitions']['paid_at'], invoice['created'])),
+            ('line_list', (
+             line_listing['object'], line_listing['has_more'],
+             optional(line_listing, 'total_count'),
+             (*selected(line, ('id', 'object', 'livemode')),
+              optional(line, 'invoice'),
+              *selected(line, ('currency', 'quantity', 'amount')),
+              line['parent']['type'],
+              line['parent']['subscription_item_details']['subscription_item'],
+              line['parent']['subscription_item_details']['subscription'],
+              line['parent']['subscription_item_details']['proration'],
+              line['pricing']['type'],
+              line['pricing']['price_details']['price'],
+              line['discounts'], line['discount_amounts'],
+              line['period']['start'], line['period']['end']))),
+            ('subscription', (
+             *selected(subscription, (
+                'id', 'object', 'livemode', 'customer', 'status',
+                'latest_invoice', 'discounts', 'collection_method')),
+             (subscription['items']['object'],
+              subscription['items']['has_more'],
+              optional(subscription['items'], 'total_count'),
+              (*selected(item, ('id', 'object', 'subscription', 'quantity')),
+               item['price']['id'], item['current_period_start'],
+               item['current_period_end'])))),
+            ('price', (
+             *selected(price, ('id', 'object', 'livemode', 'currency',
+                'unit_amount', 'type', 'billing_scheme')),
+             price['recurring']['interval'],
+             price['recurring']['interval_count'],
+             price['recurring']['usage_type'])),
+            ('invoice_payment_list', (
+             payment_listing['object'], payment_listing['has_more'],
+             optional(payment_listing, 'total_count'),
+             (*selected(payment, (
+                'id', 'object', 'livemode', 'invoice', 'status', 'currency',
+                'amount_paid', 'amount_requested')),
+              payment['payment']['type'],
+              payment['payment']['payment_intent'],
+              payment['status_transitions']['paid_at'], payment['created']))),
+            ('payment_intent', selected(intent, ('id', 'object', 'livemode',
+                'status', 'customer', 'currency', 'amount', 'amount_received',
+                'latest_charge', 'created'))),
+            ('charge', (
+             *selected(charge, ('id', 'object', 'livemode',
+                'payment_intent', 'customer', 'currency', 'status', 'paid',
+                'captured')),
+             charge['payment_method_details']['type'],
+             *selected(charge, ('amount', 'amount_captured', 'amount_refunded',
+                                'refunded', 'disputed', 'created')))),
+        )
+        observations = canonical(projection)
+    else:
+        # Full bounded observations compared only transiently, never persisted.
+        observations = canonical((invoice, line, subscription, price, payment,
+                                  intent, charge))
+    return evidence, observations
 
 
 def _lineage(authority, repository, snapshot):
@@ -454,21 +560,24 @@ def _accepted_lineage(authority, repository, snapshot):
         raise InitialIngressError('missing accepted lineage')
     receipt, head = lineage[-1]
     control = controls[-1] if controls else None
+    restoration_current = (
+        receipt.get('version') == 'reserved-later-period-restoration-receipt/1')
     expected_control = (None if control is None else
-        (repository.store_id, control['receipt_id'], control['fact_id'], lifecycle_head))
+        (repository.store_id, control['receipt_id'], control['fact_id'],
+         (lifecycle_head if not restoration_current else _control_head(control))))
     cancellation_control = next((item for item in controls if item.get('version') ==
         'reserved-scheduled-cancellation-receipt/1'), None)
     expected_cancellation = None
     # Cancellation's publication tuple uses its own head, not a later
     # withdrawal head.
     if cancellation_control is not None:
-        from .local_billing_provenance_repository import _control_head
         expected_cancellation = (repository.store_id,
             cancellation_control['receipt_id'], cancellation_control['fact_id'],
             _control_head(cancellation_control))
     expected_recovery = (expected_control if control is not None
         and control.get('version') == 'reserved-failed-renewal-receipt/1' else None)
-    expected_withdrawal = (expected_control if control is not None
+    expected_withdrawal = (expected_control if not restoration_current
+        and control is not None
         and control.get('version') == 'reserved-full-withdrawal-receipt/1' else None)
     if (snapshot.accepted != (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head)
             or snapshot.lifecycle_head != lifecycle_head
@@ -491,7 +600,10 @@ def current_fact(authority, repository, *, user_id, now):
     if snapshot.withdrawal is not None:
         raise InitialIngressError('paid fact superseded by withdrawal')
     selected = None
-    for unit in lineage:
+    candidates = (lineage[-1],) if (
+        lineage[-1][0].get('version') ==
+        'reserved-later-period-restoration-receipt/1') else lineage
+    for unit in candidates:
         receipt = unit[0]
         if (datetime.fromisoformat(receipt['access_start']) <= now
                 < datetime.fromisoformat(receipt['service_end'])):
@@ -529,6 +641,53 @@ def allows_paid_request(authority, repository, *, user_id, now,
         state = _check(authority, snapshot, now)
         if type(user_id) is not int or user_id != state['user']:
             raise InitialIngressError('current membership unavailable')
+        lifecycle_lineage, lifecycle_controls, lifecycle_head = (
+            repository.read_lifecycle_chain(snapshot.instance,
+                                            state['receipt_key']))
+        if (lifecycle_lineage
+                and lifecycle_lineage[-1][0].get('version') ==
+                    'reserved-later-period-restoration-receipt/1'):
+            receipt, head = lifecycle_lineage[-1]
+            if (len(lifecycle_lineage) != 2 or len(lifecycle_controls) != 1
+                    or lifecycle_head != head
+                    or snapshot.lifecycle_head != head
+                    or snapshot.accepted != (repository.store_id,
+                        receipt['receipt_id'], receipt['fact_id'], head)
+                    or snapshot.withdrawal is not None):
+                raise InitialIngressError('restoration lifecycle unavailable')
+            fact = _issue_restoration_fact(authority, repository, snapshot,
+                                           receipt, head)
+            from . import runtime_entitlement_admission as runtime
+            from . import paid_access_guard as guard_module
+            binding = runtime.bind_later_period_restoration_runtime_entitlement_admission(
+                validate_admitted_billing_fact=
+                    validate_later_period_restoration_fact,
+                project_admitted_billing_fact=
+                    project_later_period_restoration_fact)
+            entitlement = runtime.admit_later_period_restoration_runtime_entitlement(
+                binding, authenticated_owner_id=state['scope'][0],
+                billing_account_id=state['scope'][1],
+                subscription_id=state['scope'][2],
+                admitted_billing_fact=fact, evaluated_at_utc=now)
+            guard = guard_module.bind_later_period_restoration_paid_access_guard(
+                validate_runtime_entitlement=
+                    runtime.validate_later_period_restoration_runtime_entitlement,
+                project_runtime_entitlement=
+                    runtime.project_later_period_restoration_runtime_entitlement)
+            decision = guard_module.evaluate_later_period_restoration_paid_access(
+                guard, endpoint=endpoint,
+                authenticated_owner_id=state['scope'][0],
+                current_runtime_entitlement=entitlement,
+                evaluated_at_utc=now)
+            allowed = dict(
+                guard_module.validate_later_period_restoration_paid_access_decision(
+                    decision))['allowed']
+            _check(authority, snapshot, now)
+            if repository.read_lifecycle_chain(snapshot.instance,
+                    state['receipt_key']) != (lifecycle_lineage,
+                                              lifecycle_controls, head):
+                return False
+            return allowed and not is_production_environment()
         if snapshot.withdrawal is not None:
             lineage, control, head = repository.read_lifecycle(
                 snapshot.instance, state['receipt_key'])
@@ -2011,6 +2170,432 @@ def ingest_full_withdrawal(authority, repository, raw_body, signature_header, *,
         return IngressResult('admitted', True, fact)
     except Exception:
         if committed is False and conflict is not None:
+            try:
+                binding, event_id, raw_digest, object_key, key = conflict
+                repository.record_conflict(binding, event_id=event_id,
+                    raw_digest=raw_digest, object_key=object_key, key=key)
+                return IngressResult('reconciliation_required', True)
+            except Exception:
+                pass
+        disposition = ('commit_outcome_unknown' if committed is None else
+                       ('committed_but_unadmitted' if committed else 'refused'))
+        return IngressResult(disposition, committed)
+
+
+RESTORATION_FACT_PROTOCOL_VERSION = (
+    'reserved-owner-bound-billing-later-period-restoration-fact/1.0')
+RESTORATION_FACT_ADMISSION_STATUS = (
+    'authoritative_owner_bound_later_period_restoration_fact_admitted')
+
+
+def _restoration_proposal(receipt):
+    return {name: value for name, value in receipt.items() if name not in {
+        'restoration_verified_at_utc', 'access_start', 'receipt_id', 'fact_id'}}
+
+
+def _issue_restoration_fact(authority, repository, snapshot, receipt, head):
+    with _LOCK:
+        state = _check(authority, snapshot)
+        expected = ((repository.store_id, repository.physical_identity),
+                    snapshot.revision, head, canonical(receipt))
+        cached = state['control_facts'].get('later_period_restoration')
+        if cached is not None:
+            value, material = cached
+            if material != expected:
+                raise InitialIngressError('changed restoration fact cache')
+            _RESTORATION_FACTS[value] = (authority, repository,
+                snapshot.revision, head, canonical(receipt))
+            return value
+        value = object.__new__(LaterPeriodRestorationFact)
+        _RESTORATION_FACTS[value] = (authority, repository, snapshot.revision,
+                                     head, canonical(receipt))
+        state['control_facts']['later_period_restoration'] = (value, expected)
+        return value
+
+
+def _restoration_fact_state(fact):
+    with _LOCK:
+        if (type(fact) is not LaterPeriodRestorationFact
+                or fact not in _RESTORATION_FACTS):
+            raise InitialIngressError('not a live later-period restoration fact')
+        authority, repository, revision, head, material = _RESTORATION_FACTS[fact]
+    snapshot = authority.snapshot()
+    state = _check(authority, snapshot)
+    lineage, controls, lifecycle_head = repository.read_lifecycle_chain(
+        snapshot.instance, state['receipt_key'])
+    receipt = lineage[-1][0] if lineage else None
+    if (snapshot.revision != revision or snapshot.lifecycle_head != head
+            or lifecycle_head != head or len(lineage) != 2 or len(controls) != 1
+            or receipt is None
+            or receipt.get('version') !=
+                'reserved-later-period-restoration-receipt/1'
+            or canonical(receipt) != material
+            or controls[0].get('version') !=
+                'reserved-full-withdrawal-receipt/1'
+            or snapshot.withdrawal is not None or snapshot.recovery is not None
+            or snapshot.cancellation is not None
+            or snapshot.accepted != (repository.store_id, receipt['receipt_id'],
+                                     receipt['fact_id'], head)):
+        raise InitialIngressError('stale later-period restoration fact')
+    _accepted_lineage(authority, repository, snapshot)
+    _check(authority, snapshot)
+    return state, receipt, controls[0], head
+
+
+def _restoration_fact_projection(fact):
+    state, receipt, withdrawal, head = _restoration_fact_state(fact)
+    verified = exact.utc(datetime.fromisoformat(
+        receipt['restoration_verified_at_utc']))
+    service_start = exact.utc(datetime.fromisoformat(receipt['service_start']))
+    access_start = exact.utc(datetime.fromisoformat(receipt['access_start']))
+    service_end = exact.utc(datetime.fromisoformat(receipt['service_end']))
+    material = (
+        RESTORATION_FACT_PROTOCOL_VERSION, RESTORATION_FACT_ADMISSION_STATUS,
+        True, True, False, state['scope'][0], state['scope'][1],
+        state['scope'][2], receipt['fact_id'], receipt['predecessor_fact_id'],
+        withdrawal['fact_id'], head, 'paid', True, service_start, access_start,
+        service_end, verified, 'verified_later_period_restoration', 2,
+    )
+    identity_material = tuple(value.isoformat() if type(value) is datetime else value
+                              for value in material)
+    fact_identity = identity('billing-later-period-restoration-fact/1',
+                             identity_material)
+    names = (
+        'protocol_version', 'fact_identity', 'admission_status',
+        'authenticated', 'billing_fact_authority',
+        'provider_observation_direct_authority', 'owner_id',
+        'billing_account_id', 'subscription_id', 'source_fact_id',
+        'predecessor_paid_fact_id', 'withdrawal_fact_id', 'lifecycle_head',
+        'state', 'ordinary_access', 'service_start_utc', 'access_start_utc',
+        'service_end_exclusive_utc', 'restoration_verified_at_utc',
+        'derivation_kind', 'paid_sequence',
+    )
+    return tuple(zip(names, (material[0], fact_identity, *material[1:]),
+                     strict=True))
+
+
+def validate_later_period_restoration_fact(fact):
+    return _restoration_fact_projection(fact)
+
+
+def project_later_period_restoration_fact(fact):
+    return _restoration_fact_projection(fact)
+
+
+def later_period_restoration_fact_details(fact):
+    _, receipt, withdrawal, head = _restoration_fact_state(fact)
+    return dict(disposition=receipt['disposition'],
+        restoration_verified_at_utc=receipt['restoration_verified_at_utc'],
+        access_start=receipt['access_start'], service_start=receipt['service_start'],
+        service_end=receipt['service_end'], receipt_id=receipt['receipt_id'],
+        fact_id=receipt['fact_id'], lifecycle_head=head,
+        withdrawal_receipt_id=withdrawal['receipt_id'],
+        withdrawal_fact_id=withdrawal['fact_id'])
+
+
+def ingest_later_period_restoration(authority, repository, raw_body,
+                                    signature_header, *, clock):
+    """Admit only the exact sequence-two paid period after sequence-one withdrawal."""
+    def publish(snapshot, receipt, head):
+        with _LOCK:
+            state = _check(authority, snapshot)
+            current, reservation = state['publication']
+            accepted = (repository.store_id, receipt['receipt_id'],
+                        receipt['fact_id'], head)
+            if (current != snapshot or reservation is None
+                    or reservation.get('kind') != 'later_period_restoration'
+                    or reservation.get('material') !=
+                        canonical(_restoration_proposal(receipt))
+                    or reservation.get('revision') != snapshot.revision
+                    or reservation.get('predecessor') !=
+                        receipt['predecessor_lifecycle_head']):
+                raise InitialIngressError('changed restoration reservation')
+            published = replace(snapshot, revision=snapshot.revision + 1,
+                consumed=True, accepted=accepted, lifecycle_head=head,
+                cancellation=None, recovery=None, withdrawal=None)
+            state['publication'] = (published, None)
+            return published
+
+    committed = False
+    conflict = None
+    attempt = 'later_period_restoration'
+    known_rollback = False
+    reserved_retry = False
+    try:
+        if is_production_environment():
+            raise InitialIngressError('local bounded lifecycle only')
+        snapshot = authority.snapshot()
+        state = _check(authority, snapshot)
+        if (type(repository) is not ProvenanceRepository
+                or repository.store_id != state['store']
+                or repository.physical_identity != state['physical']):
+            raise InitialIngressError('wrong store')
+
+        # Exact durable replay rechecks its bounded HMAC at the signed header's
+        # own instant. It does not consult the caller clock, refetch provider
+        # state, or create a later observation that could prolong access.
+        replay_lineage, _, _ = repository.read_lifecycle_chain(
+            snapshot.instance, state['receipt_key'])
+        replay_digest = hashlib.sha256(raw_body).hexdigest()
+        if (len(replay_lineage) == 2
+                and replay_lineage[-1][0].get('version') ==
+                    'reserved-later-period-restoration-receipt/1'
+                and replay_lineage[-1][0].get('raw_digest') == replay_digest):
+            receipt, head = replay_lineage[-1]
+            timestamp_values = ([] if type(signature_header) is not str else
+                [part[2:] for part in signature_header.split(',')
+                 if part.startswith('t=')])
+            replay_signature_time = (int(timestamp_values[0])
+                if len(timestamp_values) == 1
+                and re.fullmatch(r'[0-9]{1,16}', timestamp_values[0]) else -1)
+            replay_observed = datetime.fromtimestamp(
+                max(replay_signature_time, 0), timezone.utc)
+            for _ in range(2):
+                if not _verified_signature(raw_body, signature_header, state,
+                                           replay_observed):
+                    raise InitialIngressError('signature refusal')
+            committed = True
+            replay_event = _parse(raw_body)
+            replay_data = replay_event.get('data')
+            replay_trigger = (replay_data.get('object')
+                              if type(replay_data) is dict else None)
+            if (replay_event.get('id') != receipt['event_id']
+                    or type(replay_trigger) is not dict
+                    or replay_trigger.get('id') != receipt['evidence']['invoice']
+                    or receipt['object_key'] !=
+                        receipt['evidence']['invoice'] +
+                        ':invoice.payment_succeeded'):
+                raise InitialIngressError('changed restoration replay')
+            accepted = (repository.store_id, receipt['receipt_id'],
+                        receipt['fact_id'], head)
+            if (snapshot.accepted != accepted or snapshot.lifecycle_head != head
+                    or snapshot.withdrawal is not None):
+                current, reservation = state['publication']
+                if (current != snapshot or reservation is None
+                        or reservation.get('kind') != attempt
+                        or reservation.get('material') !=
+                            canonical(_restoration_proposal(receipt))
+                        or reservation.get('predecessor') !=
+                            receipt['predecessor_lifecycle_head']):
+                    raise InitialIngressError('durable restoration not published')
+                snapshot = publish(snapshot, receipt, head)
+            return IngressResult('admitted', True, _issue_restoration_fact(
+                authority, repository, snapshot, receipt, head))
+
+        received = exact.utc(clock())
+        state = _check(authority, snapshot, received)
+        for _ in range(2):
+            if not _verified_signature(raw_body, signature_header, state, received):
+                raise InitialIngressError('signature refusal')
+        event = _parse(raw_body)
+        if (event.get('object') != 'event' or event.get('livemode') is not False
+                or event.get('api_version') != API_VERSION
+                or event.get('account') is not None):
+            raise InitialIngressError('unsupported restoration event')
+        event_id = _identifier(event.get('id'), 'evt')
+        source_time = _timestamp(event.get('created'))
+        if source_time > received:
+            raise InitialIngressError('future source event')
+        data = event.get('data')
+        trigger = data.get('object') if type(data) is dict else None
+        if type(trigger) is not dict:
+            raise InitialIngressError('wrong restoration event object')
+        if event.get('type') != 'invoice.payment_succeeded':
+            raise InitialIngressError('unsupported restoration trigger')
+        invoice_id = _identifier(trigger.get('id'), 'in')
+        if (trigger.get('object') != 'invoice' or trigger.get('livemode') is not False
+                or trigger.get('customer') != state['customer']
+                or trigger.get('status') != 'paid'
+                or trigger.get('billing_reason') != 'subscription_cycle'
+                or type(trigger.get('parent')) is not dict
+                or trigger['parent'].get('type') != 'subscription_details'
+                or type(trigger['parent'].get('subscription_details')) is not dict
+                or trigger['parent']['subscription_details'].get('subscription') !=
+                    state['scope'][2]):
+            raise InitialIngressError('restoration trigger scope mismatch')
+        raw_digest = hashlib.sha256(raw_body).hexdigest()
+        object_key = invoice_id + ':invoice.payment_succeeded'
+        reconciliations = repository.read_conflicts(
+            snapshot.instance, key=state['receipt_key'])
+        event_matches = tuple(item for item in reconciliations
+                              if item['event_id'] == event_id)
+        if len(event_matches) > 1:
+            raise InitialIngressError('ambiguous restoration reconciliation')
+        reconciled = event_matches[0] if event_matches else None
+        if reconciled is not None:
+            if (reconciled['raw_digest'] != raw_digest
+                    or reconciled['object_key'] != object_key):
+                raise InitialIngressError('changed reconciled restoration event')
+            return IngressResult('reconciliation_required', True)
+        if any(item['object_key'] == object_key
+               and item['event_id'] != event_id for item in reconciliations):
+            raise InitialIngressError('consumed restoration object')
+
+        lineage, controls, lifecycle_head = repository.read_lifecycle_chain(
+            snapshot.instance, state['receipt_key'])
+        if (len(lineage) == 2
+                and lineage[-1][0].get('version') ==
+                    'reserved-later-period-restoration-receipt/1'):
+            committed = True
+            receipt, head = lineage[-1]
+            if (receipt.get('event_id') != event_id
+                    or receipt.get('raw_digest') != raw_digest
+                    or receipt.get('object_key') != object_key):
+                repository.record_conflict(snapshot.instance, event_id=event_id,
+                    raw_digest=raw_digest, object_key=object_key,
+                    key=state['receipt_key'])
+                return IngressResult('reconciliation_required', True)
+            accepted = (repository.store_id, receipt['receipt_id'],
+                        receipt['fact_id'], head)
+            if (snapshot.accepted != accepted or snapshot.lifecycle_head != head
+                    or snapshot.withdrawal is not None):
+                current, reservation = state['publication']
+                if (current != snapshot or reservation is None
+                        or reservation.get('kind') != attempt
+                        or reservation.get('material') !=
+                            canonical(_restoration_proposal(receipt))
+                        or reservation.get('predecessor') !=
+                            receipt['predecessor_lifecycle_head']):
+                    raise InitialIngressError('durable restoration not published')
+                snapshot = publish(snapshot, receipt, head)
+            return IngressResult('admitted', True, _issue_restoration_fact(
+                authority, repository, snapshot, receipt, head))
+
+        if (len(lineage) != 1 or len(controls) != 1
+                or controls[0].get('version') !=
+                    'reserved-full-withdrawal-receipt/1'
+                or controls[0].get('paid_sequence') != 1
+                or lifecycle_head != _control_head(controls[0])
+                or snapshot.accepted != (repository.store_id,
+                    lineage[0][0]['receipt_id'], lineage[0][0]['fact_id'],
+                    lineage[0][1])
+                or snapshot.lifecycle_head != lifecycle_head
+                or snapshot.withdrawal != (repository.store_id,
+                    controls[0]['receipt_id'], controls[0]['fact_id'], lifecycle_head)
+                or snapshot.cancellation is not None or snapshot.recovery is not None):
+            raise InitialIngressError('exact withdrawn predecessor unavailable')
+        if any(item[0].get('event_id') == event_id for item in lineage) or any(
+                item.get('event_id') == event_id for item in controls):
+            raise InitialIngressError('consumed restoration event')
+        with _LOCK:
+            _check(authority, snapshot)
+            existing_reservation = state['publication'][1]
+            reserved_retry = (existing_reservation is not None
+                              and existing_reservation.get('kind') == attempt)
+        conflict = (snapshot.instance, event_id, raw_digest, object_key,
+                    state['receipt_key'])
+        evidence, observations = _reconcile(state, invoice_id,
+            'subscription_cycle', event_created=source_time,
+            exact_projection=True)
+        checked_evidence, checked_observations = _reconcile(state, invoice_id,
+            'subscription_cycle', event_created=source_time,
+            exact_projection=True)
+        if (evidence, observations) != (checked_evidence, checked_observations):
+            raise InitialIngressError('changed restoration source observations')
+        paid, paid_head = lineage[0]
+        service_start = datetime.fromisoformat(evidence['service_start'])
+        service_end = datetime.fromisoformat(evidence['service_end'])
+        if (service_start != datetime.fromisoformat(paid['service_end'])
+                or service_end != _approved_period_end(service_start, state['plan'])):
+            raise InitialIngressError('wrong later paid period')
+        historical_ids = set()
+        for item in lineage:
+            historical_ids.update(item[0]['evidence'][name] for name in
+                                  ('invoice', 'line', 'payment', 'intent', 'charge'))
+        historical_ids.update(controls[0].get(name) for name in
+                              ('invoice', 'line', 'payment', 'intent', 'charge'))
+        if any(evidence[name] in historical_ids for name in
+               ('invoice', 'line', 'payment', 'intent', 'charge')):
+            raise InitialIngressError('reused restoration source identity')
+        proposal = dict(
+            version='reserved-later-period-restoration-receipt/1',
+            store=repository.store_id, binding=snapshot.instance,
+            epoch=snapshot.epoch, binding_revision=snapshot.revision,
+            owner=state['scope'][0], scope=list(state['scope']),
+            endpoint=state['endpoint'], account=state['account'],
+            api_version=API_VERSION, livemode=False,
+            receipt_key_id=state['receipt_key_id'],
+            signing_key_ids=list(state['signing_key_ids']), event_id=event_id,
+            object_key=object_key, raw_digest=raw_digest,
+            source_evidence_digest=hashlib.sha256(observations).hexdigest(),
+            received_at=received.isoformat(), source_created_at=source_time.isoformat(),
+            evidence=evidence, service_start=evidence['service_start'],
+            service_end=evidence['service_end'], sequence=2, predecessor=1,
+            predecessor_receipt_id=paid['receipt_id'],
+            predecessor_fact_id=paid['fact_id'], predecessor_head=paid_head,
+            withdrawal_receipt_id=controls[0]['receipt_id'],
+            withdrawal_fact_id=controls[0]['fact_id'],
+            withdrawal_head=lifecycle_head,
+            predecessor_lifecycle_head=lifecycle_head,
+            disposition='verified_later_period_restoration')
+        with _LOCK:
+            _check(authority, snapshot)
+            current, reservation = state['publication']
+            if reservation is None:
+                reserved = replace(snapshot, revision=snapshot.revision + 1,
+                                   consumed=True)
+                reservation = dict(kind=attempt, material=canonical(proposal),
+                    predecessor=lifecycle_head, revision=reserved.revision)
+                state['publication'] = (reserved, reservation)
+                snapshot = reserved
+            else:
+                reserved_retry = True
+                proposal = json.loads(reservation['material'])
+                snapshot = current
+                if (reservation.get('kind') != attempt
+                        or reservation.get('predecessor') != lifecycle_head
+                        or proposal.get('event_id') != event_id
+                        or proposal.get('raw_digest') != raw_digest
+                        or proposal.get('source_evidence_digest') !=
+                            hashlib.sha256(observations).hexdigest()):
+                    raise InitialIngressError('different reserved restoration')
+
+        def admission_clock():
+            verified = exact.utc(clock())
+            _check(authority, snapshot, verified)
+            return verified
+
+        predecessor = (lineage[0], controls[0], lifecycle_head)
+        try:
+            receipt, head = repository.commit_later_period_restoration(
+                proposal, predecessor, state['receipt_key'], admission_clock)
+            committed = True
+        except CommitOutcomeError as error:
+            committed = error.committed
+            known_rollback = committed is False
+            raise
+        except Exception:
+            committed = None
+            exact_durable_successor = False
+            try:
+                durable = repository.read_sequence(snapshot.instance, 2,
+                                                   state['receipt_key'])
+                if (durable is not None
+                        and _restoration_proposal(durable[0]) == proposal):
+                    receipt, head = durable
+                    committed = True
+                    exact_durable_successor = True
+            except Exception:
+                pass
+            if not exact_durable_successor:
+                repository._poison_unproven_outcome()
+            raise
+        finally:
+            with _LOCK:
+                if committed is not False:
+                    state['commit_seen'].add(attempt)
+        if repository.read_sequence(snapshot.instance, 2,
+                                    state['receipt_key']) != (receipt, head):
+            raise InitialIngressError('changed committed restoration')
+        published = publish(snapshot, receipt, head)
+        _check(authority, published)
+        if _accepted_lineage(authority, repository, published)[-1] != (receipt, head):
+            raise InitialIngressError('changed restoration publication')
+        return IngressResult('admitted', True, _issue_restoration_fact(
+            authority, repository, published, receipt, head))
+    except Exception:
+        if (committed is False and conflict is not None
+                and not known_rollback and not reserved_retry):
             try:
                 binding, event_id, raw_digest, object_key, key = conflict
                 repository.record_conflict(binding, event_id=event_id,
