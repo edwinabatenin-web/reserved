@@ -1,13 +1,16 @@
-"""Injected synthetic Basil initial and one-successor paid reconciliation.
+"""Injected synthetic Basil paid and first-failed-renewal reconciliation.
 
 Not a webhook, provider client, credential store, or production bootstrap. The
-only supported lifecycle is initial payment followed by one ordinary renewal.
+Supported paid lineage remains initial payment plus one ordinary renewal. A
+versioned lifecycle control can record either scheduled cancellation or the
+first verified recurring-payment failure without creating a paid sequence three.
 """
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import calendar
 import hashlib
 import json
+import os
 import re
 import threading
 import uuid
@@ -20,12 +23,15 @@ from . import exact_utc_entitlement as exact
 
 API_VERSION = '2025-03-31.basil'
 ORIGIN = 'https://api.stripe.com'
+RECOVERY_FACT_PROTOCOL_VERSION = 'reserved-owner-bound-billing-recovery-fact/2.0'
+RECOVERY_FACT_ADMISSION_STATUS = 'authoritative_owner_bound_billing_recovery_fact_admitted'
 _LOCK = threading.RLock()
 # A live-process consumed-scope tombstone is deliberately not resettable.
 # It is not a second durable witness and is not real process-restart recovery.
 _SCOPES = {}
 _AUTHORITIES = {}
 _CANCELLATION_FACTS = weakref.WeakKeyDictionary()
+_RECOVERY_FACTS = weakref.WeakKeyDictionary()
 _ID = re.compile(r'[a-z][a-z0-9]*_[A-Za-z0-9]{1,100}\Z')
 _PLANS = {'monthly': (2900, 'month', 1), 'six_month': (15600, 'month', 6),
           'yearly': (28800, 'year', 1)}
@@ -63,6 +69,7 @@ class BindingSnapshot:
     accepted: tuple | None
     lifecycle_head: str | None
     cancellation: tuple | None
+    recovery: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -74,6 +81,23 @@ class IngressResult:
 
 class CancellationFact:
     """Opaque live handle for one authenticated scheduled-end control."""
+    __slots__ = ('__weakref__',)
+
+    def __new__(cls):
+        raise TypeError('live issuance only')
+
+    def __copy__(self):
+        raise TypeError('not copyable')
+
+    def __deepcopy__(self, memo):
+        raise TypeError('not copyable')
+
+    def __reduce__(self):
+        raise TypeError('not serialisable')
+
+
+class FailedRenewalFact:
+    """Opaque live handle for one authenticated failed-renewal control."""
     __slots__ = ('__weakref__',)
 
     def __new__(cls):
@@ -222,12 +246,14 @@ class SyntheticInitialAuthority:
                 raise InitialIngressError('scope or store is not pristine')
             instance, epoch = uuid.uuid4().hex, uuid.uuid4().hex
             snapshot = BindingSnapshot(instance, epoch, 1, True, False, None, None, None)
-            state = dict(publication=(snapshot, None), store=repository.store_id, physical=repository.physical_identity, user=user_id, scope=scope,
+            state = dict(publication=(snapshot, None), store=repository.store_id,
+                         physical=repository.physical_identity, process=os.getpid(),
+                         user=user_id, scope=scope,
                          customer=customer, item=item, price=price, plan=plan, endpoint=endpoint,
                          account=account, signing_keys=signing_keys, receipt_key=receipt_key,
                          receipt_key_id=receipt_key_id, signing_key_ids=signing_key_ids,
                          retrieve=retrieve, retrieval_code=getattr(retrieve, '__code__', None),
-                         last_clock=None, commit_seen=set(), control_fact=None)
+                         last_clock=None, commit_seen=set(), control_facts={})
             _AUTHORITIES[self] = state
             _SCOPES[source_scope] = instance
 
@@ -260,6 +286,7 @@ def _check(authority, snapshot, now=None):
     with _LOCK:
         state = _state(authority)
         if (state['publication'][0] != snapshot or not snapshot.active
+                or state['process'] != os.getpid()
                 or getattr(state['retrieve'], '__code__', None) is not state['retrieval_code']):
             raise InitialIngressError('changed authority')
         if now is not None:
@@ -409,9 +436,14 @@ def _accepted_lineage(authority, repository, snapshot):
     receipt, head = lineage[-1]
     expected_control = (None if control is None else
         (repository.store_id, control['receipt_id'], control['fact_id'], lifecycle_head))
+    expected_cancellation = (expected_control if control is not None
+        and control.get('version') == 'reserved-scheduled-cancellation-receipt/1' else None)
+    expected_recovery = (expected_control if control is not None
+        and control.get('version') == 'reserved-failed-renewal-receipt/1' else None)
     if (snapshot.accepted != (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head)
             or snapshot.lifecycle_head != lifecycle_head
-            or snapshot.cancellation != expected_control):
+            or snapshot.cancellation != expected_cancellation
+            or snapshot.recovery != expected_recovery):
         raise InitialIngressError('obsolete authentic receipt')
     return lineage
 
@@ -454,9 +486,44 @@ def _validate_live_fact(fact_state, now=None):
     _check(authority, snapshot)
 
 
-def allows_paid_request(authority, repository, *, user_id, now):
+def allows_paid_request(authority, repository, *, user_id, now,
+                        endpoint='v2.settings_page'):
     """Concrete exact admission then final independent currentness linearization."""
     try:
+        snapshot = authority.snapshot()
+        state = _check(authority, snapshot, now)
+        if type(user_id) is not int or user_id != state['user']:
+            raise InitialIngressError('current membership unavailable')
+        if snapshot.recovery is not None:
+            lineage, control, head = repository.read_lifecycle(
+                snapshot.instance, state['receipt_key'])
+            if (not lineage or control is None
+                    or control.get('version') != 'reserved-failed-renewal-receipt/1'
+                    or snapshot.lifecycle_head != head
+                    or snapshot.recovery != (repository.store_id, control['receipt_id'],
+                                             control['fact_id'], head)):
+                raise InitialIngressError('recovery lifecycle unavailable')
+            fact = _issue_failed_renewal_fact(authority, repository, snapshot, control, head)
+            from . import runtime_entitlement_admission as runtime
+            from . import paid_access_guard as guard_module
+            binding = runtime.bind_exact_instant_runtime_entitlement_admission(
+                validate_admitted_billing_fact=validate_failed_renewal_fact,
+                project_admitted_billing_fact=project_failed_renewal_fact)
+            entitlement = runtime.admit_exact_instant_runtime_entitlement(
+                binding, authenticated_owner_id=state['scope'][0],
+                billing_account_id=state['scope'][1], subscription_id=state['scope'][2],
+                admitted_billing_fact=fact, evaluated_at_utc=now)
+            guard = guard_module.bind_exact_instant_paid_access_guard(
+                validate_runtime_entitlement=runtime.validate_exact_instant_runtime_entitlement,
+                project_runtime_entitlement=runtime.project_exact_instant_runtime_entitlement)
+            decision = guard_module.evaluate_exact_instant_paid_access(
+                guard, endpoint=endpoint,
+                authenticated_owner_id=state['scope'][0],
+                current_runtime_entitlement=entitlement, evaluated_at_utc=now)
+            allowed = dict(guard_module.validate_exact_instant_paid_access_decision(
+                decision))['allowed']
+            _check(authority, snapshot, now)
+            return allowed and not is_production_environment()
         fact = current_fact(authority, repository, user_id=user_id, now=now)
         snapshot = authority.snapshot()
         state = _check(authority, snapshot)
@@ -550,6 +617,7 @@ def _ingest_paid_invoice(authority, repository, raw_body, signature_header, *, c
                 if (snapshot.accepted != (repository.store_id, prior_receipt['receipt_id'],
                                           prior_receipt['fact_id'], prior_head)
                         or snapshot.lifecycle_head != prior_head or snapshot.cancellation is not None
+                        or snapshot.recovery is not None
                         or service_start != datetime.fromisoformat(prior_receipt['service_end'])
                         or service_end != _approved_period_end(service_start, state['plan'])):
                     raise InitialIngressError('wrong or noncontiguous predecessor')
@@ -673,6 +741,218 @@ def ingest_successful_renewal(authority, repository, raw_body, signature_header,
                                 billing_reason='subscription_cycle', sequence=2)
 
 
+def _complete_list(value):
+    if (type(value) is not dict or value.get('object') != 'list'
+            or value.get('has_more') is not False or type(value.get('data')) is not list
+            or ('total_count' in value and (type(value['total_count']) is not int
+                or value['total_count'] != len(value['data'])))):
+        raise InitialIngressError('unsupported or incomplete enumeration')
+    if any(type(item) is not dict for item in value['data']):
+        raise InitialIngressError('invalid list object')
+    return value['data']
+
+
+def _nullable_source_identifier(value, prefix):
+    if value is not None:
+        _identifier(value, prefix)
+    return value
+
+
+def _failure_invoice_projection(state, invoice):
+    """Validate admission-relevant signed/retrieved recurring-failure fields."""
+    if type(invoice) is not dict:
+        raise InitialIngressError('invoice object required')
+    amount, _, _ = _PLANS[state['plan']]
+    scope = state['scope']
+    if (invoice.get('id') is None or _identifier(invoice['id'], 'in') != invoice['id']
+            or invoice.get('object') != 'invoice' or invoice.get('livemode') is not False
+            or invoice.get('customer') != state['customer'] or invoice.get('status') != 'open'
+            or invoice.get('billing_reason') != 'subscription_cycle'
+            or invoice.get('currency') != 'gbp'
+            or invoice.get('collection_method') != 'charge_automatically'
+            or type(invoice.get('parent')) is not dict
+            or invoice['parent'].get('type') != 'subscription_details'
+            or type(invoice['parent'].get('subscription_details')) is not dict
+            or invoice['parent']['subscription_details'].get('subscription') != scope[2]
+            or invoice.get('attempted') is not True
+            or _integer(invoice.get('attempt_count')) < 1
+            or invoice.get('paid_out_of_band') is not False
+            or type(invoice.get('status_transitions')) is not dict
+            or 'paid_at' not in invoice['status_transitions']
+            or invoice['status_transitions']['paid_at'] is not None):
+        raise InitialIngressError('unsupported failed invoice')
+    for name in ('amount_due', 'amount_remaining', 'total'):
+        if _integer(invoice.get(name)) != amount:
+            raise InitialIngressError('unreconciled failed amount')
+    for name in ('amount_paid', 'amount_overpaid', 'starting_balance',
+                 'pre_payment_credit_notes_amount', 'post_payment_credit_notes_amount'):
+        if _integer(invoice.get(name)) != 0:
+            raise InitialIngressError('unsupported failed-payment complication')
+    for name in ('discounts', 'total_discount_amounts'):
+        if name not in invoice or type(invoice[name]) is not list or invoice[name] != []:
+            raise InitialIngressError('unsupported failed-invoice discount')
+    defaults = []
+    for name, prefix in (('default_payment_method', 'pm'), ('default_source', 'src')):
+        if name not in invoice:
+            raise InitialIngressError('missing nullable invoice payment default')
+        defaults.append(_nullable_source_identifier(invoice[name], prefix))
+    return dict(invoice=invoice['id'], customer=state['customer'], subscription=scope[2],
+                livemode=False, status='open', billing_reason='subscription_cycle',
+                collection_method='charge_automatically', currency='gbp', amount=amount,
+                attempted=True, attempt_count=invoice['attempt_count'], paid_out_of_band=False,
+                default_payment_method=defaults[0], default_source=defaults[1],
+                invoice_created_at=_timestamp(invoice.get('created')).isoformat())
+
+
+def _failure_reconcile(state, signed_projection):
+    invoice_id = signed_projection['invoice']
+    invoice = _object(state, '/v1/invoices/' + invoice_id, invoice_id, 'invoice')
+    retrieved_projection = _failure_invoice_projection(state, invoice)
+    if retrieved_projection != signed_projection:
+        raise InitialIngressError('failed-invoice snapshot retrieval disagreement')
+    amount, interval, count = _PLANS[state['plan']]
+    scope = state['scope']
+
+    line = _single_list(_fetch(
+        state, '/v1/invoices/' + invoice_id + '/lines', (('limit', '100'),)))
+    parent = line.get('parent')
+    details = parent.get('subscription_item_details') if type(parent) is dict else None
+    pricing = line.get('pricing')
+    price_details = pricing.get('price_details') if type(pricing) is dict else None
+    if (line.get('object') != 'line_item' or line.get('livemode') is not False
+            or line.get('invoice') != invoice_id or line.get('currency') != 'gbp'
+            or _integer(line.get('quantity')) != 1 or _integer(line.get('amount')) != amount
+            or type(details) is not dict or parent.get('type') != 'subscription_item_details'
+            or details.get('subscription_item') != state['item']
+            or details.get('subscription') != scope[2] or details.get('proration') is not False
+            or type(price_details) is not dict or pricing.get('type') != 'price_details'
+            or price_details.get('price') != state['price']):
+        raise InitialIngressError('unsupported failed-invoice line')
+    line_id = _identifier(line.get('id'), 'il')
+    for name in ('discounts', 'discount_amounts'):
+        if name not in line or type(line[name]) is not list or line[name] != []:
+            raise InitialIngressError('unsupported failed-line discount')
+    start = _timestamp(line.get('period', {}).get('start'))
+    end = _timestamp(line.get('period', {}).get('end'))
+    if not start < end or end != _approved_period_end(start, state['plan']):
+        raise InitialIngressError('unsupported failed service period')
+
+    subscription = _object(state, '/v1/subscriptions/' + scope[2], scope[2], 'subscription')
+    absent = ('schedule', 'pause_collection', 'trial_start', 'trial_end', 'trial_settings',
+              'pending_update', 'discount', 'promotion_code', 'offer', 'cancel_at',
+              'canceled_at', 'cancellation_details')
+    empty = ('discounts', 'promotion_codes', 'offers')
+    if (subscription.get('customer') != state['customer']
+            or subscription.get('status') not in ('active', 'past_due')
+            or subscription.get('latest_invoice') != invoice_id
+            or subscription.get('collection_method') != 'charge_automatically'
+            or subscription.get('cancel_at_period_end') is not False
+            or any(name not in subscription or subscription[name] is not None for name in absent)
+            or any(name not in subscription or type(subscription[name]) is not list
+                   or subscription[name] != [] for name in empty)):
+        raise InitialIngressError('unsupported failed-renewal subscription')
+    subscription_defaults = []
+    for name, prefix in (('default_payment_method', 'pm'), ('default_source', 'src')):
+        if name not in subscription:
+            raise InitialIngressError('missing nullable subscription payment default')
+        subscription_defaults.append(_nullable_source_identifier(subscription[name], prefix))
+    item = _single_list(subscription.get('items'))
+    item_absent = ('discount', 'promotion_code', 'offer')
+    item_empty = ('discounts', 'promotion_codes', 'offers')
+    if (item.get('id') != state['item'] or item.get('object') != 'subscription_item'
+            or item.get('subscription') != scope[2] or _integer(item.get('quantity')) != 1
+            or type(item.get('price')) is not dict or item['price'].get('id') != state['price']
+            or item.get('proration') is not False
+            or _timestamp(item.get('current_period_start')) != start
+            or _timestamp(item.get('current_period_end')) != end
+            or any(name not in item or item[name] is not None for name in item_absent)
+            or any(name not in item or type(item[name]) is not list or item[name] != []
+                   for name in item_empty)):
+        raise InitialIngressError('unsupported failed-renewal item')
+    price = _object(state, '/v1/prices/' + state['price'], state['price'], 'price')
+    if (price.get('currency') != 'gbp' or _integer(price.get('unit_amount')) != amount
+            or price.get('type') != 'recurring' or price.get('billing_scheme') != 'per_unit'
+            or type(price.get('recurring')) is not dict
+            or price['recurring'].get('interval') != interval
+            or _integer(price['recurring'].get('interval_count')) != count
+            or price['recurring'].get('usage_type') != 'licensed'):
+        raise InitialIngressError('unapproved failed-renewal price')
+
+    payments = _complete_list(_fetch(
+        state, '/v1/invoice_payments', (('invoice', invoice_id), ('limit', '100'))))
+    payment = intent = charge = None
+    artifact_created = []
+    artifact_shape = None
+    if not payments:
+        if (signed_projection['default_payment_method'] is not None
+                or signed_projection['default_source'] is not None
+                or tuple(subscription_defaults) != (None, None)):
+            raise InitialIngressError('unsupported no-payment-artifact evidence')
+        artifact_shape = 'no_payment_artifact'
+    elif len(payments) == 1:
+        payment_object = payments[0]
+        union = payment_object.get('payment')
+        if (payment_object.get('object') != 'invoice_payment'
+                or payment_object.get('livemode') is not False
+                or payment_object.get('invoice') != invoice_id
+                or payment_object.get('status') != 'open'
+                or payment_object.get('currency') != 'gbp'
+                or _integer(payment_object.get('amount_requested')) != amount
+                or _integer(payment_object.get('amount_paid')) != 0
+                or type(payment_object.get('status_transitions')) is not dict
+                or 'paid_at' not in payment_object['status_transitions']
+                or payment_object['status_transitions']['paid_at'] is not None
+                or type(union) is not dict or set(union) != {'type', 'payment_intent'}
+                or union.get('type') != 'payment_intent'):
+            raise InitialIngressError('unsupported failed InvoicePayment')
+        payment = _identifier(payment_object.get('id'), 'inpay')
+        artifact_created.append(_timestamp(payment_object.get('created')).isoformat())
+        intent = _identifier(union.get('payment_intent'), 'pi')
+        intent_object = _object(state, '/v1/payment_intents/' + intent,
+                                intent, 'payment_intent')
+        if (intent_object.get('status') != 'requires_payment_method'
+                or intent_object.get('customer') != state['customer']
+                or intent_object.get('currency') != 'gbp'
+                or _integer(intent_object.get('amount')) != amount
+                or _integer(intent_object.get('amount_received')) != 0
+                or 'latest_charge' not in intent_object):
+            raise InitialIngressError('unsupported unresolved PaymentIntent')
+        artifact_created.append(_timestamp(intent_object.get('created')).isoformat())
+        latest_charge = intent_object['latest_charge']
+        if latest_charge is None:
+            artifact_shape = 'unresolved_payment_intent'
+        else:
+            charge = _identifier(latest_charge, 'ch')
+            charge_object = _object(state, '/v1/charges/' + charge, charge, 'charge')
+            if (charge_object.get('payment_intent') != intent
+                    or charge_object.get('customer') != state['customer']
+                    or charge_object.get('currency') != 'gbp'
+                    or _integer(charge_object.get('amount')) != amount
+                    or charge_object.get('status') != 'failed'
+                    or charge_object.get('paid') is not False
+                    or charge_object.get('captured') is not False
+                    or _integer(charge_object.get('amount_captured')) != 0
+                    or charge_object.get('refunded') is not False
+                    or _integer(charge_object.get('amount_refunded')) != 0
+                    or charge_object.get('disputed') is not False):
+                raise InitialIngressError('unsupported failed Charge')
+            artifact_created.append(_timestamp(charge_object.get('created')).isoformat())
+            artifact_shape = 'failed_charge'
+    else:
+        raise InitialIngressError('unsupported multiple failed payments')
+
+    evidence = dict(invoice=invoice_id, line=line_id, payment=payment, intent=intent,
+        charge=charge, artifact_shape=artifact_shape, amount=amount, currency='gbp',
+        service_start=start.isoformat(), service_end=end.isoformat(), plan=state['plan'],
+        price=state['price'], item=state['item'], attempt_count=signed_projection['attempt_count'],
+        source_object_created_at=tuple(
+            (signed_projection['invoice_created_at'], *artifact_created)))
+    observations = canonical((invoice, line, subscription, price, payments,
+        None if intent is None else intent_object,
+        None if charge is None else charge_object))
+    return evidence, observations
+
+
 def _cancellation_projection(state, subscription, *, verified_at):
     """Validate and minimise the supported Basil scheduled-end object."""
     if type(subscription) is not dict:
@@ -736,7 +1016,7 @@ def _cancellation_projection(state, subscription, *, verified_at):
 def _issue_cancellation_fact(authority, repository, snapshot, receipt, head):
     with _LOCK:
         state = _check(authority, snapshot)
-        cached = state['control_fact']
+        cached = state['control_facts'].get('scheduled_cancellation')
         repository_identity = (repository.store_id, repository.physical_identity)
         expected = (repository_identity, snapshot.revision, head, canonical(receipt))
         if cached is not None:
@@ -751,7 +1031,7 @@ def _issue_cancellation_fact(authority, repository, snapshot, receipt, head):
         value = object.__new__(CancellationFact)
         _CANCELLATION_FACTS[value] = (authority, repository, snapshot.revision, head,
                                       canonical(receipt))
-        state['control_fact'] = (value, expected)
+        state['control_facts']['scheduled_cancellation'] = (value, expected)
     return value
 
 
@@ -894,7 +1174,8 @@ def ingest_scheduled_cancellation(authority, repository, raw_body, signature_hea
             receipt, head = control, lifecycle_head
             snapshot = state['publication'][0]
         else:
-            if snapshot.lifecycle_head != paid_head or snapshot.cancellation is not None:
+            if (snapshot.lifecycle_head != paid_head or snapshot.cancellation is not None
+                    or snapshot.recovery is not None):
                 raise InitialIngressError('obsolete lifecycle head')
             if not received < paid_end or not completed < paid_end:
                 raise InitialIngressError('paid boundary is no longer current')
@@ -970,6 +1251,323 @@ def ingest_scheduled_cancellation(authority, repository, raw_body, signature_hea
         _accepted_lineage(authority, repository, published)
         _check(authority, published)
         fact = _issue_cancellation_fact(authority, repository, published, receipt, head)
+        return IngressResult('admitted', True, fact)
+    except Exception:
+        disposition = ('commit_outcome_unknown' if committed is None else
+                       ('committed_but_unadmitted' if committed else 'refused'))
+        return IngressResult(disposition, committed)
+
+
+def _issue_failed_renewal_fact(authority, repository, snapshot, receipt, head):
+    with _LOCK:
+        state = _check(authority, snapshot)
+        repository_identity = (repository.store_id, repository.physical_identity)
+        expected = (repository_identity, snapshot.revision, head, canonical(receipt))
+        cached = state['control_facts'].get('failed_renewal')
+        if cached is not None:
+            value, material = cached
+            if material != expected:
+                raise InitialIngressError('changed failed-renewal fact cache')
+            _RECOVERY_FACTS[value] = (authority, repository, snapshot.revision,
+                                      head, canonical(receipt))
+            return value
+        value = object.__new__(FailedRenewalFact)
+        _RECOVERY_FACTS[value] = (authority, repository, snapshot.revision,
+                                  head, canonical(receipt))
+        state['control_facts']['failed_renewal'] = (value, expected)
+        return value
+
+
+def _failed_renewal_fact_state(fact):
+    with _LOCK:
+        if type(fact) is not FailedRenewalFact or fact not in _RECOVERY_FACTS:
+            raise InitialIngressError('not a live failed-renewal fact')
+        authority, repository, revision, head, material = _RECOVERY_FACTS[fact]
+    snapshot = authority.snapshot()
+    state = _check(authority, snapshot)
+    lineage, control, lifecycle_head = repository.read_lifecycle(
+        snapshot.instance, state['receipt_key'])
+    if (snapshot.revision != revision or snapshot.lifecycle_head != head
+            or lifecycle_head != head or control is None
+            or control.get('version') != 'reserved-failed-renewal-receipt/1'
+            or canonical(control) != material or not lineage
+            or snapshot.recovery != (repository.store_id, control['receipt_id'],
+                                     control['fact_id'], head)
+            or snapshot.cancellation is not None):
+        raise InitialIngressError('stale failed-renewal fact')
+    _check(authority, snapshot)
+    return state, control, head
+
+
+def _failed_renewal_fact_projection(fact):
+    state, control, head = _failed_renewal_fact_state(fact)
+    transition = exact.utc(datetime.fromisoformat(control['failure_verified_at_utc']))
+    deadline = exact.utc(datetime.fromisoformat(
+        control['recovery_deadline_exclusive_at_utc']))
+    material = (
+        RECOVERY_FACT_PROTOCOL_VERSION,
+        RECOVERY_FACT_ADMISSION_STATUS,
+        True,
+        True,
+        False,
+        state['scope'][0],
+        state['scope'][1],
+        state['scope'][2],
+        control['fact_id'],
+        control['paid_fact_id'],
+        head,
+        'payment_recovery',
+        transition,
+        deadline,
+        'verified_renewal_failure',
+    )
+    identity_material = tuple(value.isoformat() if type(value) is datetime else value
+                              for value in material)
+    fact_identity = identity('billing-recovery-fact/2', identity_material)
+    names = (
+        'protocol_version', 'fact_identity', 'admission_status', 'authenticated',
+        'billing_fact_authority', 'provider_observation_direct_authority', 'owner_id',
+        'billing_account_id', 'subscription_id', 'source_fact_id',
+        'predecessor_paid_fact_id', 'lifecycle_head', 'state',
+        'transition_effective_at_utc', 'recovery_deadline_exclusive_at_utc',
+        'derivation_kind',
+    )
+    values = (material[0], fact_identity, *material[1:])
+    return tuple(zip(names, values, strict=True))
+
+
+def validate_failed_renewal_fact(fact):
+    """Reauthenticate and return the exact v2 recovery-fact projection."""
+    return _failed_renewal_fact_projection(fact)
+
+
+def project_failed_renewal_fact(fact):
+    """Distinct projector required by the exact-instant runtime binder."""
+    return _failed_renewal_fact_projection(fact)
+
+
+def failed_renewal_fact_details(fact):
+    _, control, head = _failed_renewal_fact_state(fact)
+    return dict(disposition='verified_renewal_failure',
+                failure_verified_at_utc=control['failure_verified_at_utc'],
+                recovery_deadline_exclusive_at_utc=
+                    control['recovery_deadline_exclusive_at_utc'],
+                failed_service_start=control['failed_service_start'],
+                failed_service_end=control['failed_service_end'],
+                artifact_shape=control['artifact_shape'],
+                paid_receipt_id=control['paid_receipt_id'],
+                paid_fact_id=control['paid_fact_id'],
+                receipt_id=control['receipt_id'], fact_id=control['fact_id'],
+                lifecycle_head=head)
+
+
+_FAILED_RENEWAL_ADMISSION_FIELDS = frozenset({
+    'failure_verified_at_utc', 'recovery_deadline_exclusive_at_utc',
+    'receipt_id', 'fact_id',
+})
+
+
+def _failed_renewal_proposal(receipt):
+    return {name: value for name, value in receipt.items()
+            if name not in _FAILED_RENEWAL_ADMISSION_FIELDS}
+
+
+def ingest_failed_renewal(authority, repository, raw_body, signature_header, *, clock):
+    """Admit the first exact recurring failure into the shared lifecycle head."""
+    def publish(snapshot, receipt, head):
+        with _LOCK:
+            state = _check(authority, snapshot)
+            current, reservation = state['publication']
+            accepted = (repository.store_id, receipt['receipt_id'], receipt['fact_id'], head)
+            if (current != snapshot or reservation is None
+                    or reservation.get('kind') != 'failed_renewal'
+                    or reservation.get('material') != canonical(
+                        _failed_renewal_proposal(receipt))
+                    or reservation.get('revision') != snapshot.revision
+                    or reservation.get('predecessor') != receipt['predecessor_lifecycle_head']):
+                raise InitialIngressError('changed failed-renewal reservation')
+            published = replace(snapshot, revision=snapshot.revision + 1, consumed=True,
+                                lifecycle_head=head, recovery=accepted)
+            state['publication'] = (published, None)
+            return published
+
+    committed = False
+    attempt = 'failed_renewal'
+    try:
+        if is_production_environment():
+            raise InitialIngressError('local bounded lifecycle only')
+        snapshot = authority.snapshot()
+        received = exact.utc(clock())
+        state = _check(authority, snapshot, received)
+        if (type(repository) is not ProvenanceRepository or repository.store_id != state['store']
+                or repository.physical_identity != state['physical']):
+            raise InitialIngressError('wrong store')
+        for _ in range(2):
+            if not _verified_signature(raw_body, signature_header, state, received):
+                raise InitialIngressError('signature refusal')
+        event = _parse(raw_body)
+        if (event.get('object') != 'event' or event.get('type') != 'invoice.payment_failed'
+                or event.get('livemode') is not False or event.get('api_version') != API_VERSION
+                or event.get('account') is not None):
+            raise InitialIngressError('unsupported failed-renewal event')
+        event_id = _identifier(event.get('id'), 'evt')
+        source_time = _timestamp(event.get('created'))
+        if source_time > received:
+            raise InitialIngressError('future source event')
+        data = event.get('data')
+        if type(data) is not dict or type(data.get('object')) is not dict:
+            raise InitialIngressError('wrong failed-renewal event object')
+        signed_invoice = data['object']
+        signed_projection = _failure_invoice_projection(state, signed_invoice)
+        invoice_id = signed_projection['invoice']
+        raw_digest = hashlib.sha256(raw_body).hexdigest()
+
+        _, prior_control, _ = repository.read_lifecycle(snapshot.instance,
+                                                         state['receipt_key'])
+        if prior_control is not None and (prior_control.get('version') !=
+                'reserved-failed-renewal-receipt/1'
+                or prior_control.get('event_id') != event_id
+                or prior_control.get('raw_digest') != raw_digest):
+            repository.record_conflict(snapshot.instance, event_id=event_id,
+                raw_digest=raw_digest, object_key=invoice_id + ':invoice.payment_failed',
+                key=state['receipt_key'])
+            return IngressResult('reconciliation_required', True)
+
+        evidence, observations = _failure_reconcile(state, signed_projection)
+        checked_evidence, checked_observations = _failure_reconcile(state, signed_projection)
+        if (evidence, observations) != (checked_evidence, checked_observations):
+            raise InitialIngressError('changed failed-renewal observations')
+        if any(datetime.fromisoformat(value) > source_time
+               for value in evidence['source_object_created_at']):
+            raise InitialIngressError('failed-payment object occurs after signed observation')
+        evidence_digest = hashlib.sha256(
+            canonical(signed_invoice) + b'\x00' + observations).hexdigest()
+
+        lineage = _lineage(authority, repository, snapshot)
+        if not lineage:
+            raise InitialIngressError('missing accepted paid predecessor')
+        paid, paid_head = lineage[-1]
+        if (snapshot.accepted != (repository.store_id, paid['receipt_id'],
+                                  paid['fact_id'], paid_head)):
+            raise InitialIngressError('obsolete authentic paid predecessor')
+        paid_end = datetime.fromisoformat(paid['service_end'])
+        failed_start = datetime.fromisoformat(evidence['service_start'])
+        if (failed_start != paid_end or source_time < paid_end
+                or received < paid_end):
+            raise InitialIngressError('failure is not the next paid boundary')
+
+        durable_lineage, control, lifecycle_head = repository.read_lifecycle(
+            snapshot.instance, state['receipt_key'])
+        if durable_lineage != lineage:
+            raise InitialIngressError('changed lifecycle lineage')
+        if control is not None:
+            committed = True
+            exact_duplicate = (control.get('version') == 'reserved-failed-renewal-receipt/1'
+                and control.get('event_id') == event_id
+                and control.get('raw_digest') == raw_digest
+                and control.get('source_evidence_digest') == evidence_digest
+                and control.get('paid_head') == paid_head
+                and control.get('artifact_shape') == evidence['artifact_shape'])
+            if not exact_duplicate:
+                repository.record_conflict(snapshot.instance, event_id=event_id,
+                    raw_digest=raw_digest, object_key=invoice_id + ':invoice.payment_failed',
+                    key=state['receipt_key'])
+                return IngressResult('reconciliation_required', True)
+            expected = (repository.store_id, control['receipt_id'], control['fact_id'],
+                        lifecycle_head)
+            if snapshot.recovery == expected and snapshot.lifecycle_head == lifecycle_head:
+                return IngressResult('admitted', True, _issue_failed_renewal_fact(
+                    authority, repository, snapshot, control, lifecycle_head))
+            _, reservation = state['publication']
+            if (reservation is None or reservation.get('kind') != attempt
+                    or reservation.get('material') != canonical(
+                        _failed_renewal_proposal(control))
+                    or reservation.get('predecessor') != control['predecessor_lifecycle_head']):
+                raise InitialIngressError('durable failed renewal lacks exact reservation')
+            receipt, head = control, lifecycle_head
+            snapshot = state['publication'][0]
+        else:
+            if (snapshot.lifecycle_head != paid_head or snapshot.cancellation is not None
+                    or snapshot.recovery is not None):
+                raise InitialIngressError('obsolete lifecycle head')
+            if attempt in state['commit_seen']:
+                raise InitialIngressError('consumed uncertain attempt')
+            proposal = dict(version='reserved-failed-renewal-receipt/1',
+                store=repository.store_id, binding=snapshot.instance, epoch=snapshot.epoch,
+                binding_revision=snapshot.revision, owner=state['scope'][0],
+                scope=list(state['scope']), endpoint=state['endpoint'], account=state['account'],
+                api_version=API_VERSION, livemode=False, receipt_key_id=state['receipt_key_id'],
+                signing_key_ids=list(state['signing_key_ids']), event_id=event_id,
+                object_key=invoice_id + ':invoice.payment_failed', raw_digest=raw_digest,
+                source_evidence_digest=evidence_digest, received_at=received.isoformat(),
+                source_created_at=source_time.isoformat(),
+                subscription=state['scope'][2], customer=state['customer'], item=state['item'],
+                price=state['price'], invoice=invoice_id, line=evidence['line'],
+                payment=evidence['payment'], intent=evidence['intent'], charge=evidence['charge'],
+                artifact_shape=evidence['artifact_shape'], attempt_count=evidence['attempt_count'],
+                amount=evidence['amount'], currency=evidence['currency'], plan=evidence['plan'],
+                failed_service_start=evidence['service_start'],
+                failed_service_end=evidence['service_end'], paid_sequence=paid['sequence'],
+                paid_receipt_id=paid['receipt_id'], paid_fact_id=paid['fact_id'],
+                paid_head=paid_head, predecessor_lifecycle_head=snapshot.lifecycle_head,
+                disposition='verified_renewal_failure')
+            with _LOCK:
+                _check(authority, snapshot)
+                current, reservation = state['publication']
+                if reservation is None:
+                    reserved = replace(snapshot, revision=snapshot.revision + 1, consumed=True)
+                    reservation = dict(kind=attempt, material=canonical(proposal),
+                        predecessor=snapshot.lifecycle_head, revision=reserved.revision)
+                    state['publication'] = (reserved, reservation)
+                    snapshot = reserved
+                else:
+                    proposal = json.loads(reservation['material'])
+                    snapshot = current
+                    if (reservation.get('kind') != attempt
+                            or reservation.get('predecessor') != snapshot.lifecycle_head
+                            or proposal.get('raw_digest') != raw_digest
+                            or proposal.get('event_id') != event_id
+                            or proposal.get('source_evidence_digest') != evidence_digest):
+                        raise InitialIngressError('different reserved failed renewal')
+            predecessor = lineage[-1]
+
+            def admission_clock():
+                verified = exact.utc(clock())
+                _check(authority, snapshot, verified)
+                return verified
+
+            try:
+                receipt, head = repository.commit_failed_renewal(
+                    proposal, predecessor, state['receipt_key'], admission_clock)
+                committed = True
+            except CommitOutcomeError as error:
+                committed = error.committed
+                raise
+            except Exception:
+                committed = None
+                try:
+                    _, durable, durable_head = repository.read_lifecycle(
+                        snapshot.instance, state['receipt_key'])
+                    if (durable is not None
+                            and _failed_renewal_proposal(durable) == proposal):
+                        committed = True
+                        receipt, head = durable, durable_head
+                except Exception:
+                    pass
+                raise
+            finally:
+                with _LOCK:
+                    if committed is not False:
+                        state['commit_seen'].add(attempt)
+        if repository.read_lifecycle(snapshot.instance, state['receipt_key'])[1:] != (receipt, head):
+            raise InitialIngressError('changed committed failed renewal')
+        published = publish(snapshot, receipt, head)
+        _check(authority, published)
+        if repository.read_lifecycle(published.instance, state['receipt_key'])[1:] != (receipt, head):
+            raise InitialIngressError('changed failed-renewal publication')
+        _accepted_lineage(authority, repository, published)
+        _check(authority, published)
+        fact = _issue_failed_renewal_fact(authority, repository, published, receipt, head)
         return IngressResult('admitted', True, fact)
     except Exception:
         disposition = ('commit_outcome_unknown' if committed is None else

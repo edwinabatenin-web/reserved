@@ -195,7 +195,7 @@ def install_local_exact_utc_paid_surface_access(app, *, authority, repository, c
     originals = _registrations(app)
     authority.snapshot()
 
-    def wrap(original):
+    def wrap(endpoint, original):
         @require_auth
         @wraps(original)
         def guarded(*args, **kwargs):
@@ -205,7 +205,8 @@ def install_local_exact_utc_paid_surface_access(app, *, authority, repository, c
                 user_id = g.get('user_id')
                 allowed = (not is_production_environment() and type(user_id) is int
                            and get_user(user_id) is not None
-                           and allows_paid_request(authority, repository, user_id=user_id, now=clock()))
+                           and allows_paid_request(authority, repository, user_id=user_id,
+                                                   now=clock(), endpoint=endpoint))
             except Exception:
                 allowed = False
             if not allowed or is_production_environment():
@@ -213,7 +214,7 @@ def install_local_exact_utc_paid_surface_access(app, *, authority, repository, c
             return original(*args, **kwargs)
         return guarded
 
-    replacements = {name: wrap(original) for name, original in originals.items()}
+    replacements = {name: wrap(name, original) for name, original in originals.items()}
     handle = object.__new__(LocalPaidSurfaceAccessHandle)
     app.view_functions.update(replacements)
     app.extensions[_KEY] = handle

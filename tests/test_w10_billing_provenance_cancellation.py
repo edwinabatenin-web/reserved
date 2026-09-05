@@ -27,7 +27,7 @@ def test_one_domain_separated_control_advances_lifecycle_not_paid_lineage(cancel
     assert control['service_end'] == before[-1][0]['service_end']
     with sqlite3.connect(cancellation.repo.path) as conn:
         rows = conn.execute(
-            "SELECT identity,body,mac FROM dispositions WHERE identity LIKE 'paid-lineage-cancellation-scope/1:%'"
+            "SELECT identity,body,mac FROM dispositions WHERE identity LIKE 'paid-lineage-lifecycle-scope/2:%'"
         ).fetchall()
     assert len(rows) == 1
     stored = json.loads(rows[0][1])
@@ -178,11 +178,11 @@ def test_control_or_paid_head_tamper_fails_closed(cancellation, change):
     assert cancellation.cancel().disposition == 'admitted'
     with sqlite3.connect(cancellation.repo.path) as conn:
         if change == 'body':
-            conn.execute("UPDATE dispositions SET body=body || ' ' WHERE identity LIKE 'paid-lineage-cancellation-scope/1:%'")
+            conn.execute("UPDATE dispositions SET body=body || ' ' WHERE identity LIKE 'paid-lineage-lifecycle-scope/2:%'")
         elif change == 'mac':
-            conn.execute("UPDATE dispositions SET mac='forged' WHERE identity LIKE 'paid-lineage-cancellation-scope/1:%'")
+            conn.execute("UPDATE dispositions SET mac='forged' WHERE identity LIKE 'paid-lineage-lifecycle-scope/2:%'")
         elif change == 'extra_control':
-            conn.execute("INSERT INTO dispositions VALUES ('paid-lineage-cancellation-scope/1:forged','{}','forged')")
+            conn.execute("INSERT INTO dispositions VALUES ('paid-lineage-lifecycle-scope/2:forged','{}','forged')")
         else:
             conn.execute("UPDATE current_heads SET head='forged'")
     with pytest.raises(ProvenanceError):

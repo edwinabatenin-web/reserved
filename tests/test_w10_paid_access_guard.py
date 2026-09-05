@@ -1116,6 +1116,11 @@ def test_public_api_has_no_io_route_provider_or_entitlement_issuer_surface():
     assert imports <= {"__future__", "datetime", "hashlib", "json", "re", "types", "weakref"}
     assert set(subject.__all__) == {
         "CONTRACT_VERSION",
+        "EXACT_INSTANT_CONTRACT_VERSION",
+        "EXACT_INSTANT_RUNTIME_ADMISSION_STATUS",
+        "EXACT_INSTANT_RUNTIME_DECISION_PROTOCOL_VERSION",
+        "ExactInstantPaidAccessDecisionHandle",
+        "ExactInstantPaidAccessGuardHandle",
         "FD_W10_004",
         "PAID_ENDPOINTS",
         "RECOVERY_DAYS",
@@ -1125,7 +1130,10 @@ def test_public_api_has_no_io_route_provider_or_entitlement_issuer_surface():
         "PaidAccessGuardHandle",
         "PaidAccessDecisionHandle",
         "bind_paid_access_guard",
+        "bind_exact_instant_paid_access_guard",
+        "evaluate_exact_instant_paid_access",
         "evaluate_paid_access",
+        "validate_exact_instant_paid_access_decision",
         "validate_paid_access_decision",
     }
 

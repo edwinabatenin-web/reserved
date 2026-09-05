@@ -31,6 +31,13 @@ from datetime import timezone as _timezone
 CONTRACT_VERSION = "reserved-paid-access-guard/1.0"
 RUNTIME_DECISION_PROTOCOL_VERSION = "reserved-runtime-entitlement-decision/1.0"
 RUNTIME_ADMISSION_STATUS = "authoritative_runtime_entitlement_admitted"
+EXACT_INSTANT_CONTRACT_VERSION = "reserved-paid-access-guard/2.0"
+EXACT_INSTANT_RUNTIME_DECISION_PROTOCOL_VERSION = (
+    "reserved-runtime-payment-recovery-decision/2.0"
+)
+EXACT_INSTANT_RUNTIME_ADMISSION_STATUS = (
+    "authoritative_exact_instant_runtime_entitlement_admitted"
+)
 FD_W10_004 = "FD-W10-004"
 RECOVERY_DAYS = 7
 
@@ -882,8 +889,225 @@ def _build_guard_kernel():
 del _build_guard_kernel
 
 
+# A separate exact-instant guard keeps the accepted date-based /1.0 seam
+# unchanged and refuses its facts by construction.
+_EXACT_RUNTIME_KEYS = (
+    "protocol_version", "decision_identity", "admission_status", "authenticated",
+    "runtime_access_authority", "owner_id", "billing_account_id", "subscription_id",
+    "source_fact_id", "predecessor_paid_fact_id", "lifecycle_head", "state",
+    "ordinary_access", "transition_effective_at_utc",
+    "recovery_deadline_exclusive_at_utc", "derivation_kind",
+)
+_EXACT_DECISION_KEYS = (
+    "contract_version", "endpoint", "authenticated_owner_id",
+    "runtime_entitlement_identity", "state", "allowed", "reason",
+    "evaluated_at_utc", "provider_contacted", "persisted", "route_wiring_active",
+)
+_EXACT_OWNER = _re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,159}\Z")
+_EXACT_RUNTIME_ID = _re.compile(r"runtime-recovery-entitlement/2:[0-9a-f]{64}\Z")
+_EXACT_SOURCE_ID = _re.compile(r"failed-renewal-fact/1:[0-9a-f]{64}\Z")
+_EXACT_PAID_ID = _re.compile(
+    r"(?:exact-initial-fact/1|exact-paid-period-fact/2):[0-9a-f]{64}\Z"
+)
+_EXACT_HEAD = _re.compile(r"paid-lineage-failed-renewal-head/1:[0-9a-f]{64}\Z")
+_EXACT_SECRET_MARKERS = (
+    "secret", "token", "password", "credential", "api_key", "apikey",
+    "private_key", "sk_live", "sk_test", "bearer",
+)
+_EXACT_GUARDS = {}
+_EXACT_DECISIONS = {}
+
+
+class ExactInstantPaidAccessGuardHandle:
+    __slots__ = ("__weakref__",)
+
+    def __new__(cls, *args, **kwargs):
+        raise TypeError("exact-instant guard handles are binder-issued only")
+
+    def __reduce__(self):
+        raise TypeError("exact-instant guard handles are not serialisable")
+
+
+class ExactInstantPaidAccessDecisionHandle:
+    __slots__ = ("__weakref__",)
+
+    def __new__(cls, *args, **kwargs):
+        raise TypeError("exact-instant decisions are evaluator-issued only")
+
+    def __reduce__(self):
+        raise TypeError("exact-instant decisions are not serialisable")
+
+
+def _v2_pairs(value, keys, label):
+    if type(value) is not tuple or len(value) != len(keys):
+        raise PaidAccessGuardError(label + " must be an exact ordered tuple")
+    result = {}
+    for pair, key in zip(value, keys, strict=True):
+        if type(pair) is not tuple or len(pair) != 2 or pair[0] != key:
+            raise PaidAccessGuardError(label + " field boundary is invalid")
+        result[key] = pair[1]
+    return result
+
+
+def _v2_utc(value):
+    if (type(value) is not _datetime or value.tzinfo is not _timezone.utc
+            or value.utcoffset() != _timedelta(0)):
+        raise PaidAccessGuardError("exact UTC evaluation required")
+    return value
+
+
+def _v2_function_snapshot(fn):
+    if type(fn) is not _types.FunctionType:
+        raise TypeError("exact-instant runtime dependencies must be exact functions")
+    return (fn, fn.__code__, fn.__defaults__, fn.__kwdefaults__,
+            tuple((cell, cell.cell_contents) for cell in fn.__closure__ or ()))
+
+
+def _v2_function_unchanged(snapshot):
+    fn, code, defaults, kwdefaults, cells = snapshot
+    if (type(fn) is not _types.FunctionType or fn.__code__ is not code
+            or fn.__defaults__ is not defaults or fn.__kwdefaults__ is not kwdefaults
+            or len(fn.__closure__ or ()) != len(cells)):
+        return False
+    return all(cell is expected_cell and cell.cell_contents is expected_value
+               for cell, (expected_cell, expected_value)
+               in zip(fn.__closure__ or (), cells, strict=True))
+
+
+def _v2_runtime(value):
+    runtime = _v2_pairs(value, _EXACT_RUNTIME_KEYS, "exact-instant runtime entitlement")
+    transition = _v2_utc(runtime["transition_effective_at_utc"])
+    deadline = _v2_utc(runtime["recovery_deadline_exclusive_at_utc"])
+    if (runtime["protocol_version"] != EXACT_INSTANT_RUNTIME_DECISION_PROTOCOL_VERSION
+            or runtime["admission_status"] != EXACT_INSTANT_RUNTIME_ADMISSION_STATUS
+            or runtime["authenticated"] is not True
+            or runtime["runtime_access_authority"] is not True
+            or runtime["state"] != "payment_recovery" or runtime["ordinary_access"] is not True
+            or runtime["derivation_kind"] != "verified_renewal_failure"
+            or deadline != transition + _timedelta(days=RECOVERY_DAYS)
+            or any(type(runtime[name]) is not str
+                   or _EXACT_OWNER.fullmatch(runtime[name]) is None
+                   or any(marker in runtime[name].casefold()
+                          for marker in _EXACT_SECRET_MARKERS)
+                   for name in ("owner_id", "billing_account_id", "subscription_id"))
+            or type(runtime["source_fact_id"]) is not str
+            or _EXACT_SOURCE_ID.fullmatch(runtime["source_fact_id"]) is None
+            or type(runtime["predecessor_paid_fact_id"]) is not str
+            or _EXACT_PAID_ID.fullmatch(runtime["predecessor_paid_fact_id"]) is None
+            or type(runtime["lifecycle_head"]) is not str
+            or _EXACT_HEAD.fullmatch(runtime["lifecycle_head"]) is None
+            or type(runtime["decision_identity"]) is not str
+            or _EXACT_RUNTIME_ID.fullmatch(runtime["decision_identity"]) is None):
+        raise PaidAccessGuardError("invalid exact-instant runtime entitlement")
+    material = tuple(runtime[name] for name in _EXACT_RUNTIME_KEYS if name != "decision_identity")
+    normalized = tuple(value.isoformat() if type(value) is _datetime else value
+                       for value in material)
+    payload = _json.dumps(normalized, sort_keys=True, separators=(",", ":"),
+                          ensure_ascii=True, allow_nan=False).encode("ascii")
+    expected = "runtime-recovery-entitlement/2:" + _hashlib.sha256(payload).hexdigest()
+    if runtime["decision_identity"] != expected:
+        raise PaidAccessGuardError("runtime recovery identity mismatch")
+    return runtime
+
+
+def bind_exact_instant_paid_access_guard(
+        *, validate_runtime_entitlement, project_runtime_entitlement):
+    validator = _v2_function_snapshot(validate_runtime_entitlement)
+    projector = _v2_function_snapshot(project_runtime_entitlement)
+    if validate_runtime_entitlement is project_runtime_entitlement:
+        raise ValueError("exact-instant runtime validator and projector must be distinct")
+    handle = object.__new__(ExactInstantPaidAccessGuardHandle)
+    identity = id(handle)
+
+    def remove(reference, expected=identity):
+        current = _EXACT_GUARDS.get(expected)
+        if type(current) is tuple and len(current) == 3 and current[2] is reference:
+            _EXACT_GUARDS.pop(expected, None)
+
+    reference = _weakref.ref(handle, remove)
+    _EXACT_GUARDS[identity] = (validator, projector, reference)
+    return handle
+
+
+def evaluate_exact_instant_paid_access(guard, *, endpoint, authenticated_owner_id,
+        current_runtime_entitlement, evaluated_at_utc):
+    evaluated = _v2_utc(evaluated_at_utc)
+    binding = _EXACT_GUARDS.get(id(guard))
+    runtime = None
+    reason = None
+    if type(endpoint) is not str or endpoint not in frozenset(PAID_ENDPOINTS):
+        reason = "endpoint_not_in_paid_boundary"
+    elif (type(authenticated_owner_id) is not str
+            or _EXACT_OWNER.fullmatch(authenticated_owner_id) is None
+            or any(marker in authenticated_owner_id.casefold()
+                   for marker in _EXACT_SECRET_MARKERS)):
+        reason = "authenticated_owner_unavailable"
+    elif (type(guard) is not ExactInstantPaidAccessGuardHandle
+            or type(binding) is not tuple or binding[2]() is not guard
+            or not _v2_function_unchanged(binding[0])
+            or not _v2_function_unchanged(binding[1])):
+        reason = "bound_runtime_authority_changed"
+    else:
+        try:
+            validated = binding[0][0](current_runtime_entitlement)
+            projected = binding[1][0](current_runtime_entitlement)
+            if validated != projected:
+                raise PaidAccessGuardError("runtime projection disagrees")
+            runtime = _v2_runtime(validated)
+        except Exception:
+            reason = "runtime_entitlement_invalid"
+    if reason is None and runtime["owner_id"] != authenticated_owner_id:
+        reason = "cross_owner_entitlement"
+    if reason is None and evaluated < runtime["transition_effective_at_utc"]:
+        reason = "runtime_entitlement_temporal_order_invalid"
+    if reason is None and evaluated >= runtime["recovery_deadline_exclusive_at_utc"]:
+        reason = "runtime_entitlement_stale"
+    if reason is None:
+        reason = "allowed_payment_recovery"
+    allowed = reason == "allowed_payment_recovery"
+    values = dict(contract_version=EXACT_INSTANT_CONTRACT_VERSION,
+        endpoint=endpoint if type(endpoint) is str else None,
+        authenticated_owner_id=(authenticated_owner_id
+            if type(authenticated_owner_id) is str else None),
+        runtime_entitlement_identity=(None if runtime is None else runtime["decision_identity"]),
+        state=("unknown" if runtime is None else runtime["state"]), allowed=allowed,
+        reason=reason, evaluated_at_utc=evaluated, provider_contacted=False,
+        persisted=False, route_wiring_active=False)
+    projection = tuple((name, values[name]) for name in _EXACT_DECISION_KEYS)
+    handle = object.__new__(ExactInstantPaidAccessDecisionHandle)
+    identity = id(handle)
+
+    def remove(reference, expected=identity):
+        current = _EXACT_DECISIONS.get(expected)
+        if type(current) is tuple and len(current) == 2 and current[1] is reference:
+            _EXACT_DECISIONS.pop(expected, None)
+
+    reference = _weakref.ref(handle, remove)
+    _EXACT_DECISIONS[identity] = (projection, reference)
+    return handle
+
+
+def validate_exact_instant_paid_access_decision(value):
+    state = _EXACT_DECISIONS.get(id(value))
+    if (type(value) is not ExactInstantPaidAccessDecisionHandle or type(state) is not tuple
+            or state[1]() is not value):
+        raise PaidAccessGuardError("not an exact-instant paid-access decision")
+    values = _v2_pairs(state[0], _EXACT_DECISION_KEYS, "exact-instant paid-access decision")
+    if (values["contract_version"] != EXACT_INSTANT_CONTRACT_VERSION
+            or type(values["allowed"]) is not bool
+            or any(values[name] is not False for name in
+                   ("provider_contacted", "persisted", "route_wiring_active"))):
+        raise PaidAccessGuardError("invalid exact-instant paid-access decision")
+    return state[0]
+
+
 __all__ = (
     "CONTRACT_VERSION",
+    "EXACT_INSTANT_CONTRACT_VERSION",
+    "EXACT_INSTANT_RUNTIME_ADMISSION_STATUS",
+    "EXACT_INSTANT_RUNTIME_DECISION_PROTOCOL_VERSION",
+    "ExactInstantPaidAccessDecisionHandle",
+    "ExactInstantPaidAccessGuardHandle",
     "FD_W10_004",
     "PAID_ENDPOINTS",
     "RECOVERY_DAYS",
@@ -893,6 +1117,9 @@ __all__ = (
     "PaidAccessGuardHandle",
     "PaidAccessDecisionHandle",
     "bind_paid_access_guard",
+    "bind_exact_instant_paid_access_guard",
+    "evaluate_exact_instant_paid_access",
     "evaluate_paid_access",
+    "validate_exact_instant_paid_access_decision",
     "validate_paid_access_decision",
 )

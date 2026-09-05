@@ -125,7 +125,7 @@ def test_reauthenticated_control_row_tamper_stales_existing_paid_fact(cancellati
     now = cancellation.cancellation_now()
     fact = source.current_fact(cancellation.authority, cancellation.repo, user_id=1, now=now)
     with sqlite3.connect(cancellation.repo.path) as conn:
-        conn.execute("UPDATE dispositions SET mac='0' WHERE identity LIKE 'paid-lineage-cancellation-scope/1:%'")
+        conn.execute("UPDATE dispositions SET mac='0' WHERE identity LIKE 'paid-lineage-lifecycle-scope/2:%'")
     with pytest.raises((ValueError, ProvenanceError)):
         exact.admit_initial(fact, authority=cancellation.authority,
                             owner='synthetic-owner', now=now)

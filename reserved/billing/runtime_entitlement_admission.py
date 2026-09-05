@@ -31,6 +31,17 @@ BILLING_FACT_PROTOCOL_VERSION = "reserved-owner-bound-billing-fact/1.0"
 BILLING_FACT_ADMISSION_STATUS = "authoritative_owner_bound_billing_fact_admitted"
 RUNTIME_DECISION_PROTOCOL_VERSION = "reserved-runtime-entitlement-decision/1.0"
 RUNTIME_ADMISSION_STATUS = "authoritative_runtime_entitlement_admitted"
+EXACT_INSTANT_CONTRACT_VERSION = "reserved-w10-runtime-entitlement-admission/2.0"
+EXACT_INSTANT_BILLING_FACT_PROTOCOL_VERSION = "reserved-owner-bound-billing-recovery-fact/2.0"
+EXACT_INSTANT_BILLING_FACT_ADMISSION_STATUS = (
+    "authoritative_owner_bound_billing_recovery_fact_admitted"
+)
+EXACT_INSTANT_RUNTIME_DECISION_PROTOCOL_VERSION = (
+    "reserved-runtime-payment-recovery-decision/2.0"
+)
+EXACT_INSTANT_RUNTIME_ADMISSION_STATUS = (
+    "authoritative_exact_instant_runtime_entitlement_admitted"
+)
 FD_W10_003 = "FD-W10-003"
 FD_W10_004 = "FD-W10-004"
 RECOVERY_DAYS = 7
@@ -697,10 +708,273 @@ def _build_admission_kernel():
 del _build_admission_kernel
 
 
+# The v1 adapter above remains unchanged for existing date-based facts. This
+# separate v2 kernel admits only the exact failed-renewal live-fact protocol.
+_EXACT_FACT_KEYS = (
+    "protocol_version", "fact_identity", "admission_status", "authenticated",
+    "billing_fact_authority", "provider_observation_direct_authority", "owner_id",
+    "billing_account_id", "subscription_id", "source_fact_id",
+    "predecessor_paid_fact_id", "lifecycle_head", "state",
+    "transition_effective_at_utc", "recovery_deadline_exclusive_at_utc",
+    "derivation_kind",
+)
+_EXACT_RUNTIME_KEYS = (
+    "protocol_version", "decision_identity", "admission_status", "authenticated",
+    "runtime_access_authority", "owner_id", "billing_account_id", "subscription_id",
+    "source_fact_id", "predecessor_paid_fact_id", "lifecycle_head", "state",
+    "ordinary_access", "transition_effective_at_utc",
+    "recovery_deadline_exclusive_at_utc", "derivation_kind",
+)
+_EXACT_IDENTIFIER = _re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,159}\Z")
+_EXACT_FACT_ID = _re.compile(r"billing-recovery-fact/2:[0-9a-f]{64}\Z")
+_EXACT_SOURCE_ID = _re.compile(r"failed-renewal-fact/1:[0-9a-f]{64}\Z")
+_EXACT_PAID_ID = _re.compile(
+    r"(?:exact-initial-fact/1|exact-paid-period-fact/2):[0-9a-f]{64}\Z"
+)
+_EXACT_HEAD = _re.compile(r"paid-lineage-failed-renewal-head/1:[0-9a-f]{64}\Z")
+_EXACT_RUNTIME_ID = _re.compile(r"runtime-recovery-entitlement/2:[0-9a-f]{64}\Z")
+_EXACT_SECRET_MARKERS = (
+    "secret", "token", "password", "credential", "api_key", "apikey",
+    "private_key", "sk_live", "sk_test", "bearer",
+)
+_EXACT_BINDINGS = {}
+_EXACT_RUNTIMES = {}
+
+
+class ExactInstantRuntimeEntitlementAdmissionHandle:
+    __slots__ = ("__weakref__",)
+
+    def __new__(cls, *args, **kwargs):
+        raise TypeError("exact-instant admission handles are binder-issued only")
+
+    def __reduce__(self):
+        raise TypeError("exact-instant admission handles are not serialisable")
+
+
+class ExactInstantRuntimeEntitlementHandle:
+    __slots__ = ("__weakref__",)
+
+    def __new__(cls, *args, **kwargs):
+        raise TypeError("exact-instant runtime handles are adapter-issued only")
+
+    def __reduce__(self):
+        raise TypeError("exact-instant runtime handles are not serialisable")
+
+
+def _exact_pairs(value, keys, label):
+    if type(value) is not tuple or len(value) != len(keys):
+        raise RuntimeEntitlementAdmissionError(label + " must be an exact ordered tuple")
+    result = {}
+    for pair, key in zip(value, keys, strict=True):
+        if type(pair) is not tuple or len(pair) != 2 or pair[0] != key:
+            raise RuntimeEntitlementAdmissionError(label + " field boundary is invalid")
+        result[key] = pair[1]
+    return result
+
+
+def _exact_utc_v2(value, label):
+    if (type(value) is not _datetime or value.tzinfo is not _timezone.utc
+            or value.utcoffset() != _timedelta(0)):
+        raise RuntimeEntitlementAdmissionError(label + " must be exact UTC")
+    return value
+
+
+def _exact_function_snapshot(fn):
+    if type(fn) is not _types.FunctionType:
+        raise TypeError("exact-instant billing-fact dependencies must be exact functions")
+    return (fn, fn.__code__, fn.__defaults__, fn.__kwdefaults__,
+            tuple((cell, cell.cell_contents) for cell in fn.__closure__ or ()))
+
+
+def _exact_function_unchanged(snapshot):
+    fn, code, defaults, kwdefaults, cells = snapshot
+    if (type(fn) is not _types.FunctionType or fn.__code__ is not code
+            or fn.__defaults__ is not defaults or fn.__kwdefaults__ is not kwdefaults
+            or len(fn.__closure__ or ()) != len(cells)):
+        return False
+    return all(cell is expected_cell and cell.cell_contents is expected_value
+               for cell, (expected_cell, expected_value)
+               in zip(fn.__closure__ or (), cells, strict=True))
+
+
+def _exact_identity(domain, material):
+    normalized = tuple(value.isoformat() if type(value) is _datetime else value
+                       for value in material)
+    payload = _json.dumps(normalized, sort_keys=True, separators=(",", ":"),
+                          ensure_ascii=True, allow_nan=False).encode("ascii")
+    return domain + ":" + _hashlib.sha256(payload).hexdigest()
+
+
+def _parse_exact_fact(value):
+    fact = _exact_pairs(value, _EXACT_FACT_KEYS, "exact-instant billing fact")
+    for name in ("owner_id", "billing_account_id", "subscription_id"):
+        if (type(fact[name]) is not str or _EXACT_IDENTIFIER.fullmatch(fact[name]) is None
+                or any(marker in fact[name].casefold() for marker in _EXACT_SECRET_MARKERS)):
+            raise RuntimeEntitlementAdmissionError("exact-instant billing identity is invalid")
+    transition = _exact_utc_v2(fact["transition_effective_at_utc"], "recovery transition")
+    deadline = _exact_utc_v2(
+        fact["recovery_deadline_exclusive_at_utc"], "recovery deadline")
+    if (fact["protocol_version"] != EXACT_INSTANT_BILLING_FACT_PROTOCOL_VERSION
+            or fact["admission_status"] != EXACT_INSTANT_BILLING_FACT_ADMISSION_STATUS
+            or fact["authenticated"] is not True or fact["billing_fact_authority"] is not True
+            or fact["provider_observation_direct_authority"] is not False
+            or type(fact["fact_identity"]) is not str
+            or _EXACT_FACT_ID.fullmatch(fact["fact_identity"]) is None
+            or type(fact["source_fact_id"]) is not str
+            or _EXACT_SOURCE_ID.fullmatch(fact["source_fact_id"]) is None
+            or type(fact["predecessor_paid_fact_id"]) is not str
+            or _EXACT_PAID_ID.fullmatch(fact["predecessor_paid_fact_id"]) is None
+            or type(fact["lifecycle_head"]) is not str
+            or _EXACT_HEAD.fullmatch(fact["lifecycle_head"]) is None
+            or fact["state"] != "payment_recovery"
+            or fact["derivation_kind"] != "verified_renewal_failure"
+            or deadline != transition + _timedelta(days=RECOVERY_DAYS)):
+        raise RuntimeEntitlementAdmissionError("invalid exact-instant recovery fact")
+    material = tuple(fact[name] for name in _EXACT_FACT_KEYS if name != "fact_identity")
+    if fact["fact_identity"] != _exact_identity("billing-recovery-fact/2", material):
+        raise RuntimeEntitlementAdmissionError("recovery fact identity mismatch")
+    return fact
+
+
+def _parse_exact_runtime(value):
+    runtime = _exact_pairs(value, _EXACT_RUNTIME_KEYS, "exact-instant runtime entitlement")
+    transition = _exact_utc_v2(runtime["transition_effective_at_utc"], "runtime transition")
+    deadline = _exact_utc_v2(runtime["recovery_deadline_exclusive_at_utc"], "runtime deadline")
+    if (runtime["protocol_version"] != EXACT_INSTANT_RUNTIME_DECISION_PROTOCOL_VERSION
+            or runtime["admission_status"] != EXACT_INSTANT_RUNTIME_ADMISSION_STATUS
+            or runtime["authenticated"] is not True
+            or runtime["runtime_access_authority"] is not True
+            or runtime["state"] != "payment_recovery" or runtime["ordinary_access"] is not True
+            or runtime["derivation_kind"] != "verified_renewal_failure"
+            or deadline != transition + _timedelta(days=RECOVERY_DAYS)
+            or type(runtime["decision_identity"]) is not str
+            or _EXACT_RUNTIME_ID.fullmatch(runtime["decision_identity"]) is None):
+        raise RuntimeEntitlementAdmissionError("invalid exact-instant runtime entitlement")
+    for name in ("owner_id", "billing_account_id", "subscription_id"):
+        if (type(runtime[name]) is not str
+                or _EXACT_IDENTIFIER.fullmatch(runtime[name]) is None
+                or any(marker in runtime[name].casefold()
+                       for marker in _EXACT_SECRET_MARKERS)):
+            raise RuntimeEntitlementAdmissionError("exact-instant runtime identity is invalid")
+    if (type(runtime["source_fact_id"]) is not str
+            or _EXACT_SOURCE_ID.fullmatch(runtime["source_fact_id"]) is None
+            or type(runtime["predecessor_paid_fact_id"]) is not str
+            or _EXACT_PAID_ID.fullmatch(runtime["predecessor_paid_fact_id"]) is None
+            or type(runtime["lifecycle_head"]) is not str
+            or _EXACT_HEAD.fullmatch(runtime["lifecycle_head"]) is None):
+        raise RuntimeEntitlementAdmissionError("exact-instant runtime lineage is invalid")
+    material = tuple(runtime[name] for name in _EXACT_RUNTIME_KEYS if name != "decision_identity")
+    if runtime["decision_identity"] != _exact_identity("runtime-recovery-entitlement/2", material):
+        raise RuntimeEntitlementAdmissionError("runtime recovery identity mismatch")
+    return runtime
+
+
+def bind_exact_instant_runtime_entitlement_admission(
+        *, validate_admitted_billing_fact, project_admitted_billing_fact):
+    validator = _exact_function_snapshot(validate_admitted_billing_fact)
+    projector = _exact_function_snapshot(project_admitted_billing_fact)
+    if validate_admitted_billing_fact is project_admitted_billing_fact:
+        raise ValueError("exact-instant validator and projector must be distinct")
+    handle = object.__new__(ExactInstantRuntimeEntitlementAdmissionHandle)
+    identity = id(handle)
+
+    def remove(reference, expected=identity):
+        current = _EXACT_BINDINGS.get(expected)
+        if type(current) is tuple and len(current) == 3 and current[2] is reference:
+            _EXACT_BINDINGS.pop(expected, None)
+
+    reference = _weakref.ref(handle, remove)
+    _EXACT_BINDINGS[identity] = (validator, projector, reference)
+    return handle
+
+
+def admit_exact_instant_runtime_entitlement(admission, *, authenticated_owner_id,
+        billing_account_id, subscription_id, admitted_billing_fact, evaluated_at_utc):
+    _exact_utc_v2(evaluated_at_utc, "runtime evaluation")
+    binding = _EXACT_BINDINGS.get(id(admission))
+    if (type(admission) is not ExactInstantRuntimeEntitlementAdmissionHandle
+            or type(binding) is not tuple or binding[2]() is not admission
+            or not _exact_function_unchanged(binding[0])
+            or not _exact_function_unchanged(binding[1])):
+        raise RuntimeEntitlementAdmissionError("invalid exact-instant admission binding")
+    try:
+        validated = binding[0][0](admitted_billing_fact)
+        projected = binding[1][0](admitted_billing_fact)
+    except Exception as exc:
+        raise RuntimeEntitlementAdmissionError("billing recovery fact unavailable") from exc
+    if validated != projected:
+        raise RuntimeEntitlementAdmissionError("billing recovery projection disagrees")
+    fact = _parse_exact_fact(validated)
+    if (fact["owner_id"] != authenticated_owner_id
+            or fact["billing_account_id"] != billing_account_id
+            or fact["subscription_id"] != subscription_id):
+        raise RuntimeEntitlementAdmissionError("cross-scope recovery fact")
+    runtime = dict(protocol_version=EXACT_INSTANT_RUNTIME_DECISION_PROTOCOL_VERSION,
+        decision_identity="", admission_status=EXACT_INSTANT_RUNTIME_ADMISSION_STATUS,
+        authenticated=True, runtime_access_authority=True, owner_id=fact["owner_id"],
+        billing_account_id=fact["billing_account_id"], subscription_id=fact["subscription_id"],
+        source_fact_id=fact["source_fact_id"],
+        predecessor_paid_fact_id=fact["predecessor_paid_fact_id"],
+        lifecycle_head=fact["lifecycle_head"], state="payment_recovery", ordinary_access=True,
+        transition_effective_at_utc=fact["transition_effective_at_utc"],
+        recovery_deadline_exclusive_at_utc=fact["recovery_deadline_exclusive_at_utc"],
+        derivation_kind="verified_renewal_failure")
+    material = tuple(runtime[name] for name in _EXACT_RUNTIME_KEYS if name != "decision_identity")
+    runtime["decision_identity"] = _exact_identity("runtime-recovery-entitlement/2", material)
+    projection = tuple((name, runtime[name]) for name in _EXACT_RUNTIME_KEYS)
+    handle = object.__new__(ExactInstantRuntimeEntitlementHandle)
+    identity = id(handle)
+
+    def remove(reference, expected=identity):
+        current = _EXACT_RUNTIMES.get(expected)
+        if type(current) is tuple and len(current) == 4 and current[3] is reference:
+            _EXACT_RUNTIMES.pop(expected, None)
+
+    reference = _weakref.ref(handle, remove)
+    _EXACT_RUNTIMES[identity] = (projection, admitted_billing_fact, admission, reference)
+    return handle
+
+
+def validate_exact_instant_runtime_entitlement(value):
+    state = _EXACT_RUNTIMES.get(id(value))
+    if (type(value) is not ExactInstantRuntimeEntitlementHandle or type(state) is not tuple
+            or state[3]() is not value):
+        raise RuntimeEntitlementAdmissionError("not an exact-instant runtime entitlement")
+    binding = _EXACT_BINDINGS.get(id(state[2]))
+    if (type(binding) is not tuple or binding[2]() is not state[2]
+            or not _exact_function_unchanged(binding[0])
+            or not _exact_function_unchanged(binding[1])):
+        raise RuntimeEntitlementAdmissionError("exact-instant admission authority changed")
+    validated = binding[0][0](state[1])
+    projected = binding[1][0](state[1])
+    fact = _parse_exact_fact(validated)
+    if validated != projected:
+        raise RuntimeEntitlementAdmissionError("billing recovery projection disagrees")
+    runtime = _parse_exact_runtime(state[0])
+    if (runtime["source_fact_id"] != fact["source_fact_id"]
+            or runtime["lifecycle_head"] != fact["lifecycle_head"]
+            or runtime["transition_effective_at_utc"] != fact["transition_effective_at_utc"]
+            or runtime["recovery_deadline_exclusive_at_utc"] !=
+                fact["recovery_deadline_exclusive_at_utc"]):
+        raise RuntimeEntitlementAdmissionError("runtime recovery source changed")
+    return state[0]
+
+
+def project_exact_instant_runtime_entitlement(value):
+    return validate_exact_instant_runtime_entitlement(value)
+
+
 __all__ = (
     "BILLING_FACT_ADMISSION_STATUS",
     "BILLING_FACT_PROTOCOL_VERSION",
     "CONTRACT_VERSION",
+    "EXACT_INSTANT_BILLING_FACT_ADMISSION_STATUS",
+    "EXACT_INSTANT_BILLING_FACT_PROTOCOL_VERSION",
+    "EXACT_INSTANT_CONTRACT_VERSION",
+    "EXACT_INSTANT_RUNTIME_ADMISSION_STATUS",
+    "EXACT_INSTANT_RUNTIME_DECISION_PROTOCOL_VERSION",
+    "ExactInstantRuntimeEntitlementAdmissionHandle",
+    "ExactInstantRuntimeEntitlementHandle",
     "FD_W10_003",
     "FD_W10_004",
     "RECOVERY_DAYS",
@@ -710,7 +984,11 @@ __all__ = (
     "RuntimeEntitlementAdmissionHandle",
     "RuntimeEntitlementHandle",
     "admit_runtime_entitlement",
+    "admit_exact_instant_runtime_entitlement",
+    "bind_exact_instant_runtime_entitlement_admission",
     "bind_runtime_entitlement_admission",
     "project_runtime_entitlement",
+    "project_exact_instant_runtime_entitlement",
     "validate_runtime_entitlement",
+    "validate_exact_instant_runtime_entitlement",
 )
