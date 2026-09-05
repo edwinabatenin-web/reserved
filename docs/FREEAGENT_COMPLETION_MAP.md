@@ -28,7 +28,7 @@ assertions, and launch-readiness claims.
 |---|---|---|
 | FA-S1 | Official company, invoice-list and pagination contract captured as a network-inert source validator (exact API-origin + per-field schema validation) with synthetic tests | Implemented, independently reviewed and locally integrated on the isolated overnight branch at `76b9b6c`; not merged to main, pushed, deployed or enabled |
 | FA-S2 | Encrypted token custody and authenticated user/company binding | Not started |
-| FA-S3 | Disabled-first read-only adapter and canonical invoice mapping | Offline mapping independently accepted and locally integrated: single-item source `7b2b54c4b593bf13b1c12fbccd13c46330ecc9e4`, multiline 1.1 source `bd68ab48e4394b06470c20c6035384b6f78cd1a4`. Injected acquisition executor is uncommitted and pending independent review (below). Authenticated live transport remains unimplemented; FA-S3 is not complete |
+| FA-S3 | Disabled-first read-only adapter and canonical invoice mapping | Offline mapping independently accepted and locally integrated: single-item source `7b2b54c4b593bf13b1c12fbccd13c46330ecc9e4`, multiline 1.1 source `bd68ab48e4394b06470c20c6035384b6f78cd1a4`. Injected acquisition executor independently accepted, checkpointed and locally integrated at `b3cd70ff93c74b679cbfce0a83f599fb0a4d9b26`. Authenticated live transport remains unimplemented; FA-S3 is not complete |
 | FA-S4 | Pagination, refresh, disconnect, error and resilience handling | Network-inert contract sub-slice independently reviewed, checkpointed at `d096177b493ac341f15072e5d1daa5e5ca6d7c7f` and locally integrated; HTTP/secret-custody portions remain in FA-S2/FA-S3 |
 | FA-S5 | Synthetic sandbox execution and independent evidence review | Not started |
 | FA-S6 | Customer/target-environment integration and launch assurance | Not started |
@@ -238,7 +238,7 @@ check is completed: **1/6 and 2/8 remain unchanged**. All FA-S2/live transport,
 broader mapping, completeness/freshness, customer/target and activation gates
 remain open; no provider, settlement, recognition or tax authority is created.
 
-### Accepted multiline checkpoint and injected acquisition candidate
+### Accepted multiline checkpoint and historical acquisition candidate
 
 Multiline source `bd68ab48e4394b06470c20c6035384b6f78cd1a4`, tree
 `2a8f3b6d0078c92f807fef8360440497a65cf146`, is independently accepted and locally
@@ -248,7 +248,8 @@ affected run passed 1,734; its exact integrated canonical run passed 8,522 root,
 not_ready with 18 blockers. The original candidate record and accepted 1.0
 history above are retained, not reused as acceptance of later code.
 
-On that immutable base, `work/freeagent-read-runtime-authority.md` permits
+At the historical candidate freeze on that immutable base,
+`work/freeagent-read-runtime-authority.md` permitted
 `freeagent_read_runtime.py`, its new tests/evidence and this map only. The
 uncommitted injected-test executor performs company and bounded invoice-page
 requests, exact fixture binding checks, accepted source validation and mapping,
@@ -269,3 +270,20 @@ transport. No real token access, custody, provider request, sandbox compatibilit
 physical membership, default database, route or enablement is supplied. Full
 FA-S3 and every provider/customer/target/privacy/security/activation gate remain
 open. **1/6 complete and 2/8 terminal checks addressed remain unchanged.**
+
+### Subsequent acquisition acceptance — 5 September 2026
+
+The candidate-stage pending assertions above are historical, not current status.
+Subsequent acceptance is recorded in `work/freeagent-acquisition-checkpoint.md`.
+Source `b3cd70ff93c74b679cbfce0a83f599fb0a4d9b26`, tree
+`6a334aa860aa48f3368fe6e9832de8057a7d135d`, passed independent verification:
+126 focused, 1,889 affected tests and 28 additional pagination probes. Clean
+committed-source affected tests also passed. Its integrated canonical run passed
+8,648 root, 13 artifact, 23 parity and 138 options checks, with RW3 true.
+The source remains preserved in the later combined Xero integration
+`ea6a0fc217147471b5e247ffd9d9d220e93b37f6`.
+
+Acceptance covers the injected-test company/page acquisition and canonical
+mapping component only. Candidate-era runtime evidence remains unchanged.
+FA-S2, full FA-S3 and every live/customer/target/activation gate remain open;
+denominators remain **1/6 complete and 2/8 terminal checks addressed**.
