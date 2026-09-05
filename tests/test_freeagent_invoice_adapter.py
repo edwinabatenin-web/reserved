@@ -97,6 +97,198 @@ def test_all_evidenced_non_item_namespaces_and_subpaths_rejected(namespace, suff
         subject.adapt_invoice(c, i, observation=observed, **x)
 
 
+def multiline_fixture():
+    c, i, x = fixtures()
+    raw = i["invoices"][0]
+    second = deepcopy(raw["invoice_items"][0])
+    second.update(url="https://api.freeagent.com/v2/invoice_items/302",
+                  item_type="Products", quantity="3", price="0.10", position="2")
+    raw["invoice_items"].append(second)
+    raw.update(net_value="125.30", total_value="125.30")
+    return c, i, x
+
+
+@pytest.mark.parametrize("positions", ["present", "absent", "partial"])
+@pytest.mark.parametrize("zero_item", [False, True])
+def test_multiline_complete_literal_positive_and_only_unknown_finalization(positions, zero_item, monkeypatch):
+    c, i, x = multiline_fixture()
+    items = i["invoices"][0]["invoice_items"]
+    if zero_item:
+        third = deepcopy(items[1])
+        third.update(url="https://api.freeagent.com/v2/invoice_items/303", quantity="0", position="3")
+        items.append(third)
+    if positions == "absent":
+        for item in items:
+            del item["position"]
+    elif positions == "partial":
+        del items[0]["position"]
+    calls = []
+    normalise = subject.normalise_document
+    def capture(**kwargs):
+        result = normalise(**kwargs)
+        calls.append((kwargs, result))
+        return result
+    monkeypatch.setattr(subject, "normalise_document", capture)
+    with localcontext() as ctx:
+        ctx.prec = 1
+        ctx.Emax = 1
+        result = mapped(c, i, x)
+    kwargs, original = calls[0]
+    assert len(calls) == 1
+    doc = result.document
+    assert [f.name for f in fields(doc) if getattr(doc, f.name) != getattr(original, f.name)] == ["correction_lifecycle"]
+    assert doc.correction_lifecycle is CorrectionLifecycle.UNKNOWN
+    assert doc.gross_amount == doc.net_amount == Decimal("125.30")
+    assert doc.vat_amount == 0
+    amounts = [Decimal("125"), Decimal("0.30")] + ([Decimal("0")] if zero_item else [])
+    assert [line.money.original_amount for line in doc.lines] == amounts
+    assert [line.line_id for line in doc.lines] == [item["url"] for item in items]
+    assert [line.description for line in doc.lines] == ["Synthetic service"] * len(items)
+    for line, amount in zip(doc.lines, amounts):
+        assert line.tax.net_amount == line.tax.gross_amount == amount
+        assert line.tax.vat_amount == 0
+        assert line.tax.semantics is TaxAmountSemantics.UNKNOWN
+        assert line.value_semantics is LineValueSemantics.UNKNOWN
+    assert doc.provenance == result.observation.provenance
+    assert doc.cash_candidate is doc.accrual_candidate is None
+    assert kwargs["adapter_result"].document_candidate.cash_candidate is None
+    assert result.observation.evidence_state is EvidenceState.UNRESOLVED
+
+
+@pytest.mark.parametrize("field,value", [
+    ("url", "https://api.freeagent.com/v2/invoice_items/301"),
+    ("url", "https://api.freeagent.com/v2/stock_items/302"),
+    ("item_type", "Discount"), ("item_type", "Hours"), ("category", "123"),
+    ("quantity", "-1"), ("quantity", "0.0000001"), ("quantity", "10000000000"),
+    ("price", "0.001"), ("price", "1e2"), ("price", "10000000000"),
+    ("position", "1"), ("position", "3"), ("position", "2.5"),
+    ("position", None), ("position", 2), ("position", "2e0"),
+])
+def test_one_bad_item_rejects_entire_multiline_invoice(field, value, monkeypatch):
+    c, i, x = multiline_fixture()
+    i["invoices"][0]["invoice_items"][1][field] = value
+    def unexpected(**kwargs):
+        pytest.fail("Invalid mixed invoice reached normalisation")
+    monkeypatch.setattr(subject, "normalise_document", unexpected)
+    with pytest.raises(subject.FreeAgentInvoiceAdapterError):
+        mapped(c, i, x)
+
+
+@pytest.mark.parametrize("field", ["url", "quantity", "price", "description", "item_type"])
+@pytest.mark.parametrize("null", [False, True])
+def test_multiline_required_facts_missing_or_null_never_default(field, null):
+    c, i, x = multiline_fixture()
+    item = i["invoices"][0]["invoice_items"][1]
+    if null:
+        item[field] = None
+    else:
+        del item[field]
+    with pytest.raises(subject.FreeAgentInvoiceAdapterError):
+        mapped(c, i, x)
+
+
+def test_multiline_received_order_replay_and_no_positional_identity():
+    c, i, x = multiline_fixture()
+    for item in i["invoices"][0]["invoice_items"]:
+        del item["position"]
+    first = mapped(c, i, x)
+    i["invoices"][0]["invoice_items"].reverse()
+    with pytest.raises(subject.FreeAgentInvoiceAdapterError, match="replay"):
+        mapped(c, i, x, first.observation)
+    second = mapped(c, i, x)
+    assert [line.line_id for line in second.document.lines] == [line.line_id for line in reversed(first.document.lines)]
+    assert second.observation.observation_id != first.observation.observation_id
+    assert second.document.economic_event_id == first.document.economic_event_id
+    with pytest.raises(subject.FreeAgentInvoiceAdapterError, match="replay"):
+        mapped(c, i, {**x, "business_id": "business:2"}, second.observation)
+    i["invoices"][0]["invoice_items"][1]["description"] = "Changed"
+    with pytest.raises(subject.FreeAgentInvoiceAdapterError, match="replay"):
+        mapped(c, i, x, second.observation)
+
+
+@pytest.mark.parametrize("total", ["125.29", "125.31", "0"])
+def test_multiline_sum_mismatch_has_no_balancing_or_rounding(total):
+    c, i, x = multiline_fixture()
+    i["invoices"][0].update(net_value=total, total_value=total)
+    with pytest.raises(subject.FreeAgentInvoiceAdapterError, match="totals"):
+        mapped(c, i, x)
+
+
+def test_multiline_exact_fractional_pennies_are_not_individually_rounded():
+    c, i, x = multiline_fixture()
+    for item in i["invoices"][0]["invoice_items"]:
+        item.update(quantity="0.5", price="0.01")
+    i["invoices"][0].update(net_value="0.01", total_value="0.01")
+    result = mapped(c, i, x)
+    assert [line.money.original_amount for line in result.document.lines] == [Decimal("0.005"), Decimal("0.005")]
+    assert result.document.gross_amount == Decimal("0.01")
+
+
+def test_multiline_zero_header_requires_all_nonnegative_products_zero():
+    c, i, x = multiline_fixture()
+    raw = i["invoices"][0]
+    raw.update(net_value="0", total_value="0", status="Zero Value")
+    for item in raw["invoice_items"]:
+        item["quantity"] = "0"
+    assert len(mapped(c, i, x).document.lines) == 2
+    raw["invoice_items"][1]["quantity"] = "1"
+    with pytest.raises(subject.FreeAgentInvoiceAdapterError, match="totals"):
+        mapped(c, i, x)
+
+
+def test_multiline_version_and_old_observation_cannot_round_trip(monkeypatch):
+    c, i, x = fixtures()
+    assert subject.ADAPTER_VERSION == "freeagent-offline-invoice/1.1"
+    assert subject.SCHEMA_ID == "freeagent-fa-s1-plus-ordinary-non-sales-tax-items/1.1"
+    with monkeypatch.context() as old:
+        old.setattr(subject, "ADAPTER_VERSION", "freeagent-offline-invoice/1.0")
+        old.setattr(subject, "SCHEMA_ID", "freeagent-fa-s1-plus-single-non-sales-tax-item/1.0")
+        observation = subject.observe_invoice(c, i, **x)
+    with pytest.raises(subject.FreeAgentInvoiceAdapterError, match="replay"):
+        mapped(c, i, x, observation)
+
+
+def test_multiline_count_and_whole_graph_bounds_preserve_all_supported_items():
+    c, i, x = fixtures()
+    raw = i["invoices"][0]
+    template = raw["invoice_items"][0]
+    raw["invoice_items"] = [dict(template, url=f"https://api.freeagent.com/v2/invoice_items/{n + 300}",
+                                 quantity="1", price="0.01", position=str(n)) for n in range(1, 51)]
+    raw.update(net_value="0.50", total_value="0.50")
+    result = mapped(c, i, x)
+    assert len(result.document.lines) == 50
+    assert result.document.gross_amount == Decimal("0.50")
+    assert all(line.money.original_amount == Decimal("0.01") for line in result.document.lines)
+    for count in (100, 101):
+        raw["invoice_items"] = [dict(template, url=f"https://api.freeagent.com/v2/invoice_items/{n + 300}")
+                                for n in range(count)]
+        with pytest.raises(subject.FreeAgentInvoiceAdapterError, match="payload_bounds" if count == 100 else "payload_graph"):
+            mapped(c, i, x)
+
+
+@pytest.mark.parametrize("field,value,total", [
+    ("quantity", "9999999999.999999", "0"),
+    ("price", "9999999999.99", "9999999999.99"),
+])
+def test_multiline_exact_decimal_upper_bounds(field, value, total):
+    c, i, x = multiline_fixture()
+    raw = i["invoices"][0]
+    for item in raw["invoice_items"]:
+        item.update(quantity="0", price="0")
+    raw["invoice_items"][0][field] = value
+    if field == "price":
+        raw["invoice_items"][0]["quantity"] = "1"
+    raw.update(net_value=total, total_value=total)
+    assert mapped(c, i, x).document.gross_amount == Decimal(total)
+
+
+def test_multiline_positions_cannot_be_sorted_or_repaired():
+    c, i, x = multiline_fixture()
+    i["invoices"][0]["invoice_items"].reverse()
+    with pytest.raises(subject.FreeAgentInvoiceAdapterError, match="position"):
+        mapped(c, i, x)
+
+
 def test_real_complete_positive_and_only_correction_finalization(monkeypatch):
     calls = []
     normalise = subject.normalise_document
@@ -379,7 +571,7 @@ def test_graph_cycles_aliases_and_bounds_do_not_echo(caplog):
         assert "PRIVATE" not in str(error.value) + caplog.text
 
 
-def test_hostile_hooks_and_multiple_or_missing_lines_never_run():
+def test_hostile_hooks_and_malformed_or_missing_lines_never_run():
     class Hostile(dict):
         def items(self):
             raise AssertionError("must not execute")

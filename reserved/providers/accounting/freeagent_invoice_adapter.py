@@ -2,7 +2,7 @@
 
 Raw envelopes are bounded and replayed through FA-S1. An observation is a
 content/context identity, not authentication or company membership evidence.
-Only one explicitly non-sales-tax GBP economic item is currently supported.
+Only bounded ordinary explicitly non-sales-tax GBP economic items are supported.
 """
 from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import date, datetime, timezone
@@ -23,8 +23,8 @@ from .contracts import (
 )
 from .normalisation import normalise_document
 
-ADAPTER_VERSION = "freeagent-offline-invoice/1.0"
-SCHEMA_ID = "freeagent-fa-s1-plus-single-non-sales-tax-item/1.0"
+ADAPTER_VERSION = "freeagent-offline-invoice/1.1"
+SCHEMA_ID = "freeagent-fa-s1-plus-ordinary-non-sales-tax-items/1.1"
 MAX_BYTES = 65536
 MAX_NODES = 1024
 MAX_DEPTH = 8
@@ -293,32 +293,42 @@ def adapt_invoice(company_payload, invoice_payload, *, observation, user_id,
     if raw["status"] == "Zero Value" and gross != 0:
         raise _fail("zero_value_status_conflicts_with_gross")
     items = _required(raw, "invoice_items")
-    if type(items) is not list or len(items) != 1 or type(items[0]) is not dict:
-        raise _fail("one_economic_item_required")
-    item = items[0]
-    if set(item) - _ITEM_FIELDS:
-        raise _fail("unsupported_item_fields")
-    item_id = _uri(_required(item, "url"))
-    if item_id in (raw["url"], raw["contact"]):
-        raise _fail("item_identity_collision")
-    if _required(item, "item_type") not in ("Products", "Services"):
-        raise _fail("unsupported_item_type")
-    description = _required(item, "description")
-    if type(description) is not str or not description.strip():
-        raise _fail("item_description")
-    quantity = _decimal(_required(item, "quantity"), places=6)
-    price = _decimal(_required(item, "price"))
-    if "position" in item and _decimal(_required(item, "position"), places=6) != 1:
-        raise _fail("item_position")
-    # Fixed precision exceeds the bounded product's maximum 32 significant
+    if type(items) is not list or not items or len(items) > 100:
+        raise _fail("bounded_nonempty_economic_items_required")
+    # Fixed precision exceeds the bounded products' sum's maximum 34 significant
     # digits; no rounding or caller-controlled decimal context is inherited.
     with localcontext(Context(prec=64)):
-        amount = quantity * price
-        if amount != gross:
+        lines, identities = [], set()
+        total = Decimal(0)
+        for position, item in enumerate(items, start=1):
+            if type(item) is not dict:
+                raise _fail("economic_item_object_required")
+            if set(item) - _ITEM_FIELDS:
+                raise _fail("unsupported_item_fields")
+            item_id = _uri(_required(item, "url"))
+            if item_id in identities or item_id in (raw["url"], raw["contact"]):
+                raise _fail("item_identity_collision")
+            identities.add(item_id)
+            if _required(item, "item_type") not in ("Products", "Services"):
+                raise _fail("unsupported_item_type")
+            description = _required(item, "description")
+            if type(description) is not str or not description.strip():
+                raise _fail("item_description")
+            quantity = _decimal(_required(item, "quantity"), places=6)
+            price = _decimal(_required(item, "price"))
+            # Conservative supported ordering: supplied positions must agree
+            # with received order. Missing positions are not synthesized.
+            if "position" in item and _decimal(_required(item, "position"), places=6) != position:
+                raise _fail("item_position")
+            amount = quantity * price
+            total += amount
+            lines.append(AccountingLine(
+                item_id, Money(amount, "GBP"),
+                TaxBreakdown(amount, Decimal(0), amount, TaxAmountSemantics.UNKNOWN),
+                description=description, value_semantics=LineValueSemantics.UNKNOWN,
+            ))
+        if total != gross:
             raise _fail("item_totals_do_not_reconcile")
-        line = AccountingLine(item_id, Money(amount, "GBP"),
-                              TaxBreakdown(net, tax, gross, TaxAmountSemantics.UNKNOWN),
-                              description=description, value_semantics=LineValueSemantics.UNKNOWN)
         balance = ProviderBalanceAssertions(
             amount_paid=None if raw.get("paid_value") is None else _decimal(raw["paid_value"]),
             amount_due=None if raw.get("due_value") is None else _decimal(raw["due_value"]),
@@ -327,7 +337,7 @@ def adapt_invoice(company_payload, invoice_payload, *, observation, user_id,
                                      company_id, raw["url"]], separators=(",", ":"))
         candidate = DocumentCandidate(
             raw["url"], business_id, connected_organisation_id, DocumentType.INVOICE,
-            date.fromisoformat(raw["dated_on"]), "GBP", gross, (line,),
+            date.fromisoformat(raw["dated_on"]), "GBP", gross, tuple(lines),
             provider_status=raw["status"], canonical_state=CanonicalDocumentState.UNKNOWN,
             canonical_state_reason="Raw status is not a Reserved lifecycle decision",
             net_amount=net, vat_amount=tax, economic_direction=EconomicDirection.RECEIVABLE,
@@ -338,7 +348,7 @@ def adapt_invoice(company_payload, invoice_payload, *, observation, user_id,
         )
         semantic = SemanticAdapterResult(
             expected.observation_id, ADAPTER_VERSION,
-            "One non-sales-tax item; exact quantity times price, no rounding",
+            "Ordinary non-sales-tax items; exact quantity times price and sum, no rounding",
             document_candidate=candidate,
             provider_assertions=("raw_status=" + raw["status"],
                                  "paid_value_and_due_value_are_provider_assertions_only",

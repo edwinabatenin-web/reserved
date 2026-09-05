@@ -28,7 +28,7 @@ assertions, and launch-readiness claims.
 |---|---|---|
 | FA-S1 | Official company, invoice-list and pagination contract captured as a network-inert source validator (exact API-origin + per-field schema validation) with synthetic tests | Implemented, independently reviewed and locally integrated on the isolated overnight branch at `76b9b6c`; not merged to main, pushed, deployed or enabled |
 | FA-S2 | Encrypted token custody and authenticated user/company binding | Not started |
-| FA-S3 | Disabled-first read-only adapter and canonical invoice mapping | Offline single-item non-sales-tax GBP subcomponent independently accepted, checkpointed and locally integrated at `7b2b54c4b593bf13b1c12fbccd13c46330ecc9e4`. Authenticated transport remains unimplemented; FA-S3 is not complete |
+| FA-S3 | Disabled-first read-only adapter and canonical invoice mapping | Offline single-item non-sales-tax GBP subcomponent independently accepted, checkpointed and locally integrated at `7b2b54c4b593bf13b1c12fbccd13c46330ecc9e4`; version 1.1 ordinary multiline continuation is uncommitted and pending independent review (below). Authenticated transport remains unimplemented; FA-S3 is not complete |
 | FA-S4 | Pagination, refresh, disconnect, error and resilience handling | Network-inert contract sub-slice independently reviewed, checkpointed at `d096177b493ac341f15072e5d1daa5e5ca6d7c7f` and locally integrated; HTTP/secret-custody portions remain in FA-S2/FA-S3 |
 | FA-S5 | Synthetic sandbox execution and independent evidence review | Not started |
 | FA-S6 | Customer/target-environment integration and launch assurance | Not started |
@@ -215,3 +215,24 @@ broader mapping, source completeness/freshness, sandbox/customer/target evidence
 and activation remain open. The denominators remain **1/6 complete and 2/8
 terminal checks addressed**; no production, legal or live-provider assurance
 is created by this reconciliation.
+
+### Ordinary multiline continuation — uncommitted candidate
+
+Under `work/freeagent-multiline-mapping-authority.md`, base
+`8e57a26e632eb8fa218f3487b6aad166bfd2dc80` (tree
+`b71ba7190269b65879cb77f3cfa56743d7e589bb`), version 1.1 extends the same
+offline non-sales-tax GBP subset to bounded nonempty ordinary Products/Services
+items. Genuine unique source IDs and received order are preserved; supplied
+positions must agree with that order. Exact individual products sum to the
+explicit header without rounding or balancing. Empty, malformed, duplicate-ID
+or unsupported mixed lines reject; zero-valued economic lines remain supported.
+
+Only the existing adapter, its tests, versioned evidence and this map change.
+The prior checkpoint/hash table above identifies accepted 1.0 history, not the
+new candidate's source. The source evidence preserves that history and records
+the 1.1 boundary and current **203 focused / 1,734 affected passing tests**.
+The prior root canonical result does not validate this uncommitted candidate;
+different independent review is still required. No new full slice or terminal
+check is completed: **1/6 and 2/8 remain unchanged**. All FA-S2/live transport,
+broader mapping, completeness/freshness, customer/target and activation gates
+remain open; no provider, settlement, recognition or tax authority is created.

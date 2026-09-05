@@ -1,4 +1,13 @@
-# FreeAgent offline invoice mapping — bounded candidate
+# FreeAgent offline invoice mapping — versioned evidence
+
+The following original 1.0 candidate record is retained as history. That
+single-item implementation was subsequently independently accepted and locally
+integrated at `7b2b54c4b593bf13b1c12fbccd13c46330ecc9e4`; its evidence SHA-256
+was `e403e203a51b075c6f88c0a96c88cf9e6b7d2f6c95aee963f04291cce9f28e36`.
+The current uncommitted **1.1 multiline candidate** is documented at the end;
+it is not covered by the prior acceptance or prior canonical results.
+
+## Original 1.0 candidate record
 
 Uncommitted implementation pending different independent review, on base
 `9d36b218bbd15728c120cbe7055bb0b5c7890b10`. Founder SHA-256 remains
@@ -154,3 +163,64 @@ PYTHONDONTWRITEBYTECODE=1 /private/tmp/reserved-venv/bin/python -m pytest \
 The focused run used the same interpreter/options with only the new test file.
 No full-repository run or live-provider validation is claimed. Frozen hashes
 accompany the handoff for independent review.
+
+## 1.1 ordinary multiline continuation — pending independent review
+
+Authority: `work/freeagent-multiline-mapping-authority.md`. Immutable base
+`8e57a26e632eb8fa218f3487b6aad166bfd2dc80`, tree
+`b71ba7190269b65879cb77f3cfa56743d7e589bb`. Founder hash remains the one above.
+Prior accepted adapter SHA-256:
+`21434c13bea8a4840a601b3c5610799c81838b121b9fa497fbc36af6fba81c2b`;
+prior test SHA-256:
+`19b09e336d485bc96f83e54864e4d7086368627a29f1b2a96d940687700eb72d`.
+
+Adapter version is now `freeagent-offline-invoice/1.1`; source schema identity
+is `freeagent-fa-s1-plus-ordinary-non-sales-tax-items/1.1`. Replay rejects old
+version observations rather than silently assigning new semantics to them.
+The same documented invoice-item array, unique item URL, quantity/unit-price
+and explicit invoice non-sales-tax facts support this extension. No new
+provider source, tax rule or authentication assertion is introduced.
+
+The prior single-item restriction is replaced by a nonempty array of ordinary
+Products/Services items, within unchanged graph, byte, depth and 100-entry
+container bounds. The graph/byte limits can reject fewer than 100 items:
+100 is a ceiling, not a guarantee of admission. Empty arrays still reject;
+zero-valued economic items are retained. Every item must individually pass the
+existing shape, URI namespace, required-field, nonnegative decimal and supported
+semantics checks. Duplicate item IDs fail, even with different descriptions or
+amounts. Repeated descriptions with distinct source IDs do not collapse lines.
+
+Received array order is preserved. As a conservative supported ordering subset,
+each supplied position must equal its one-based received array ordinal (decimal
+string `2.0` equals 2); gaps, duplicates, fractions, nulls and reordered explicit
+positions are not repaired or sorted. This is not a universal provider position
+grammar. Missing positions remain absent from source evidence, and array indices
+are never manufactured as external line IDs or source position fields.
+
+Each exact quantity-times-price becomes one canonical line amount, with equal
+net/gross and zero tax justified only by the required explicit non-sales-tax
+invoice and zero-tax header. Tax/value semantics remain UNKNOWN. The exact
+nonnegative sum must equal header net/gross; no balancing line, per-line rounding
+or rounding adjustment is introduced. Exact fractional pennies are retained
+when they reconcile (0.005 + 0.005 = 0.01). A 64-digit private decimal context
+covers the bounded products and their sum independently of caller precision.
+
+The actual unchanged shared normaliser still runs once for the complete
+candidate, followed only by correction_lifecycle UNKNOWN finalization. The
+semantic intermediate stays internal; provenance, source/context replay,
+unsupported namespace limitations, raw balances/status and absent cash/accrual,
+settlement, membership and tax authority remain as documented above.
+
+Verification: **203 focused passed; 1,734 affected passed**, using the original
+commands above. All prior 159 cases remain, plus 44 multiline cases. Positives
+include two/three/50 items, zero-valued items, repeated descriptions, absent or
+partial positions, literal amounts and exact decimal boundaries. Negatives
+include duplicate IDs, mixed unsupported items, missing/null facts, malformed
+positions, content/order/context/version replay, total contradictions and graph/
+container limits. One initial test incorrectly expected 100 full fixture items
+to fit the unchanged node budget; it was corrected to prove a 50-item positive
+and separate refusals for 100 items exceeding the node budget and 101 items
+exceeding the container budget, not relax the bounds.
+No full-repository, live-provider or independent acceptance result is claimed
+for 1.1. Full FA-S3, FA-S2, transport, broader forms, completeness/freshness,
+sandbox/customer/target evidence and activation remain open.
