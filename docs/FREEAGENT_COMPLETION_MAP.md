@@ -1,6 +1,7 @@
 # FreeAgent workstream completion map
 
-Evidence cut-off: 1 September 2026. This map declares the finite endpoint of
+Initial evidence cut-off: 1 September 2026; offline mapping checkpoint
+reconciled on 5 September 2026. This map declares the finite endpoint of
 the October-target FreeAgent workstream and identifies the first slice, FA-S1,
 which captures the current official read-only company, invoice-list and
 pagination contract as a network-inert source validator. It does not expand
@@ -27,7 +28,7 @@ assertions, and launch-readiness claims.
 |---|---|---|
 | FA-S1 | Official company, invoice-list and pagination contract captured as a network-inert source validator (exact API-origin + per-field schema validation) with synthetic tests | Implemented, independently reviewed and locally integrated on the isolated overnight branch at `76b9b6c`; not merged to main, pushed, deployed or enabled |
 | FA-S2 | Encrypted token custody and authenticated user/company binding | Not started |
-| FA-S3 | Disabled-first read-only adapter and canonical invoice mapping | Offline single-item non-sales-tax GBP mapping implementation candidate; uncommitted and pending independent review. Authenticated transport remains unimplemented; FA-S3 is not complete |
+| FA-S3 | Disabled-first read-only adapter and canonical invoice mapping | Offline single-item non-sales-tax GBP subcomponent independently accepted, checkpointed and locally integrated at `7b2b54c4b593bf13b1c12fbccd13c46330ecc9e4`. Authenticated transport remains unimplemented; FA-S3 is not complete |
 | FA-S4 | Pagination, refresh, disconnect, error and resilience handling | Network-inert contract sub-slice independently reviewed, checkpointed at `d096177b493ac341f15072e5d1daa5e5ca6d7c7f` and locally integrated; HTTP/secret-custody portions remain in FA-S2/FA-S3 |
 | FA-S5 | Synthetic sandbox execution and independent evidence review | Not started |
 | FA-S6 | Customer/target-environment integration and launch assurance | Not started |
@@ -124,8 +125,9 @@ Current gate position: items 1–2 are addressed by the independently reviewed,
 locally integrated FA-S1 checkpoint. Item 5 is advanced only by the reviewed,
 locally integrated network-inert FA-S4 contract sub-slice (pure
 pagination/refresh/disconnect/error decisions); the HTTP and
-secret-custody execution of item 5 remains with FA-S2/FA-S3. Item 4 has an
-uncommitted offline mapping candidate only; it is not closed. Items 3 and
+secret-custody execution of item 5 remains with FA-S2/FA-S3. Item 4 is advanced
+only by the accepted, locally integrated offline mapping subcomponent; it is
+not closed. Items 3 and
 6–8 are not started. This is 1 of 6 declared implementation slices complete
 (17%), plus a network-inert FA-S4 sub-slice, and 2 of 8 terminal checks
 addressed (with item 5 partially advanced, not closed). These are denominators,
@@ -143,8 +145,8 @@ are separate workstreams and do not move their implementation into FreeAgent.
 ## Immediate action
 
 Preserve FA-S1 and the FA-S4 network-inert contract sub-slice as independently
-reviewed local integrations. Independently review the four-path offline mapping
-candidate below. FA-S2 (encrypted token custody and user/company binding)
+reviewed local integrations, together with the bounded offline mapping
+checkpoint below. FA-S2 (encrypted token custody and user/company binding)
 still requires its own bounded package, authority and external custody decision;
 the offline mapping does not bypass it for live integration.
 
@@ -172,10 +174,44 @@ project/property/bank-account/recurring-invoice/company/category/stock namespace
 does not authenticate otherwise admissible item URLs; the evidence document
 records the exact set and remaining unknown-namespace limitation.
 
-The candidate owns that new adapter, its new test file, its evidence document
-and this map only. It is uncommitted implementation pending a different
-independent reviewer, not accepted/integrated evidence. No complete slice or
+The original candidate owned that new adapter, its new test file, its evidence
+document and this map only. Its frozen source evidence records the historical
+uncommitted, pending-review state; that document is preserved unchanged.
+The subsequent acceptance and checkpoint are recorded below. No complete slice or
 terminal check is added: 1/6 complete and 2/8 terminal checks addressed remain
 the declared position. General invoice forms, tax/discount/CIS/FX semantics,
 authenticated company binding, transport/custody, operational ingestion,
 sandbox/customer/target evidence and all activation gates remain open.
+
+### Subsequent independent acceptance and local integration
+
+The corrected four-path candidate was independently accepted after **159 focused
+and 1,690 affected tests**, plus 36 additional wrong-resource probes. The owning
+checkpoint record is `work/freeagent-invoice-mapping-checkpoint.md`.
+Separate source commit `7b2b54c4b593bf13b1c12fbccd13c46330ecc9e4` has sole parent
+`9d36b218bbd15728c120cbe7055bb0b5c7890b10` and exact reviewed tree
+`800f08edab0f517e0402d187306e9e7904a2c26f`; it was locally fast-forward integrated
+on the isolated integration branch. Root's clean post-checkpoint affected matrix
+passed **1,690 tests**. Main was not changed; no push, deployment or activation
+is recorded. Root subsequently reported canonical session 8543 completed exit 0
+on that exact commit/tree: **8,478 root tests passed**, zero failures/errors/skips,
+13 artifact checks, 23 parity checks, 138 options checks and RW3 true. Its result
+SHA-256 is `672d90d87b687b55e6a2ab4c4caaf468dd66cce613d6aab2c0077429d5c08932`.
+This is root-observed integrated verification, not a rerun by this map author.
+October remains **not_ready with 18 blockers**; no live-provider gate is closed.
+
+Accepted source SHA-256 identities (the source evidence retains candidate wording):
+
+| Path | SHA-256 |
+|---|---|
+| `reserved/providers/accounting/freeagent_invoice_adapter.py` | `21434c13bea8a4840a601b3c5610799c81838b121b9fa497fbc36af6fba81c2b` |
+| `tests/test_freeagent_invoice_adapter.py` | `19b09e336d485bc96f83e54864e4d7086368627a29f1b2a96d940687700eb72d` |
+| `docs/FREEAGENT_INVOICE_ADAPTER_EVIDENCE.md` | `e403e203a51b075c6f88c0a96c88cf9e6b7d2f6c95aee963f04291cce9f28e36` |
+| `docs/FREEAGENT_COMPLETION_MAP.md` at source checkpoint, before this reconciliation | `66e325ad6679d8d989bf7668d96a305757fa8da95edaa5efeea7cd609e621cf9` |
+
+Acceptance covers this offline subcomponent only, not full FA-S3, provider or
+launch assurance. FA-S2 custody/authenticated company binding, live transport,
+broader mapping, source completeness/freshness, sandbox/customer/target evidence
+and activation remain open. The denominators remain **1/6 complete and 2/8
+terminal checks addressed**; no production, legal or live-provider assurance
+is created by this reconciliation.
