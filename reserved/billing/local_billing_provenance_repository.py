@@ -1,8 +1,9 @@
 """Disposable exact-instant paid-lineage/lifecycle store, never a live authority.
 
-Version three preserves both accepted paid receipt meanings while making one
-immutable scheduled-cancellation control part of the store format. There is
-deliberately no v1/v2 migration or durable RAM-authority reconstruction.
+Version four preserves both accepted paid receipt meanings while making
+scheduled cancellation and failed renewal contend through one authenticated
+lifecycle-control head. There is deliberately no older-store migration or
+durable RAM-authority reconstruction.
 """
 import hashlib
 import hmac
@@ -11,12 +12,13 @@ import os
 import sqlite3
 import threading
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-VERSION = 'reserved-paid-lineage-provenance/3'
+VERSION = 'reserved-paid-lineage-provenance/4'
 _DOMAIN = b'reserved-paid-lineage-receipt/2\x00'
-_CONTROL_DOMAIN = b'reserved-paid-lineage-cancellation-control/1\x00'
-_CONTROL_SCOPE = 'paid-lineage-cancellation-scope/1:'
+_CONTROL_DOMAIN = b'reserved-paid-lineage-lifecycle-control/2\x00'
+_CONTROL_SCOPE = 'paid-lineage-lifecycle-scope/2:'
 _TABLES = (
     'CREATE TABLE metadata (version TEXT NOT NULL, store TEXT NOT NULL)',
     'CREATE TABLE units (binding TEXT NOT NULL, sequence INTEGER NOT NULL,'
@@ -81,11 +83,101 @@ def _control_scope(store, binding):
 
 
 def _control_head(receipt):
-    return identity('paid-lineage-cancellation-head/1', {
+    domains = {
+        'reserved-scheduled-cancellation-receipt/1': 'paid-lineage-cancellation-head/1',
+        'reserved-failed-renewal-receipt/1': 'paid-lineage-failed-renewal-head/1',
+    }
+    domain = domains.get(receipt.get('version'))
+    if domain is None:
+        raise ProvenanceError('unsupported lifecycle control')
+    return identity(domain, {
         'receipt_id': receipt['receipt_id'], 'fact_id': receipt['fact_id'],
         'predecessor_lifecycle_head': receipt['predecessor_lifecycle_head'],
         'paid_head': receipt['paid_head'],
     })
+
+
+def _control_identity_domains(receipt):
+    if receipt.get('version') == 'reserved-scheduled-cancellation-receipt/1':
+        return 'scheduled-cancellation-receipt/1', 'scheduled-cancellation-fact/1'
+    if receipt.get('version') == 'reserved-failed-renewal-receipt/1':
+        return 'failed-renewal-receipt/1', 'failed-renewal-fact/1'
+    raise ProvenanceError('unsupported lifecycle control')
+
+
+_FAILED_RENEWAL_ADMISSION_FIELDS = frozenset({
+    'failure_verified_at_utc', 'recovery_deadline_exclusive_at_utc',
+    'receipt_id', 'fact_id',
+})
+
+
+def _failed_renewal_proposal(receipt):
+    """Return the source-owned material that precedes atomic admission."""
+    return {name: value for name, value in receipt.items()
+            if name not in _FAILED_RENEWAL_ADMISSION_FIELDS}
+
+
+def _validate_failed_renewal_evidence(receipt):
+    """Validate source-owned optional-artifact material before clock admission."""
+    required = {
+        'artifact_shape', 'invoice', 'line', 'payment', 'intent', 'charge',
+        'failed_service_start', 'failed_service_end', 'source_evidence_digest',
+        'disposition',
+    }
+    if not required <= receipt.keys() or receipt.get('disposition') != 'verified_renewal_failure':
+        raise ProvenanceError('invalid failed-renewal control')
+    values = tuple(receipt[name] for name in ('invoice', 'line'))
+    if any(type(value) is not str or not value for value in values):
+        raise ProvenanceError('invalid failed-renewal evidence identity')
+    try:
+        failed_start = datetime.fromisoformat(receipt['failed_service_start'])
+        failed_end = datetime.fromisoformat(receipt['failed_service_end'])
+    except (TypeError, ValueError):
+        raise ProvenanceError('invalid failed-renewal instants') from None
+    if (any(type(value) is not datetime or value.tzinfo is not timezone.utc
+            for value in (failed_start, failed_end)) or not failed_start < failed_end
+            or type(receipt.get('paid_sequence')) is not int
+            or receipt['paid_sequence'] not in (1, 2)
+            or type(receipt.get('binding_revision')) is not int
+            or receipt['binding_revision'] < 1
+            or type(receipt['source_evidence_digest']) is not str
+            or len(receipt['source_evidence_digest']) != 64
+            or any(character not in '0123456789abcdef'
+                   for character in receipt['source_evidence_digest'])):
+        raise ProvenanceError('invalid failed-renewal control values')
+    artifacts = tuple(receipt[name] for name in ('payment', 'intent', 'charge'))
+    shape = receipt['artifact_shape']
+    if shape == 'no_payment_artifact':
+        if artifacts != (None, None, None):
+            raise ProvenanceError('failed-renewal artifact shape mismatch')
+    elif shape == 'unresolved_payment_intent':
+        if (any(type(value) is not str or not value for value in artifacts[:2])
+                or artifacts[2] is not None):
+            raise ProvenanceError('failed-renewal artifact shape mismatch')
+    elif shape == 'failed_charge':
+        if any(type(value) is not str or not value for value in artifacts):
+            raise ProvenanceError('failed-renewal artifact shape mismatch')
+    else:
+        raise ProvenanceError('unsupported failed-renewal artifact shape')
+
+
+def _validate_failed_renewal(receipt):
+    """Validate the final durable control, including its admission instant."""
+    _validate_failed_renewal_evidence(receipt)
+    if not _FAILED_RENEWAL_ADMISSION_FIELDS <= receipt.keys():
+        raise ProvenanceError('invalid failed-renewal admission fields')
+    try:
+        verified = datetime.fromisoformat(receipt['failure_verified_at_utc'])
+        deadline = datetime.fromisoformat(receipt['recovery_deadline_exclusive_at_utc'])
+        received = datetime.fromisoformat(receipt['received_at'])
+        failed_start = datetime.fromisoformat(receipt['failed_service_start'])
+    except (TypeError, ValueError):
+        raise ProvenanceError('invalid failed-renewal admission instants') from None
+    if (any(type(value) is not datetime or value.tzinfo is not timezone.utc
+            for value in (verified, deadline, received, failed_start))
+            or verified < received or verified < failed_start
+            or deadline != verified + timedelta(days=7)):
+        raise ProvenanceError('invalid failed-renewal admission values')
 
 
 class ProvenanceRepository:
@@ -241,16 +333,22 @@ class ProvenanceRepository:
                 raise ProvenanceError('inauthentic lifecycle control')
             receipt = json.loads(raw)
             paid, paid_head = lineage[-1]
-            if (canonical(receipt) != raw or receipt.get('version') != 'reserved-scheduled-cancellation-receipt/1'
+            try:
+                receipt_domain, fact_domain = _control_identity_domains(receipt)
+                if receipt.get('version') == 'reserved-failed-renewal-receipt/1':
+                    _validate_failed_renewal(receipt)
+            except ProvenanceError:
+                raise ProvenanceError('lifecycle control scope mismatch') from None
+            if (canonical(receipt) != raw
                     or receipt.get('store') != self.store_id or receipt.get('binding') != binding
                     or receipt.get('paid_receipt_id') != paid['receipt_id']
                     or receipt.get('paid_fact_id') != paid['fact_id']
                     or receipt.get('paid_head') != paid_head
                     or receipt.get('paid_sequence') != paid['sequence']
                     or receipt.get('predecessor_lifecycle_head') != paid_head
-                    or receipt.get('receipt_id') != identity('scheduled-cancellation-receipt/1', {
+                    or receipt.get('receipt_id') != identity(receipt_domain, {
                         key: value for key, value in receipt.items() if key not in ('receipt_id', 'fact_id')})
-                    or receipt.get('fact_id') != identity('scheduled-cancellation-fact/1', {
+                    or receipt.get('fact_id') != identity(fact_domain, {
                         key: value for key, value in receipt.items() if key not in ('receipt_id', 'fact_id')})):
                 raise ProvenanceError('lifecycle control scope mismatch')
             return lineage, receipt, _control_head(receipt)
@@ -335,7 +433,7 @@ class ProvenanceRepository:
         return self.commit_initial(receipt, key, predecessor)
 
     def commit_cancellation(self, receipt, predecessor, key):
-        """CAS the exact paid/lifecycle head to one immutable cancellation control."""
+        """CAS the exact paid/lifecycle head to one immutable tagged control."""
         with self._lock:
             self._usable()
         if (type(receipt) is not dict or type(predecessor) is not tuple or len(predecessor) != 2
@@ -343,10 +441,15 @@ class ProvenanceRepository:
             raise ProvenanceError('invalid lifecycle control input')
         material = {name: value for name, value in receipt.items()
                     if name not in ('receipt_id', 'fact_id')}
-        if (receipt.get('version') != 'reserved-scheduled-cancellation-receipt/1'
-                or receipt.get('store') != self.store_id
-                or receipt.get('receipt_id') != identity('scheduled-cancellation-receipt/1', material)
-                or receipt.get('fact_id') != identity('scheduled-cancellation-fact/1', material)):
+        try:
+            receipt_domain, fact_domain = _control_identity_domains(receipt)
+            if receipt.get('version') == 'reserved-failed-renewal-receipt/1':
+                _validate_failed_renewal(receipt)
+        except ProvenanceError:
+            raise ProvenanceError('invalid lifecycle control scope') from None
+        if (receipt.get('store') != self.store_id
+                or receipt.get('receipt_id') != identity(receipt_domain, material)
+                or receipt.get('fact_id') != identity(fact_domain, material)):
             raise ProvenanceError('invalid lifecycle control scope')
         raw = canonical(receipt)
         if len(raw) > 16384:
@@ -379,6 +482,95 @@ class ProvenanceRepository:
                 readback = self.read_lifecycle(receipt['binding'], key)
                 if readback[1:] != (receipt, head):
                     raise ProvenanceError('committed lifecycle control unavailable')
+                return receipt, head
+            except Exception:
+                if outcome is not True:
+                    try:
+                        if self._db.in_transaction:
+                            self._db.execute('ROLLBACK')
+                            outcome = False
+                    except Exception:
+                        outcome = None
+                if outcome is None:
+                    self._poisoned = True
+                    self.close()
+                raise CommitOutcomeError(outcome) from None
+
+    def commit_failed_renewal(self, proposal, predecessor, key, admission_clock):
+        """Atomically establish the Reserved clock and failed-renewal control.
+
+        Source reconciliation is complete before this seam.  The transaction
+        first authenticates the durable predecessor/replay state, then samples
+        the source-owned admission clock exactly once for a new control.  Exact
+        replay returns the stored control without consulting that clock.
+        """
+        with self._lock:
+            self._usable()
+        if (type(proposal) is not dict or type(predecessor) is not tuple
+                or len(predecessor) != 2 or type(key) is not bytes or len(key) < 32
+                or not callable(admission_clock)
+                or any(name in proposal for name in _FAILED_RENEWAL_ADMISSION_FIELDS)):
+            raise ProvenanceError('invalid failed-renewal proposal')
+        _validate_failed_renewal_evidence(proposal)
+        if proposal.get('version') != 'reserved-failed-renewal-receipt/1':
+            raise ProvenanceError('invalid failed-renewal proposal')
+        scope = _control_scope(self.store_id, proposal['binding'])
+        with self._lock:
+            outcome = None
+            try:
+                self._db.execute('BEGIN IMMEDIATE')
+                self._metadata()
+                lineage, control, lifecycle_head = self.read_lifecycle(
+                    proposal['binding'], key)
+                if control is not None:
+                    if (_failed_renewal_proposal(control) != proposal
+                            or control.get('version') !=
+                                'reserved-failed-renewal-receipt/1'):
+                        raise ProvenanceError('reconciliation required')
+                    receipt, head = control, lifecycle_head
+                else:
+                    if (not lineage or lineage[-1] != predecessor
+                            or lifecycle_head != predecessor[1]):
+                        raise ProvenanceError('lifecycle-head compare-and-swap failed')
+                    if (proposal.get('store') != self.store_id
+                            or proposal.get('paid_receipt_id') !=
+                                predecessor[0]['receipt_id']
+                            or proposal.get('paid_fact_id') != predecessor[0]['fact_id']
+                            or proposal.get('paid_head') != predecessor[1]
+                            or proposal.get('paid_sequence') !=
+                                predecessor[0]['sequence']
+                            or proposal.get('predecessor_lifecycle_head') !=
+                                predecessor[1]):
+                        raise ProvenanceError('wrong lifecycle predecessor')
+
+                    # This is the authoritative lifecycle-admission boundary:
+                    # all source and durable CAS predicates have passed while
+                    # the write transaction is held, but no control exists yet.
+                    verified = admission_clock()
+                    if (type(verified) is not datetime
+                            or verified.tzinfo is not timezone.utc
+                            or verified.utcoffset() != timedelta(0)):
+                        raise ProvenanceError('invalid failed-renewal admission clock')
+                    receipt = dict(proposal)
+                    receipt['failure_verified_at_utc'] = verified.isoformat()
+                    receipt['recovery_deadline_exclusive_at_utc'] = (
+                        verified + timedelta(days=7)).isoformat()
+                    material = dict(receipt)
+                    receipt['fact_id'] = identity('failed-renewal-fact/1', material)
+                    receipt['receipt_id'] = identity('failed-renewal-receipt/1', material)
+                    _validate_failed_renewal(receipt)
+                    raw = canonical(receipt)
+                    if len(raw) > 16384:
+                        raise ProvenanceError('oversized lifecycle control')
+                    head = _control_head(receipt)
+                    mac = hmac.new(key, _CONTROL_DOMAIN + raw, 'sha256').hexdigest()
+                    self._db.execute('INSERT INTO dispositions VALUES (?,?,?)',
+                                     (scope, raw.decode('ascii'), mac))
+                self._db.execute('COMMIT')
+                outcome = True
+                readback = self.read_lifecycle(proposal['binding'], key)
+                if readback[1:] != (receipt, head):
+                    raise ProvenanceError('committed failed renewal unavailable')
                 return receipt, head
             except Exception:
                 if outcome is not True:

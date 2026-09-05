@@ -22,7 +22,7 @@ def test_exact_v2_store_and_independent_current_head(renewal):
     assert renewal.renew(now=renewal.initial_end).disposition == 'admitted'
     lineage = renewal.repo.read_lineage(initial_snapshot.instance, RECEIPT_KEY)
     first, second = lineage
-    assert VERSION == 'reserved-paid-lineage-provenance/3'
+    assert VERSION == 'reserved-paid-lineage-provenance/4'
     assert first == initial[0] and second[0]['sequence'] == 2
     assert second[0]['predecessor_receipt_id'] == first[0]['receipt_id']
     assert second[0]['predecessor_fact_id'] == first[0]['fact_id']
@@ -50,6 +50,19 @@ def test_exact_v2_store_is_rejected_without_mutation_or_migration(tmp_path):
         for statement in repository._TABLES:
             conn.execute(statement)
         conn.execute("INSERT INTO metadata VALUES ('reserved-paid-lineage-provenance/2','old-v2-store')")
+    before = path.read_bytes()
+    with pytest.raises(ProvenanceError):
+        ProvenanceRepository(path)
+    assert path.read_bytes() == before
+
+
+def test_exact_v3_store_is_rejected_without_mutation_or_migration(tmp_path):
+    from reserved.billing import local_billing_provenance_repository as repository
+    path = tmp_path/'v3.db'
+    with sqlite3.connect(path) as conn:
+        for statement in repository._TABLES:
+            conn.execute(statement)
+        conn.execute("INSERT INTO metadata VALUES ('reserved-paid-lineage-provenance/3','old-v3-store')")
     before = path.read_bytes()
     with pytest.raises(ProvenanceError):
         ProvenanceRepository(path)

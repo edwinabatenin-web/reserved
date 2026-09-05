@@ -1030,6 +1030,13 @@ def test_module_has_no_io_provider_route_config_auth_session_or_database_surface
         "BILLING_FACT_ADMISSION_STATUS",
         "BILLING_FACT_PROTOCOL_VERSION",
         "CONTRACT_VERSION",
+        "EXACT_INSTANT_BILLING_FACT_ADMISSION_STATUS",
+        "EXACT_INSTANT_BILLING_FACT_PROTOCOL_VERSION",
+        "EXACT_INSTANT_CONTRACT_VERSION",
+        "EXACT_INSTANT_RUNTIME_ADMISSION_STATUS",
+        "EXACT_INSTANT_RUNTIME_DECISION_PROTOCOL_VERSION",
+        "ExactInstantRuntimeEntitlementAdmissionHandle",
+        "ExactInstantRuntimeEntitlementHandle",
         "FD_W10_003",
         "FD_W10_004",
         "RECOVERY_DAYS",
@@ -1039,9 +1046,13 @@ def test_module_has_no_io_provider_route_config_auth_session_or_database_surface
         "RuntimeEntitlementAdmissionHandle",
         "RuntimeEntitlementHandle",
         "admit_runtime_entitlement",
+        "admit_exact_instant_runtime_entitlement",
+        "bind_exact_instant_runtime_entitlement_admission",
         "bind_runtime_entitlement_admission",
         "project_runtime_entitlement",
+        "project_exact_instant_runtime_entitlement",
         "validate_runtime_entitlement",
+        "validate_exact_instant_runtime_entitlement",
     }
 
 
