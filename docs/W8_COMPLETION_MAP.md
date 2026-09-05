@@ -152,9 +152,14 @@ loopback-only synthetic browser verification exercised £703, native edit cleari
 and missing-input refusal. Full internal canonical regression at `bed02d9...`
 passed 7,934 root tests and all mandatory subgates; October remains `not_ready`
 with 18 blockers. This does not establish human comprehension, accessibility,
-privacy/legal/retention or target acceptance. The separately identified existing
-claimant-`none` source-adapter defect still requires correction; it is not hidden
-by this frontend acceptance. These are accepted partial components, not closure
+privacy/legal/retention or target acceptance. The separately identified
+claimant-`none` source-adapter defect was subsequently independently reviewed and
+corrected at source `269c5427eac573cd73b4f9e5054675c8a40533db`, integrated at
+`f3729c21b681cf4e6b2d70ba63421f2d3a3dee7d`. Its existing engine None/zero
+adaptation now produces the no-charge result only for affirmative, uncontradicted
+absence of household entitlement and known own ANI; unknown or conflicting facts
+remain insufficient. See [the bounded correction evidence](HICBC_NO_CLAIMANT_ADAPTER_EVIDENCE.md).
+The linked annual-source/anti-probing gap remains open. These are accepted partial components, not closure
 of slice 2, the HICBC annual-integration gate, or any delivery denominator.
 
 The stable delivery denominator is exactly **5** (denominator = 5). Terminal
