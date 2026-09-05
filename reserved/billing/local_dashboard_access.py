@@ -224,8 +224,8 @@ def _entry_binds_fact(entry, projection, owner_id, billing_account_id, subscript
     )
 
 
-def _evaluate(access, *, evaluated_at_utc):
-    """Return True only when the real dashboard is authorised for this request.
+def _evaluate(access, *, evaluated_at_utc, endpoint=PROTECTED_ENDPOINT):
+    """Authorise the exact paid endpoint (standalone dashboard by default).
 
     Every failure mode returns False and is collapsed into a bounded value-free
     403.  No exception detail, identifier or financial fact escapes.
@@ -234,6 +234,8 @@ def _evaluate(access, *, evaluated_at_utc):
 
     from reserved.database import get_user
 
+    if type(endpoint) is not str or endpoint not in _paid_access_guard.PAID_ENDPOINTS:
+        return False
     user_id = g.get("user_id")
     if type(user_id) is not int:
         return False
@@ -372,7 +374,7 @@ def _evaluate(access, *, evaluated_at_utc):
     try:
         decision = _paid_access_guard.evaluate_paid_access(
             access.guard,
-            endpoint=PROTECTED_ENDPOINT,
+            endpoint=endpoint,
             authenticated_owner_id=owner_id,
             prior_runtime_entitlement=prior_runtime,
             current_runtime_entitlement=current_runtime,
