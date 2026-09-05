@@ -224,18 +224,16 @@ def _entry_binds_fact(entry, projection, owner_id, billing_account_id, subscript
     )
 
 
-def _evaluate(access, *, evaluated_at_utc, endpoint=PROTECTED_ENDPOINT):
-    """Authorise the exact paid endpoint (standalone dashboard by default).
+def _rechecked_admission(access, *, evaluated_at_utc):
+    """Return independently resolved scope and live admitted handles, or False.
 
-    Every failure mode returns False and is collapsed into a bounded value-free
-    403.  No exception detail, identifier or financial fact escapes.
+    Internal request composition seam, not a structural-data authority issuer.
+    Every entry and the complete reread must bind before a handle is returned.
     """
     from flask import g
 
     from reserved.database import get_user
 
-    if type(endpoint) is not str or endpoint not in _paid_access_guard.PAID_ENDPOINTS:
-        return False
     user_id = g.get("user_id")
     if type(user_id) is not int:
         return False
@@ -370,6 +368,19 @@ def _evaluate(access, *, evaluated_at_utc, endpoint=PROTECTED_ENDPOINT):
     # account, subscription and every entry's identity, predecessor and outcome).
     if rechecked != snapshot:
         return False
+
+    return scope, prior_runtime, current_runtime
+
+
+def _evaluate(access, *, evaluated_at_utc, endpoint=PROTECTED_ENDPOINT):
+    """Authorise the exact paid endpoint (standalone dashboard by default)."""
+    if type(endpoint) is not str or endpoint not in _paid_access_guard.PAID_ENDPOINTS:
+        return False
+    admitted = _rechecked_admission(access, evaluated_at_utc=evaluated_at_utc)
+    if admitted is False:
+        return False
+    scope, prior_runtime, current_runtime = admitted
+    owner_id, _, _ = scope
 
     try:
         decision = _paid_access_guard.evaluate_paid_access(
