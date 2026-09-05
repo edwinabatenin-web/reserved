@@ -10,6 +10,18 @@
     </div>
 </section>
 
+{% if local_billing_recovery_copy is defined %}
+<section class="panel" aria-labelledby="w10-local-recovery-heading">
+    <h2 id="w10-local-recovery-heading">{{ local_billing_recovery_copy.heading }}</h2>
+    <p>{{ local_billing_recovery_copy.summary }}</p>
+    <p>{{ local_billing_recovery_copy.access_message }}</p>
+    <p>{{ local_billing_recovery_copy.deadline_label }}:
+        <time datetime="{{ local_billing_recovery_copy.deadline_exclusive_utc }}">{{ local_billing_recovery_copy.deadline_display }}</time></p>
+    <p>{{ local_billing_recovery_copy.deadline_consequence }}</p>
+    <p>{{ local_billing_recovery_copy.verified_recovery_consequence }}</p>
+</section>
+{% endif %}
+
 {% if billing_plans_fragment is defined %}
 <section class="panel" aria-label="Reserved subscription prices">
     {{ billing_plans_fragment }}
