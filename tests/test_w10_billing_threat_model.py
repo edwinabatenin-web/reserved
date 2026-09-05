@@ -684,7 +684,7 @@ def test_w9_is_referenced_as_dependency_without_copying_general_registers():
     assert not re.search(r"^### TH-\d+", text, flags=re.MULTILINE)
 
 
-def test_narrative_preserves_no_change_no_assurance_and_no_activation_boundary():
+def test_narrative_preserves_historical_cutoff_and_current_no_assurance_boundary():
     text = " ".join(DOCUMENT.read_text(encoding="utf-8").split())
     required = (
         "not security assurance, launch assurance, provider acceptance or activation",
@@ -693,10 +693,9 @@ def test_narrative_preserves_no_change_no_assurance_and_no_activation_boundary()
         "Q3** (verified post-settlement loss/restoration consequence)",
         "VAT/invoice treatment and owner-bound no-transfer recovery remain specialist gates",
         "changes no runtime and closes no row",
-        "does not answer Q1, Q2 or Q3",
+        "did not answer Q1, Q2 or Q3",
         "does not select a datastore",
-        "does not implement or expose checkout, portal, webhook, billing recovery, refund, admin, entitlement or paid-route behavior",
-        "does not answer Q1, Q2 or Q3, amend Founder Decisions or completion maps",
+        "did not implement or expose checkout, portal, webhook, billing recovery, refund, admin, entitlement or paid-route behavior",
     )
     for phrase in required:
         assert phrase in text
@@ -710,6 +709,27 @@ def test_narrative_preserves_no_change_no_assurance_and_no_activation_boundary()
     )
     for phrase in forbidden:
         assert phrase not in text
+
+
+def test_current_full_withdrawal_reconciliation_narrows_only_open_threats():
+    text = " ".join(DOCUMENT.read_text(encoding="utf-8").split())
+    for phrase in (
+        "Post-full-withdrawal runtime reconciliation",
+        "d471704ed4beaf0d663a1a88dbf6f38b9402c14d",
+        "f772c39d481dbd01bbd18cb9c9ecc2b10527170f",
+        "Every BT/BG row remains `open_not_security_or_launch_assurance`",
+        "BT-06 / BG-06",
+        "BT-07 / BG-07",
+        "BT-09 / BG-09 and BT-10 / BG-10",
+        "BT-12 / BG-12",
+        "BT-13 / BG-13",
+        "BT-20 / BG-20",
+        "denies all **28** settled paid routes",
+        "exactly **27** non-paid routes",
+        "Restoration is not implemented",
+        "No restoration capability or provider-observed entitlement authority is claimed",
+    ):
+        assert phrase in text
 
 
 def test_test_module_is_repository_local_standard_library_plus_pytest_free():

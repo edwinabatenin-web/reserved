@@ -2,6 +2,28 @@
 
 ## Status and authority
 
+**Current accepted full-withdrawal update (5 September 2026):** the bounded
+verified-successful-full-refund runtime is independently accepted at source
+checkpoint `d471704ed4beaf0d663a1a88dbf6f38b9402c14d` and integrated at
+`f772c39d481dbd01bbd18cb9c9ecc2b10527170f` (tree
+`7ce58530b752fca4cb2362e88a30b1d786f11019`). The exact admitted form is a
+fresh, stable, fully refunded, undisputed, succeeded and captured Stripe Charge
+whose one-to-100 unique succeeded Refunds match its Charge, PaymentIntent and
+currency, carry non-null balance-transaction identities and sum exactly to the
+immutable current-period paid receipt. A signed `charge.refunded` event is only
+a retrieval trigger; the provider observation itself has zero entitlement
+authority. Admission durably appends the terminal withdrawal control and
+suspends ordinary paid access at the next authoritative evaluation. All 28
+settled paid routes are denied while the exact 27 non-paid routes retain their
+existing controls. Open, partial, ambiguous, contradictory, stale, replayed,
+changed or otherwise unresolved evidence has zero new entitlement effect.
+Restoration is not implemented. This closes neither S3, S4, S5, S7 nor W10 and
+does not close any provider, sandbox, target, custody, privacy, security,
+operations, human, activation, release or go-live gate. Strict completion
+therefore remains 0/8, terminal 0/13 and W9 0/5; October remains `not_ready`
+with 18 blockers. See the final reconciliation section for exact provenance,
+tests and limitations.
+
 **Current accepted-evidence update (5 September 2026):** the disposable-local
 S3D transactional repository is independently accepted and integrated at
 `26831400fcb0ee638761b589b3bbbf0e239427dd`; see the final reconciliation section
@@ -1245,3 +1267,65 @@ second provider ingress and its recovery-time interpretation are not established
 by this component. S6/W10 remain incomplete. Strict 0/8, terminal 0/13, W9 0/5
 and October not_ready/18 blockers remain unchanged. No pending Founder policy
 or Stripe source-specification proposal is treated as accepted implementation.
+
+## Accepted verified full-withdrawal suspension — 5 September 2026
+
+The accepted source package `d471704ed4beaf0d663a1a88dbf6f38b9402c14d`
+(tree `7ce58530b752fca4cb2362e88a30b1d786f11019`, sole parent
+`4ba6330b9edec8f5be20245bb7f1e47154e14854`) is locally integrated at
+`f772c39d481dbd01bbd18cb9c9ecc2b10527170f`, whose parents preserve that source
+checkpoint and the prior integration lineage. The accepted provider-evidence
+record `work/w10-stripe-full-withdrawal-provider-evidence.md` has SHA-256
+`ebcd7643da0781f2f5d553c2b9344454f0219f8d3caba2bb80f0ad17ea04f93e`;
+the accepted source-admission annex
+`work/w10-stripe-full-withdrawal-source-admission-specification.md` has SHA-256
+`f914c58e52b02811b85e5af5708bf62be9c236224c745a846f8d14e52e854e`;
+and the frozen runtime authority is
+`work/w10-stripe-full-withdrawal-runtime-authority.md`, SHA-256
+`74f73f156e3092796b12476d3c139bc7427dbdc96249cb03fbc0e3b5a4c7eae9`.
+These owner records bind the source boundary; they are not provider activation
+or target evidence.
+
+The accepted runtime implements only the evidenced Stripe API
+`2025-03-31.basil` successful-full-refund form. A supplied, signature-verified
+`charge.refunded` event triggers retrieval but never determines access. Two
+complete fresh passes over the selected current-period Charge and its bounded
+refund list must yield the same canonical projection. The Charge must be
+captured, succeeded, undisputed and fully refunded; one through 100 unique
+succeeded Refunds must match the exact Charge, PaymentIntent and currency,
+include non-null balance-transaction identities and sum exactly to the immutable
+paid receipt. Pagination, partial or changing evidence and dispute, chargeback,
+reversal, failure, reinstatement or restoration labels have no new entitlement
+effect.
+
+The disposable version-five repository appends one authenticated terminal
+withdrawal control after the paid head or one compatible scheduled-cancellation
+head. It consumes unknown attempts, authenticates replay and reconciliation
+identity, refuses changed bytes or object substitution, and prevents an older
+paid fact or reader from minting or retaining paid capability after the
+withdrawal head. Exact replay is idempotent. At the accepted boundary, the
+version-three withdrawal decision and guard deny all **28** settled paid routes
+and preserve exactly **27** non-paid routes under their prior controls. This is
+local synthetic enforcement evidence, not default production wiring or
+provider-authenticated ingress.
+
+Independent review first reproduced four defects: unknown-attempt reuse, stale
+paid-fact issuance, changed-byte replay and missing superseded-period
+reconciliation. The focused correction was independently re-reviewed and
+accepted. The corrected direct set passed 48 tests; the complete affected set
+passed 879. The source checkpoint subsequently passed a separate 904-test
+affected matrix. On exact clean integration `f772c39d...`, the canonical release
+gate passed 10,025 root tests, 13 artefact checks, 23 production-artefact parity
+checks and 138 options checks, with mandatory RW3 true and no
+failures/errors/skips.
+
+This advances the local S3/S5 withdrawal boundary without completing either
+slice. Real provider authentication and retrieval, production custody,
+globally authoritative persistence and ordering, cross-process replay/fork
+prevention, target wiring, sandbox evidence, legal/finance/support/fraud
+treatment, operational reconciliation and customer/human assurance remain open.
+Restoration is deliberately absent: no reinstatement label, provider reversal
+observation, replacement-payment observation or other unadmitted fact can
+restore, extend or strengthen entitlement. Consequently S2/S3/S4/S5/S6/S7/S8
+and W10 remain incomplete; strict **0/8**, terminal **0/13**, W9 **0/5** and
+October `not_ready`/18 blockers are unchanged.
