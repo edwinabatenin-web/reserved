@@ -28,12 +28,12 @@ def recovery(tmp_path):
     value.repo.close()
 
 
-def test_v4_store_uses_one_tagged_control_head_without_paid_sequence_three(recovery):
+def test_v5_store_preserves_one_tagged_failed_control_without_paid_sequence_three(recovery):
     paid = recovery.repo.read_lineage(recovery.authority.snapshot().instance, RECEIPT_KEY)
     assert recovery.fail().disposition == 'admitted'
     lineage, control, lifecycle_head = recovery.repo.read_lifecycle(
         recovery.authority.snapshot().instance, RECEIPT_KEY)
-    assert VERSION == 'reserved-paid-lineage-provenance/4'
+    assert VERSION == 'reserved-paid-lineage-provenance/5'
     assert lineage == paid and len(lineage) == 1
     assert control['version'] == 'reserved-failed-renewal-receipt/1'
     assert control['predecessor_lifecycle_head'] == paid[-1][1]

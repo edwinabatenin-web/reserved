@@ -1071,6 +1071,17 @@ def test_module_has_no_io_provider_route_config_auth_session_or_database_surface
         "project_exact_instant_runtime_entitlement",
         "validate_runtime_entitlement",
         "validate_exact_instant_runtime_entitlement",
+        "WITHDRAWAL_CONTRACT_VERSION",
+        "WITHDRAWAL_BILLING_FACT_PROTOCOL_VERSION",
+        "WITHDRAWAL_BILLING_FACT_ADMISSION_STATUS",
+        "WITHDRAWAL_RUNTIME_DECISION_PROTOCOL_VERSION",
+        "WITHDRAWAL_RUNTIME_ADMISSION_STATUS",
+        "FullWithdrawalRuntimeAdmissionHandle",
+        "FullWithdrawalRuntimeEntitlementHandle",
+        "bind_full_withdrawal_runtime_entitlement_admission",
+        "admit_full_withdrawal_runtime_entitlement",
+        "validate_full_withdrawal_runtime_entitlement",
+        "project_full_withdrawal_runtime_entitlement",
     }
 
 

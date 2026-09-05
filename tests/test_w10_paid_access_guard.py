@@ -255,6 +255,25 @@ def test_candidate_is_confined_to_exact_three_owned_paths_and_base():
             "docs/W10_S5B_INTERNAL_ROUTE_RECONCILIATION.md",
             "reserved/billing/paid_access_guard.py", "docs/W10_S5D_PAID_ACCESS_GUARD.md",
         }
+    if (changed or untracked) and git_text("branch", "--show-current") == "sol/w10-stripe-full-withdrawal":
+        assert git_text("rev-parse", "HEAD") == "4ba6330b9edec8f5be20245bb7f1e47154e14854"
+        allowed |= {
+            "reserved/billing/local_stripe_initial_payment.py",
+            "reserved/billing/local_billing_provenance_repository.py",
+            "reserved/billing/runtime_entitlement_admission.py",
+            "reserved/billing/paid_access_guard.py",
+            "reserved/billing/local_paid_surface_access.py",
+            "tests/test_w10_stripe_full_withdrawal.py",
+            "tests/test_w10_billing_provenance_full_withdrawal.py",
+            "tests/test_w10_exact_utc_full_withdrawal.py",
+            "tests/test_w10_runtime_entitlement_full_withdrawal.py",
+            "tests/test_w10_full_withdrawal_paid_surface_access.py",
+            "tests/test_w10_billing_provenance_failed_renewal.py",
+            "tests/test_w10_billing_provenance_successful_renewal.py",
+            "tests/test_w10_runtime_entitlement_admission.py",
+            "tests/test_w10_paid_access_guard.py",
+            "docs/W10_STRIPE_FULL_WITHDRAWAL_EVIDENCE.md",
+        }
     assert set(changed + untracked) <= allowed
 
     assert git_text("rev-parse", f"{BASE}^{{tree}}") == BASE_TREE
@@ -1135,6 +1154,14 @@ def test_public_api_has_no_io_route_provider_or_entitlement_issuer_surface():
         "evaluate_paid_access",
         "validate_exact_instant_paid_access_decision",
         "validate_paid_access_decision",
+        "WITHDRAWAL_CONTRACT_VERSION",
+        "WITHDRAWAL_RUNTIME_DECISION_PROTOCOL_VERSION",
+        "WITHDRAWAL_RUNTIME_ADMISSION_STATUS",
+        "FullWithdrawalPaidAccessDecisionHandle",
+        "FullWithdrawalPaidAccessGuardHandle",
+        "bind_full_withdrawal_paid_access_guard",
+        "evaluate_full_withdrawal_paid_access",
+        "validate_full_withdrawal_paid_access_decision",
     }
 
 
