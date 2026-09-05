@@ -407,10 +407,16 @@ def test_selection_route_preserves_no_store_and_security_headers(client):
     assert "payment=()" in response.headers["Permissions-Policy"]
 
 
-def test_route_rebinding_defaults_dict_and_wrapped_metadata_cannot_inject(client, monkeypatch):
+def test_route_rebinding_defaults_dict_and_wrapped_metadata_cannot_inject(
+    app, client, monkeypatch
+):
     route_module = importlib.import_module("reserved.web.v2")
     route = route_module.billing_plan_selection
     attack = lambda *args, **kwargs: Markup("<script id='selection-attack'>bad()</script>")
+    clock = {"now": 1_700_000_000}
+    monkeypatch.setattr(
+        TimestampSigner, "get_timestamp", lambda self: clock["now"]
+    )
     assert route.__defaults__ is None
     assert route.__kwdefaults__ is None
     assert "__wrapped__" not in route.__dict__
@@ -428,8 +434,19 @@ def test_route_rebinding_defaults_dict_and_wrapped_metadata_cannot_inject(client
     monkeypatch.setitem(route.__dict__, "fragment_supplier", attack)
     monkeypatch.setitem(route.__dict__, "template_renderer", attack)
     monkeypatch.setitem(route.__dict__, "__wrapped__", attack)
+    clock["now"] += 1
     body = client.get("/v2/plans/monthly").get_data(as_text=True)
-    assert body == baseline
+
+    baseline_token = _csrf_token(baseline)
+    body_token = _csrf_token(body)
+    assert baseline_token != body_token
+    assert _without_csrf_token(body) == _without_csrf_token(baseline)
+
+    with client.session_transaction() as current_session:
+        raw_token = current_session["csrf_token"]
+    signer = URLSafeTimedSerializer(app.secret_key, salt="wtf-csrf-token")
+    assert signer.loads(baseline_token, max_age=60) == raw_token
+    assert signer.loads(body_token, max_age=60) == raw_token
     assert "selection-attack" not in body and "bad()" not in body
 
 
