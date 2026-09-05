@@ -2,6 +2,86 @@
 
 ## Status and authority
 
+<!-- W10-LATEST-CURRENT-RESTORATION-RECONCILIATION-BEGIN -->
+### Latest-current reconciliation — accepted local later-period restoration (5 September 2026)
+
+This latest-current reconciliation supersedes, for current status only, every
+stale **“Restoration is not implemented”** statement below. Those statements
+remain immutable historical evidence of their earlier cut-offs and are not
+rewritten or represented as having reviewed the later implementation.
+
+The accepted local synthetic source checkpoint is
+`8d1d3fdd188289c0a39075c4a5d9d2c9b76e7b30`, tree
+`4493ef7a46d0c6a9ec609b373696249725e175f5`, with sole parent
+`d4bb9a579c40e0f06710c84654efd98495513370`. Its exact 15-path boundary is:
+
+1. `docs/W10_STRIPE_LATER_PERIOD_RESTORATION_EVIDENCE.md`
+2. `reserved/billing/local_billing_provenance_repository.py`
+3. `reserved/billing/local_stripe_initial_payment.py`
+4. `reserved/billing/paid_access_guard.py`
+5. `reserved/billing/runtime_entitlement_admission.py`
+6. `tests/test_w10_billing_provenance_failed_renewal.py`
+7. `tests/test_w10_billing_provenance_full_withdrawal.py`
+8. `tests/test_w10_billing_provenance_later_period_restoration.py`
+9. `tests/test_w10_billing_provenance_successful_renewal.py`
+10. `tests/test_w10_exact_utc_later_period_restoration.py`
+11. `tests/test_w10_later_period_restoration_paid_surface_access.py`
+12. `tests/test_w10_paid_access_guard.py`
+13. `tests/test_w10_runtime_entitlement_admission.py`
+14. `tests/test_w10_runtime_entitlement_later_period_restoration.py`
+15. `tests/test_w10_stripe_later_period_restoration.py`
+
+The accepted fast-forward integration at that source checkpoint is first
+inherited by current integration
+`c54be2e103e39d0504022f19541c4bcfd3f3bff5`, tree
+`61f3471d23c29354d3ee5477d41f9af9b00074d8`, whose first parent is the exact
+restoration checkpoint. Independent acceptance reproduced **81 direct** tests,
+**879 affected** tests and **2,521 W10 behavioural passes**. On exact clean
+current integration `c54be2e...`, the canonical gate passed **10,149 root**, **13
+artefact**, **23 production/artefact parity** and **138 Explore Your Options**
+tests, with mandatory **RW3 true** and an overall pass. The five pre-existing
+package-specific dirty-worktree scope sentinels remain intentional negative
+controls; they are not weakened or reclassified as behavioural failures.
+
+The exact accepted outcome is narrow. An authenticated sequence-one initial
+paid unit followed by its immutable full-withdrawal control can be followed by
+one sequence-two paid successor only for a newly collected, verified successful
+payment for the exact contiguous later catalogue period. Admission authenticates
+the complete source projection, Invoice/type object identity, signed event and
+current paid/lifecycle heads; transaction-time conflict revalidation repeats
+the authenticated event-ID and object-key checks inside the serialized commit
+before compare-and-swap and insert. These are authenticated
+source/object/event/current-head checks, not trust in provider labels. The
+immutable sequence-one paid unit and withdrawal control remain in history; no
+rewrite or same-period restoration is permitted.
+
+Every paid and non-paid boundary remains fail closed. The exact **28 paid
+routes** are eligible only while the admitted sequence-two interval is current
+and every source, owner, subscription, paid-head and lifecycle-head check still
+matches. The exact **27 non-paid routes** retain their previous functions and
+controls. Exact replay is idempotent and returns only the already admitted fact:
+it cannot refetch, resample time, extend access or create another successor.
+Changed bytes or source, event/object identity reuse, stale or substituted
+heads, forged reconciliation state and unsupported lifecycle shapes refuse.
+A repository-confirmed rollback leaves only the exact same raw event and source
+proposal retryable; an unknown outcome recovers only from an authenticated
+durable exact sequence-two receipt/head, otherwise the local handle is poisoned
+and closed. Failed or conflicting attempts leave the full-withdrawal control
+current and create no sequence-two row.
+
+This is accepted local synthetic evidence, **not provider evidence** and not
+complete durable or production billing. Provider observations still have zero
+direct entitlement authority. It supplies no live provider authentication or
+retrieval, credentials or custody, production datastore/migration/retention,
+globally authoritative ordering, cross-process replay/fork assurance, default
+or target wiring, sandbox evidence, payment execution, privacy/security,
+legal/finance/support/fraud/operations or customer/human assurance. Every
+specialist, external, security, target, activation, release and go-live gate
+remains open. Strict W10 completion remains **0/8**, the terminal gate remains
+**0/13**, W9 remains **0/5**, and October remains **`not_ready` with 18
+blockers**.
+<!-- W10-LATEST-CURRENT-RESTORATION-RECONCILIATION-END -->
+
 **Current accepted full-withdrawal update (5 September 2026):** the bounded
 verified-successful-full-refund runtime is independently accepted at source
 checkpoint `d471704ed4beaf0d663a1a88dbf6f38b9402c14d` and integrated at
