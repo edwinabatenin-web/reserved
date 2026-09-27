@@ -456,7 +456,7 @@ def test_evidence_contains_settled_policy_and_bounded_local_enforcement_claim():
     assert "so W10-S5 remains incomplete" in text
     assert "S5C prerequisite route hardening is implemented" in text
     assert "no registered subscription checkout" in text
-    assert "does not independently settle policy" in text
+    assert "proves inventory\nfreshness only" in text
     assert "no production enforcement or activation claim" in text
 
 

@@ -765,6 +765,5 @@ database, provider, network or credential path.
 This inventory was regenerated after S5C because its bound route sources and
 guards changed. It must be regenerated and reviewed again whenever any bound
 source or registered route changes. Passing its tests proves inventory
-freshness only. It does not independently settle policy, supply the runtime
-adapter, wire or activate a paid-access gate, complete W10-S5, or provide launch
-evidence.
+freshness only; it does not independently establish production provider/target
+composition, authorize activation, complete W10-S5, or provide launch evidence.
