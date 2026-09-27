@@ -46,6 +46,11 @@ def durable_paye_forecast_enabled() -> bool:
     return os.environ.get("PAYE_DURABLE_FORECAST_ENABLED", "") == "1"
 
 
+def local_tax_data_erasure_enabled() -> bool:
+    """Independent disabled-first switch for the local erasure seam only."""
+    return os.environ.get("LOCAL_TAX_DATA_ERASURE_ENABLED", "") == "1"
+
+
 def mtd_manual_scope_enabled() -> bool:
     """Independent disabled-first manual MTD journey; never enabled implicitly."""
     return os.environ.get("MTD_MANUAL_SCOPE_ENABLED", "") == "1"

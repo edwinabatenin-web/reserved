@@ -6,6 +6,7 @@ from datetime import date
 import hashlib
 import os
 import sqlite3
+import threading
 
 import pytest
 
@@ -418,6 +419,68 @@ def test_exact_local_cleanup_removes_metadata_before_user_deletion(tmp_path):
     with db._connection() as conn:
         conn.execute("DELETE FROM users WHERE id=?", (OWNER,))
         assert conn.execute("SELECT COUNT(*) FROM users WHERE id=?", (OWNER,)).fetchone()[0] == 0
+
+
+def test_account_lifecycle_cleanup_covers_all_owner_sessions_but_not_other_owner(tmp_path):
+    boundary = _boundary(tmp_path)
+    first = _begin(boundary)
+    second = boundary.begin(
+        authenticated_user_id=OWNER, session_binding="session-owner-other", tax_year=YEAR,
+        content_type="application/pdf", document_bytes=PDF,
+    )
+    foreign = boundary.begin(
+        authenticated_user_id=OTHER, session_binding=OTHER_SESSION, tax_year=YEAR,
+        content_type="application/pdf", document_bytes=PDF,
+    )
+
+    assert boundary.erase_owner_for_account_lifecycle(authenticated_user_id=OWNER) == 2
+    assert _metadata(first.intake_id) is None and _metadata(second.intake_id) is None
+    assert _metadata(foreign.intake_id) is not None
+    assert len(_files(tmp_path)) == 1
+
+
+def test_account_lifecycle_cleanup_stops_and_preserves_metadata_on_replacement(tmp_path):
+    boundary = _boundary(tmp_path)
+    first, second = _begin(boundary), _begin(boundary)
+    _, record = boundary._owned_record(
+        handle=first, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR,
+    )
+    path = record.path
+    path.unlink()
+    path.write_bytes(PDF)
+
+    with pytest.raises(PayslipIntakeError, match="identity"):
+        boundary.erase_owner_for_account_lifecycle(authenticated_user_id=OWNER)
+    assert _metadata(first.intake_id) is not None
+    assert _metadata(second.intake_id) is not None
+
+
+def test_account_lifecycle_barrier_makes_concurrent_intake_post_linearization(tmp_path):
+    boundary = _boundary(tmp_path)
+    _begin(boundary)
+    callback_started, release_callback, upload_done = threading.Event(), threading.Event(), threading.Event()
+    erased, uploaded = [], []
+
+    def erase():
+        erased.append(boundary.erase_owner_for_account_lifecycle_then(
+            authenticated_user_id=OWNER,
+            after_raw_erasure=lambda: (callback_started.set(), release_callback.wait(2), "structured")[2],
+        ))
+
+    def upload():
+        uploaded.append(boundary.begin(
+            authenticated_user_id=OWNER, session_binding="session-owner-later", tax_year=YEAR,
+            content_type="application/pdf", document_bytes=PDF,
+        ))
+        upload_done.set()
+
+    first = threading.Thread(target=erase); first.start()
+    assert callback_started.wait(2)
+    second = threading.Thread(target=upload); second.start()
+    assert not upload_done.wait(0.1)
+    release_callback.set(); first.join(2); second.join(2)
+    assert erased == [(1, "structured")]
+    assert len(uploaded) == 1 and upload_done.is_set() and len(_files(tmp_path)) == 1
 
 
 def test_real_v15_upgrade_uses_no_action_intake_foreign_key(tmp_path, monkeypatch):

@@ -27,7 +27,8 @@ from pathlib import Path
 import re
 import secrets
 import stat
-from typing import Protocol
+import threading
+from typing import Callable, Protocol
 
 from reserved import database
 from reserved.engines.paye_extraction_confirmation import (
@@ -131,6 +132,10 @@ class PayslipIntakeBoundary:
         self._enabled = enabled
         self._extraction_adapter = extraction_adapter
         self._records: dict[str, _StoredPayslip] = {}
+        # Process-local linearization only.  Target storage custody and
+        # cross-process exclusion remain separately required before activation.
+        self._owner_locks_guard = threading.Lock()
+        self._owner_locks: dict[int, threading.RLock] = {}
         database.init_db()
         self._recover_after_restart()
 
@@ -177,6 +182,10 @@ class PayslipIntakeBoundary:
     def _require_enabled(self) -> None:
         if not self._enabled:
             raise PayslipIntakeError("payslip intake is disabled")
+
+    def _owner_lock(self, owner: int) -> threading.RLock:
+        with self._owner_locks_guard:
+            return self._owner_locks.setdefault(owner, threading.RLock())
 
     @staticmethod
     def _timestamp() -> str:
@@ -537,12 +546,16 @@ class PayslipIntakeBoundary:
         owner, session_hash, year = self._owner(authenticated_user_id), self._session_hash(session_binding), self._year(tax_year)
         self._require_registered_owner(owner)
         content_type, document_bytes = self._validate_document(content_type, document_bytes)
-        intake_id = secrets.token_hex(32)
-        path = self._path_for(intake_id, content_type)
-        device, inode, byte_count, content_sha256 = self._write(intake_id, content_type, document_bytes)
-        record = _StoredPayslip(owner, session_hash, year, content_type, path, device, inode, byte_count, content_sha256)
-        self._persist_pending(intake_id, record)
-        self._records[intake_id] = record
+        # An account-lifecycle erasure holds this same owner lock across both
+        # raw cleanup and structured deletion, making a later intake clearly
+        # post-linearization rather than silently escaping the erasure.
+        with self._owner_lock(owner):
+            intake_id = secrets.token_hex(32)
+            path = self._path_for(intake_id, content_type)
+            device, inode, byte_count, content_sha256 = self._write(intake_id, content_type, document_bytes)
+            record = _StoredPayslip(owner, session_hash, year, content_type, path, device, inode, byte_count, content_sha256)
+            self._persist_pending(intake_id, record)
+            self._records[intake_id] = record
         return PayslipIntakeHandle(intake_id=intake_id, tax_year=year)
 
     def cancel(self, *, handle: PayslipIntakeHandle, authenticated_user_id: int,
@@ -597,6 +610,55 @@ class PayslipIntakeBoundary:
             self._delete(intake_id, record)
             self._remove_completed_metadata(intake_id)
         return len(owned)
+
+    def erase_owner_for_account_lifecycle(self, *, authenticated_user_id: int) -> int:
+        """Erase only this owner's pending raw files for an account lifecycle.
+
+        This is intentionally distinct from session cleanup.  Metadata remains
+        if verification or deletion fails, and no other owner's row is read.
+        """
+        return self.erase_owner_for_account_lifecycle_then(
+            authenticated_user_id=authenticated_user_id, after_raw_erasure=None,
+        )
+
+    def erase_owner_for_account_lifecycle_then(self, *, authenticated_user_id: int,
+                                               after_raw_erasure: Callable[[], object] | None):
+        """Hold one owner's admission barrier through a supplied next phase.
+
+        The callback is for the immediately-following structured local-data
+        transaction.  It runs only after verified raw cleanup and while a new
+        upload for this owner remains excluded in this process.
+        """
+        self._require_enabled()
+        if after_raw_erasure is not None and not callable(after_raw_erasure):
+            raise PayslipIntakeError("account lifecycle continuation is unavailable")
+        owner = self._owner(authenticated_user_id)
+        with self._owner_lock(owner):
+            return self._erase_owner_for_account_lifecycle_locked(owner, after_raw_erasure)
+
+    def _erase_owner_for_account_lifecycle_locked(self, owner: int, after_raw_erasure):
+        with database._connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM paye_payslip_intakes WHERE user_id=? AND state IN ('pending','deleting') ORDER BY storage_id",
+                (owner,),
+            ).fetchall()
+        decoded = []
+        for row in rows:
+            item = self._record_from_row(row)
+            if item is None:
+                raise PayslipIntakeError("owner payslip metadata is unavailable")
+            decoded.append((row["state"], *item))
+        for state, intake_id, record in decoded:
+            if record.owner_user_id != owner:
+                raise PayslipIntakeError("owner payslip metadata is unavailable")
+            if state == "pending":
+                self._mark_deleting(intake_id=intake_id, record=record)
+            self._delete(intake_id, record)
+            self._remove_completed_metadata(intake_id)
+        raw_count = len(decoded)
+        if after_raw_erasure is None:
+            return raw_count
+        return raw_count, after_raw_erasure()
 
 
 __all__ = [

@@ -313,6 +313,16 @@ class DurableAnnualPositionRepository:
         """
         self._require_external_authority()
 
+    def assert_account_erasure_clearances(self, *, authenticated_user_id: int,
+                                          legal_hold_clearance: AccountErasureClearance,
+                                          backup_expiry_clearance: AccountErasureClearance) -> None:
+        """Public non-mutating assertion for the exact two erasure capabilities."""
+        self._require_current_erasure_clearances(
+            authenticated_user_id=authenticated_user_id,
+            legal_hold_clearance=legal_hold_clearance,
+            backup_expiry_clearance=backup_expiry_clearance,
+        )
+
     def _require_external_authority(self) -> None:
         if not self._external_authority_available:
             raise DurableAnnualPositionError("external authority verifier is not configured; operation is disabled")
