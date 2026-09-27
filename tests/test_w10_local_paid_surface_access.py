@@ -25,7 +25,6 @@ CASES = (
     ('v2.delete_paye_manual_journey_entry', '/v2/paye/manual/entries/synthetic/delete', 'POST'),
     ('v2.paye_durable_current_position', '/v2/paye/current-position', 'GET'),
     ('v2.paye_durable_current_forecast', '/v2/paye/current-forecast', 'GET'),
-    ('v2.hicbc_durable_current_annual_position', '/v2/hicbc/current-annual-position', 'GET'),
     ('v2.mtd_manual_scope', '/v2/mtd/scope-indication', 'POST'),
     ('v2.invoices', '/v2/invoices', 'GET'),
     ('v2.invoices_seed', '/v2/invoices/seed', 'POST'),
@@ -50,6 +49,7 @@ CASES = (
     ('hicbc.link_revoke', '/v2/hicbc/link/revoke', 'POST'),
     ('hicbc.result_json', '/v2/hicbc/result', 'GET'),
     ('hicbc.annual_preview', '/v2/hicbc/annual-preview', 'POST'),
+    ('hicbc.durable_current_annual_position', '/v2/hicbc/current-annual-position', 'GET'),
 )
 
 
@@ -182,7 +182,7 @@ def test_conditional_absence_never_registers_hicbc(app, repo, monkeypatch):
     application.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
     before = dict(application.view_functions)
     client, _ = install(application, repo)
-    assert len([n for n in before if n in paid.PAID_ENDPOINTS]) == 24
+    assert len([n for n in before if n in paid.PAID_ENDPOINTS]) == 23
     assert application.view_functions.keys() == before.keys()
     assert not any(n.startswith('hicbc.') for n in before)
     assert client.get('/v2/hicbc/').status_code == 404

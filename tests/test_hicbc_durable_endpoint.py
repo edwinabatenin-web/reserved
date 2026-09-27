@@ -24,6 +24,7 @@ def prepared(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "_DB_FILE", tmp_path / "hicbc-endpoint.db")
     monkeypatch.setattr(db, "_INSTANCE", tmp_path)
     monkeypatch.setenv("FLASK_ENV", "development")
+    monkeypatch.setenv("HICBC_ENABLED", "1")
     monkeypatch.delenv("HICBC_DURABLE_ANNUAL_ENABLED", raising=False)
     monkeypatch.setattr(bridge, "_server_date", lambda: __import__("datetime").date(2027, 4, 5))
     billing = billing_runtime(tmp_path / "billing-primary")
@@ -203,6 +204,7 @@ def test_stale_uncertain_and_active_link_return_minimal_null_preview(prepared, m
 def test_application_factory_requires_billing_and_composes_exact_runtime(prepared, monkeypatch):
     _app, tax, annual, repository, tmp_path = prepared
     monkeypatch.setenv("HICBC_DURABLE_ANNUAL_ENABLED", "1")
+    monkeypatch.setenv("HICBC_ENABLED", "1")
     runtime = DurableHicbcRuntime(
         repository=repository,
         owner_scope_resolver=lambda _: (BUSINESS, YEAR, NATION),

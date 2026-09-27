@@ -29,10 +29,12 @@ import json
 import logging
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, abort, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, current_app, g, jsonify, redirect, render_template, request, session, url_for
 
 from reserved.auth import require_auth, is_production_environment
-from reserved.config import hicbc_enabled, hicbc_annual_preview_enabled
+from reserved.config import (
+    durable_hicbc_annual_enabled, hicbc_enabled, hicbc_annual_preview_enabled,
+)
 from reserved.services.hicbc_annual_source_runtime import own_ani_from_manual_annual
 from reserved.database import (
     HICBC_NOTICE_VERSION,
@@ -43,6 +45,7 @@ from reserved.database import (
     get_hicbc_linked_partner_snapshot,
     get_hicbc_link_permission_view,
     get_profile_by_user,
+    get_user,
     hicbc_manual_preview_read,
     record_hicbc_link_consent_from_binding,
     revoke_hicbc_link,
@@ -831,3 +834,26 @@ def link_revoke():
         "Linked HICBC has been turned off and the accounts have been unlinked."
     )
     return redirect(url_for("hicbc.link_page"))
+
+
+@hicbc.get("/current-annual-position")
+@require_auth
+def durable_current_annual_position():
+    """Paid, disabled-first HICBC state from the trusted durable annual bridge."""
+    if (not durable_hicbc_annual_enabled() or request.args
+            or request.content_length not in (None, 0)):
+        abort(404)
+    from reserved.hicbc_durable_endpoint import (
+        DurableHicbcRuntime,
+        current_annual_position_payload,
+    )
+    try:
+        runtime = current_app.extensions.get("reserved.hicbc.durable_annual_endpoint")
+        if type(runtime) is not DurableHicbcRuntime:
+            raise ValueError
+        if type(g.user_id) is not int or g.user_id <= 0 or get_user(g.user_id) is None:
+            raise ValueError
+        payload = current_annual_position_payload(runtime, g.user_id)
+    except Exception:
+        abort(404)
+    return jsonify(payload)

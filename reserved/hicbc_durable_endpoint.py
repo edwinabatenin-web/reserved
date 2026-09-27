@@ -19,7 +19,7 @@ from reserved.hicbc_durable_annual_bridge import compose_durable_authenticated_h
 
 _KEY = "reserved.hicbc.durable_annual_endpoint"
 _RULE = "/v2/hicbc/current-annual-position"
-_ENDPOINT = "v2.hicbc_durable_current_annual_position"
+_ENDPOINT = "hicbc.durable_current_annual_position"
 
 
 class DurableHicbcEndpointError(ValueError):

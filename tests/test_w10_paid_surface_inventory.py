@@ -71,7 +71,7 @@ EXPECTED_CLASSIFICATION_MEMBERS = {
         "v2.delete_paye_manual_journey_entry",
         "v2.paye_durable_current_position",
         "v2.paye_durable_current_forecast",
-        "v2.hicbc_durable_current_annual_position",
+        "hicbc.durable_current_annual_position",
         "v2.mtd_manual_scope",
         "v2.index",
         "v2.invoices",
@@ -142,7 +142,7 @@ EXPECTED_GUARD_MEMBERS = {
         "v2.delete_paye_manual_journey_entry",
         "v2.paye_durable_current_position",
         "v2.paye_durable_current_forecast",
-        "v2.hicbc_durable_current_annual_position",
+        "hicbc.durable_current_annual_position",
         "v2.mtd_manual_scope",
         "v2.invoices",
         "v2.invoices_seed",
@@ -329,7 +329,7 @@ def test_inventory_exactly_matches_registry_with_optional_blueprint_off(monkeypa
     }
     actual = build_registry(monkeypatch, hicbc_enabled=False)
     assert actual == expected
-    assert len(actual) == data["route_counts"]["always"] == 51
+    assert len(actual) == data["route_counts"]["always"] == 50
 
 
 def test_inventory_exactly_matches_registry_with_optional_blueprint_on(monkeypatch):
@@ -341,7 +341,7 @@ def test_inventory_exactly_matches_registry_with_optional_blueprint_on(monkeypat
         if route["registration"] == "hicbc_feature_enabled"
     ]
     assert actual == expected
-    assert len(conditional) == data["route_counts"]["hicbc_feature_enabled_additional"] == 9
+    assert len(conditional) == data["route_counts"]["hicbc_feature_enabled_additional"] == 10
     assert len(actual) == data["route_counts"]["hicbc_feature_enabled_total"] == 60
 
 

@@ -17,8 +17,8 @@ guard kernel is implemented. The authoritative runtime adapter, route wiring
 and live paid-entitlement enforcement remain **not started**, and W10-S5
 remains incomplete. S5A is inventory evidence only.
 
-The registry has 51 always-registered rules. Enabling the disabled-by-default
-HICBC feature gate adds 9 owner-authenticated rules, producing 60 total. The
+The registry has 50 always-registered rules. Enabling the disabled-by-default
+HICBC feature gate adds 10 owner-authenticated rules, producing 60 total. The
 annual-preview rule additionally requires its own strict switch and denies
 production; its paid classification does not wire runtime entitlement. Flask's
 implicit `HEAD` and `OPTIONS` methods are omitted; the listed methods are the
@@ -62,8 +62,8 @@ only when `HICBC_ENABLED` is explicitly enabled.
   "paid_entitlement_enforcement_status": "guard_kernel_only_runtime_adapter_and_route_wiring_not_started",
   "route_hardening_changes": true,
   "route_counts": {
-    "always": 51,
-    "hicbc_feature_enabled_additional": 9,
+    "always": 50,
+    "hicbc_feature_enabled_additional": 10,
     "hicbc_feature_enabled_total": 60
   },
   "classification_counts": {
@@ -79,9 +79,9 @@ only when `HICBC_ENABLED` is explicitly enabled.
     "reserved/config.py": "dd35367653820e5162aa7bdba6cdaeac47614ac072b5bceba0772c6f1c8374be",
     "reserved/extensions.py": "ef35d3ec969e299a1c8221b5636bcf44590189175b0ad0c83e88d38ded35b2a0",
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
-    "reserved/web/hicbc.py": "f64b1f7db99c42d27d6ec4995b78bd20e0214ddeed1934a157f543cb283d8f23",
+    "reserved/web/hicbc.py": "efe0e59d6bd88ce44ae1f48a59aad9e01594b382c4b211a9a916508af6acd2f2",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
-    "reserved/web/v2.py": "a05903f84633669d716a8ac62cfa91a067662c9401fd1e98f648326fa07f4315"
+    "reserved/web/v2.py": "e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16"
   },
   "routes": [
     {
@@ -375,10 +375,10 @@ only when `HICBC_ENABLED` is explicitly enabled.
       "note": "Disabled-first owner-bound forecast over explicit confirmed future-pay inputs only. A complete injected forecast runtime supplies server-owned scope, annual position and future facts; the settled paid-access boundary remains independently mandatory."
     },
     {
-      "endpoint": "v2.hicbc_durable_current_annual_position",
+      "endpoint": "hicbc.durable_current_annual_position",
       "rule": "/v2/hicbc/current-annual-position",
       "methods": ["GET"],
-      "registration": "always",
+      "registration": "hicbc_feature_enabled",
       "guard": "customer_session",
       "csrf": "not_applicable",
       "classification": "authenticated_product_candidate_pending_founder_decision",
