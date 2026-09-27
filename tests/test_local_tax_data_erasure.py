@@ -176,3 +176,20 @@ def test_clearance_failures_do_not_report_success(prepared, monkeypatch, mutate)
     client, token = _client(app, owner)
     assert client.post("/v2/account/local-tax-data-erasure", data={"csrf_token": token}).status_code == 403
     assert calls == [owner]
+
+
+def test_second_clearance_check_failure_never_reports_success(prepared, monkeypatch):
+    app, owner, _, repository, boundary, clearances = prepared
+    calls = []; _install(app, repository, boundary, clearances, calls)
+    checks = []
+    original = repository.assert_account_erasure_clearances
+    def verify_then_fail(**kwargs):
+        checks.append(kwargs)
+        if len(checks) == 2:
+            raise ValueError("clearance changed")
+        return original(**kwargs)
+    monkeypatch.setattr(repository, "assert_account_erasure_clearances", verify_then_fail)
+    monkeypatch.setenv("LOCAL_TAX_DATA_ERASURE_ENABLED", "1")
+    client, token = _client(app, owner)
+    assert client.post("/v2/account/local-tax-data-erasure", data={"csrf_token": token}).status_code == 403
+    assert len(checks) == 2
