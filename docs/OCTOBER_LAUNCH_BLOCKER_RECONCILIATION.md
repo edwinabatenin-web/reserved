@@ -28,7 +28,7 @@ their assurance state.
 | Source | SHA-256 |
 |---|---|
 | `FOUNDER_DECISIONS.md` | `03765242c39354ffe57834da8a4a4e5b0dbbdacf5278731e560dea55ae3722d4` |
-| `docs/HMRC_PAYE_FALLBACK_COMPLETION_MAP.md` | `bd42b33d98f598a5ed56f1e40c21dfea99371399387de0e59d73522673bbba0d` |
+| `docs/HMRC_PAYE_FALLBACK_COMPLETION_MAP.md` | `63e23a2acb7eea7db87f41c04b027bf77a450457bb2f3a04796031c946733d56` |
 | `docs/FREEAGENT_COMPLETION_MAP.md` | `3686ddfc965357b6942bdc5db1513c35081f5d2b6b8865246dbc6ff954fb0778` |
 | `docs/XERO_COMPLETION_MAP.md` | `de759b0327fb31df633819d646292df852dcf19c5346c63d90cea1e6bbd0630c` |
 | `docs/QUICKBOOKS_COMPLETION_MAP.md` | `41c337c61f948622d15bec5ae807e9b7f711f799baf2344cfe8ffdb1d56a2b84` |
@@ -52,7 +52,7 @@ named workstream can close every external or human dependency itself.
 
 | Canonical blocker | Current owner/evidence | Category | Evidence required to clear | Next action |
 |---|---|---|---|---|
-| `paye_evidence_and_forecasting` | HMRC/PAYE fallback map; durable current-position route at `c6f5e4a`; paid current-forecast route at `4160155` | `not_executable` | Durable customer capture/update and supply of confirmed future-pay facts, required-period/source coverage, followed by target customer/privacy/operational and representative evidence | Preserve safe unknown future pay while implementing the bounded durable fact lifecycle that feeds the accepted forecast route; do not relabel a route or unknown future pay as a completed forecast |
+| `paye_evidence_and_forecasting` | HMRC/PAYE fallback map; durable current-position route at `c6f5e4a`; paid current-forecast route integrated at `318fe2d` with evidence bindings refreshed at `4160155` | `not_executable` | Durable customer capture/update and supply of confirmed future-pay facts, required-period/source coverage, followed by target customer/privacy/operational and representative evidence | Preserve safe unknown future pay while implementing the bounded durable fact lifecycle that feeds the accepted forecast route; do not relabel a route or unknown future pay as a completed forecast |
 | `paye_payslip_manual_evidence_journey` | HMRC/PAYE fallback map; durable manual route and current-position composition | `evidence_missing` | Target custody, retention/backup, privacy/security and representative UX evidence for structured manual PAYE | Keep raw upload/extraction outside the approved manual scope unless separately authorised; collect the remaining target/human evidence |
 | `hmrc_integration` | HMRC/PAYE fallback map; W8 slice 4; W9 `ACT-02` | `externally_blocked` | Exact official source contract, credential custody, authenticated disabled-first transport, sandbox journeys, error/recovery and target assurance | Obtain the applicable HMRC access/custody/sandbox facts; do not infer production capability from local contracts |
 | `freeagent_integration` | FreeAgent completion map, FA-S2–S6 | `not_implemented` | Owner/company-bound encrypted custody, disabled-first adapter, complete resilience, sandbox and target/customer assurance | Resume at FA-S2 only after the external custody design is approved; preserve accepted FA-S1/FA-S4 evidence |

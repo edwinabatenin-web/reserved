@@ -10,7 +10,7 @@ integration, independent review, or launch readiness.
 | PAYE reconciliation trust, explicit-policy issuance and authoritative projection | Yes | Yes | Yes | No | Integrated at `c23d343`; customer orchestration, persistence, UX/security evidence and launch assurance remain |
 | Customer-safe PAYE reconciliation evidence presentation | Yes | Yes | Yes | No | Paid authenticated durable current-position route accepted at `c6f5e4a`; target UX/security evidence remains |
 | Explicit-confirmed-period future-pay forecast composition (detached) | Yes | Yes | Yes | No | Authenticated owner/business orchestration, persistence, customer-safe presentation, full-period coverage and launch assurance remain |
-| Authenticated paid durable confirmed-input forecast route | Yes | Yes | Yes | No | Integrated at `4160155`; durable customer fact capture/update/supply, required-period/source coverage and target launch evidence remain |
+| Authenticated paid durable confirmed-input forecast route | Yes | Yes | Yes | No | Product integration at `318fe2d`; evidence bindings refreshed at `4160155`; durable customer fact capture/update/supply, required-period/source coverage and target launch evidence remain |
 | Authenticated manual multi-employment cumulative entry, durable replacement/deletion and partial review | Yes | Yes | Yes | No | Durable paid composition accepted at `c6f5e4a`; target custody, retention/backup, privacy/security and representative journey evidence remain |
 | Upload, extraction, customer confirmation, and secure raw-document deletion | No | No | No | No | Document-processing integration plus privacy/security controls |
 | Customer journey, persistence, replacement/deletion actions, structured retention, account deletion, and backups | Partial | Partial | Partial | No | Manual PAYE persistence/replacement/deletion exists; target retention, account deletion, backups and wider product evidence remain |
@@ -103,7 +103,7 @@ Independent technical and security/privacy re-review both returned ACCEPT.
 Focused PAYE/billing tests passed 24/24, followed by a clean canonical gate with
 10,394 root tests plus all mandatory artefact, parity, RW3 and options checks.
 This makes the local manual current-position path executable. The later
-integration at `4160155` makes the separately bounded future-pay composer
+product integration at `318fe2d` makes the separately bounded future-pay composer
 available through an authenticated paid route, but does not supply its durable
 customer-confirmed facts or establish required-period/source coverage. Because
 the canonical row combines evidence and forecasting, it remains
@@ -155,8 +155,8 @@ coverage of the required periods and sources, target UX/security evidence,
 integrated end-to-end assurance and launch enablement remain outstanding.
 
 The limitations above describe the accepted detached source package and remain
-part of its durable provenance. The later integration at exact local checkpoint
-`4160155ad50eacb0d38f6a8084744aeb2f945c3c` composes it into the static
+part of its durable provenance. The product integration at exact local checkpoint
+`318fe2dabcef359dd4066fc207ad8a07395bbefd` composes it into the static
 authenticated `GET /v2/paye/current-forecast` route. Installation requires the
 exact active paid-access wrapper; owner, business and tax year are server-owned;
 the route accepts no request facts; missing, invalid or disabled dependencies
@@ -164,6 +164,10 @@ fail closed; and the response is bounded to the accepted forecast projection.
 This resolves the route/authentication orchestration gap without changing the
 accepted composer or adding provider access, HMRC access, payroll prediction,
 tax authority or payment authority.
+
+The later checkpoint `4160155ad50eacb0d38f6a8084744aeb2f945c3c`
+refreshes the integrated route's exact source bindings; it is evidence
+reconciliation, not the product integration commit.
 
 The current route consumes only an injected exact durable runtime. A customer
 workflow and store to capture, replace, delete and supply confirmed future-pay
