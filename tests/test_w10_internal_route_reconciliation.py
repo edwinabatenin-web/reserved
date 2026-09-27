@@ -332,11 +332,12 @@ def test_exact_metadata_preserves_incomplete_s5_and_no_new_founder_question():
         "candidate_requires_independent_review"
     )
     assert data["s5_status"] == (
-        "incomplete_guard_kernel_implemented_route_enforcement_not_started"
+        "local_runtime_enforcement_implemented_production_acceptance_open"
     )
     assert data["paid_boundary_status"] == "settled_by_w10_s2f"
     assert data["paid_entitlement_enforcement_status"] == (
-        "guard_kernel_only_runtime_adapter_and_route_wiring_not_started"
+        "local_disabled_first_runtime_and_route_wiring_implemented_"
+        "production_activation_not_authorized"
     )
     assert data["new_founder_question_required"] is False
 
@@ -639,13 +640,14 @@ def test_document_preserves_nonimplementation_and_decision_boundaries():
         "This evidence refresh changes no route or runtime behavior.",
         "prerequisite route hardening is implemented",
         "accepted W10-S2F settles the paid-route class",
-        "accepted W10-S5D supplies a route-less guard kernel",
-        "live paid-entitlement enforcement remain **not started**",
+        "accepted W10-S5D supplies the guard kernel",
+        "local runtime composition, route wiring and paid-entitlement enforcement are implemented",
         "W10-S5 remains incomplete",
         "No additional Founder question is created",
         "does not reopen or independently settle that policy",
         "None of the routes below becomes a free or paid customer product",
         "No database, network, environment credential or provider code path is exercised.",
+        "Remaining S5 work is production provider/target composition",
     )
     for phrase in required:
         assert phrase in normalized

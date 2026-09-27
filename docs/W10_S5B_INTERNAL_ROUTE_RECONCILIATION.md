@@ -32,9 +32,10 @@ implementation. It does not expose a route, approve a current guard, weaken
 authentication or CSRF, activate a provider, access credentials or data, or
 make a paid-boundary decision or complete W10-S5. The prerequisite route
 hardening is implemented, accepted W10-S2F settles the paid-route class, and
-accepted W10-S5D supplies a route-less guard kernel. The authoritative runtime
-adapter, route wiring and live paid-entitlement enforcement remain **not
-started**, and W10-S5 remains incomplete.
+accepted W10-S5D supplies the guard kernel. Disabled-first local runtime
+composition, route wiring and paid-entitlement enforcement are implemented and
+tested. Production provider/target composition, operational acceptance,
+activation and release remain open, so W10-S5 remains incomplete.
 
 ## Result
 
@@ -70,8 +71,8 @@ rather than being silently reinterpreted as current runtime evidence.
 
 | Evidence | SHA-256 | Use |
 |---|---|---|
-| `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `8c3831a6e8d4e148a1f58dbbae5ce455d26cd7c30444942a6b2a4889b667ccf8` | Current candidate inventory including the disabled-first owner-bound PAYE position, confirmed-input forecast and MTD journeys; production-shaped access is subject to the separately installed paid-entitlement runtime. |
-| `tests/test_w10_paid_surface_inventory.py` | `a2ee6a2b0e704cf167e68a28926a60a5b76ab773dcc55371c999d737867104ce` | Current inventory/source/registry freshness assurance. |
+| `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `790195a603d66b78c2b46e65e00b366990cc2c18afba08463649e0f69d87071b` | Current candidate inventory including the disabled-first local linked-HICBC route and exact paid surface; production provider/target composition and activation remain open. |
+| `tests/test_w10_paid_surface_inventory.py` | `3098d5bb055e5162c8c31162af6d335258684892755da1c46f84a79833ce8452` | Current inventory/source/registry freshness assurance. |
 | `5612f7a...:docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md` | `7af205f420c2cf3a9039fff7aad1af65e55221005231b2fabe3bd99c94f96c4d` | Historical W10 state and explicit S5B next action, verified from the Git blob. |
 | `FOUNDER_DECISIONS.md` | `78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f` | Current October scope, paid-subscription lifecycle/withdrawal authority and ordinary-engineering authority at the refreshed repository identity. |
 | `docs/TECHNICAL_ARCHITECTURE.md` | `7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79` | Capital Gains dormant/out-of-scope and launch-layer boundary. |
@@ -95,9 +96,9 @@ disposition forward by name alone.
   "accepted_s5c_product_tree": "ac3eb6f3028ef2e60bbd1543c1ee92f94655a0b7",
   "reconciliation_status": "accepted_reconciliation_with_implemented_s5c_treatments",
   "evidence_refresh_status": "candidate_requires_independent_review",
-  "s5_status": "incomplete_guard_kernel_implemented_route_enforcement_not_started",
+  "s5_status": "local_runtime_enforcement_implemented_production_acceptance_open",
   "paid_boundary_status": "settled_by_w10_s2f",
-  "paid_entitlement_enforcement_status": "guard_kernel_only_runtime_adapter_and_route_wiring_not_started",
+  "paid_entitlement_enforcement_status": "local_disabled_first_runtime_and_route_wiring_implemented_production_activation_not_authorized",
   "new_founder_question_required": false,
   "historical_completion_map_blob": {
     "commit": "5612f7a33f27f09d1fa988f15dfdffbe77a72705",
@@ -108,8 +109,8 @@ disposition forward by name alone.
     "FOUNDER_DECISIONS.md": "78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f",
     "docs/API_CONTRACT_GAP_REPORT.md": "b0eeeea6357e88dd1db59dd5ddf2d4e4e712f79f73d3a61c52838cda390ac85f",
     "docs/TECHNICAL_ARCHITECTURE.md": "7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79",
-    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "8c3831a6e8d4e148a1f58dbbae5ce455d26cd7c30444942a6b2a4889b667ccf8",
-    "reserved/__init__.py": "d3ce81ff94f3bfe21329d5a678251319d2f021d36a618effd5a49d9426e051ad",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "790195a603d66b78c2b46e65e00b366990cc2c18afba08463649e0f69d87071b",
+    "reserved/__init__.py": "affaa48b467b6f0e5a54121af40a3da7092356e85601bb39a376db1e088d0fd1",
     "reserved/providers/banking/yapily.py": "885d021f20f8a76b5f2d26ed692f1e2cae4a7c9764c885da286a61c1c2b68475",
     "reserved/security.py": "73a5d20f1aa69fafda1ab4a9d6c01668fc9a465686e2d8198f8649364e43ae2b",
     "reserved/templates/connections.html": "e58bf5d92892dd5c88f4df1dce6dc7b91b2fea30ebbe9878b8240e22262511e6",
@@ -121,7 +122,7 @@ disposition forward by name alone.
     "reserved/web/hicbc.py": "efe0e59d6bd88ce44ae1f48a59aad9e01594b382c4b211a9a916508af6acd2f2",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
     "reserved/web/v2.py": "0324464e3cbbfad4e3d2207fe8db76a6e486083b8e604c561676dfff4e82aa69",
-    "tests/test_w10_paid_surface_inventory.py": "2a7c86ad7cfe994f622d1fe638c084d576aaa882ffa4108c406b1867be436609"
+    "tests/test_w10_paid_surface_inventory.py": "3098d5bb055e5162c8c31162af6d335258684892755da1c46f84a79833ce8452"
   },
   "s5c_implemented_treatments": {
     "web.calculate": {
@@ -459,10 +460,10 @@ cleanup: Capital Gains and all Founder boundaries are unchanged; the three
 legacy paths are retired or redirected without a paid-surface answer;
 `tax-assurance` is closed because no staff boundary exists; and the sandbox
 checklist is production-404 while retaining its non-production customer-session
-guard. S5D separately supplies the accepted route-less guard kernel. The next
-S5 engineering packages must supply the authoritative runtime-entitlement
-adapter and server-side route wiring without treating either as provider or
-launch authority.
+guard. S5D supplies the accepted guard kernel and reviewed disabled-first local
+composition now supplies exact server-side paid route enforcement. Remaining
+S5 work is production provider/target composition, operational and customer
+acceptance, activation and release authority.
 
 ## Assurance method and limits
 
@@ -475,7 +476,8 @@ gate, session, export and no-store behavior. It imports no Reserved runtime
 module and creates no app or request. No database, network, environment
 credential or provider code path is exercised.
 
-Passing proves that this evidence matches the accepted S5C product snapshot. It
-does not prove target reachability, current deployment settings, privileged
-credential custody, a paid-boundary decision, paid-entitlement enforcement,
-provider readiness, customer journey quality or launch readiness.
+Passing proves that this evidence matches the current bound route sources and
+the accepted historical S5C treatments. It does not prove target reachability,
+current deployment settings, privileged credential custody, production
+provider composition or enforcement, customer journey quality, activation or
+launch readiness.
