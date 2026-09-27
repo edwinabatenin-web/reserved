@@ -14,11 +14,15 @@ from reserved.services.mtd_scope_indication import MtdScopeCompleteness, present
 
 YEARS = ("2024-25", "2025-26")
 CURRENT_YEAR = "2026-27"
-_MANDATORY_YEARS = {year: MTD_THRESHOLD_RULES[year].mandatory_from_tax_year for year in YEARS}
+_DISPLAY_YEARS = YEARS + (CURRENT_YEAR,)
+_MANDATORY_YEARS = {
+    year: MTD_THRESHOLD_RULES[year].mandatory_from_tax_year
+    for year in _DISPLAY_YEARS
+}
 TRI = ("yes", "no", "unknown")
 QUESTIONS = (
     ("source_basis", "Basis of the selected year's figures", ("submitted_return", "records_only", "draft_return", "year_to_date", "unknown")),
-    ("return_revision", "Position of that submitted return", ("original_unamended", "amended", "conflicting", "unknown")),
+    ("return_revision", "Return status for the selected assessment year", ("original_unamended", "amended", "conflicting", "not_applicable_current_year", "unknown")),
     ("registered_for_sa", "Are you registered for Self Assessment?", TRI),
     ("acting_capacity", "Whose affairs are you describing?", ("own_individual", "representative_or_entity", "unknown")),
     ("relevant_tax_region", "Relevant tax region (this does not establish residence)", ("england", "wales", "northern_ireland", "other", "unknown")),
@@ -66,7 +70,7 @@ def manual_year_metadata(as_of):
     if type(as_of) is not date:
         raise ValueError("Invalid server date")
     rows = []
-    for year in YEARS:
+    for year in _DISPLAY_YEARS:
         start_year = int(year[:4])
         mandatory = _MANDATORY_YEARS[year]
         start = date(int(mandatory[:4]), 4, 6)
@@ -171,7 +175,7 @@ def _admit_manual_mtd(values, *, as_of):
         # is accepted as a substitute for an exact YTD coverage period.
         tax_year_day_counts(assessment_year=CURRENT_YEAR, as_of=as_of)
         timing = (values.get("source_basis") == "year_to_date"
-                  and values.get("return_revision") == "original_unamended"
+                  and values.get("return_revision") == "not_applicable_current_year"
                   and not submitted)
     else:
         timing = bool(period and submitted and period[2] < submitted <= period[4]

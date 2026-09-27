@@ -30,7 +30,7 @@ def current_facts(**changes):
         "assessment_year": "2026-27",
         "submitted_on": "",
         "source_basis": "year_to_date",
-        "return_revision": "original_unamended",
+        "return_revision": "not_applicable_current_year",
         "registered_for_sa": "yes",
         "acting_capacity": "own_individual",
         "relevant_tax_region": "england",
@@ -89,6 +89,14 @@ def test_current_year_day_boundaries_and_leap_safe_day_helper():
     assert elapsed > 0 and total == 366
 
 
+def test_current_year_metadata_exposes_the_rule_derived_source_and_ni_boundary():
+    rows = {row[0]: row for row in admission.manual_year_metadata(AS_OF)}
+    assert rows["2026-27"] == (
+        "2026-27", date(2026, 4, 6), date(2027, 4, 5),
+        date(2028, 4, 6), AS_OF,
+    )
+
+
 @pytest.mark.parametrize("gross,headline,status", [
     ("20000.00", "Worth reviewing", MtdStatus.APPROACHING_MTD_THRESHOLD),
     ("20000.01", "Worth reviewing", MtdStatus.MTD_APPLIES),
@@ -126,6 +134,7 @@ def test_year_end_threshold_equality_and_one_penny_are_deterministic(gross, head
     {"source_version_conflict": "yes"},
     {"sa109_2026-27": "yes"},
     {"source_basis": "submitted_return"},
+    {"return_revision": "original_unamended"},
     {"submitted_on": "2026-09-05"},
 ])
 def test_current_year_partial_stale_future_or_unresolved_evidence_fails_closed(changes):
@@ -153,6 +162,22 @@ def test_current_year_duplicate_property_grouping_and_unsupported_year_fail_clos
     assert as_mtd_scope_mapping(handle)["information_complete"] is False
     with pytest.raises(ValueError):
         admission.tax_year_day_counts(assessment_year="2026-27", as_of=date(2027, 4, 6))
+
+
+def test_return_status_is_year_specific_and_cannot_cross_admit():
+    current, supported = current_mapping(return_revision="original_unamended")
+    assert supported is False and current["information_complete"] is False
+    completed = current_facts(
+        assessment_year="2025-26",
+        source_basis="submitted_return",
+        return_revision="not_applicable_current_year",
+        submitted_on="2026-04-30",
+        source_1_period_start="2025-04-06",
+        source_1_period_end="2026-04-05",
+    )
+    handle, supported = admission.admit_manual_mtd(completed, as_of=AS_OF)
+    assert supported is False
+    assert as_mtd_scope_mapping(handle)["information_complete"] is False
 
 
 def _csrf(html):

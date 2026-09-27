@@ -27,11 +27,11 @@
         <a href="{{ url_for('v2.mtd_manual_scope') }}">Change facts or start a fresh indication</a>
     {% else %}
     <h2>Completed-year facts or current-year evidence</h2>
-    <p>For 2024/25 or 2025/26, use an original, unamended submitted return. For 2026/27, select year-to-date, leave the return-submission date blank, and give each included source's exact period from 6 April 2026 to today. Drafts, forecasts, partial-year records and uncertain circumstances cannot produce a numeric indication in this pathway.</p>
+    <p>For 2024/25 or 2025/26, use an original, unamended submitted return. For 2026/27, select year-to-date and “not applicable — current year” for return status, leave the return-submission date blank, and give each included source's exact period from 6 April 2026 to today. Drafts, forecasts, partial-year records and uncertain circumstances cannot produce a numeric indication in this pathway.</p>
     <table><caption>Use the dates for your selected assessment tax year</caption><thead><tr><th>Assessment tax year</th><th>Source period</th><th>Applicable mandatory start</th><th>NI/return submission boundary</th></tr></thead><tbody>
     {% for year, start, end, mandatory, boundary in metadata %}<tr><td>{{ year|replace('-', '/') }}</td><td>{{ start }} to {{ end }}</td><td>{{ mandatory }}</td><td>{{ boundary }}</td></tr>{% endfor %}
     </tbody></table>
-    <p>The boundary is the earlier of the applicable mandatory start and today. Your submitted return must be after the assessment year ended and on or before that boundary.</p>
+    <p>The boundary is derived on the server as the earlier of the applicable mandatory start and today. For completed years, the submitted return must be after the assessment year ended and on or before that boundary. For 2026/27, the displayed boundary applies to the NI question; source evidence must instead cover the exact current-year period.</p>
     <form method="post" action="{{ url_for('v2.mtd_manual_scope') }}" autocomplete="off" novalidate>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <fieldset><legend>Return, capacity and circumstances</legend>
