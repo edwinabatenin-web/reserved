@@ -193,7 +193,7 @@ def test_schema_v10_upgrade_adds_permission_cycle_and_event_history(tmp_path, mo
         "token_hash", "link_id", "permission_cycle", "user_id", "tax_year",
         "notice_version", "created_at", "expires_at",
     } <= binding_columns
-    assert version == db._SCHEMA_VERSION == 12
+    assert version == db._SCHEMA_VERSION == 15
 
 
 def test_expired_invitation_rejected(tmp_db):
