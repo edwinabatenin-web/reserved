@@ -172,6 +172,14 @@ def compose_authenticated_manual_paye(
     if type(annual_projection) is not AnnualPositionPersistenceProjection:
         raise TypeError("annual projection must be an exact admitted projection")
     validate_owner_business_membership_decision(membership_decision)
+    from reserved.auth import current_user_id
+    try:
+        session_owner = current_user_id()
+    except RuntimeError:
+        raise ValueError("authenticated PAYE composition context is required") from None
+    if (type(session_owner) is not int
+            or session_owner != membership_decision.authenticated_owner_users_id):
+        raise ValueError("PAYE composition is not bound to current authenticated owner")
     assert_allowed_membership_decision_current(
         decision=membership_decision, membership_fake=current_membership_snapshot
     )

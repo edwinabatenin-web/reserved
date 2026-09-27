@@ -124,6 +124,26 @@ def test_authenticated_owner_cannot_issue_foreign_owner_batch(app):
             )
 
 
+def test_issued_batch_and_membership_cannot_be_replayed_under_another_session(app):
+    stored = entry(1, "1200.00")
+    stored.pop("user_id")
+    db.save_paye_manual_entry(41, stored)
+    annual, projection = admitted_annual()
+    membership, decision = allowed_membership(app)
+    with app.test_request_context("/"):
+        auth.set_user_session(41, "user_41")
+        batch = read_owner_bound_manual_paye_evidence(
+            authenticated_owner_user_id=41, tax_year="2026/27"
+        )
+        auth.set_user_session(42, "user_42")
+        with pytest.raises(ValueError, match="current authenticated owner"):
+            compose_authenticated_manual_paye(
+                evidence_batch=batch, annual_position=annual, annual_projection=projection,
+                membership_decision=decision, current_membership_snapshot=membership,
+                reconciliation_policy=make_paye_reconciliation_policy(45, Decimal("1.00")),
+            )
+
+
 def test_foreign_owner_manual_evidence_fails_closed(app):
     with pytest.raises(ValueError, match="bound"):
         compose_bridge(app, entries=[entry(1, "1200.00", user_id=42)], batch_owner=42)
