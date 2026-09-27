@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+import weakref
 
 from reserved.annual_position_persistence_contract import AnnualPositionPersistenceProjection
 from reserved.billing.event_inbox_contract import canonical_owner_id_from_users_id
@@ -40,6 +41,62 @@ class AuthenticatedPayeAnnualBridge:
     membership_identity: str
     reconciliation: object
     future_pay_forecast: PayeFuturePayForecast | None
+
+
+class OwnerBoundPayeEvidenceBatch:
+    """Opaque snapshot issued only by the owner-scoped persistence reader."""
+
+    __slots__ = ("__weakref__",)
+
+    def __new__(cls, *args, **kwargs):
+        raise TypeError("PAYE evidence batches are repository-issued only")
+
+
+_BATCHES: dict[int, tuple[weakref.ReferenceType, int, str, tuple[dict, ...]]] = {}
+
+
+def read_owner_bound_manual_paye_evidence(
+    *, authenticated_owner_user_id: int, tax_year: str
+) -> OwnerBoundPayeEvidenceBatch:
+    """Read current rows for one exact owner/year and issue an opaque snapshot."""
+    from reserved import database
+
+    if (type(authenticated_owner_user_id) is not int or authenticated_owner_user_id <= 0
+            or type(tax_year) is not str or len(tax_year) != 7 or tax_year[4] != "/"):
+        raise ValueError("PAYE evidence owner/year is invalid")
+    rows = database.list_active_paye_manual_entries(authenticated_owner_user_id, tax_year)
+    seen_slots: set[int] = set()
+    seen_ids: set[str] = set()
+    snapshot = []
+    for row in rows:
+        if type(row) is not dict or row.get("user_id") != authenticated_owner_user_id:
+            raise ValueError("PAYE repository returned cross-owner evidence")
+        slot, evidence_id = row.get("employment_slot"), row.get("evidence_id")
+        if slot in seen_slots or evidence_id in seen_ids:
+            raise ValueError("PAYE repository returned duplicate evidence")
+        seen_slots.add(slot)
+        seen_ids.add(evidence_id)
+        snapshot.append(dict(row))
+    batch = object.__new__(OwnerBoundPayeEvidenceBatch)
+    key = id(batch)
+
+    def discard(_):
+        _BATCHES.pop(key, None)
+
+    _BATCHES[key] = (weakref.ref(batch, discard), authenticated_owner_user_id, tax_year, tuple(snapshot))
+    return batch
+
+
+def _batch_rows(
+    batch: OwnerBoundPayeEvidenceBatch, *, authenticated_owner_user_id: int, tax_year: str
+) -> list[dict]:
+    if type(batch) is not OwnerBoundPayeEvidenceBatch:
+        raise TypeError("PAYE evidence must be an owner-bound repository batch")
+    binding = _BATCHES.get(id(batch))
+    if (binding is None or binding[0]() is not batch or binding[1] != authenticated_owner_user_id
+            or binding[2] != tax_year):
+        raise ValueError("PAYE evidence batch is not bound to authenticated owner/year")
+    return [dict(row) for row in binding[3]]
 
 
 def _engine_tax_year(value: str) -> str:
@@ -88,7 +145,7 @@ def _manual_evidence(
 
 def compose_authenticated_manual_paye(
     *,
-    entries: list[dict],
+    evidence_batch: OwnerBoundPayeEvidenceBatch,
     annual_position: AnnualToCashPosition,
     annual_projection: AnnualPositionPersistenceProjection,
     membership_decision: OwnerBusinessMembershipDecision,
@@ -127,6 +184,11 @@ def compose_authenticated_manual_paye(
     if type(annual_position.as_of) is not date or type(annual_position.final_self_assessment_liability) is not Decimal:
         raise ValueError("annual input does not provide an exact liability")
     engine_tax_year = _engine_tax_year(annual_position.tax_year)
+    entries = _batch_rows(
+        evidence_batch,
+        authenticated_owner_user_id=membership_decision.authenticated_owner_users_id,
+        tax_year=annual_position.tax_year,
+    )
     reconciliation = reconcile_paye(
         annual_position.final_self_assessment_liability,
         _manual_evidence(

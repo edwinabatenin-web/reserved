@@ -87,7 +87,7 @@ VALID_KINDS = {"pytest", "rw3"}
 # ``validate_october_inventory``), never silently made to look closer to ready.
 OCTOBER_LAUNCH_COMPONENTS = [
     {"id": "paye_evidence_and_forecasting", "state": "not_executable",
-     "note": "The integrated manual-PAYE annual bridge now enforces exact owner, membership, annual-position and tax-year binding, but no production composition root supplies authenticated repository-read evidence or admitted live annual/membership/forecast inputs."},
+     "note": "The integrated manual-PAYE annual bridge now requires an opaque repository-issued owner/year batch and enforces exact membership, annual-position and tax-year binding, but no production composition root supplies admitted live annual/membership/forecast inputs."},
     {"id": "paye_payslip_manual_evidence_journey", "state": "not_executable",
      "note": "An owner-bound structured manual PAYE fallback is integrated and regression-tested; canonical payslip upload/extraction/raw-file deletion and production entitlement/retention evidence remain absent."},
     {"id": "hmrc_integration", "state": "externally_blocked",
