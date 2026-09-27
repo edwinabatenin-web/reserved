@@ -488,6 +488,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_paye_manual_entries_active_slot
     ON paye_manual_entries(user_id, tax_year, employment_slot)
     WHERE replaced_at IS NULL AND deleted_at IS NULL;
 
+-- Private raw-payslip lifecycle metadata.  This records no raw bytes,
+-- filename, session secret, employer/payroll identifier, or extraction text.
+-- A server-generated storage identity and verified local-file identity are
+-- sufficient to reconstruct pending files safely after a process restart.
+CREATE TABLE IF NOT EXISTS paye_payslip_intakes (
+    storage_id          TEXT PRIMARY KEY,
+    user_id             INTEGER NOT NULL REFERENCES users(id),
+    session_hash        TEXT NOT NULL,
+    tax_year            TEXT NOT NULL,
+    content_type        TEXT NOT NULL CHECK(content_type IN ('application/pdf', 'image/png', 'image/jpeg')),
+    file_device         INTEGER NOT NULL,
+    file_inode          INTEGER NOT NULL,
+    byte_count          INTEGER NOT NULL CHECK(byte_count > 0 AND byte_count <= 10485760),
+    content_sha256      TEXT NOT NULL CHECK(length(content_sha256) = 64),
+    state               TEXT NOT NULL CHECK(state IN ('pending', 'deleting')),
+    created_at          TEXT NOT NULL,
+    deletion_started_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_paye_payslip_intakes_pending_owner
+    ON paye_payslip_intakes(user_id, session_hash, state);
+
 -- ── W9: minimised owner-bound annual positions ──────────────────────────────
 -- This schema intentionally has no raw payslip or provider-payload column.
 CREATE TABLE IF NOT EXISTS owner_business_memberships (
@@ -562,7 +583,7 @@ CREATE TABLE IF NOT EXISTS annual_position_lifecycle_events (
 # - The DDL block above always reflects the full target schema; migrations
 #   handle upgrade paths for databases created before the current DDL.
 #
-_SCHEMA_VERSION = 15   # increment when adding new migration entries below
+_SCHEMA_VERSION = 16   # increment when adding new migration entries below
 
 _MIGRATIONS: dict[int, list[str]] = {
     # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
@@ -821,6 +842,27 @@ _MIGRATIONS: dict[int, list[str]] = {
         )""",
         "CREATE INDEX IF NOT EXISTS idx_paye_manual_entries_owner ON paye_manual_entries(user_id, tax_year, employment_slot, deleted_at, replaced_at)",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_paye_manual_entries_active_slot ON paye_manual_entries(user_id, tax_year, employment_slot) WHERE replaced_at IS NULL AND deleted_at IS NULL",
+    ],
+    # Version 16 — crash-durable metadata for disabled-first raw payslip intake.
+    # Raw documents remain in a separately controlled private filesystem store;
+    # this table carries only the minimum verified identity needed to recover or
+    # safely delete that file after a process restart.
+    16: [
+        """CREATE TABLE IF NOT EXISTS paye_payslip_intakes (
+            storage_id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            session_hash TEXT NOT NULL,
+            tax_year TEXT NOT NULL,
+            content_type TEXT NOT NULL CHECK(content_type IN ('application/pdf', 'image/png', 'image/jpeg')),
+            file_device INTEGER NOT NULL,
+            file_inode INTEGER NOT NULL,
+            byte_count INTEGER NOT NULL CHECK(byte_count > 0 AND byte_count <= 10485760),
+            content_sha256 TEXT NOT NULL CHECK(length(content_sha256) = 64),
+            state TEXT NOT NULL CHECK(state IN ('pending', 'deleting')),
+            created_at TEXT NOT NULL,
+            deletion_started_at TEXT
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_paye_payslip_intakes_pending_owner ON paye_payslip_intakes(user_id, session_hash, state)",
     ],
 }
 

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from datetime import date
+import hashlib
+import sqlite3
 
 import pytest
 
+import reserved.database as db
 from reserved.engines.paye_evidence_capture import PayFrequency, PensionTreatment, SourceDocumentType
 from reserved.engines.paye_extraction_confirmation import (
     Decision,
@@ -27,6 +30,19 @@ SESSION = "session-owner-0001"
 OTHER_SESSION = "session-other-0002"
 YEAR = "2026/27"
 PDF = b"%PDF-1.7\nprivate-payroll-document"
+
+
+@pytest.fixture(autouse=True)
+def isolated_database(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "_DB_FILE", tmp_path / "payslip-intake.db")
+    monkeypatch.setattr(db, "_INSTANCE", tmp_path)
+    db.init_db()
+    with db._connection() as conn:
+        conn.executemany(
+            "INSERT INTO users (id,clerk_user_id,email,display_name,created_at) VALUES (?,?,?,?,?)",
+            ((OWNER, "owner", "owner@example.test", "owner", "2026-01-01T00:00:00+00:00"),
+             (OTHER, "other", "other@example.test", "other", "2026-01-01T00:00:00+00:00")),
+        )
 
 
 def _candidate():
@@ -72,6 +88,11 @@ def _begin(boundary):
 def _files(tmp_path):
     root = tmp_path / "private-payslips"
     return tuple(path for path in root.iterdir() if path.is_file())
+
+
+def _metadata(intake_id):
+    with db._connection() as conn:
+        return conn.execute("SELECT * FROM paye_payslip_intakes WHERE storage_id=?", (intake_id,)).fetchone()
 
 
 def test_disabled_boundary_rejects_before_any_file_is_created(tmp_path):
@@ -229,3 +250,171 @@ def test_storage_root_symlink_is_rejected(tmp_path):
     root.symlink_to(target, target_is_directory=True)
     with pytest.raises(PayslipIntakeError, match="symlink"):
         PayslipIntakeBoundary(root, enabled=True)
+
+
+def test_restart_recovers_only_minimal_owner_bound_pending_handle(tmp_path):
+    first = _boundary(tmp_path)
+    handle = _begin(first)
+    row = _metadata(handle.intake_id)
+    assert row["state"] == "pending"
+    assert row["session_hash"] != SESSION
+    assert row["content_sha256"] == hashlib.sha256(PDF).hexdigest()
+    assert {"storage_id", "user_id", "session_hash", "tax_year", "content_type", "file_device", "file_inode", "byte_count", "content_sha256", "state", "created_at", "deletion_started_at"} == set(row.keys())
+    with db._connection() as conn:
+        foreign_keys = conn.execute("PRAGMA foreign_key_list(paye_payslip_intakes)").fetchall()
+    assert [(item["table"], item["on_delete"] ) for item in foreign_keys] == [("users", "NO ACTION")]
+
+    restarted = _boundary(tmp_path)
+    with pytest.raises(PayslipIntakeError, match="unavailable"):
+        restarted.cancel(handle=handle, authenticated_user_id=OTHER, session_binding=OTHER_SESSION, tax_year=YEAR)
+    restarted.cancel(handle=handle, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR)
+    assert _files(tmp_path) == ()
+    assert _metadata(handle.intake_id) is None
+
+
+def test_recovery_deletes_exact_durable_deleting_orphan_after_crash(tmp_path):
+    boundary = _boundary(tmp_path)
+    handle = _begin(boundary)
+    intake_id, record = boundary._owned_record(
+        handle=handle, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR,
+    )
+    boundary._mark_deleting(intake_id=intake_id, record=record)
+    # Simulate a process crash after durable deletion intent but before unlink.
+    restarted = _boundary(tmp_path)
+    assert _files(tmp_path) == ()
+    assert _metadata(handle.intake_id) is None
+    with pytest.raises(PayslipIntakeError, match="unavailable"):
+        restarted.cancel(handle=handle, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR)
+
+
+def test_recovery_finalises_crash_between_unlink_and_metadata_removal(tmp_path):
+    boundary = _boundary(tmp_path)
+    handle = _begin(boundary)
+    intake_id, record = boundary._owned_record(
+        handle=handle, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR,
+    )
+    boundary._mark_deleting(intake_id=intake_id, record=record)
+    boundary._delete(intake_id, record)
+    # The metadata still says deleting; a restart records the completed local deletion.
+    assert _metadata(handle.intake_id)["state"] == "deleting"
+    _boundary(tmp_path)
+    assert _metadata(handle.intake_id) is None
+
+
+def test_pre_metadata_crash_file_is_preserved_for_operational_disposition(tmp_path):
+    boundary = _boundary(tmp_path)
+    intake_id = "f" * 64
+    path = boundary._path_for(intake_id, "application/pdf")
+    boundary._write(intake_id, "application/pdf", PDF)
+    # Simulate process death before metadata insertion: no exact durable identity exists.
+    restarted = _boundary(tmp_path)
+    assert path.exists()
+    assert _metadata(intake_id) is None
+    forged = PayslipIntakeHandle(intake_id=intake_id, tax_year=YEAR)
+    with pytest.raises(PayslipIntakeError, match="unavailable"):
+        restarted.cancel(handle=forged, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR)
+
+
+@pytest.mark.parametrize("substitution", ("symlink", "replacement"))
+def test_restart_quarantines_substituted_durable_file_without_adapter_input(tmp_path, substitution):
+    adapter = _WorkingAdapter()
+    boundary = _boundary(tmp_path)
+    handle = _begin(boundary)
+    stored = _files(tmp_path)[0]
+    stored.unlink()
+    if substitution == "symlink":
+        foreign = tmp_path / "foreign.pdf"
+        foreign.write_bytes(PDF)
+        stored.symlink_to(foreign)
+    else:
+        stored.write_bytes(PDF)
+    restarted = _boundary(tmp_path, adapter=adapter)
+    with pytest.raises(PayslipIntakeError, match="unavailable"):
+        restarted.confirm(
+            handle=handle, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR,
+            decisions=_decisions(), confirmation_id="confirmation-1",
+        )
+    assert adapter.calls == []
+    assert _metadata(handle.intake_id)["state"] == "pending"
+
+
+def test_pending_or_deleting_raw_intake_blocks_direct_user_deletion(tmp_path):
+    boundary = _boundary(tmp_path)
+    handle = _begin(boundary)
+    with db._connection() as conn, pytest.raises(sqlite3.IntegrityError):
+        conn.execute("DELETE FROM users WHERE id=?", (OWNER,))
+    assert len(_files(tmp_path)) == 1 and _metadata(handle.intake_id)["state"] == "pending"
+
+    intake_id, record = boundary._owned_record(
+        handle=handle, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR,
+    )
+    boundary._mark_deleting(intake_id=intake_id, record=record)
+    with db._connection() as conn, pytest.raises(sqlite3.IntegrityError):
+        conn.execute("DELETE FROM users WHERE id=?", (OWNER,))
+    assert len(_files(tmp_path)) == 1 and _metadata(handle.intake_id)["state"] == "deleting"
+
+
+def test_exact_local_cleanup_removes_metadata_before_user_deletion(tmp_path):
+    boundary = _boundary(tmp_path)
+    handle = _begin(boundary)
+    boundary.cancel(handle=handle, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR)
+    assert _files(tmp_path) == () and _metadata(handle.intake_id) is None
+    with db._connection() as conn:
+        conn.execute("DELETE FROM users WHERE id=?", (OWNER,))
+        assert conn.execute("SELECT COUNT(*) FROM users WHERE id=?", (OWNER,)).fetchone()[0] == 0
+
+
+def test_real_v15_upgrade_uses_no_action_intake_foreign_key(tmp_path, monkeypatch):
+    """Exercise v16 migration itself, without fresh-schema DDL precreating it."""
+    legacy = tmp_path / "real-v15.db"
+    with sqlite3.connect(legacy) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE schema_version (version INTEGER NOT NULL);
+            INSERT INTO schema_version VALUES (15);
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                clerk_user_id TEXT NOT NULL UNIQUE,
+                email TEXT,
+                display_name TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE paye_manual_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                tax_year TEXT NOT NULL,
+                employment_slot INTEGER NOT NULL CHECK(employment_slot BETWEEN 1 AND 20),
+                evidence_id TEXT NOT NULL UNIQUE,
+                source_kind TEXT NOT NULL CHECK(source_kind = 'customer_confirmed_manual'),
+                provenance TEXT NOT NULL,
+                gross_to_date TEXT, tax_paid_to_date TEXT, tax_code TEXT,
+                pay_frequency TEXT NOT NULL, pension_treatment TEXT NOT NULL,
+                effective_through TEXT NOT NULL, observed_on TEXT NOT NULL,
+                completeness TEXT NOT NULL CHECK(completeness IN ('partial', 'unknown')),
+                replaced_at TEXT, deleted_at TEXT, created_at TEXT NOT NULL,
+                UNIQUE(user_id, tax_year, evidence_id)
+            );
+            """
+        )
+    monkeypatch.setattr(db, "_DB_FILE", legacy)
+    monkeypatch.setattr(db, "_INSTANCE", tmp_path / "legacy-instance")
+    # init_db normally installs current DDL before migrations.  Suppress only
+    # that bootstrap here so this proves the version-16 migration definition.
+    monkeypatch.setattr(db, "_DDL", "")
+    db.init_db()
+    with db._connection() as conn:
+        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 16
+        foreign_keys = conn.execute("PRAGMA foreign_key_list(paye_payslip_intakes)").fetchall()
+        assert [(item["table"], item["on_delete"] ) for item in foreign_keys] == [("users", "NO ACTION")]
+        conn.execute(
+            "INSERT INTO users (id,clerk_user_id,email,display_name,created_at) VALUES (70,'v15-owner','o@example.test','owner','2026-01-01T00:00:00+00:00')"
+        )
+        conn.execute(
+            """INSERT INTO paye_payslip_intakes
+               (storage_id,user_id,session_hash,tax_year,content_type,file_device,file_inode,
+                byte_count,content_sha256,state,created_at)
+               VALUES (?,70,?,'2026/27','application/pdf',1,2,5,?,'pending','2026-01-01T00:00:00+00:00')""",
+            ("a" * 64, "b" * 64, "c" * 64),
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("DELETE FROM users WHERE id=70")
