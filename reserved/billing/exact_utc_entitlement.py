@@ -88,10 +88,21 @@ def _protocol():
         from .local_stripe_initial_payment import _initial_payment_presentation_facts
         return _initial_payment_presentation_facts(state, now=now)
 
-    return Fact, Admitted, issue, admit, projection, initial_payment_presentation_facts, capability
+    def successful_renewal_presentation_facts(value, *, now):
+        """Project safe current-period facts from one live renewal fact only."""
+        utc(now)
+        with lock:
+            if type(value) is not Fact or value not in facts:
+                raise ValueError('not a live successful-renewal fact')
+            state = facts[value]
+        from .local_stripe_initial_payment import _successful_renewal_presentation_facts
+        return _successful_renewal_presentation_facts(state, now=now)
+
+    return (Fact, Admitted, issue, admit, projection, initial_payment_presentation_facts,
+            successful_renewal_presentation_facts, capability)
 
 
 (
     Fact, Admitted, _issue, admit_initial, _projection,
-    initial_payment_presentation_facts, _ISSUER,
+    initial_payment_presentation_facts, successful_renewal_presentation_facts, _ISSUER,
 ) = _protocol()

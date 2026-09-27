@@ -35,6 +35,17 @@
 </section>
 {% endif %}
 
+{% if local_billing_successful_renewal_copy is defined %}
+<section class="panel" aria-labelledby="w10-local-successful-renewal-heading">
+    <h2 id="w10-local-successful-renewal-heading">{{ local_billing_successful_renewal_copy.heading }}</h2>
+    <p>{{ local_billing_successful_renewal_copy.summary }}</p>
+    <p>{{ local_billing_successful_renewal_copy.verified_label }}:
+        <time datetime="{{ local_billing_successful_renewal_copy.verified_utc }}">{{ local_billing_successful_renewal_copy.verified_display }}</time></p>
+    <p>{{ local_billing_successful_renewal_copy.paid_period_message }}</p>
+    <p>{{ local_billing_successful_renewal_copy.scope_caveat }}</p>
+</section>
+{% endif %}
+
 {% if local_billing_recovery_copy is defined %}
 <section class="panel" aria-labelledby="w10-local-recovery-heading">
     <h2 id="w10-local-recovery-heading">{{ local_billing_recovery_copy.heading }}</h2>
