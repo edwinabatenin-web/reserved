@@ -509,6 +509,57 @@ def test_cleared_local_tax_data_erasure_physically_deletes_owned_paye_and_annual
         assert conn.execute("SELECT COUNT(*) FROM users WHERE id=?", (owner,)).fetchone()[0] == 1
 
 
+def test_local_tax_data_erasure_removes_null_lifecycle_metadata_only_for_owner(prepared_db):
+    owner, other = _user("owner"), _user("other")
+    membership = _membership(owner)
+    legal, backup = _clearance(owner, "legal_hold_clear"), _clearance(owner, "backup_expiry_confirmed")
+    repository = _repository(memberships=(membership,), clearances=(legal, backup))
+    repository.register_owner_business_membership(
+        user_id=owner, business_reference="business-1", membership_authority=membership,
+        audit_reference="audit:membership-create",
+    )
+    record, identity = _record(user_id=owner)
+    repository.create_or_read(authenticated_user_id=owner, business_reference="business-1", record=record,
+                              audit_reference="audit:create")
+    other_identity = "annual-position-structural:sha256-" + "e" * 64
+    with db._connection() as conn:
+        conn.execute(
+            """INSERT INTO annual_position_records
+               (record_identity,user_id,business_reference,tax_year,nation,record_purpose,record_version,
+                predecessor_identity,governance_fingerprint,envelope_json,envelope_sha256,state,created_at,deleted_at)
+               SELECT ?,?,business_reference,tax_year,nation,record_purpose,record_version,
+                      predecessor_identity,governance_fingerprint,envelope_json,envelope_sha256,state,created_at,deleted_at
+               FROM annual_position_records WHERE record_identity=?""",
+            (other_identity, other, identity),
+        )
+        conn.execute(
+            "INSERT INTO annual_position_lifecycle_events (record_identity,user_id,event_kind,audit_reference,occurred_at) VALUES (NULL,?,'erased','audit:historic-null','2026-09-03T00:00:00+00:00')",
+            (owner,),
+        )
+        conn.execute(
+            "INSERT INTO annual_position_lifecycle_events (record_identity,user_id,event_kind,audit_reference,occurred_at) VALUES (?,?,'created','audit:other-lifecycle','2026-09-03T00:00:00+00:00')",
+            (other_identity, other),
+        )
+        conn.execute(
+            "INSERT INTO annual_position_read_audit (record_identity,user_id,business_reference,audit_reference,occurred_at) VALUES (?,?,?,?,?)",
+            (identity, owner, "business-1", "audit:owner-read", "2026-09-03T00:00:00+00:00"),
+        )
+        conn.execute(
+            "INSERT INTO annual_position_read_audit (record_identity,user_id,business_reference,audit_reference,occurred_at) VALUES (?,?,?,?,?)",
+            (other_identity, other, "business-1", "audit:other-read", "2026-09-03T00:00:00+00:00"),
+        )
+
+    assert repository.execute_local_tax_data_erasure(
+        authenticated_user_id=owner, audit_reference="audit:owner-local-erasure",
+        legal_hold_clearance=legal, backup_expiry_clearance=backup,
+    ).annual_position_records == 1
+    with db._connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM annual_position_lifecycle_events WHERE user_id=?", (owner,)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM annual_position_read_audit WHERE record_identity=?", (identity,)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM annual_position_lifecycle_events WHERE user_id=?", (other,)).fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM annual_position_read_audit WHERE record_identity=?", (other_identity,)).fetchone()[0] == 1
+
+
 def test_local_tax_data_erasure_cannot_cross_owner_boundary(prepared_db):
     owner, other = _user("owner"), _user("other")
     membership = _membership(owner)

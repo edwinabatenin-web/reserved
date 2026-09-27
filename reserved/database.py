@@ -827,7 +827,7 @@ _MIGRATIONS: dict[int, list[str]] = {
     15: [
         """CREATE TABLE IF NOT EXISTS paye_manual_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL REFERENCES users(id),
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             tax_year TEXT NOT NULL,
             employment_slot INTEGER NOT NULL CHECK(employment_slot BETWEEN 1 AND 20),
             evidence_id TEXT NOT NULL UNIQUE,
@@ -850,7 +850,7 @@ _MIGRATIONS: dict[int, list[str]] = {
     16: [
         """CREATE TABLE IF NOT EXISTS paye_payslip_intakes (
             storage_id TEXT PRIMARY KEY,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
             session_hash TEXT NOT NULL,
             tax_year TEXT NOT NULL,
             content_type TEXT NOT NULL CHECK(content_type IN ('application/pdf', 'image/png', 'image/jpeg')),

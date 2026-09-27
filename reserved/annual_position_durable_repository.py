@@ -664,10 +664,14 @@ class DurableAnnualPositionRepository:
                     f"DELETE FROM annual_position_read_audit WHERE record_identity IN ({placeholders})",
                     identities,
                 )
-                conn.execute(
-                    f"DELETE FROM annual_position_lifecycle_events WHERE record_identity IN ({placeholders})",
-                    identities,
-                )
+            # Lifecycle events may already have record_identity=NULL because
+            # that FK uses ON DELETE SET NULL.  User ownership, not the
+            # presently-readable record identity, is therefore the complete
+            # erasure scope for this table.
+            conn.execute(
+                "DELETE FROM annual_position_lifecycle_events WHERE user_id=?",
+                (authenticated_user_id,),
+            )
             annual_count = conn.execute(
                 "DELETE FROM annual_position_records WHERE user_id=?", (authenticated_user_id,)
             ).rowcount

@@ -362,3 +362,59 @@ def test_exact_local_cleanup_removes_metadata_before_user_deletion(tmp_path):
     with db._connection() as conn:
         conn.execute("DELETE FROM users WHERE id=?", (OWNER,))
         assert conn.execute("SELECT COUNT(*) FROM users WHERE id=?", (OWNER,)).fetchone()[0] == 0
+
+
+def test_real_v15_upgrade_uses_no_action_intake_foreign_key(tmp_path, monkeypatch):
+    """Exercise v16 migration itself, without fresh-schema DDL precreating it."""
+    legacy = tmp_path / "real-v15.db"
+    with sqlite3.connect(legacy) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE schema_version (version INTEGER NOT NULL);
+            INSERT INTO schema_version VALUES (15);
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                clerk_user_id TEXT NOT NULL UNIQUE,
+                email TEXT,
+                display_name TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE paye_manual_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                tax_year TEXT NOT NULL,
+                employment_slot INTEGER NOT NULL CHECK(employment_slot BETWEEN 1 AND 20),
+                evidence_id TEXT NOT NULL UNIQUE,
+                source_kind TEXT NOT NULL CHECK(source_kind = 'customer_confirmed_manual'),
+                provenance TEXT NOT NULL,
+                gross_to_date TEXT, tax_paid_to_date TEXT, tax_code TEXT,
+                pay_frequency TEXT NOT NULL, pension_treatment TEXT NOT NULL,
+                effective_through TEXT NOT NULL, observed_on TEXT NOT NULL,
+                completeness TEXT NOT NULL CHECK(completeness IN ('partial', 'unknown')),
+                replaced_at TEXT, deleted_at TEXT, created_at TEXT NOT NULL,
+                UNIQUE(user_id, tax_year, evidence_id)
+            );
+            """
+        )
+    monkeypatch.setattr(db, "_DB_FILE", legacy)
+    monkeypatch.setattr(db, "_INSTANCE", tmp_path / "legacy-instance")
+    # init_db normally installs current DDL before migrations.  Suppress only
+    # that bootstrap here so this proves the version-16 migration definition.
+    monkeypatch.setattr(db, "_DDL", "")
+    db.init_db()
+    with db._connection() as conn:
+        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 16
+        foreign_keys = conn.execute("PRAGMA foreign_key_list(paye_payslip_intakes)").fetchall()
+        assert [(item["table"], item["on_delete"] ) for item in foreign_keys] == [("users", "NO ACTION")]
+        conn.execute(
+            "INSERT INTO users (id,clerk_user_id,email,display_name,created_at) VALUES (70,'v15-owner','o@example.test','owner','2026-01-01T00:00:00+00:00')"
+        )
+        conn.execute(
+            """INSERT INTO paye_payslip_intakes
+               (storage_id,user_id,session_hash,tax_year,content_type,file_device,file_inode,
+                byte_count,content_sha256,state,created_at)
+               VALUES (?,70,?,'2026/27','application/pdf',1,2,5,?,'pending','2026-01-01T00:00:00+00:00')""",
+            ("a" * 64, "b" * 64, "c" * 64),
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("DELETE FROM users WHERE id=70")
