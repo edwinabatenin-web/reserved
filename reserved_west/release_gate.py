@@ -87,9 +87,9 @@ VALID_KINDS = {"pytest", "rw3"}
 # ``validate_october_inventory``), never silently made to look closer to ready.
 OCTOBER_LAUNCH_COMPONENTS = [
     {"id": "paye_evidence_and_forecasting", "state": "not_executable",
-     "note": "A durable authenticated composition root now reads the current externally-authorised annual record and repository-issued owner/year PAYE batch with exact session, membership, annual identity and tax-year binding; route activation, independently supplied future-pay facts and target-runtime evidence remain absent."},
+     "note": "A disabled-first authenticated endpoint now consumes one transaction-serialized snapshot of current membership, the durable annual record and owner/year PAYE rows with exact session, annual identity and tax-year binding; activation, independently supplied future-pay facts, external authority composition and target-runtime evidence remain absent."},
     {"id": "paye_payslip_manual_evidence_journey", "state": "not_executable",
-     "note": "Structured manual PAYE and a disabled-first raw-payslip intake/deletion boundary are integrated with owner/session/year isolation and fail-closed injected extraction; authenticated route wiring, a reviewed extraction adapter, crash-durable pending-file metadata, private target storage and retention evidence remain absent."},
+     "note": "Structured manual PAYE and a disabled-first raw-payslip boundary now provide owner/session/year isolation, fail-closed injected extraction, crash-durable minimal lifecycle metadata and verified local cleanup; authenticated route wiring, a reviewed extraction adapter, custody-controlled private target storage, operational orphan disposition and retention/backup evidence remain absent."},
     {"id": "hmrc_integration", "state": "externally_blocked",
      "note": "No production-capable HMRC connection has been end-to-end verified."},
     {"id": "freeagent_integration", "state": "not_implemented",
