@@ -43,12 +43,13 @@ checkpoint from the commit that integrated identical package blobs.
 The live `SRC-24` route binding is refreshed at accepted integration commit
 `c5e560045ed3d62f02c894e931464c3d7294e99f`; the separate accepted S5C
 historical product checkpoint remains unchanged.
-The separate live `SRC-16` v2 binding now names the accepted manual MTD
-scope-indication checkpoint `730db03e9d952a43df2f6d7b638b5a893600ec89`,
-with digest `15b0893514d4e6a5daab935d602aa1d2aa899617f401ed7dbabc704ab91ef563`.
-Its independently reviewed thirteen-path delta adds the disabled non-production
-manual form, factual admission and genuine issuer/renderer journey, with dashboard
-discovery. This binding reconciliation does not replace historical evidence or
+The separate live `SRC-16` v2 binding now names the integrated production-shaped
+MTD paid-boundary checkpoint `80c50148529036ae9b561c5188a139f0f2309343`,
+with digest `a7f63da8f4baee9dcac64d03d7f83b7146aa5d9487605bc78a60af9d4b9720bb`.
+It keeps the manual indication disabled by default and proves the route is
+available in a production-shaped process only after an owner-bound reconciled
+paid entitlement. This synthetic binding does not replace target/provider,
+customer-language or historical evidence and does not activate production or
 close any threat, control, gap, broader MTD completion or activation gate.
 The earlier accepted PAYE capture/review checkpoint remains distinct history:
 `f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b`, v2 digest
@@ -206,8 +207,8 @@ source commit and digest rather than being relabelled as PAYE or MTD evidence.
     {
       "id": "SRC-16",
       "path": "reserved/web/v2.py",
-      "accepted_commit": "6f7ae44c4a037431b58ec0d8e5c4016278fa8b6a",
-      "sha256": "9798dc5d489f4cb1e830dd444c1d40946588409607ad71f6c05b75b975247dc6",
+      "accepted_commit": "80c50148529036ae9b561c5188a139f0f2309343",
+      "sha256": "a7f63da8f4baee9dcac64d03d7f83b7146aa5d9487605bc78a60af9d4b9720bb",
       "binding": "live"
     },
     {

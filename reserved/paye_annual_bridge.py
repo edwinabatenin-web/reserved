@@ -48,13 +48,17 @@ def _engine_tax_year(value: str) -> str:
     return value[:4] + "-" + value[5:]
 
 
-def _manual_evidence(entries: list[dict], *, engine_tax_year: str) -> tuple[PayeEvidence, ...]:
+def _manual_evidence(
+    entries: list[dict], *, engine_tax_year: str, authenticated_owner_user_id: int
+) -> tuple[PayeEvidence, ...]:
     evidence = []
     seen_slots: set[int] = set()
     seen_evidence_ids: set[str] = set()
     for row in entries:
         if type(row) is not dict or row.get("tax_year") != engine_tax_year.replace("-", "/"):
             raise ValueError("PAYE evidence tax year is not bound to annual input")
+        if type(row.get("user_id")) is not int or row["user_id"] != authenticated_owner_user_id:
+            raise ValueError("PAYE evidence owner is not bound to authenticated membership")
         if row.get("source_kind") != "customer_confirmed_manual" or row.get("completeness") != "partial":
             raise ValueError("PAYE evidence provenance is not admitted")
         slot = row.get("employment_slot")
@@ -125,7 +129,11 @@ def compose_authenticated_manual_paye(
     engine_tax_year = _engine_tax_year(annual_position.tax_year)
     reconciliation = reconcile_paye(
         annual_position.final_self_assessment_liability,
-        _manual_evidence(entries, engine_tax_year=engine_tax_year),
+        _manual_evidence(
+            entries,
+            engine_tax_year=engine_tax_year,
+            authenticated_owner_user_id=membership_decision.authenticated_owner_users_id,
+        ),
         tax_year=engine_tax_year,
         as_of=annual_position.as_of,
         policy=reconciliation_policy,

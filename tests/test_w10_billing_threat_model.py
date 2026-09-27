@@ -24,8 +24,8 @@ CURRENT_ROUTES_COMMIT = "c5e560045ed3d62f02c894e931464c3d7294e99f"
 PAYE_V2_COMMIT = "f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b"
 PAYE_V2_SHA256 = "be6247e5f9aa91cfbdc3a4d028fbf4b3c4911eaf98dcd1f7b383b28998838236"
 MTD_V2_COMMIT = "730db03e9d952a43df2f6d7b638b5a893600ec89"
-CURRENT_V2_COMMIT = "6f7ae44c4a037431b58ec0d8e5c4016278fa8b6a"
-CURRENT_V2_SHA256 = "9798dc5d489f4cb1e830dd444c1d40946588409607ad71f6c05b75b975247dc6"
+CURRENT_V2_COMMIT = "80c50148529036ae9b561c5188a139f0f2309343"
+CURRENT_V2_SHA256 = "a7f63da8f4baee9dcac64d03d7f83b7146aa5d9487605bc78a60af9d4b9720bb"
 MTD_V2_SHA256 = "15b0893514d4e6a5daab935d602aa1d2aa899617f401ed7dbabc704ab91ef563"
 
 EXPECTED_SOURCES = {
@@ -368,16 +368,19 @@ def test_mtd_live_register_rejects_substituted_hash_commit_and_binding():
             raise AssertionError(f"substituted MTD source {field} was accepted")
 
 
-def test_paye_journey_binding_is_the_only_register_delta_from_prior_mtd_binding():
+def test_mtd_paid_boundary_is_the_only_register_delta_from_prior_paye_binding():
     previous = register_from_text(subprocess.run(
-        ["git", "show", f"{CURRENT_V2_COMMIT}:docs/W10_S7A_BILLING_THREAT_MODEL.md"],
+        ["git", "show", "6bba5575a69eaa3f60d23c9afa5cfd1b77fa4068:docs/W10_S7A_BILLING_THREAT_MODEL.md"],
         cwd=ROOT, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     ).stdout)
     current = register()
     row = next(item for item in current["sources"] if item["id"] == "SRC-16")
     assert row["accepted_commit"] == CURRENT_V2_COMMIT
     assert row["sha256"] == EXPECTED_SOURCES["SRC-16"][2]
-    row.update(accepted_commit=MTD_V2_COMMIT, sha256=MTD_V2_SHA256)
+    row.update(
+        accepted_commit="6f7ae44c4a037431b58ec0d8e5c4016278fa8b6a",
+        sha256="9798dc5d489f4cb1e830dd444c1d40946588409607ad71f6c05b75b975247dc6",
+    )
     assert current == previous  # Every other source, topology, threat and gate is unchanged.
 
 

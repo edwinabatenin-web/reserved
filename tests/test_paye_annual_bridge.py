@@ -18,9 +18,9 @@ from tests.test_annual_to_cash_integration import compose
 from tests.test_w8_annual_cash_customer_handoff import references
 
 
-def entry(slot, tax, *, tax_year="2026/27"):
+def entry(slot, tax, *, tax_year="2026/27", user_id=41):
     return {
-        "tax_year": tax_year, "employment_slot": slot, "evidence_id": f"manual-{slot}",
+        "user_id": user_id, "tax_year": tax_year, "employment_slot": slot, "evidence_id": f"manual-{slot}",
         "source_kind": "customer_confirmed_manual", "provenance": "customer_confirmed_manual_cumulative_entry",
         "gross_to_date": "10000.00", "tax_paid_to_date": tax, "tax_code": "1257L",
         "pay_frequency": "monthly", "pension_treatment": "none",
@@ -80,6 +80,12 @@ def test_duplicate_employment_slot_or_evidence_identity_fails_closed(entries):
     app = Flask(__name__); app.config["SECRET_KEY"] = "synthetic"
     with pytest.raises(ValueError, match="duplicated"):
         compose_bridge(app, entries=entries)
+
+
+def test_foreign_owner_manual_evidence_fails_closed():
+    app = Flask(__name__); app.config["SECRET_KEY"] = "synthetic"
+    with pytest.raises(ValueError, match="owner"):
+        compose_bridge(app, entries=[entry(1, "1200.00", user_id=42)])
 
 
 def test_absent_or_cross_owner_membership_and_unadmitted_annual_input_fail_closed():
