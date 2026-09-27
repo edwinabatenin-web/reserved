@@ -39,12 +39,10 @@ from reserved.database import (
     accept_hicbc_link_invitation,
     create_hicbc_link_invitation,
     delete_hicbc_estimate,
-    get_active_hicbc_link,
     get_hicbc_estimate,
-    get_hicbc_link_partner_id,
+    get_hicbc_linked_partner_snapshot,
     get_hicbc_link_permission_view,
     get_profile_by_user,
-    has_mutual_hicbc_link_consent,
     hicbc_manual_preview_read,
     record_hicbc_link_consent_from_binding,
     revoke_hicbc_link,
@@ -344,19 +342,17 @@ def _linked_partner_evidence(user_id: int, tax_year: str) -> PartnerEvidence | N
     tax-year mismatch returns ``None`` so the result reverts safely to manual
     evidence or an insufficient state.
     """
-    if not has_mutual_hicbc_link_consent(user_id, tax_year):
+    snapshot = get_hicbc_linked_partner_snapshot(user_id, tax_year)
+    if snapshot is None:
         return None
-    partner_id = get_hicbc_link_partner_id(user_id, tax_year)
-    if partner_id is None:
-        return None
-    partner_profile = get_profile_by_user(partner_id) or {}
+    partner_id = snapshot["partner_id"]
+    partner_profile = snapshot["profile"]
     profile_year = partner_profile.get("tax_year")
     if profile_year != tax_year:
         # An absent or mismatched source tax year is never relabelled as the
         # requested calculation year; the linked evidence fails closed.
         return None
-    link = get_active_hicbc_link(user_id, tax_year)
-    link_id = link["id"] if link else 0
+    link_id = snapshot["link"]["id"]
     partner_ani = _user_ani_from_profile(partner_profile)
     observed_at = partner_profile.get("updated_at") or "unknown"
     return PartnerEvidence(

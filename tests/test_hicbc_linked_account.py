@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import sqlite3
+from threading import Event
 
 import pytest
 
@@ -382,6 +383,72 @@ def test_revoked_link_removes_linked_evidence(app):
     after = build_responsibility(a, TAX_YEAR)["result"]
     assert not any(e.source_kind == "linked_partner_source" for e in after.evidence)
     assert after.partner_evidence.source_kind == "user_supplied_partner_estimate"
+
+
+def test_revocation_serializes_after_inflight_partner_snapshot_and_blocks_future_reads(app):
+    owner = _user("snapshot_owner", 70000)
+    partner = _user("snapshot_partner", 90000)
+    token = db.create_hicbc_link_invitation(owner, TAX_YEAR)
+    db.accept_hicbc_link_invitation(partner, token, TAX_YEAR)
+    _mutual_consent(owner, partner)
+
+    profile_read = Event()
+    release_snapshot = Event()
+
+    def pause_after_profile_read():
+        profile_read.set()
+        assert release_snapshot.wait(2)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        snapshot_future = pool.submit(
+            db.get_hicbc_linked_partner_snapshot,
+            owner,
+            TAX_YEAR,
+            _after_profile_read=pause_after_profile_read,
+        )
+        assert profile_read.wait(2)
+        revoke_future = pool.submit(db.revoke_hicbc_link, owner, TAX_YEAR)
+        assert not revoke_future.done()
+        release_snapshot.set()
+        snapshot = snapshot_future.result(timeout=2)
+        assert snapshot is not None and snapshot["partner_id"] == partner
+        assert revoke_future.result(timeout=2) is True
+
+    assert db.get_hicbc_linked_partner_snapshot(owner, TAX_YEAR) is None
+    assert build_responsibility(owner, TAX_YEAR)["result"].partner_evidence is None
+
+
+def test_duplicate_partner_profiles_fail_closed_instead_of_selecting_arbitrarily(app):
+    owner = _user("duplicate_profile_owner", 70000)
+    partner = _user("duplicate_profile_partner", 90000)
+    with db._connection() as connection:
+        original = connection.execute(
+            "SELECT * FROM user_profiles WHERE user_id=?", (partner,)
+        ).fetchone()
+        connection.execute(
+            """INSERT INTO user_profiles
+               (session_key,updated_at,display_name,tax_year,income_estimate,
+                pension_contribution,student_loan_plans,notes,user_id,
+                child_benefit_children,child_benefit_annual)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            ("duplicate-partner-profile", original["updated_at"], "duplicate",
+             TAX_YEAR, "1", "0", "[]", "{}", partner, 0, None),
+        )
+    token = db.create_hicbc_link_invitation(owner, TAX_YEAR)
+    db.accept_hicbc_link_invitation(partner, token, TAX_YEAR)
+    _mutual_consent(owner, partner)
+    db.save_hicbc_estimate(owner, {
+        "tax_year": TAX_YEAR,
+        "receives_child_benefit": 1,
+        "child_benefit_children": 1,
+        "child_benefit_weeks_entitled": 52,
+    })
+
+    assert db.get_profile_by_user(partner) is None
+    snapshot = db.get_hicbc_linked_partner_snapshot(owner, TAX_YEAR)
+    assert snapshot is not None and snapshot["profile"] == {}
+    result = build_responsibility(owner, TAX_YEAR)["result"]
+    assert not any(e.source_kind == "linked_partner_source" for e in result.evidence)
 
 
 # ── Retention / deletion hooks ────────────────────────────────────────────────

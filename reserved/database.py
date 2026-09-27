@@ -1772,13 +1772,13 @@ def get_profile_by_user(user_id: int) -> dict | None:
     """
     import json
     with _connection() as conn:
-        row = conn.execute(
+        rows = conn.execute(
             "SELECT * FROM user_profiles WHERE user_id = ?",
             (user_id,),
-        ).fetchone()
-    if not row:
+        ).fetchall()
+    if len(rows) != 1:
         return None
-    profile = dict(row)
+    profile = dict(rows[0])
     raw_plans = profile.get("student_loan_plans")
     if raw_plans:
         try:
@@ -2505,6 +2505,64 @@ def has_mutual_hicbc_link_consent(user_id: int, tax_year: str) -> bool:
         ).fetchall()
     consented = {row["user_id"] for row in rows}
     return consented == {link["user_low_id"], link["user_high_id"]}
+
+
+def get_hicbc_linked_partner_snapshot(
+    user_id: int, tax_year: str, *, _after_profile_read=None
+) -> dict | None:
+    """Return one consented linked-partner snapshot at a serialized boundary.
+
+    ``BEGIN IMMEDIATE`` is the linearization point: revocation/unlink waits for
+    a snapshot already in progress, while any calculation whose snapshot starts
+    after revocation observes no authority.  The private hook exists only for a
+    deterministic concurrency regression test and is never used by the app.
+    """
+    import json
+
+    if type(user_id) is not int or user_id <= 0 or type(tax_year) is not str:
+        return None
+    if _after_profile_read is not None and not callable(_after_profile_read):
+        raise ValueError("Invalid linked snapshot test hook")
+    with _connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        links = conn.execute(
+            """SELECT * FROM hicbc_links
+               WHERE (user_low_id = ? OR user_high_id = ?)
+                 AND tax_year = ? AND status = ?""",
+            (user_id, user_id, tax_year, _LINK_STATUS_ACTIVE),
+        ).fetchall()
+        if len(links) != 1:
+            return None
+        link = links[0]
+        consents = conn.execute(
+            """SELECT user_id FROM hicbc_link_consents
+               WHERE link_id = ? AND withdrawn_at IS NULL
+                 AND notice_version = ?""",
+            (link["id"], HICBC_NOTICE_VERSION),
+        ).fetchall()
+        if {row["user_id"] for row in consents} != {
+            link["user_low_id"], link["user_high_id"]
+        }:
+            return None
+        partner_id = (
+            link["user_high_id"] if link["user_low_id"] == user_id
+            else link["user_low_id"]
+        )
+        profile_rows = conn.execute(
+            "SELECT * FROM user_profiles WHERE user_id = ?", (partner_id,)
+        ).fetchall()
+        if _after_profile_read is not None:
+            _after_profile_read()
+        # Multiple rows for one user have no authoritative precedence rule.
+        # Fail closed rather than selecting an arbitrary/stale ANI profile.
+        profile = dict(profile_rows[0]) if len(profile_rows) == 1 else {}
+        raw_plans = profile.get("student_loan_plans")
+        if raw_plans:
+            try:
+                profile["student_loan_plans"] = json.loads(raw_plans)
+            except (ValueError, TypeError):
+                pass
+        return {"link": dict(link), "partner_id": partner_id, "profile": profile}
 
 
 def get_hicbc_link_permission_status(user_id: int, tax_year: str) -> dict:
