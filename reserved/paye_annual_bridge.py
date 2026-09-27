@@ -15,6 +15,10 @@ from decimal import Decimal
 import weakref
 
 from reserved.annual_position_persistence_contract import AnnualPositionPersistenceProjection
+from reserved.annual_position_durable_repository import (
+    DurableAnnualPositionError, DurableAnnualPositionRepository, RECORD_PURPOSE,
+)
+from reserved.annual_position_repository_contract import project_annual_position_record
 from reserved.billing.event_inbox_contract import canonical_owner_id_from_users_id
 from reserved.engines.annual_to_cash_integration import (
     AnnualToCashPosition, annual_to_cash_position_identity,
@@ -39,6 +43,16 @@ class AuthenticatedPayeAnnualBridge:
 
     annual_cash_identity: str
     membership_identity: str
+    reconciliation: object
+    future_pay_forecast: PayeFuturePayForecast | None
+
+
+@dataclass(frozen=True)
+class DurableAuthenticatedPayeAnnualBridge:
+    """Composition bound to a current externally-authorised durable record."""
+
+    durable_record_identity: str
+    annual_cash_identity: str
     reconciliation: object
     future_pay_forecast: PayeFuturePayForecast | None
 
@@ -233,4 +247,85 @@ def compose_authenticated_manual_paye(
         membership_identity=membership_decision.decision_identity,
         reconciliation=reconciliation,
         future_pay_forecast=future,
+    )
+
+
+def compose_durable_authenticated_manual_paye(
+    *,
+    repository: DurableAnnualPositionRepository,
+    annual_position: AnnualToCashPosition,
+    authenticated_owner_user_id: int,
+    business_reference: str,
+    tax_year: str,
+    nation: str,
+    audit_reference: str,
+    reconciliation_policy: PayeReconciliationPolicy,
+    future_pay_facts: tuple[ConfirmedFuturePayFact, ...] = (),
+    future_pay_policy: FuturePayForecastPolicy | None = None,
+) -> DurableAuthenticatedPayeAnnualBridge:
+    """Compose a current PAYE view only behind the durable-authority reader.
+
+    The repository's ``read_current`` operation rechecks the independently
+    verified current owner-business membership. This root additionally binds
+    the live annual result and the repository-issued PAYE batch to the same
+    signed session owner and exact tax year. It is intentionally route-less.
+    """
+    if type(repository) is not DurableAnnualPositionRepository:
+        raise TypeError("exact durable annual-position repository is required")
+    if type(annual_position) is not AnnualToCashPosition:
+        raise TypeError("annual input must be an exact annual-to-cash position")
+    from reserved.auth import current_user_id
+    try:
+        session_owner = current_user_id()
+    except RuntimeError:
+        raise ValueError("authenticated PAYE composition context is required") from None
+    if type(authenticated_owner_user_id) is not int or session_owner != authenticated_owner_user_id:
+        raise ValueError("durable PAYE composition is not bound to current authenticated owner")
+    if type(annual_position.final_self_assessment_liability) is not Decimal:
+        raise ValueError("annual input does not provide an exact liability")
+    if annual_position.tax_year != tax_year or annual_position.nation != nation:
+        raise ValueError("annual input does not match requested durable scope")
+    try:
+        durable_record = repository.read_current(
+            authenticated_user_id=authenticated_owner_user_id,
+            business_reference=business_reference, tax_year=tax_year, nation=nation,
+            record_purpose=RECORD_PURPOSE, audit_reference=audit_reference,
+        )
+    except DurableAnnualPositionError as exc:
+        raise ValueError("durable annual position or current membership is unavailable") from exc
+    try:
+        row = dict(project_annual_position_record(durable_record)[2])
+    except Exception as exc:
+        raise ValueError("durable annual position cannot be projected") from exc
+    owner = canonical_owner_id_from_users_id(authenticated_owner_user_id)
+    annual_identity = annual_to_cash_position_identity(annual_position)
+    if (row.get("user_id") != owner or row.get("business_id") != business_reference
+            or row.get("tax_year") != tax_year or row.get("nation") != nation
+            or row.get("annual_cash_identity") != annual_identity):
+        raise ValueError("durable annual position does not bind this PAYE composition")
+    batch = read_owner_bound_manual_paye_evidence(
+        authenticated_owner_user_id=authenticated_owner_user_id, tax_year=tax_year,
+    )
+    engine_tax_year = _engine_tax_year(tax_year)
+    entries = _batch_rows(batch, authenticated_owner_user_id=authenticated_owner_user_id, tax_year=tax_year)
+    reconciliation = reconcile_paye(
+        annual_position.final_self_assessment_liability,
+        _manual_evidence(entries, engine_tax_year=engine_tax_year,
+                         authenticated_owner_user_id=authenticated_owner_user_id),
+        tax_year=engine_tax_year, as_of=annual_position.as_of,
+        policy=reconciliation_policy,
+    )
+    if type(future_pay_facts) is not tuple:
+        raise TypeError("future PAYE facts must be an exact tuple")
+    future = None
+    if future_pay_facts:
+        if future_pay_policy is None:
+            raise ValueError("future PAYE facts require an exact policy")
+        future = compose_paye_future_pay_forecast(
+            reconciliation, future_pay_facts, owner_id=owner, business_id=business_reference,
+            tax_year=engine_tax_year, as_of=annual_position.as_of, policy=future_pay_policy,
+        )
+    return DurableAuthenticatedPayeAnnualBridge(
+        durable_record_identity=row["record_identity"], annual_cash_identity=annual_identity,
+        reconciliation=reconciliation, future_pay_forecast=future,
     )
