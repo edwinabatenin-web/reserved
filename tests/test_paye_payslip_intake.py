@@ -95,6 +95,11 @@ def _metadata(intake_id):
         return conn.execute("SELECT * FROM paye_payslip_intakes WHERE storage_id=?", (intake_id,)).fetchone()
 
 
+def _receipts():
+    with db._connection() as conn:
+        return conn.execute("SELECT * FROM paye_payslip_quarantine_receipts ORDER BY receipt_key").fetchall()
+
+
 def test_disabled_boundary_rejects_before_any_file_is_created(tmp_path):
     boundary = _boundary(tmp_path, enabled=False)
     with pytest.raises(PayslipIntakeError, match="disabled"):
@@ -308,11 +313,46 @@ def test_pre_metadata_crash_file_is_preserved_for_operational_disposition(tmp_pa
     boundary._write(intake_id, "application/pdf", PDF)
     # Simulate process death before metadata insertion: no exact durable identity exists.
     restarted = _boundary(tmp_path)
-    assert path.exists()
+    assert not path.exists()
+    quarantined = tuple((tmp_path / "private-payslips" / ".quarantine").iterdir())
+    assert len(quarantined) == 1
     assert _metadata(intake_id) is None
+    receipts = _receipts()
+    assert len(receipts) == 1 and receipts[0]["storage_id"] == intake_id
+    assert receipts[0]["reason"] == "untracked_regular" and receipts[0]["content_sha256"] is None
     forged = PayslipIntakeHandle(intake_id=intake_id, tax_year=YEAR)
     with pytest.raises(PayslipIntakeError, match="unavailable"):
         restarted.cancel(handle=forged, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR)
+
+
+def test_startup_inventory_is_idempotent_and_preserves_known_cross_record(tmp_path):
+    boundary = _boundary(tmp_path)
+    known = _begin(boundary)
+    unknown_id = "f" * 64
+    boundary._write(unknown_id, "application/pdf", PDF)
+    restarted = _boundary(tmp_path)
+    assert _metadata(known.intake_id)["state"] == "pending"
+    assert len(_receipts()) == 1
+    _boundary(tmp_path)
+    assert len(_receipts()) == 1
+    restarted.cancel(handle=known, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR)
+    assert _metadata(known.intake_id) is None
+
+
+def test_startup_inventory_surfaces_symlink_and_malformed_entries_without_moving_them(tmp_path):
+    boundary = _boundary(tmp_path)
+    intake_id = "a" * 64
+    path = boundary._path_for(intake_id, "application/pdf")
+    foreign = tmp_path / "foreign.pdf"
+    foreign.write_bytes(PDF)
+    path.symlink_to(foreign)
+    malformed = tmp_path / "private-payslips" / "unexpected.tmp"
+    malformed.write_bytes(PDF)
+    _boundary(tmp_path)
+    reasons = {(row["filename_class"], row["reason"], row["storage_id"]) for row in _receipts()}
+    assert ("server_document", "symlink", intake_id) in reasons
+    assert ("malformed", "malformed_name", None) in reasons
+    assert path.is_symlink() and malformed.exists()
 
 
 @pytest.mark.parametrize("substitution", ("symlink", "replacement"))
@@ -403,7 +443,7 @@ def test_real_v15_upgrade_uses_no_action_intake_foreign_key(tmp_path, monkeypatc
     monkeypatch.setattr(db, "_DDL", "")
     db.init_db()
     with db._connection() as conn:
-        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 16
+        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 17
         foreign_keys = conn.execute("PRAGMA foreign_key_list(paye_payslip_intakes)").fetchall()
         assert [(item["table"], item["on_delete"] ) for item in foreign_keys] == [("users", "NO ACTION")]
         conn.execute(
