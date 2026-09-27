@@ -88,6 +88,54 @@ def test_auth_owner_scope_and_client_controlled_channels_fail_closed(prepared, m
     assert signed.open(URL, method="GET", data=b"owner=42").status_code == 404
 
 
+def test_provider_runs_only_after_durable_authority_and_current_record_preflight(prepared, monkeypatch):
+    app, tax, annual, repository = prepared
+    monkeypatch.setenv("HICBC_DURABLE_ANNUAL_ENABLED", "1")
+    calls = []
+
+    def provider(*args):
+        calls.append(args)
+        return annual, tax
+
+    install(app, tax, annual, repository, provider=provider)
+    assert client(app).get(URL).status_code == 302
+    assert client(app, 42).get(URL).status_code == 404
+    signed = client(app, 41)
+    assert signed.get(URL, query_string={"owner": "42"}).status_code == 404
+    assert signed.open(URL, method="GET", data=b"x=1").status_code == 404
+    assert calls == []
+    assert signed.get(URL).status_code == 200
+    assert calls == [(41, BUSINESS, YEAR, NATION)]
+
+    app2 = create_app(); app2.config.update(TESTING=True)
+    no_adapter = DurableAnnualPositionRepository(
+        _governance(), evidence_reference_policy=_policy(),
+        membership_issuer_reference="membership:approved-v1",
+        lifecycle_issuer_reference="lifecycle:approved-v1",
+        external_authority_adapter=None,
+    )
+    no_adapter_calls = []
+    install(app2, tax, annual, no_adapter, provider=lambda *args: no_adapter_calls.append(args))
+    assert client(app2, 41).get(URL).status_code == 404
+    assert no_adapter_calls == []
+
+    app3 = create_app(); app3.config.update(TESTING=True)
+    invalid_scope_calls = []
+    install(
+        app3, tax, annual, repository, scope=lambda _: None,
+        provider=lambda *args: invalid_scope_calls.append(args),
+    )
+    assert client(app3, 41).get(URL).status_code == 404
+    assert invalid_scope_calls == []
+
+    monkeypatch.delenv("HICBC_DURABLE_ANNUAL_ENABLED", raising=False)
+    app4 = create_app(); app4.config.update(TESTING=True)
+    disabled_calls = []
+    install(app4, tax, annual, repository, provider=lambda *args: disabled_calls.append(args))
+    assert client(app4, 41).get(URL).status_code == 404
+    assert disabled_calls == []
+
+
 def test_unavailable_scope_provider_no_adapter_and_invalid_install_leave_no_route(prepared, monkeypatch):
     app, tax, annual, repository = prepared
     monkeypatch.setenv("HICBC_DURABLE_ANNUAL_ENABLED", "1")

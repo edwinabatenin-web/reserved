@@ -48,7 +48,7 @@ def install_durable_hicbc_annual_endpoint(
     app: Flask, *, repository, owner_scope_resolver, live_annual_provider,
 ):
     """Install one read-only GET endpoint after complete preflight validation."""
-    from reserved.annual_position_durable_repository import DurableAnnualPositionRepository
+    from reserved.annual_position_durable_repository import DurableAnnualPositionRepository, RECORD_PURPOSE
 
     if type(app) is not Flask or app._got_first_request or _KEY in app.extensions:
         raise DurableHicbcEndpointError("exact pre-request Flask installation is required")
@@ -73,6 +73,15 @@ def install_durable_hicbc_annual_endpoint(
             if scope is None:
                 raise ValueError
             business, tax_year, nation = scope
+            # Do not invoke an annual provider for an owner/scope that lacks a
+            # currently readable durable authority.  The bridge repeats the
+            # read and performs its final atomic check after provider return.
+            repository.assert_external_authority_available()
+            repository.read_current(
+                authenticated_user_id=owner, business_reference=business,
+                tax_year=tax_year, nation=nation, record_purpose=RECORD_PURPOSE,
+                audit_reference="audit:hicbc-durable-preflight",
+            )
             pair = live_annual_provider(owner, business, tax_year, nation)
             if (type(pair) is not tuple or len(pair) != 2
                     or type(pair[0]) is not AnnualToCashPosition
