@@ -472,7 +472,7 @@ def test_all_32_actual_endpoints_deny_without_source(app, tmp_path):
                 old.denied(client.open(path, method=method))
         finally:
             sys.settrace(prior)
-        assert touched == [] and len(originals) == 33
+        assert touched == [] and len(originals) == 34
     finally:
         h.repo.close()
 

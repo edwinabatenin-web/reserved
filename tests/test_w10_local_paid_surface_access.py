@@ -26,6 +26,7 @@ CASES = (
     ('v2.paye_durable_current_position', '/v2/paye/current-position', 'GET'),
     ('v2.paye_durable_current_forecast', '/v2/paye/current-forecast', 'GET'),
     ('hicbc.durable_current_annual_position', '/v2/hicbc/current-annual-position', 'GET'),
+    ('hicbc.linked_current_annual_position', '/v2/hicbc/linked-current-annual-position', 'GET'),
     ('v2.mtd_manual_scope', '/v2/mtd/scope-indication', 'POST'),
     ('v2.invoices', '/v2/invoices', 'GET'),
     ('v2.invoices_seed', '/v2/invoices/seed', 'POST'),
@@ -100,7 +101,7 @@ def denied(response):
 @pytest.mark.parametrize('endpoint,path,method', CASES)
 @pytest.mark.parametrize('state', ['missing', 'expired', 'withdrawn'])
 def test_every_paid_handler_denied_before_body(app, repo, endpoint, path, method, state):
-    assert tuple(c[0] for c in CASES) == paid.PAID_ENDPOINTS and len(CASES) == 33
+    assert tuple(c[0] for c in CASES) == paid.PAID_ENDPOINTS and len(CASES) == 34
     now = f.CLOCK
     if state != 'missing':
         initial = f._append(repo)

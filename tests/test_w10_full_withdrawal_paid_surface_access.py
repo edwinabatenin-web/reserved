@@ -22,7 +22,7 @@ def test_every_paid_endpoint_denies_at_transition_and_allows_immediately_before(
         boundary = guard.bind_full_withdrawal_paid_access_guard(
             validate_runtime_entitlement=runtime.validate_full_withdrawal_runtime_entitlement,
             project_runtime_entitlement=runtime.project_full_withdrawal_runtime_entitlement)
-        assert len(guard.PAID_ENDPOINTS) == 33
+        assert len(guard.PAID_ENDPOINTS) == 34
         for endpoint in guard.PAID_ENDPOINTS:
             before = guard.evaluate_full_withdrawal_paid_access(boundary, endpoint=endpoint,
                 authenticated_owner_id='synthetic-owner',

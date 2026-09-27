@@ -18,7 +18,7 @@ and live paid-entitlement enforcement remain **not started**, and W10-S5
 remains incomplete. S5A is inventory evidence only.
 
 The registry has 50 always-registered rules. Enabling the disabled-by-default
-HICBC feature gate adds 10 owner-authenticated rules, producing 60 total. The
+HICBC feature gate adds 11 owner-authenticated rules, producing 61 total. The
 annual-preview rule additionally requires its own strict switch and denies
 production; its paid classification does not wire runtime entitlement. Flask's
 implicit `HEAD` and `OPTIONS` methods are omitted; the listed methods are the
@@ -63,23 +63,24 @@ only when `HICBC_ENABLED` is explicitly enabled.
   "route_hardening_changes": true,
   "route_counts": {
     "always": 50,
-    "hicbc_feature_enabled_additional": 10,
-    "hicbc_feature_enabled_total": 60
+    "hicbc_feature_enabled_additional": 11,
+    "hicbc_feature_enabled_total": 61
   },
   "classification_counts": {
     "public_infrastructure_auth_legal_support": 14,
-    "authenticated_product_candidate_pending_founder_decision": 33,
+    "authenticated_product_candidate_pending_founder_decision": 34,
     "billing_purchase_return_recovery_candidate": 2,
     "internal_admin_unknown_requiring_reconciliation": 11
   },
   "source_sha256": {
-    "reserved/__init__.py": "d3ce81ff94f3bfe21329d5a678251319d2f021d36a618effd5a49d9426e051ad",
+    "reserved/__init__.py": "affaa48b467b6f0e5a54121af40a3da7092356e85601bb39a376db1e088d0fd1",
     "reserved/api/routes.py": "9d865764b222c0985b27c23707a7cea8a8327152795deb14e91a27feef081364",
     "reserved/auth.py": "adfe50a348a94e1f1a7405a41d92ec39b5d1a9db8c92b64222410701af39ae91",
-    "reserved/config.py": "dd35367653820e5162aa7bdba6cdaeac47614ac072b5bceba0772c6f1c8374be",
+    "reserved/config.py": "ce35b8d717095a537a5b8c32dee8bd123618d0d7d3f540749c81d3b3e409bac4",
     "reserved/extensions.py": "ef35d3ec969e299a1c8221b5636bcf44590189175b0ad0c83e88d38ded35b2a0",
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
     "reserved/web/hicbc.py": "efe0e59d6bd88ce44ae1f48a59aad9e01594b382c4b211a9a916508af6acd2f2",
+    "reserved/web/hicbc_linked_annual.py": "a4dae7819bf45ed11d1d79ee12a28d3c4319cc916ff00cd322aead9c26340899",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
     "reserved/web/v2.py": "0324464e3cbbfad4e3d2207fe8db76a6e486083b8e604c561676dfff4e82aa69"
   },
@@ -383,6 +384,16 @@ only when `HICBC_ENABLED` is explicitly enabled.
       "csrf": "not_applicable",
       "classification": "authenticated_product_candidate_pending_founder_decision",
       "note": "Disabled-first owner-bound HICBC annual-position read. A complete injected durable HICBC runtime supplies server-owned scope and live annual inputs; the settled paid-access boundary remains independently mandatory."
+    },
+    {
+      "endpoint": "hicbc.linked_current_annual_position",
+      "rule": "/v2/hicbc/linked-current-annual-position",
+      "methods": ["GET"],
+      "registration": "hicbc_feature_enabled",
+      "guard": "customer_session",
+      "csrf": "not_applicable",
+      "classification": "authenticated_product_candidate_pending_founder_decision",
+      "note": "Separate local-only linked-HICBC adapter. It accepts no browser scope or scenario, requires an injected durable runtime plus the settled paid-access boundary, and remains independently disabled and production-refusing."
     },
     {
       "endpoint": "v2.mtd_manual_scope",

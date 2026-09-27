@@ -53,6 +53,7 @@ PAID_ENDPOINTS = (
     "v2.paye_durable_current_position",
     "v2.paye_durable_current_forecast",
     "hicbc.durable_current_annual_position",
+    "hicbc.linked_current_annual_position",
     "v2.mtd_manual_scope",
     "v2.invoices",
     "v2.invoices_seed",

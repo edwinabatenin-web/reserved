@@ -26,6 +26,11 @@ def durable_hicbc_annual_enabled() -> bool:
     return os.environ.get("HICBC_DURABLE_ANNUAL_ENABLED", "") == "1"
 
 
+def linked_hicbc_annual_enabled() -> bool:
+    """Independent local-only switch for the linked durable HICBC adapter."""
+    return os.environ.get("HICBC_LINKED_DURABLE_ANNUAL_ENABLED", "") == "1"
+
+
 def paye_manual_baseline_enabled() -> bool:
     """Independent disabled-first manual capture switch, read at request time."""
     return os.environ.get("PAYE_MANUAL_BASELINE_ENABLED", "") == "1"

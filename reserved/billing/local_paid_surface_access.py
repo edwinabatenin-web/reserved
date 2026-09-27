@@ -10,7 +10,7 @@ from functools import wraps
 
 from flask import Flask
 from reserved.auth import is_production_environment, require_auth
-from reserved.web import v2, hicbc
+from reserved.web import v2, hicbc, hicbc_linked_annual
 from . import local_dashboard_access as dashboard
 from . import runtime_entitlement_admission as admission
 from . import paid_access_guard as paid
@@ -30,6 +30,7 @@ _ROUTES = (
     ("v2.paye_durable_current_position", "/v2/paye/current-position", "GET"),
     ("v2.paye_durable_current_forecast", "/v2/paye/current-forecast", "GET"),
     ("hicbc.durable_current_annual_position", "/v2/hicbc/current-annual-position", "GET"),
+    ("hicbc.linked_current_annual_position", "/v2/hicbc/linked-current-annual-position", "GET"),
     ("v2.mtd_manual_scope", "/v2/mtd/scope-indication", "GET POST"),
     ("v2.invoices", "/v2/invoices", "GET"),
     ("v2.invoices_seed", "/v2/invoices/seed", "POST"),
@@ -55,8 +56,15 @@ _ROUTES = (
     ("hicbc.result_json", "/v2/hicbc/result", "GET"),
     ("hicbc.annual_preview", "/v2/hicbc/annual-preview", "POST"),
 )
-_FUNCTIONS = tuple((name, getattr(v2 if name.startswith("v2.") else hicbc,
-                                 name.split(".")[1])) for name, _, _ in _ROUTES)
+_FUNCTIONS = tuple((
+    name,
+    getattr(
+        v2 if name.startswith("v2.") else (
+            hicbc_linked_annual if name == "hicbc.linked_current_annual_position" else hicbc
+        ),
+        name.split(".")[1],
+    ),
+) for name, _, _ in _ROUTES)
 _CODES = tuple((fn, fn.__code__, getattr(fn, "__wrapped__", None)) for _, fn in _FUNCTIONS)
 
 

@@ -11,6 +11,7 @@ from .extensions import csrf
 from .web.routes import web
 from .web.founder import founder
 from .web.hicbc import hicbc
+from .web.hicbc_linked_annual import linked_current_annual_position as _linked_hicbc_route
 from .web.v2 import v2
 from .api.routes import api
 
@@ -20,7 +21,7 @@ log = logging.getLogger(__name__)
 def create_app(
     *, billing_runtime: object = None, paye_runtime: object = None,
     paye_forecast_runtime: object = None, hicbc_runtime: object = None,
-    erasure_runtime: object = None,
+    hicbc_linked_runtime: object = None, erasure_runtime: object = None,
 ) -> Flask:
     # ── Logging ───────────────────────────────────────────────────────────────
     _log_level = logging.DEBUG if os.environ.get("FLASK_DEBUG") == "1" else logging.INFO
@@ -80,7 +81,7 @@ def create_app(
     billing_boundary_required = (
         is_production_environment() or billing_runtime is not None
         or paye_runtime is not None or paye_forecast_runtime is not None
-        or hicbc_runtime is not None
+        or hicbc_runtime is not None or hicbc_linked_runtime is not None
     )
     if billing_boundary_required:
         install_disabled_paid_surface_enforcement(app)
@@ -147,6 +148,25 @@ def create_app(
                 )
         else:
             log.error("Invalid HICBC runtime ignored; annual position remains unavailable")
+
+    # Linked annual composition is a separate local-only adapter. It cannot be
+    # installed without the exact paid wrapper and its own server-injected
+    # owner/partner source dependencies, and request execution has an
+    # independent disabled-first switch plus an unconditional production deny.
+    if hicbc_linked_runtime is not None:
+        from .hicbc_linked_endpoint import (
+            LinkedHicbcRuntime,
+            install_linked_hicbc_annual_endpoint,
+        )
+        if type(hicbc_linked_runtime) is LinkedHicbcRuntime:
+            try:
+                install_linked_hicbc_annual_endpoint(app, hicbc_linked_runtime)
+            except Exception:
+                log.exception(
+                    "Linked HICBC runtime installation failed; linked result remains unavailable"
+                )
+        else:
+            log.error("Invalid linked HICBC runtime ignored; linked result remains unavailable")
 
     # Local tax-data erasure is an authenticated account-lifecycle control, not
     # a paid feature. It remains absent unless one complete exact runtime is

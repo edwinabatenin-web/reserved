@@ -40,8 +40,7 @@ OWNER_BUSINESS = "business-owner"
 PARTNER_BUSINESS = "business-partner"
 
 
-@pytest.fixture
-def setup(tmp_path, monkeypatch):
+def _prepared_linked_composition(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "_DB_FILE", tmp_path / "linked-annual.db")
     monkeypatch.setattr(db, "_INSTANCE", tmp_path)
     monkeypatch.setattr(linked, "_server_date", lambda: AS_OF)
@@ -142,6 +141,11 @@ def setup(tmp_path, monkeypatch):
     app = Flask(__name__)
     app.config["SECRET_KEY"] = "synthetic"
     return app, repository, source
+
+
+@pytest.fixture
+def setup(tmp_path, monkeypatch):
+    return _prepared_linked_composition(tmp_path, monkeypatch)
 
 
 def _compose(setup, provider=None):
