@@ -109,7 +109,9 @@ def test_unauthenticated_no_adapter_and_invalid_annual_never_reach_future_provid
     _install(app, annual, repository,
              annual_provider=lambda *args: calls.append("annual") or None,
              future_provider=lambda *args: calls.append("future") or (_fact(owner),))
-    assert app.test_client().get("/v2/paye/current-forecast").status_code == 404
+    # Shared signed-session middleware redirects unauthenticated clients before
+    # this endpoint can evaluate any injected provider.
+    assert app.test_client().get("/v2/paye/current-forecast").status_code == 302
     assert calls == []
     assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
     assert calls == ["annual"]
