@@ -969,8 +969,14 @@ def require_local_tax_writes_open(conn, user_id: int) -> None:
 
 def block_local_tax_data_writes(user_id: int) -> None:
     with _connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         if conn.execute("SELECT 1 FROM users WHERE id=?", (user_id,)).fetchone() is None:
             raise ValueError("Unknown local tax-data owner")
+        current = conn.execute(
+            "SELECT state FROM local_tax_data_erasure_states WHERE user_id=?", (user_id,)
+        ).fetchone()
+        if current is not None and current["state"] == "erased":
+            return
         conn.execute("INSERT INTO local_tax_data_erasure_states(user_id,state,updated_at) VALUES (?, 'blocked', ?) "
                      "ON CONFLICT(user_id) DO UPDATE SET state='blocked',updated_at=excluded.updated_at",
                      (user_id, _now()))
@@ -978,6 +984,7 @@ def block_local_tax_data_writes(user_id: int) -> None:
 
 def complete_local_tax_data_erasure(user_id: int) -> None:
     with _connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT state FROM local_tax_data_erasure_states WHERE user_id=?", (user_id,)).fetchone()
         if row is not None and row["state"] == "erased":
             return
@@ -1719,6 +1726,11 @@ def save_paye_manual_entry(user_id: int, data: dict) -> None:
     validate_admitted_manual_entry(data)
     now = _now()
     with _connection() as conn:
+        # Serialize admission with the account-erasure tombstone.  A read of
+        # the lifecycle state outside this write transaction would allow an
+        # erasure to block/delete first and this save to recreate PAYE data
+        # afterwards.
+        conn.execute("BEGIN IMMEDIATE")
         require_local_tax_writes_open(conn, user_id)
         if conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
             raise ValueError("Unknown PAYE entry owner")

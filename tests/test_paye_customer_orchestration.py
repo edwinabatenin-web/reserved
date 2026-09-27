@@ -1,6 +1,7 @@
 """Focused owner-bound tests for the structured manual PAYE fallback journey."""
 from datetime import datetime, timezone
 import importlib
+import threading
 
 import pytest
 
@@ -165,6 +166,58 @@ def test_active_employment_slot_is_unique_and_replacement_is_transactional(env):
             (owner, "2026/27"),
         ).fetchone()[0]
     assert active_count == 1
+
+
+def test_manual_write_is_serialized_before_erasure_and_cannot_resurrect(env, monkeypatch):
+    _, owner, _ = env
+    record = admit_manual_entry(facts(), tax_year="2026/27", observed_on=Clock.now().date())
+    checked, release, erasure_done = threading.Event(), threading.Event(), threading.Event()
+    failures = []
+    original = db.require_local_tax_writes_open
+
+    def hold_after_barrier_read(conn, user_id):
+        original(conn, user_id)
+        checked.set()
+        assert release.wait(2)
+
+    monkeypatch.setattr(db, "require_local_tax_writes_open", hold_after_barrier_read)
+
+    def save():
+        try:
+            db.save_paye_manual_entry(owner, record)
+        except Exception as exc:  # pragma: no cover - asserted below
+            failures.append(exc)
+
+    def erase():
+        try:
+            db.block_local_tax_data_writes(owner)
+            with db._connection() as conn:
+                conn.execute("DELETE FROM paye_manual_entries WHERE user_id=?", (owner,))
+            db.complete_local_tax_data_erasure(owner)
+        except Exception as exc:  # pragma: no cover - asserted below
+            failures.append(exc)
+        finally:
+            erasure_done.set()
+
+    writer = threading.Thread(target=save); writer.start()
+    assert checked.wait(2)
+    eraser = threading.Thread(target=erase); eraser.start()
+    assert not erasure_done.wait(0.1)
+    release.set(); writer.join(2); eraser.join(2)
+    assert failures == [] and erasure_done.is_set()
+    assert db.list_active_paye_manual_entries(owner, "2026/27") == []
+
+    monkeypatch.setattr(db, "require_local_tax_writes_open", original)
+    with pytest.raises(ValueError, match="lifecycle"):
+        db.save_paye_manual_entry(
+            owner, admit_manual_entry(facts(employment_slot="2"), tax_year="2026/27",
+                                      observed_on=Clock.now().date()),
+        )
+    db.block_local_tax_data_writes(owner)
+    with db._connection() as conn:
+        assert conn.execute(
+            "SELECT state FROM local_tax_data_erasure_states WHERE user_id=?", (owner,)
+        ).fetchone()["state"] == "erased"
 
 
 def test_user_account_deletion_cascades_structured_paye_rows(env):
