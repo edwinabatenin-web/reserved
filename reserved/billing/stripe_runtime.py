@@ -43,6 +43,7 @@ PLAN_LABELS = {
     "yearly": "£288 per year",
 }
 _RUNTIME_KEY = "reserved.billing.stripe_runtime"
+_DISABLED_PAID_SURFACE_KEY = _RUNTIME_KEY + ".paid_surface.disabled"
 _ALLOWED_STATES = frozenset({"paid", "payment_recovery", "suspended"})
 _MAX_INITIAL_EVENT_AGE_SECONDS = 24 * 60 * 60
 
@@ -523,6 +524,15 @@ def _prepare_runtime_paid_surface_enforcement(
         endpoint for endpoint in PAID_ENDPOINTS
         if hicbc_registered or not endpoint.startswith("hicbc.")
     )
+    disabled = app.extensions.get(_DISABLED_PAID_SURFACE_KEY)
+    originals = None
+    if disabled is not None:
+        if type(disabled) is not dict or set(disabled) != set(expected):
+            raise BillingRuntimeError("disabled paid-surface boundary is inconsistent")
+        if any(not callable(value) for value in disabled.values()):
+            raise BillingRuntimeError("disabled paid-surface boundary is inconsistent")
+        originals = disabled
+
     missing = tuple(
         endpoint for endpoint in expected
         if endpoint not in app.view_functions or not callable(app.view_functions[endpoint])
@@ -534,7 +544,7 @@ def _prepare_runtime_paid_surface_enforcement(
 
     replacements = {}
     for endpoint in expected:
-        original = app.view_functions[endpoint]
+        original = originals[endpoint] if originals is not None else app.view_functions[endpoint]
 
         @wraps(original)
         def guarded(*args, __original=original, **kwargs):
@@ -554,6 +564,45 @@ def _prepare_runtime_paid_surface_enforcement(
 
         replacements[endpoint] = guarded
     return marker, replacements
+
+
+def install_disabled_paid_surface_enforcement(app: Flask) -> None:
+    """Make every settled paid route unavailable until billing is installed.
+
+    This is the default application composition.  It is intentionally a route
+    boundary, rather than a collection of feature-flag conventions: a new
+    paid feature cannot accidentally become free merely because its own flag
+    is enabled before the complete owner-bound billing runtime is installed.
+    The original views are retained privately so a complete runtime can replace
+    these exact denial wrappers atomically after its full preflight succeeds.
+    """
+    from reserved.billing.paid_access_guard import PAID_ENDPOINTS
+
+    if not isinstance(app, Flask):
+        raise BillingRuntimeError("explicit Flask app is required")
+    if _RUNTIME_KEY in app.extensions or _DISABLED_PAID_SURFACE_KEY in app.extensions:
+        raise BillingRuntimeError("paid-surface boundary already installed")
+
+    hicbc_registered = "hicbc" in app.blueprints
+    expected = tuple(
+        endpoint for endpoint in PAID_ENDPOINTS
+        if hicbc_registered or not endpoint.startswith("hicbc.")
+    )
+    originals = {endpoint: app.view_functions.get(endpoint) for endpoint in expected}
+    if not expected or any(not callable(view) for view in originals.values()):
+        raise BillingRuntimeError("settled paid endpoints are incomplete")
+
+    replacements = {}
+    for endpoint, original in originals.items():
+        @wraps(original)
+        def unavailable(*args, **kwargs):
+            abort(404)
+        replacements[endpoint] = unavailable
+
+    # All validation and wrapper construction precede mutation.  Thus a
+    # malformed route inventory cannot leave one paid route exposed.
+    app.view_functions.update(replacements)
+    app.extensions[_DISABLED_PAID_SURFACE_KEY] = originals
 
 
 def install_runtime_paid_surface_enforcement(app: Flask, runtime: StripeBillingRuntime) -> None:

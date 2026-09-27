@@ -17,7 +17,7 @@ from .api.routes import api
 log = logging.getLogger(__name__)
 
 
-def create_app() -> Flask:
+def create_app(*, billing_runtime: object = None) -> Flask:
     # ── Logging ───────────────────────────────────────────────────────────────
     _log_level = logging.DEBUG if os.environ.get("FLASK_DEBUG") == "1" else logging.INFO
     logging.basicConfig(
@@ -57,6 +57,29 @@ def create_app() -> Flask:
     app.register_blueprint(v2)  # V2 preview — not linked from public nav
     if hicbc_enabled():
         app.register_blueprint(hicbc)  # October v1 HICBC — feature-gated
+
+    # Billing is closed unless a caller supplies one already-complete runtime.
+    # The default boundary denies every settled paid route, including feature
+    # flags such as the manual MTD indication; an environment variable alone
+    # must never make a paid product free.  The Stripe runtime itself is
+    # deliberately injected: this application factory neither reads provider
+    # credentials nor constructs a network client.
+    from .billing.stripe_runtime import (
+        StripeBillingRuntime,
+        install_disabled_paid_surface_enforcement,
+        install_stripe_billing_runtime,
+    )
+    install_disabled_paid_surface_enforcement(app)
+    if isinstance(billing_runtime, StripeBillingRuntime):
+        try:
+            install_stripe_billing_runtime(app, billing_runtime)
+        except Exception:
+            # The closed paid-surface boundary remains installed.  In
+            # particular, do not leave checkout/webhook routes or a subset of
+            # entitlement wrappers after a composition failure.
+            log.exception("Billing runtime installation failed; paid features remain unavailable")
+    elif billing_runtime is not None:
+        log.error("Invalid billing runtime ignored; paid features remain unavailable")
 
     # ── Template globals ──────────────────────────────────────────────────────
     # Expose canonical_base and turnstile_site_key to every template so that
