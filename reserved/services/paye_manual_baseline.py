@@ -15,8 +15,8 @@ FIELDS = frozenset({"gross_pay_to_date", "tax_paid_to_date", "tax_code", "pay_fr
                     "pension_treatment", "effective_through", "confirmation"})
 
 
-def review_manual_baseline(values, *, tax_year, observed_on):
-    """Admit exact form strings and return only an explicit own-field review."""
+def capture_manual_baseline(values, *, tax_year, observed_on, evidence_id=None, employment_id=None):
+    """Return validated structured manual evidence; never touches storage or documents."""
     if type(values) is not dict or set(values) - FIELDS:
         raise ValueError("Unsupported fields")
     if any(type(value) is not str or len(value) > 64 for value in values.values()):
@@ -39,8 +39,8 @@ def review_manual_baseline(values, *, tax_year, observed_on):
             raise ValueError("Invalid amount")
         money[name] = raw or None
     capture = PayeEvidenceCapture(
-        source=CaptureSource.MANUAL, evidence_id="manual-" + uuid4().hex,
-        employment_id="ephemeral-" + uuid4().hex, tax_year=year.replace("/", "-"),
+        source=CaptureSource.MANUAL, evidence_id=evidence_id or "manual-" + uuid4().hex,
+        employment_id=employment_id or "ephemeral-" + uuid4().hex, tax_year=year.replace("/", "-"),
         gross_pay_to_date=money["gross_pay_to_date"], tax_paid_to_date=money["tax_paid_to_date"],
         tax_code=values.get("tax_code") or None,
         pay_frequency=PayFrequency(values.get("pay_frequency") or "unknown"),
@@ -52,6 +52,13 @@ def review_manual_baseline(values, *, tax_year, observed_on):
             or evidence.representation is not EvidenceRepresentation.EMPLOYMENT_CUMULATIVE
             or evidence.completeness is not Completeness.PARTIAL):
         raise ValueError("Unexpected evidence classification")
+    return capture, evidence
+
+
+def review_manual_baseline(values, *, tax_year, observed_on):
+    """Admit exact form strings and return only an explicit own-field review."""
+    capture, evidence = capture_manual_baseline(values, tax_year=tax_year, observed_on=observed_on)
+    year = evidence.tax_year.replace("-", "/")
     amount = lambda value: "Unknown" if value is None else "£" + format(value, ".2f")
     return (
         ("Tax year", year),

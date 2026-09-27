@@ -62,6 +62,9 @@ from reserved.database import (
     get_transactions,
     get_transaction_summary,
     get_user_review_items,
+    save_paye_manual_entry,
+    list_active_paye_manual_entries,
+    delete_paye_manual_entry,
     list_connections_for_user,
     list_accounts,
     list_invoices,
@@ -70,8 +73,11 @@ from reserved.database import (
     persist_match_result,
 )
 from reserved.extensions import csrf
-from reserved.config import paye_manual_baseline_enabled
+from reserved.config import paye_manual_baseline_enabled, paye_manual_journey_enabled
 from reserved.services.paye_manual_baseline import review_manual_baseline
+from reserved.services.paye_customer_orchestration import (
+    admit_manual_entry, annual_position_boundary_state, customer_read_model,
+)
 from reserved.config import mtd_manual_scope_enabled
 from reserved.services.mtd_manual_source_admission import (
     admit_manual_mtd, manual_year_metadata, QUESTIONS as MTD_QUESTIONS,
@@ -573,6 +579,7 @@ def dashboard_view():
         liability      = _dash["liability"],
         is_demo        = _dash["is_demo"],
         paye_manual_available=(paye_manual_baseline_enabled() and not is_production_environment()),
+        paye_manual_journey_available=paye_manual_journey_enabled(),
         mtd_manual_available=(mtd_manual_scope_enabled() and not is_production_environment()),
     )
 
@@ -608,6 +615,58 @@ def paye_manual_baseline():
             status = 400
     return render_template("v2/paye_manual_baseline.html", tax_year=year,
                            review=review, error=error), status
+
+
+@v2.route("/paye/manual", methods=["GET", "POST"])
+@require_auth
+def paye_manual_journey():
+    """Owner-bound structured PAYE fallback; raw documents are never accepted."""
+    if not paye_manual_journey_enabled():
+        abort(404)
+    if type(g.user_id) is not int or g.user_id <= 0 or get_user(g.user_id) is None:
+        abort(403)
+    if request.args:
+        abort(400)
+    year = resolve_tax_year(context_tax_year=configured_tax_year())
+    if year is None:
+        abort(404)
+    as_of = datetime.now(timezone.utc).date()
+    error = None
+    if request.method == "POST":
+        try:
+            if (request.mimetype != "application/x-www-form-urlencoded"
+                    or request.content_length is None or request.content_length > 4096
+                    or request.files or any(len(request.form.getlist(key)) != 1 for key in request.form)):
+                raise ValueError("Invalid form")
+            fields = request.form.to_dict()
+            fields.pop("csrf_token", None)
+            save_paye_manual_entry(g.user_id, admit_manual_entry(fields, tax_year=year, observed_on=as_of))
+            return redirect(url_for("v2.paye_manual_journey"))
+        except (ValueError, TypeError, InvalidOperation):
+            error = "We could not save those confirmed PAYE facts. Check the slot, dates, amounts and choices."
+    entries = list_active_paye_manual_entries(g.user_id, year)
+    return render_template(
+        "v2/paye_manual_journey.html", tax_year=year, entries=customer_read_model(entries, as_of=as_of),
+        annual_boundary=annual_position_boundary_state(entries), error=error,
+    ), 400 if error else 200
+
+
+@v2.post("/paye/manual/entries/<evidence_id>/delete")
+@require_auth
+def delete_paye_manual_journey_entry(evidence_id):
+    """Customer-requested removal of an owned entry from the current view."""
+    if not paye_manual_journey_enabled():
+        abort(404)
+    if type(g.user_id) is not int or g.user_id <= 0 or get_user(g.user_id) is None:
+        abort(403)
+    if request.args or request.form.keys() - {"csrf_token"}:
+        abort(400)
+    year = resolve_tax_year(context_tax_year=configured_tax_year())
+    if year is None:
+        abort(404)
+    # Do not distinguish absent/other-owner/already-deleted records.
+    delete_paye_manual_entry(g.user_id, year, evidence_id)
+    return redirect(url_for("v2.paye_manual_journey"))
 
 
 @v2.route("/mtd/scope-indication", methods=["GET", "POST"])

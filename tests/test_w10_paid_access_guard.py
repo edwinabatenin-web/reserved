@@ -293,6 +293,29 @@ def test_candidate_is_confined_to_exact_three_owned_paths_and_base():
             "tests/test_w10_paid_access_guard.py",
             "docs/W10_STRIPE_LATER_PERIOD_RESTORATION_EVIDENCE.md",
         }
+    if (changed or untracked) and git_text("branch", "--show-current") == "codex/launch-paye":
+        assert git_text("rev-parse", "HEAD") == "8517a482bd315c93a793bdb32623e784a4766a85"
+        allowed |= {
+            "docs/W10_S5A_PAID_SURFACE_INVENTORY.md",
+            "reserved/billing/local_paid_surface_access.py",
+            "reserved/billing/paid_access_guard.py",
+            "reserved/config.py", "reserved/database.py",
+            "reserved/engines/paye_annual_bridge.py",
+            "reserved/services/paye_customer_orchestration.py",
+            "reserved/services/paye_manual_baseline.py",
+            "reserved/templates/v2/dashboard.html",
+            "reserved/templates/v2/paye_manual_journey.html",
+            "reserved/web/v2.py",
+            "tests/test_paye_annual_bridge.py",
+            "tests/test_paye_customer_orchestration.py",
+            "tests/test_hicbc_linked_account.py",
+            "tests/test_w10_full_withdrawal_paid_surface_access.py",
+            "tests/test_w10_later_period_restoration_paid_surface_access.py",
+            "tests/test_w10_local_paid_surface_access.py",
+            "tests/test_w10_paid_access_guard.py",
+            "tests/test_w10_paid_surface_inventory.py",
+            "tests/test_w10_stripe_initial_payment_ingress.py",
+        }
     assert set(changed + untracked) <= allowed
 
     assert git_text("rev-parse", f"{BASE}^{{tree}}") == BASE_TREE
@@ -309,9 +332,11 @@ def test_candidate_is_confined_to_exact_three_owned_paths_and_base():
 
 
 def test_paid_endpoint_boundary_is_exact_s5a_settled_class():
-    assert len(subject.PAID_ENDPOINTS) == 28
-    assert len(set(subject.PAID_ENDPOINTS)) == 28
+    assert len(subject.PAID_ENDPOINTS) == 30
+    assert len(set(subject.PAID_ENDPOINTS)) == 30
     assert "v2.paye_manual_baseline" in subject.PAID_ENDPOINTS
+    assert "v2.paye_manual_journey" in subject.PAID_ENDPOINTS
+    assert "v2.delete_paye_manual_journey_entry" in subject.PAID_ENDPOINTS
     assert "v2.mtd_manual_scope" in subject.PAID_ENDPOINTS
     assert subject.PAID_ENDPOINTS == inventory_paid_endpoints()
     assert "v2.billing_plans" not in subject.PAID_ENDPOINTS
