@@ -43,21 +43,23 @@ checkpoint from the commit that integrated identical package blobs.
 The live `SRC-24` route binding is refreshed at accepted integration commit
 `c5e560045ed3d62f02c894e931464c3d7294e99f`; the separate accepted S5C
 historical product checkpoint remains unchanged.
-The separate live `SRC-16` v2 binding now names the integrated production-shaped
-MTD current-evidence checkpoint `98008826dc9ff83c1d22953458720c23efe5e292`,
-with digest `66697844f581226ea7817cd22d5f9c1728431499edf96c0968c6e00583c08560`.
-It keeps the manual indication disabled by default and proves the route is
-available in a production-shaped process only after an owner-bound reconciled
-paid entitlement. This synthetic binding does not replace target/provider,
-customer-language or historical evidence and does not activate production or
-close any threat, control, gap, broader MTD completion or activation gate.
+The separate live `SRC-16` v2 binding now names the integrated paid durable PAYE
+forecast checkpoint `318fe2dabcef359dd4066fc207ad8a07395bbefd`, with
+digest `e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16`.
+It keeps confirmed-input forecasting disabled by default and proves the route
+is available only after exact forecast dependencies and an owner-bound
+reconciled paid entitlement are both installed. The response remains limited to
+confirmed-period forecast state; it is not payroll calculation, final liability
+or payment authority. This local binding does not replace target/provider,
+customer-language, privacy/retention or operational evidence and does not
+activate production or close the combined PAYE forecasting or release gate.
 The earlier accepted PAYE capture/review checkpoint remains distinct history:
 `f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b`, v2 digest
 `be6247e5f9aa91cfbdc3a4d028fbf4b3c4911eaf98dcd1f7b383b28998838236`.
 Historical S5C
 `v2.py` remains bound to its own blob digest
 `dd4bcc1ec49793065da525fefd26709522ce12f5560fd3ee6af7b72ca27ae228`,
-which differs from both PAYE and live MTD source. SRC-24 retains its independent
+which differs from both historical PAYE and live forecast source. SRC-24 retains its independent
 source commit and digest rather than being relabelled as PAYE or MTD evidence.
 
 <!-- W10-S7A-REGISTER-BEGIN -->

@@ -441,7 +441,7 @@ def test_historical_binding_survives_descendant_change_and_rejects_wrong_provena
         raise AssertionError("a wrong historical source digest was accepted")
 
 
-def test_mtd_live_v2_preserves_distinct_historical_paye_s5c_and_preview_blobs():
+def test_live_forecast_v2_preserves_distinct_historical_paye_mtd_and_s5c_blobs():
     path = "reserved/web/v2.py"
     expected = EXPECTED_SOURCES["SRC-16"][2]
     old_preview_commit = "46e2141c421fa80e39b60cd5b6bb955f44dfd863"
