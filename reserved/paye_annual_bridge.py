@@ -60,10 +60,17 @@ def read_owner_bound_manual_paye_evidence(
 ) -> OwnerBoundPayeEvidenceBatch:
     """Read current rows for one exact owner/year and issue an opaque snapshot."""
     from reserved import database
+    from reserved.auth import current_user_id
 
     if (type(authenticated_owner_user_id) is not int or authenticated_owner_user_id <= 0
             or type(tax_year) is not str or len(tax_year) != 7 or tax_year[4] != "/"):
         raise ValueError("PAYE evidence owner/year is invalid")
+    try:
+        session_owner = current_user_id()
+    except RuntimeError:
+        raise ValueError("authenticated PAYE request context is required") from None
+    if type(session_owner) is not int or session_owner != authenticated_owner_user_id:
+        raise ValueError("PAYE evidence read is not bound to authenticated owner")
     rows = database.list_active_paye_manual_entries(authenticated_owner_user_id, tax_year)
     seen_slots: set[int] = set()
     seen_ids: set[str] = set()

@@ -80,10 +80,11 @@ def compose_bridge(app, *, entries=None, batch_owner=41, projection=None, decisi
         stored = dict(row)
         owner = stored.pop("user_id")
         db.save_paye_manual_entry(owner, stored)
-    batch = read_owner_bound_manual_paye_evidence(
-        authenticated_owner_user_id=batch_owner, tax_year="2026/27"
-    )
     with app.test_request_context("/"):
+        auth.set_user_session(batch_owner, f"user_{batch_owner}")
+        batch = read_owner_bound_manual_paye_evidence(
+            authenticated_owner_user_id=batch_owner, tax_year="2026/27"
+        )
         auth.set_user_session(41, "user_41")
         return compose_authenticated_manual_paye(
             evidence_batch=batch,
@@ -106,10 +107,21 @@ def test_multi_employment_manual_evidence_composes_only_after_exact_binding(app)
 ])
 def test_duplicate_employment_slot_or_evidence_identity_fails_closed(app, monkeypatch, entries):
     monkeypatch.setattr(db, "list_active_paye_manual_entries", lambda *_: entries)
-    with pytest.raises(ValueError, match="duplicate"):
-        read_owner_bound_manual_paye_evidence(
-            authenticated_owner_user_id=41, tax_year="2026/27"
-        )
+    with app.test_request_context("/"):
+        auth.set_user_session(41, "user_41")
+        with pytest.raises(ValueError, match="duplicate"):
+            read_owner_bound_manual_paye_evidence(
+                authenticated_owner_user_id=41, tax_year="2026/27"
+            )
+
+
+def test_authenticated_owner_cannot_issue_foreign_owner_batch(app):
+    with app.test_request_context("/"):
+        auth.set_user_session(41, "user_41")
+        with pytest.raises(ValueError, match="authenticated owner"):
+            read_owner_bound_manual_paye_evidence(
+                authenticated_owner_user_id=42, tax_year="2026/27"
+            )
 
 
 def test_foreign_owner_manual_evidence_fails_closed(app):
@@ -144,9 +156,10 @@ def test_absent_or_cross_owner_membership_and_unadmitted_annual_input_fail_close
                 membership_decision=decision, current_membership_snapshot=InMemoryOwnerBusinessMembershipFake((), snapshot_version=1),
                 reconciliation_policy=make_paye_reconciliation_policy(45, Decimal("1.00")),
             )
-    with pytest.raises(ValueError, match="not bound"):
-        compose_authenticated_manual_paye(
-            evidence_batch=read_owner_bound_manual_paye_evidence(authenticated_owner_user_id=41, tax_year="2025/26"), annual_position=annual, annual_projection=projection,
-            membership_decision=decision, current_membership_snapshot=membership,
-            reconciliation_policy=make_paye_reconciliation_policy(45, Decimal("1.00")),
-        )
+        with pytest.raises(ValueError, match="not bound"):
+            auth.set_user_session(41, "user_41")
+            compose_authenticated_manual_paye(
+                evidence_batch=read_owner_bound_manual_paye_evidence(authenticated_owner_user_id=41, tax_year="2025/26"), annual_position=annual, annual_projection=projection,
+                membership_decision=decision, current_membership_snapshot=membership,
+                reconciliation_policy=make_paye_reconciliation_policy(45, Decimal("1.00")),
+            )
