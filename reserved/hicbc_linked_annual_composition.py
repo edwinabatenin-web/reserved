@@ -274,6 +274,37 @@ def _linked_only_row(row: dict) -> dict:
     return value
 
 
+def preflight_linked_durable_authenticated_hicbc(
+    *,
+    repository: DurableAnnualPositionRepository,
+    owner_business_reference: str,
+    tax_year: str,
+    nation: str,
+) -> bool:
+    """Admit current mutual permission and both durable scopes without providers.
+
+    This is only an early side-effect gate for a later HTTP adapter.  The final
+    composition repeats the complete capture and remains the result authority.
+    """
+    if type(repository) is not DurableAnnualPositionRepository:
+        raise TypeError("exact durable annual-position repository is required")
+    if (type(owner_business_reference) is not str or not owner_business_reference
+            or type(tax_year) is not str or type(nation) is not str):
+        raise ValueError("linked HICBC scope is invalid")
+    repository.assert_external_authority_available()
+    owner_id = _current_owner()
+    with database._connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        return _capture_scope(
+            conn,
+            repository=repository,
+            owner_id=owner_id,
+            owner_business=owner_business_reference,
+            tax_year=tax_year,
+            nation=nation,
+        ) is not None
+
+
 def compose_linked_durable_authenticated_hicbc_preview(
     *,
     repository: DurableAnnualPositionRepository,

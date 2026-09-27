@@ -20,6 +20,7 @@ from reserved.engines.integrated_annual_position import AnnualPositionResult
 from reserved.hicbc_linked_annual_composition import (
     LinkedAnnualLiveSource,
     compose_linked_durable_authenticated_hicbc_preview,
+    preflight_linked_durable_authenticated_hicbc,
 )
 
 
@@ -103,6 +104,13 @@ def linked_current_annual_position_payload(runtime: LinkedHicbcRuntime, owner: i
         record_purpose=RECORD_PURPOSE,
         audit_reference="audit:linked-hicbc-preflight",
     )
+    if not preflight_linked_durable_authenticated_hicbc(
+        repository=runtime.repository,
+        owner_business_reference=business,
+        tax_year=tax_year,
+        nation=nation,
+    ):
+        return _unavailable_payload(tax_year)
     try:
         owner_source = _live_source(
             runtime.owner_annual_provider(owner, business, tax_year, nation)

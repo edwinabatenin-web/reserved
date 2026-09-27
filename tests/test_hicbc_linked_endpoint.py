@@ -148,8 +148,7 @@ def test_partner_producer_runs_only_after_current_link_permission(prepared, monk
         "possible_charge_low": None,
         "possible_charge_high": None,
     }
-    assert len(owner_calls) == 1
-    assert partner_calls == []
+    assert owner_calls == [] and partner_calls == []
 
 
 def test_stale_and_revoked_states_share_the_same_unavailable_projection(
