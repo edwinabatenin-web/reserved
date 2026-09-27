@@ -76,7 +76,7 @@ only when `HICBC_ENABLED` is explicitly enabled.
     "reserved/__init__.py": "25ae236e69d39f4f7a0f7220c077b5a5593530f93ceecac70e59c2ee6e80eec0",
     "reserved/api/routes.py": "9d865764b222c0985b27c23707a7cea8a8327152795deb14e91a27feef081364",
     "reserved/auth.py": "adfe50a348a94e1f1a7405a41d92ec39b5d1a9db8c92b64222410701af39ae91",
-    "reserved/config.py": "bc64b2a7287309f8f07a1edd4202280fe8c0ddf15b9fe81e3532b323b8ba1a13",
+    "reserved/config.py": "dd35367653820e5162aa7bdba6cdaeac47614ac072b5bceba0772c6f1c8374be",
     "reserved/extensions.py": "ef35d3ec969e299a1c8221b5636bcf44590189175b0ad0c83e88d38ded35b2a0",
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
     "reserved/web/hicbc.py": "f64b1f7db99c42d27d6ec4995b78bd20e0214ddeed1934a157f543cb283d8f23",
