@@ -207,6 +207,14 @@ def test_bad_scope_or_invalid_provider_output_is_value_free(prepared, monkeypatc
     monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
     _install(app, annual, repository, scope=lambda _: ("business-1", "2025/26", "England"))
     assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
+    invalid_scope = _paid_app(tmp_path, "invalid-scope", owner)
+    _install(
+        invalid_scope, annual, repository,
+        scope=lambda _: ("business-1", "2026/ab", "England"),
+    )
+    assert _client(invalid_scope, owner).get(
+        "/v2/paye/current-forecast"
+    ).status_code == 404
     app2 = _paid_app(tmp_path, "invalid-provider", owner)
     _install(app2, annual, repository, future_provider=lambda *_: [])
     assert _client(app2, owner).get("/v2/paye/current-forecast").status_code == 404
@@ -261,6 +269,169 @@ def test_application_factory_composes_only_complete_paid_forecast_runtime(
     assert client.get("/v2/paye/current-forecast").status_code == 200
 
 
+def test_paid_manual_journey_creates_updates_lists_and_deletes_minimum_future_period(
+    prepared, monkeypatch,
+):
+    app, owner, _other, annual, repository, _tmp_path = prepared
+    monkeypatch.setenv("PAYE_MANUAL_JOURNEY_ENABLED", "1")
+    monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
+    _install(
+        app, annual, repository,
+        future_provider=RepositoryFuturePayFactsProvider(repository),
+    )
+    app.config.update(WTF_CSRF_ENABLED=False)
+    client = _client(app, owner)
+    values = {
+        "form_kind": "future_pay_save",
+        "employment_slot": "1",
+        "period_start": "2026-10-02",
+        "period_end": "2026-10-31",
+        "expected_gross_pay": "5000",
+        "expected_tax_deducted": "750.00",
+        "confirmation": "yes",
+    }
+    assert client.post("/v2/paye/manual", data=values).status_code == 302
+    page = client.get("/v2/paye/manual")
+    assert page.status_code == 200
+    body = page.get_data(as_text=True)
+    assert "Confirmed future pay" in body
+    assert "2026-10-02 to 2026-10-31" in body
+    assert "gross £5000.00" in body
+    assert "future-source:employment-1" in body
+    assert "payslip" in body
+
+    updated = values | {
+        "expected_gross_pay": "5100.00",
+        "expected_tax_deducted": "765",
+    }
+    assert client.post("/v2/paye/manual", data=updated).status_code == 302
+    records = repository.list_confirmed_future_pay_periods(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", audit_reference="audit:future-pay-test-list",
+    )
+    assert len(records) == 1
+    assert records[0].expected_gross_pay == Decimal("5100.00")
+    assert records[0].expected_tax_deducted == Decimal("765.00")
+
+    overlap = values | {
+        "period_start": "2026-10-20", "period_end": "2026-11-20",
+    }
+    response = client.post("/v2/paye/manual", data=overlap)
+    assert response.status_code == 400
+    assert "must not overlap" in response.get_data(as_text=True)
+    assert len(repository.list_confirmed_future_pay_periods(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", audit_reference="audit:future-pay-test-unchanged",
+    )) == 1
+
+    deleted = {
+        "form_kind": "future_pay_delete",
+        "source_identity": "future-source:employment-1",
+        "period_start": "2026-10-02",
+        "period_end": "2026-10-31",
+    }
+    assert client.post("/v2/paye/manual", data=deleted).status_code == 302
+    assert repository.list_confirmed_future_pay_periods(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", audit_reference="audit:future-pay-test-empty",
+    ) == ()
+
+
+def test_future_pay_customer_form_is_disabled_closed_and_rejects_extra_fields(
+    prepared, monkeypatch,
+):
+    app, owner, _other, annual, repository, _tmp_path = prepared
+    monkeypatch.setenv("PAYE_MANUAL_JOURNEY_ENABLED", "1")
+    app.config.update(WTF_CSRF_ENABLED=False)
+    _install(
+        app, annual, repository,
+        future_provider=RepositoryFuturePayFactsProvider(repository),
+    )
+    client = _client(app, owner)
+    values = {
+        "form_kind": "future_pay_save",
+        "employment_slot": "1",
+        "period_start": "2026-10-02",
+        "period_end": "2026-10-31",
+        "expected_gross_pay": "5000.00",
+        "expected_tax_deducted": "750.00",
+        "confirmation": "yes",
+    }
+    assert client.post("/v2/paye/manual", data=values).status_code == 404
+    monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
+    assert client.post(
+        "/v2/paye/manual", data=values | {"free_text": "not authorised"},
+    ).status_code == 400
+    assert client.post(
+        "/v2/paye/manual", data=values | {"confirmation": "no"},
+    ).status_code == 400
+    assert client.post(
+        "/v2/paye/manual",
+        data=values | {"period_start": "2026-10-01"},
+    ).status_code == 400
+    assert repository.list_confirmed_future_pay_periods(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", audit_reference="audit:future-pay-test-rejected",
+    ) == ()
+
+
+def test_paid_foreign_owner_cannot_view_change_or_delete_future_period(
+    prepared, monkeypatch,
+):
+    import hashlib
+    import hmac
+    import json
+
+    app, owner, other, annual, repository, _tmp_path = prepared
+    monkeypatch.setenv("PAYE_MANUAL_JOURNEY_ENABLED", "1")
+    monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
+    _install(
+        app, annual, repository,
+        future_provider=RepositoryFuturePayFactsProvider(repository),
+    )
+    app.config.update(WTF_CSRF_ENABLED=False)
+    owner_values = {
+        "form_kind": "future_pay_save", "employment_slot": "1",
+        "period_start": "2026-10-02", "period_end": "2026-10-31",
+        "expected_gross_pay": "5000.00",
+        "expected_tax_deducted": "750.00", "confirmation": "yes",
+    }
+    assert _client(app, owner).post(
+        "/v2/paye/manual", data=owner_values,
+    ).status_code == 302
+    billing = app.extensions["reserved.billing.stripe_runtime"]
+    account = billing.repository.account_for(other)
+    event = {
+        "id": "evt_foreign_owner_paid", "created": 1_800_000_001,
+        "type": "invoice.paid", "data": {"object": {"metadata": {
+            "reserved_owner_id": str(other),
+            "reserved_billing_account_id": account,
+        }}},
+    }
+    raw = json.dumps(event, separators=(",", ":")).encode()
+    signature = "sig=" + hmac.new(
+        b"composition-key", raw, hashlib.sha256,
+    ).hexdigest()
+    assert billing.webhook(raw, signature) == "reconciled"
+    foreign = _client(app, other)
+    page = foreign.get("/v2/paye/manual")
+    assert page.status_code == 200
+    assert "5000.00" not in page.get_data(as_text=True)
+    assert foreign.post(
+        "/v2/paye/manual", data=owner_values | {"expected_gross_pay": "1.00"},
+    ).status_code == 400
+    assert foreign.post("/v2/paye/manual", data={
+        "form_kind": "future_pay_delete",
+        "source_identity": "future-source:employment-1",
+        "period_start": "2026-10-02", "period_end": "2026-10-31",
+    }).status_code == 400
+    records = repository.list_confirmed_future_pay_periods(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", audit_reference="audit:future-pay-owner-still-present",
+    )
+    assert len(records) == 1 and records[0].expected_gross_pay == Decimal("5000.00")
+
+
 def test_repository_backed_confirmed_period_can_be_updated_deleted_and_forecast(
     prepared, monkeypatch,
 ):
@@ -297,7 +468,7 @@ def test_repository_backed_confirmed_period_can_be_updated_deleted_and_forecast(
     )
     assert len(two_periods) == 2
     assert len({fact.source_evidence_id for fact in two_periods}) == 2
-    assert {fact.employment_id for fact in two_periods} == {source}
+    assert {fact.employment_id for fact in two_periods} == {"manual-employment-1"}
 
     with pytest.raises(DurableAnnualPositionError, match="periods overlap"):
         repository.save_confirmed_future_pay_period(
@@ -418,6 +589,11 @@ def test_future_pay_store_is_minimum_field_only_owner_bound_and_rejects_raw_cont
             **(values | {"authenticated_user_id": other}),
         )
     repository.save_confirmed_future_pay_period(**values)
+    with pytest.raises(DurableAnnualPositionError, match="not bound"):
+        repository.read_confirmed_future_pay_facts(
+            authenticated_user_id=owner, business_reference="business-1",
+            tax_year="2026/27", nation="England", annual_position=annual,
+        )
     with pytest.raises(DurableAnnualPositionError):
         repository.read_confirmed_future_pay_facts(
             authenticated_user_id=other, business_reference="business-1",
@@ -441,7 +617,7 @@ def test_repository_future_provider_must_share_the_runtime_repository(prepared):
 
 def test_repository_future_facts_are_rechecked_after_composition(prepared, monkeypatch):
     _app, owner, _other, annual, repository, tmp_path = prepared
-    source = "future-source:race-check"
+    source = "future-source:employment-1"
     repository.save_confirmed_future_pay_period(
         authenticated_user_id=owner, business_reference="business-1",
         tax_year="2026/27", source_identity=source,

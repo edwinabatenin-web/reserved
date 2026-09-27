@@ -9,6 +9,7 @@
   {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
   <form method="post" action="{{ url_for('v2.paye_manual_journey') }}" autocomplete="off" novalidate>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form_kind" value="current_paye">
     <fieldset><legend>Confirmed cumulative figures</legend>
       <label for="employment-slot">Employment</label><select id="employment-slot" name="employment_slot" required>{% for slot in range(1, 21) %}<option value="{{ slot }}">Employment {{ slot }}</option>{% endfor %}</select>
       <label for="gross-pay">Cumulative gross pay (£)</label><input id="gross-pay" name="gross_pay_to_date" type="text" inputmode="decimal" maxlength="13">
@@ -27,5 +28,28 @@
     <form method="post" action="{{ url_for('v2.delete_paye_manual_journey_entry', evidence_id=entry.evidence_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Remove this entry from your current PAYE view</button></form></li>{% endfor %}</ul>{% else %}<p>No confirmed PAYE facts have been saved.</p>{% endif %}
   <p>{{ annual_boundary }}</p>
 </section>
+{% if future_context %}
+<section class="panel"><h2>Confirmed future pay</h2>
+  <p>Tax year {{ future_context.tax_year }}. Add only pay and tax figures you have confirmed for a future period. Reserved stores no employer name, payroll reference, free text or payslip here. These figures support a planning forecast; they are not a payslip, liability, refund or HMRC determination.</p>
+  <p>Submitting the same employment and dates updates its amounts. To change the dates, delete that period and add the corrected one.</p>
+  {% if future_error %}<div class="flash flash-error" role="alert">{{ future_error }}</div>{% endif %}
+  <form method="post" action="{{ url_for('v2.paye_manual_journey') }}" autocomplete="off" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form_kind" value="future_pay_save">
+    <fieldset><legend>One confirmed future-pay period</legend>
+      <label for="future-employment-slot">Employment</label><select id="future-employment-slot" name="employment_slot" required>{% for slot in range(1, 21) %}<option value="{{ slot }}">Employment {{ slot }}</option>{% endfor %}</select>
+      <label for="future-period-start">Period starts</label><input id="future-period-start" name="period_start" type="date" required>
+      <label for="future-period-end">Period ends</label><input id="future-period-end" name="period_end" type="date" required>
+      <label for="future-gross-pay">Expected gross pay for this period (£)</label><input id="future-gross-pay" name="expected_gross_pay" type="text" inputmode="decimal" maxlength="22" required>
+      <label for="future-tax-deducted">Expected tax deducted for this period (£)</label><input id="future-tax-deducted" name="expected_tax_deducted" type="text" inputmode="decimal" maxlength="22" required>
+    </fieldset>
+    <label><input type="checkbox" name="confirmation" value="yes" required> I confirm these figures and dates for this employment period.</label>
+    <button type="submit">Save confirmed future-pay period</button>
+  </form>
+  <h3>Your saved future-pay periods</h3>
+  {% if future_context.periods %}<ul>{% for period in future_context.periods %}<li><strong>{{ period.period_start }} to {{ period.period_end }}</strong>: gross £{{ period.expected_gross_pay }}, expected tax deducted £{{ period.expected_tax_deducted }}; confirmed {{ period.confirmed_at }}.
+    <form method="post" action="{{ url_for('v2.paye_manual_journey') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="form_kind" value="future_pay_delete"><input type="hidden" name="source_identity" value="{{ period.source_identity }}"><input type="hidden" name="period_start" value="{{ period.period_start }}"><input type="hidden" name="period_end" value="{{ period.period_end }}"><button type="submit">Delete this future-pay period</button></form></li>{% endfor %}</ul>{% else %}<p>No confirmed future-pay periods have been saved.</p>{% endif %}
+</section>
+{% endif %}
 <p><a href="{{ url_for('v2.dashboard_view') }}">Back to dashboard</a></p>
 {% endblock %}

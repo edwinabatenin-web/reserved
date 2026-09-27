@@ -1,12 +1,15 @@
-"""Disabled-first authenticated durable PAYE confirmed-future-pay read.
+"""Disabled-first authenticated durable PAYE confirmed-future-pay boundary.
 
-This installer has no provider integration, network access, UI, credential,
-payment, refund or filing authority.  Composition injects all trusted inputs;
-the browser supplies no owner, scope, date, annual position or future facts.
+This installer has no provider integration, network access, credential,
+payment, refund or filing authority. Composition injects all trusted scope;
+the customer may supply only the approved minimum confirmed-period fields.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+import re
 
 from flask import Flask
 
@@ -26,6 +29,7 @@ from reserved.services.paye_future_pay_forecast import (
 _KEY = "reserved.paye.durable_forecast_endpoint"
 _RULE = "/v2/paye/current-forecast"
 _ENDPOINT = "v2.paye_durable_current_forecast"
+_MONEY = re.compile(r"^(?:0|[1-9][0-9]{0,18})(?:\.[0-9]{1,2})?$")
 
 
 class DurablePayeForecastEndpointError(ValueError):
@@ -91,9 +95,107 @@ def _scope(value):
     business, tax_year, nation = value
     if (type(business) is not str or not business or type(tax_year) is not str
             or len(tax_year) != 7 or tax_year[4] != "/"
+            or not tax_year[:4].isdigit() or not tax_year[5:].isdigit()
+            or int(tax_year[5:]) != (int(tax_year[:4]) + 1) % 100
             or type(nation) is not str or not nation):
         return None
     return business, tax_year, nation
+
+
+def _runtime_scope(runtime, owner):
+    if type(runtime) is not DurablePayeForecastRuntime or type(owner) is not int or owner <= 0:
+        raise DurablePayeForecastEndpointError("durable PAYE forecast runtime is unavailable")
+    scope = _scope(runtime.owner_scope_resolver(owner))
+    if scope is None:
+        raise DurablePayeForecastEndpointError("owner scope is unavailable")
+    runtime.repository.assert_external_authority_available()
+    return scope
+
+
+def _date_field(value):
+    if type(value) is not str or len(value) != 10:
+        raise DurablePayeForecastEndpointError("future-pay date is invalid")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise DurablePayeForecastEndpointError("future-pay date is invalid") from exc
+    if parsed.isoformat() != value:
+        raise DurablePayeForecastEndpointError("future-pay date is invalid")
+    return parsed
+
+
+def _money_field(value, *, allow_zero):
+    if type(value) is not str or _MONEY.fullmatch(value) is None:
+        raise DurablePayeForecastEndpointError("future-pay amount is invalid")
+    amount = Decimal(value).quantize(Decimal("0.01"))
+    if (amount > Decimal("1000000000000000000.00")
+            or (not allow_zero and amount.is_zero())):
+        raise DurablePayeForecastEndpointError("future-pay amount is invalid")
+    return amount
+
+
+def confirmed_future_pay_periods(runtime: DurablePayeForecastRuntime, owner: int) -> dict:
+    """Project the minimum owner-bound records for the customer edit screen."""
+    business, tax_year, _nation = _runtime_scope(runtime, owner)
+    records = runtime.repository.list_confirmed_future_pay_periods(
+        authenticated_user_id=owner, business_reference=business,
+        tax_year=tax_year, audit_reference="audit:future-pay-customer-list",
+    )
+    return {
+        "tax_year": tax_year,
+        "periods": tuple({
+            "source_identity": record.source_identity,
+            "period_start": record.period_start.isoformat(),
+            "period_end": record.period_end.isoformat(),
+            "expected_gross_pay": f"{record.expected_gross_pay:.2f}",
+            "expected_tax_deducted": f"{record.expected_tax_deducted:.2f}",
+            "confirmed_at": record.confirmed_at.date().isoformat(),
+        } for record in records),
+    }
+
+
+def save_confirmed_future_pay_period_from_customer(
+    runtime: DurablePayeForecastRuntime, owner: int, fields: dict,
+) -> str:
+    """Validate the exact minimum form and save it under server-owned scope."""
+    expected = {
+        "employment_slot", "period_start", "period_end", "expected_gross_pay",
+        "expected_tax_deducted", "confirmation",
+    }
+    if type(fields) is not dict or set(fields) != expected or fields["confirmation"] != "yes":
+        raise DurablePayeForecastEndpointError("future-pay confirmation is invalid")
+    slot = fields["employment_slot"]
+    if type(slot) is not str or not slot.isdigit() or not 1 <= int(slot) <= 20:
+        raise DurablePayeForecastEndpointError("future-pay employment is invalid")
+    business, tax_year, _nation = _runtime_scope(runtime, owner)
+    return runtime.repository.save_confirmed_future_pay_period(
+        authenticated_user_id=owner, business_reference=business,
+        tax_year=tax_year, source_identity=f"future-source:employment-{int(slot)}",
+        period_start=_date_field(fields["period_start"]),
+        period_end=_date_field(fields["period_end"]),
+        expected_gross_pay=_money_field(fields["expected_gross_pay"], allow_zero=False),
+        expected_tax_deducted=_money_field(
+            fields["expected_tax_deducted"], allow_zero=True,
+        ),
+        audit_reference="audit:future-pay-customer-save",
+    )
+
+
+def delete_confirmed_future_pay_period_from_customer(
+    runtime: DurablePayeForecastRuntime, owner: int, fields: dict,
+) -> bool:
+    """Delete one exact owned row without disclosing whether it existed."""
+    expected = {"source_identity", "period_start", "period_end"}
+    if type(fields) is not dict or set(fields) != expected:
+        raise DurablePayeForecastEndpointError("future-pay deletion is invalid")
+    business, tax_year, _nation = _runtime_scope(runtime, owner)
+    return runtime.repository.delete_confirmed_future_pay_period(
+        authenticated_user_id=owner, business_reference=business,
+        tax_year=tax_year, source_identity=fields["source_identity"],
+        period_start=_date_field(fields["period_start"]),
+        period_end=_date_field(fields["period_end"]),
+        audit_reference="audit:future-pay-customer-delete",
+    )
 
 
 def _response(forecast):
@@ -132,13 +234,7 @@ def current_forecast_payload(runtime: DurablePayeForecastRuntime, owner: int) ->
     """Compose the bounded response from exact server-owned dependencies."""
     from reserved.annual_position_durable_repository import RECORD_PURPOSE
 
-    if type(runtime) is not DurablePayeForecastRuntime or type(owner) is not int or owner <= 0:
-        raise DurablePayeForecastEndpointError("durable PAYE forecast runtime is unavailable")
-    scope = _scope(runtime.owner_scope_resolver(owner))
-    if scope is None:
-        raise DurablePayeForecastEndpointError("owner scope is unavailable")
-    business, tax_year, nation = scope
-    runtime.repository.assert_external_authority_available()
+    business, tax_year, nation = _runtime_scope(runtime, owner)
     record = runtime.repository.read_current(
         authenticated_user_id=owner, business_reference=business,
         tax_year=tax_year, nation=nation, record_purpose=RECORD_PURPOSE,
@@ -209,5 +305,8 @@ def install_durable_paye_forecast_endpoint(
 __all__ = [
     "DurablePayeForecastEndpointError", "DurablePayeForecastRuntime",
     "RepositoryFuturePayFactsProvider",
-    "current_forecast_payload", "install_durable_paye_forecast_endpoint",
+    "confirmed_future_pay_periods", "current_forecast_payload",
+    "delete_confirmed_future_pay_period_from_customer",
+    "install_durable_paye_forecast_endpoint",
+    "save_confirmed_future_pay_period_from_customer",
 ]

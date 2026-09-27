@@ -22,7 +22,7 @@ import re
 import weakref
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from reserved import database
 from reserved.annual_position_repository_contract import (
@@ -37,6 +37,18 @@ from reserved.billing.event_inbox_contract import canonical_owner_id_from_users_
 
 class DurableAnnualPositionError(ValueError):
     """The authenticated durable annual-position boundary failed closed."""
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmedFuturePayPeriodRecord:
+    """Minimum immutable customer view of one owned future-pay period."""
+
+    source_identity: str
+    period_start: date
+    period_end: date
+    expected_gross_pay: Decimal
+    expected_tax_deducted: Decimal
+    confirmed_at: datetime
 
 
 class DurablePayeReadSnapshot:
@@ -82,6 +94,9 @@ _IDENTITY = re.compile(r"^annual-position-structural:sha256-[0-9a-f]{64}$")
 _CLEARANCE = re.compile(r"^(?:legal-hold|backup-expiry):cleared-[A-Za-z0-9][A-Za-z0-9._/-]{0,95}$")
 _INTERNAL_REFERENCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _FUTURE_SOURCE = re.compile(r"^future-source:[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
+_FUTURE_EMPLOYMENT_SOURCE = re.compile(
+    r"^future-source:employment-([1-9]|1[0-9]|20)$"
+)
 _UNSAFE_MARKERS = ("secret", "token", "password", "credential", "apikey", "api_key", "bearer", "private_key")
 RECORD_PURPOSE = "annual_cash_position_durable_projection"
 def _utc(value: str, label: str) -> datetime:
@@ -703,8 +718,7 @@ class DurableAnnualPositionRepository:
             )
 
     @staticmethod
-    def _future_period_values(*, tax_year, source_identity, period_start, period_end,
-                              expected_gross_pay, expected_tax_deducted, confirmed_at):
+    def _future_period_key(*, tax_year, source_identity, period_start, period_end):
         if (type(tax_year) is not str or len(tax_year) != 7 or tax_year[4] != "/"
                 or not tax_year[:4].isdigit() or not tax_year[5:].isdigit()):
             raise DurableAnnualPositionError("future-pay tax year is invalid")
@@ -720,12 +734,23 @@ class DurableAnnualPositionRepository:
         first, last = date(start_year, 4, 6), date(start_year + 1, 4, 5)
         if not first <= period_start <= period_end <= last:
             raise DurableAnnualPositionError("future-pay period is outside its tax year")
+        return source_identity, period_start.isoformat(), period_end.isoformat()
+
+    @classmethod
+    def _future_period_values(cls, *, tax_year, source_identity, period_start, period_end,
+                              expected_gross_pay, expected_tax_deducted, confirmed_at):
+        key = cls._future_period_key(
+            tax_year=tax_year, source_identity=source_identity,
+            period_start=period_start, period_end=period_end,
+        )
         if type(confirmed_at) is not datetime or confirmed_at.tzinfo is not timezone.utc:
             raise DurableAnnualPositionError("future-pay confirmation time is invalid")
         if confirmed_at.isoformat() != confirmed_at.isoformat(timespec="seconds"):
             raise DurableAnnualPositionError("future-pay confirmation time must use whole seconds")
-        if confirmed_at.date() > period_end:
-            raise DurableAnnualPositionError("future-pay confirmation follows its period")
+        if confirmed_at.date() >= period_start:
+            raise DurableAnnualPositionError(
+                "future-pay period must start after confirmation"
+            )
         amounts = []
         for value, label, allow_zero in (
             (expected_gross_pay, "gross pay", False),
@@ -740,7 +765,7 @@ class DurableAnnualPositionRepository:
         if amounts[1] > amounts[0]:
             raise DurableAnnualPositionError("future-pay tax exceeds gross pay")
         return (
-            source_identity, period_start.isoformat(), period_end.isoformat(),
+            *key,
             f"{amounts[0]:.2f}", f"{amounts[1]:.2f}", confirmed_at.isoformat(),
         )
 
@@ -808,12 +833,9 @@ class DurableAnnualPositionRepository:
         """Delete exactly one owned confirmed future-pay period."""
         self._audit(audit_reference)
         self.assert_external_authority_available()
-        values = self._future_period_values(
+        values = self._future_period_key(
             tax_year=tax_year, source_identity=source_identity,
             period_start=period_start, period_end=period_end,
-            expected_gross_pay=Decimal("0.01"),
-            expected_tax_deducted=Decimal("0.00"),
-            confirmed_at=datetime.combine(period_start, datetime.min.time(), timezone.utc),
         )
         with database._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -826,6 +848,49 @@ class DurableAnnualPositionRepository:
                 "AND period_start=? AND period_end=?",
                 (authenticated_user_id, business_reference, tax_year, values[0], values[1], values[2]),
             ).rowcount == 1
+
+    def list_confirmed_future_pay_periods(
+        self, *, authenticated_user_id: int, business_reference: str,
+        tax_year: str, audit_reference: str,
+    ) -> tuple[ConfirmedFuturePayPeriodRecord, ...]:
+        """List only the owned minimum fields needed for customer correction."""
+        self._audit(audit_reference)
+        self.assert_external_authority_available()
+        with database._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_user(conn, authenticated_user_id)
+            self._active_membership(conn, authenticated_user_id, business_reference)
+            rows = conn.execute(
+                "SELECT source_identity,period_start,period_end,expected_gross_pay,"
+                "expected_tax_deducted,confirmed_at FROM paye_confirmed_future_periods "
+                "WHERE user_id=? AND business_reference=? AND tax_year=? "
+                "ORDER BY period_start,period_end,source_identity",
+                (authenticated_user_id, business_reference, tax_year),
+            ).fetchall()
+        records = []
+        for row in rows:
+            try:
+                start = date.fromisoformat(row["period_start"])
+                end = date.fromisoformat(row["period_end"])
+                gross = Decimal(row["expected_gross_pay"])
+                tax = Decimal(row["expected_tax_deducted"])
+                confirmed = datetime.fromisoformat(row["confirmed_at"])
+                values = self._future_period_values(
+                    tax_year=tax_year, source_identity=row["source_identity"],
+                    period_start=start, period_end=end,
+                    expected_gross_pay=gross, expected_tax_deducted=tax,
+                    confirmed_at=confirmed,
+                )
+            except (ValueError, TypeError, InvalidOperation) as exc:
+                raise DurableAnnualPositionError(
+                    "stored future-pay period is invalid"
+                ) from exc
+            records.append(ConfirmedFuturePayPeriodRecord(
+                source_identity=values[0], period_start=start, period_end=end,
+                expected_gross_pay=gross, expected_tax_deducted=tax,
+                confirmed_at=confirmed,
+            ))
+        return tuple(records)
 
     def read_confirmed_future_pay_facts(
         self, *, authenticated_user_id: int, business_reference: str, tax_year: str,
@@ -870,6 +935,13 @@ class DurableAnnualPositionRepository:
         facts = []
         engine_tax_year = tax_year.replace("/", "-")
         for value in rows:
+            employment = _FUTURE_EMPLOYMENT_SOURCE.fullmatch(
+                value["source_identity"]
+            )
+            if employment is None:
+                raise DurableAnnualPositionError(
+                    "future-pay source is not bound to a manual employment"
+                )
             canonical = _canonical((authenticated_user_id, business_reference, tax_year,
                                     *tuple(value.values()))).encode("ascii")
             digest = hashlib.sha256(canonical).hexdigest()
@@ -880,7 +952,7 @@ class DurableAnnualPositionRepository:
                 source_evidence_digest=digest,
                 owner_id=canonical_owner_id_from_users_id(authenticated_user_id),
                 business_id=business_reference, tax_year=engine_tax_year,
-                employment_id=value["source_identity"],
+                employment_id=f"manual-employment-{int(employment.group(1))}",
                 gross_pay=value["expected_gross_pay"],
                 expected_tax_deduction=value["expected_tax_deducted"],
                 pay_date=date.fromisoformat(value["period_end"]),

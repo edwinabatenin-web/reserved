@@ -16,9 +16,12 @@ contains only its scope key plus:
 
 It has no raw-document, payslip, free-text, provider, HMRC, inferred-pay or
 forecast-pay column. The source identity uses the closed
-`future-source:<opaque-id>` grammar. Multiple non-overlapping periods may share
-one source/employment identity; their dated keys and derived evidence identities
-remain distinct.
+`future-source:<opaque-id>` grammar. The customer form derives
+`future-source:employment-<slot>` from a validated employment slot; forecast
+projection preserves that source in evidence provenance while binding the fact
+to the same canonical `manual-employment-<slot>` identity as current PAYE
+evidence. Multiple non-overlapping periods may share one source/employment
+identity; their dated keys and derived evidence identities remain distinct.
 
 ## Lifecycle and read boundary
 
@@ -27,7 +30,17 @@ deletion, and owner/business/tax-year reads. Each operation requires a current
 externally verified repository authority and active owner-to-business
 membership. Writes are blocked once local account erasure begins. A current
 durable annual-position identity is required before a stored period can become
-a forecast fact.
+a forecast fact. A stored future period must start after its server-recorded
+confirmation date.
+
+The existing paid, authenticated manual-PAYE page now provides create, exact-key
+update and exact deletion forms when both the manual journey and durable
+forecast switches are enabled and the exact forecast runtime is installed. It
+accepts only employment slot, period dates, expected gross, expected tax and an
+explicit confirmation. Server-owned owner, business and tax-year scope is never
+accepted from the browser. Global CSRF enforcement and the existing paid-route
+wrapper remain unchanged; missing flags, entitlement, runtime, authority or
+membership fail closed.
 
 The paid forecast runtime can use only an exact provider bound to the same
 repository. Stored rows are re-read after forecast composition; a concurrent
@@ -46,6 +59,6 @@ closure.
 
 This boundary adds no raw upload, free text, inferred payroll, provider/HMRC
 access, credential use, production deployment, default activation or release
-authority. A customer-facing capture/edit journey, target-runtime evidence,
-representative-user evidence and production retention/backup acceptance remain
-separate gates.
+authority. Representative-user/UX evidence, required employment and period
+coverage, target-runtime evidence and production retention/backup acceptance
+remain separate gates.

@@ -638,6 +638,8 @@ def paye_manual_journey():
         abort(404)
     as_of = datetime.now(timezone.utc).date()
     error = None
+    future_error = None
+    future_context = None
     if request.method == "POST":
         try:
             if (request.mimetype != "application/x-www-form-urlencoded"
@@ -646,15 +648,64 @@ def paye_manual_journey():
                 raise ValueError("Invalid form")
             fields = request.form.to_dict()
             fields.pop("csrf_token", None)
-            save_paye_manual_entry(g.user_id, admit_manual_entry(fields, tax_year=year, observed_on=as_of))
+            form_kind = fields.pop("form_kind", "current_paye")
+            if form_kind in {"future_pay_save", "future_pay_delete"}:
+                if not durable_paye_forecast_enabled():
+                    abort(404)
+                from reserved.paye_forecast_endpoint import (
+                    DurablePayeForecastRuntime,
+                    delete_confirmed_future_pay_period_from_customer,
+                    save_confirmed_future_pay_period_from_customer,
+                )
+                runtime = current_app.extensions.get(
+                    "reserved.paye.durable_forecast_endpoint"
+                )
+                if type(runtime) is not DurablePayeForecastRuntime:
+                    abort(404)
+                if form_kind == "future_pay_save":
+                    save_confirmed_future_pay_period_from_customer(
+                        runtime, g.user_id, fields,
+                    )
+                else:
+                    delete_confirmed_future_pay_period_from_customer(
+                        runtime, g.user_id, fields,
+                    )
+            elif form_kind == "current_paye":
+                save_paye_manual_entry(
+                    g.user_id,
+                    admit_manual_entry(fields, tax_year=year, observed_on=as_of),
+                )
+            else:
+                raise ValueError("Invalid form")
             return redirect(url_for("v2.paye_manual_journey"))
         except (ValueError, TypeError, InvalidOperation):
-            error = "We could not save those confirmed PAYE facts. Check the slot, dates, amounts and choices."
+            if request.form.get("form_kind", "current_paye").startswith("future_pay_"):
+                future_error = (
+                    "We could not save that confirmed future-pay period. "
+                    "Check the employment, dates and amounts; periods for one "
+                    "employment must not overlap."
+                )
+            else:
+                error = "We could not save those confirmed PAYE facts. Check the slot, dates, amounts and choices."
+    if durable_paye_forecast_enabled():
+        try:
+            from reserved.paye_forecast_endpoint import (
+                DurablePayeForecastRuntime,
+                confirmed_future_pay_periods,
+            )
+            runtime = current_app.extensions.get(
+                "reserved.paye.durable_forecast_endpoint"
+            )
+            if type(runtime) is DurablePayeForecastRuntime:
+                future_context = confirmed_future_pay_periods(runtime, g.user_id)
+        except (ValueError, TypeError):
+            future_context = None
     entries = list_active_paye_manual_entries(g.user_id, year)
     return render_template(
         "v2/paye_manual_journey.html", tax_year=year, entries=customer_read_model(entries, as_of=as_of),
         annual_boundary=annual_position_boundary_state(entries), error=error,
-    ), 400 if error else 200
+        future_error=future_error, future_context=future_context,
+    ), 400 if error or future_error else 200
 
 
 @v2.post("/paye/manual/entries/<evidence_id>/delete")
