@@ -509,6 +509,18 @@ CREATE TABLE IF NOT EXISTS paye_payslip_intakes (
 CREATE INDEX IF NOT EXISTS idx_paye_payslip_intakes_pending_owner
     ON paye_payslip_intakes(user_id, session_hash, state);
 
+CREATE TABLE IF NOT EXISTS paye_payslip_quarantine_receipts (
+    receipt_key       TEXT PRIMARY KEY,
+    storage_id        TEXT,
+    filename_class    TEXT NOT NULL,
+    reason            TEXT NOT NULL,
+    observed_at       TEXT NOT NULL,
+    file_device       INTEGER,
+    file_inode        INTEGER,
+    byte_count        INTEGER,
+    content_sha256    TEXT
+);
+
 -- ── W9: minimised owner-bound annual positions ──────────────────────────────
 -- This schema intentionally has no raw payslip or provider-payload column.
 CREATE TABLE IF NOT EXISTS owner_business_memberships (
@@ -583,7 +595,7 @@ CREATE TABLE IF NOT EXISTS annual_position_lifecycle_events (
 # - The DDL block above always reflects the full target schema; migrations
 #   handle upgrade paths for databases created before the current DDL.
 #
-_SCHEMA_VERSION = 16   # increment when adding new migration entries below
+_SCHEMA_VERSION = 17   # increment when adding new migration entries below
 
 _MIGRATIONS: dict[int, list[str]] = {
     # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
@@ -863,6 +875,19 @@ _MIGRATIONS: dict[int, list[str]] = {
             deletion_started_at TEXT
         )""",
         "CREATE INDEX IF NOT EXISTS idx_paye_payslip_intakes_pending_owner ON paye_payslip_intakes(user_id, session_hash, state)",
+    ],
+    17: [
+        """CREATE TABLE IF NOT EXISTS paye_payslip_quarantine_receipts (
+            receipt_key TEXT PRIMARY KEY,
+            storage_id TEXT,
+            filename_class TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            observed_at TEXT NOT NULL,
+            file_device INTEGER,
+            file_inode INTEGER,
+            byte_count INTEGER,
+            content_sha256 TEXT
+        )""",
     ],
 }
 

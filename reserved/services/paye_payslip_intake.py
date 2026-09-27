@@ -41,6 +41,8 @@ MAX_PAYSLIP_BYTES = 10 * 1024 * 1024
 _TAX_YEAR = re.compile(r"[0-9]{4}/[0-9]{2}\Z")
 _SESSION = re.compile(r"[A-Za-z0-9_-]{16,256}\Z")
 _STORAGE_ID = re.compile(r"[0-9a-f]{64}\Z")
+_DOCUMENT_NAME = re.compile(r"([0-9a-f]{64})\.(pdf|png|jpg)\Z")
+_DELETING_NAME = re.compile(r"\.deleting-([0-9a-f]{64})\.(pdf|png|jpg)\Z")
 _TYPES = {
     "application/pdf": ("pdf", b"%PDF-"),
     "image/png": ("png", b"\x89PNG\r\n\x1a\n"),
@@ -108,6 +110,21 @@ class PayslipIntakeBoundary:
                 raise
             raise PayslipIntakeError("payslip storage root is unavailable") from exc
         self._root_fd = root_fd
+        try:
+            os.mkdir(".quarantine", 0o700, dir_fd=self._root_fd)
+        except FileExistsError:
+            pass
+        try:
+            self._quarantine_fd = os.open(".quarantine", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                          dir_fd=self._root_fd)
+            qstat = os.fstat(self._quarantine_fd)
+            if not stat.S_ISDIR(qstat.st_mode) or qstat.st_mode & 0o077:
+                raise PayslipIntakeError("payslip quarantine is unavailable")
+        except (OSError, PayslipIntakeError) as exc:
+            self.close()
+            if isinstance(exc, PayslipIntakeError):
+                raise
+            raise PayslipIntakeError("payslip quarantine is unavailable") from exc
         self._enabled = enabled
         self._extraction_adapter = extraction_adapter
         self._records: dict[str, _StoredPayslip] = {}
@@ -116,9 +133,11 @@ class PayslipIntakeBoundary:
 
     def close(self) -> None:
         """Release the private directory handle when the composed runtime stops."""
-        fd, self._root_fd = getattr(self, "_root_fd", -1), -1
-        if fd >= 0:
-            os.close(fd)
+        for name in ("_quarantine_fd", "_root_fd"):
+            fd = getattr(self, name, -1)
+            setattr(self, name, -1)
+            if fd >= 0:
+                os.close(fd)
 
     def __del__(self):  # pragma: no cover - best-effort interpreter cleanup
         try:
@@ -369,6 +388,75 @@ class PayslipIntakeBoundary:
         except (KeyError, PayslipIntakeError, TypeError):
             return None
 
+    def _receipt(self, *, storage_id: str | None, filename_class: str, reason: str,
+                 metadata: os.stat_result | None) -> None:
+        device = None if metadata is None else metadata.st_dev
+        inode = None if metadata is None else metadata.st_ino
+        size = None if metadata is None else metadata.st_size
+        key = hashlib.sha256(
+            f"reserved:payslip-quarantine:v1\0{storage_id or ''}\0{filename_class}\0{reason}\0{device}\0{inode}\0{size}".encode("ascii")
+        ).hexdigest()
+        with database._connection() as conn:
+            conn.execute(
+                """INSERT OR IGNORE INTO paye_payslip_quarantine_receipts
+                   (receipt_key,storage_id,filename_class,reason,observed_at,file_device,file_inode,byte_count,content_sha256)
+                   VALUES (?,?,?,?,?,?,?,?,NULL)""",
+                (key, storage_id, filename_class, reason, self._timestamp(), device, inode, size),
+            )
+
+    def _inventory_startup(self, rows) -> None:
+        """Quarantine unknown regular files without reading or deleting content."""
+        expected = {}
+        for row in rows:
+            decoded = self._record_from_row(row)
+            if decoded is not None:
+                intake_id, record = decoded
+                expected[(intake_id, _TYPES[record.content_type][0], row["state"])] = record
+        for name in os.listdir(self._root_fd):
+            if name == ".quarantine":
+                continue
+            match = _DOCUMENT_NAME.fullmatch(name) or _DELETING_NAME.fullmatch(name)
+            deletion_name = name.startswith(".deleting-")
+            filename_class = "deletion_quarantine" if deletion_name else "server_document" if match else "malformed"
+            storage_id = match.group(1) if match else None
+            try:
+                metadata = os.stat(name, dir_fd=self._root_fd, follow_symlinks=False)
+            except OSError:
+                self._receipt(storage_id=storage_id, filename_class=filename_class, reason="unavailable", metadata=None)
+                continue
+            if not match:
+                self._receipt(storage_id=None, filename_class="malformed", reason="malformed_name", metadata=metadata)
+                continue
+            if stat.S_ISLNK(metadata.st_mode):
+                self._receipt(storage_id=storage_id, filename_class=filename_class, reason="symlink", metadata=metadata)
+                continue
+            if not stat.S_ISREG(metadata.st_mode):
+                self._receipt(storage_id=storage_id, filename_class=filename_class, reason="non_regular", metadata=metadata)
+                continue
+            state = "deleting" if deletion_name else "pending"
+            record = expected.get((storage_id, match.group(2), state))
+            if record is not None and self._matches(record, metadata):
+                continue
+            if record is not None:
+                self._receipt(storage_id=storage_id, filename_class=filename_class, reason="identity_mismatch", metadata=metadata)
+                continue
+            if any(key[0] == storage_id and key[1] == match.group(2) for key in expected):
+                self._receipt(storage_id=storage_id, filename_class=filename_class, reason="lifecycle_state_mismatch", metadata=metadata)
+                continue
+            # Persist a sanitized receipt first: if the process crashes before
+            # rename, the next inventory pass retries; after rename it is idempotent.
+            self._receipt(storage_id=storage_id, filename_class=filename_class, reason="untracked_regular", metadata=metadata)
+            destination = f"{filename_class}-{storage_id}-{metadata.st_dev}-{metadata.st_ino}.{match.group(2)}"
+            try:
+                os.stat(destination, dir_fd=self._quarantine_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                try:
+                    os.rename(name, destination, src_dir_fd=self._root_fd, dst_dir_fd=self._quarantine_fd)
+                except OSError:
+                    self._receipt(storage_id=storage_id, filename_class=filename_class, reason="quarantine_move_failed", metadata=metadata)
+            except OSError:
+                self._receipt(storage_id=storage_id, filename_class=filename_class, reason="quarantine_unavailable", metadata=metadata)
+
     def _recover_after_restart(self) -> None:
         """Recover only records whose durable file identity still matches.
 
@@ -382,6 +470,7 @@ class PayslipIntakeBoundary:
             rows = conn.execute(
                 "SELECT * FROM paye_payslip_intakes WHERE state IN ('pending', 'deleting')"
             ).fetchall()
+        self._inventory_startup(rows)
         for row in rows:
             decoded = self._record_from_row(row)
             if decoded is None:
