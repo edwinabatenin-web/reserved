@@ -978,6 +978,9 @@ def block_local_tax_data_writes(user_id: int) -> None:
 
 def complete_local_tax_data_erasure(user_id: int) -> None:
     with _connection() as conn:
+        row = conn.execute("SELECT state FROM local_tax_data_erasure_states WHERE user_id=?", (user_id,)).fetchone()
+        if row is not None and row["state"] == "erased":
+            return
         changed = conn.execute("UPDATE local_tax_data_erasure_states SET state='erased',updated_at=? "
                                "WHERE user_id=? AND state='blocked'", (_now(), user_id)).rowcount
         if changed != 1:

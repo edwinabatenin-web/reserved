@@ -247,7 +247,8 @@ class PayslipIntakeBoundary:
             raise PayslipIntakeError("payslip owner lock state could not be persisted") from exc
 
     @contextmanager
-    def _owner_guard(self, owner: int, *, permit_blocked: bool = False):
+    def _owner_guard(self, owner: int, *, permit_blocked: bool = False,
+                     permit_erased: bool = False):
         """Cross-instance owner lock plus the local reentrant mutation lock."""
         with self._owner_lock(owner):
             name = self._owner_state_name(owner)
@@ -257,7 +258,8 @@ class PayslipIntakeBoundary:
                              dir_fd=self._locks_fd)
                 fcntl.flock(fd, fcntl.LOCK_EX)
                 state = self._read_owner_state(owner)
-                if state == "erased" or (state == "blocked" and not permit_blocked):
+                if ((state == "erased" and not permit_erased)
+                        or (state == "blocked" and not permit_blocked)):
                     raise PayslipIntakeError("payslip owner lifecycle is unavailable")
                 yield state
             except OSError as exc:
@@ -757,14 +759,15 @@ class PayslipIntakeBoundary:
         if before_raw_erasure is not None and not callable(before_raw_erasure):
             raise PayslipIntakeError("account lifecycle continuation is unavailable")
         owner = self._owner(authenticated_user_id)
-        with self._owner_guard(owner, permit_blocked=True):
+        with self._owner_guard(owner, permit_blocked=True, permit_erased=True) as prior_state:
             # A failed raw or structured phase deliberately leaves the durable
             # owner state blocked; only an entire retry may advance to erased.
-            self._write_owner_state(owner, "blocked")
-            if before_raw_erasure is not None:
+            if prior_state != "erased":
+                self._write_owner_state(owner, "blocked")
+            if before_raw_erasure is not None and prior_state != "erased":
                 before_raw_erasure()
             result = self._erase_owner_for_account_lifecycle_locked(owner, after_raw_erasure)
-            if after_raw_erasure is not None:
+            if after_raw_erasure is not None and prior_state != "erased":
                 self._write_owner_state(owner, "erased")
             return result
 
