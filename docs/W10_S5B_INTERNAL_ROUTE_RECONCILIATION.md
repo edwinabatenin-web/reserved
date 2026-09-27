@@ -108,7 +108,7 @@ disposition forward by name alone.
     "FOUNDER_DECISIONS.md": "78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f",
     "docs/API_CONTRACT_GAP_REPORT.md": "b0eeeea6357e88dd1db59dd5ddf2d4e4e712f79f73d3a61c52838cda390ac85f",
     "docs/TECHNICAL_ARCHITECTURE.md": "7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79",
-    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "9a222f0873d94bb2f994fb6eeb067cc67ebe627b371cf02f2eabadc14b53c007",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "74b31efb344dc515a5b6f3aa2b3891410ad0e29469650f1ec111e48eea6cf974",
     "reserved/__init__.py": "d3ce81ff94f3bfe21329d5a678251319d2f021d36a618effd5a49d9426e051ad",
     "reserved/providers/banking/yapily.py": "885d021f20f8a76b5f2d26ed692f1e2cae4a7c9764c885da286a61c1c2b68475",
     "reserved/security.py": "73a5d20f1aa69fafda1ab4a9d6c01668fc9a465686e2d8198f8649364e43ae2b",
@@ -120,7 +120,7 @@ disposition forward by name alone.
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
     "reserved/web/hicbc.py": "efe0e59d6bd88ce44ae1f48a59aad9e01594b382c4b211a9a916508af6acd2f2",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
-    "reserved/web/v2.py": "e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16",
+    "reserved/web/v2.py": "e3c5ab083a41e6af87a746e4d3254d9dc805b770c29c19154d125045e035a0bd",
     "tests/test_w10_paid_surface_inventory.py": "2a7c86ad7cfe994f622d1fe638c084d576aaa882ffa4108c406b1867be436609"
   },
   "s5c_implemented_treatments": {

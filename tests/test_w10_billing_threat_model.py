@@ -24,10 +24,11 @@ CURRENT_ROUTES_COMMIT = "c5e560045ed3d62f02c894e931464c3d7294e99f"
 PAYE_V2_COMMIT = "f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b"
 PAYE_V2_SHA256 = "be6247e5f9aa91cfbdc3a4d028fbf4b3c4911eaf98dcd1f7b383b28998838236"
 MTD_V2_COMMIT = "730db03e9d952a43df2f6d7b638b5a893600ec89"
-CURRENT_V2_COMMIT = "318fe2dabcef359dd4066fc207ad8a07395bbefd"
-CURRENT_V2_SHA256 = "e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16"
+CURRENT_V2_COMMIT = "db133925e747fdbef8c3649a6c451567d9c1f24a"
+CURRENT_V2_SHA256 = "e3c5ab083a41e6af87a746e4d3254d9dc805b770c29c19154d125045e035a0bd"
 CURRENT_HICBC_COMMIT = "cdb15db4f74a715f513a4882e5fbad086f17bee5"
 CURRENT_HICBC_SHA256 = "efe0e59d6bd88ce44ae1f48a59aad9e01594b382c4b211a9a916508af6acd2f2"
+CURRENT_LIVE_COMMIT = "db133925e747fdbef8c3649a6c451567d9c1f24a"
 MTD_V2_SHA256 = "15b0893514d4e6a5daab935d602aa1d2aa899617f401ed7dbabc704ab91ef563"
 
 EXPECTED_SOURCES = {
@@ -337,7 +338,7 @@ def assert_exact_source_register(data):
     for source_id, (path, accepted_commit, expected_hash, binding) in sources.items():
         # MTD v2 and legacy routes have independent accepted live anchors;
         # neither is relabelled as assurance from the other's checkpoint.
-        descendant = CURRENT_HICBC_COMMIT if binding == "live" else HEAD
+        descendant = CURRENT_LIVE_COMMIT if binding == "live" else HEAD
         assert is_ancestor(
             accepted_commit, descendant
         ), f"non-ancestor evidence source: {source_id}"

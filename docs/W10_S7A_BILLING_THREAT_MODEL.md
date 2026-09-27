@@ -43,9 +43,10 @@ checkpoint from the commit that integrated identical package blobs.
 The live `SRC-24` route binding is refreshed at accepted integration commit
 `c5e560045ed3d62f02c894e931464c3d7294e99f`; the separate accepted S5C
 historical product checkpoint remains unchanged.
-The live `SRC-16` v2 binding retains the integrated paid durable PAYE forecast
-checkpoint `318fe2dabcef359dd4066fc207ad8a07395bbefd`, with digest
-`e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16`.
+The live `SRC-16` v2 binding now includes the paid, authenticated minimum
+future-pay customer form checkpoint
+`db133925e747fdbef8c3649a6c451567d9c1f24a`, with digest
+`e3c5ab083a41e6af87a746e4d3254d9dc805b770c29c19154d125045e035a0bd`.
 The new live `SRC-26` HICBC binding names the corrected conditional route
 checkpoint `cdb15db4f74a715f513a4882e5fbad086f17bee5`, with digest
 `efe0e59d6bd88ce44ae1f48a59aad9e01594b382c4b211a9a916508af6acd2f2`.
@@ -217,8 +218,8 @@ source commit and digest rather than being relabelled as PAYE or MTD evidence.
     {
       "id": "SRC-16",
       "path": "reserved/web/v2.py",
-      "accepted_commit": "318fe2dabcef359dd4066fc207ad8a07395bbefd",
-      "sha256": "e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16",
+      "accepted_commit": "db133925e747fdbef8c3649a6c451567d9c1f24a",
+      "sha256": "e3c5ab083a41e6af87a746e4d3254d9dc805b770c29c19154d125045e035a0bd",
       "binding": "live"
     },
     {
