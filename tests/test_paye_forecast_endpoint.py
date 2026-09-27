@@ -16,6 +16,8 @@ from reserved.services.paye_future_pay_forecast import (
     ConfirmedFuturePayFact, FuturePayFrequency, FuturePaySource,
     PeriodCompleteness, make_future_pay_forecast_policy,
 )
+from reserved.annual_position_durable_repository import DurableAnnualPositionRepository
+from tests.test_annual_position_durable_repository import _governance, _policy
 from tests.test_paye_annual_bridge import durable_annual
 
 
@@ -35,8 +37,8 @@ def _entry():
     }
 
 
-def _fact(owner):
-    return ConfirmedFuturePayFact(
+def _fact(owner, **changes):
+    values = dict(
         source=FuturePaySource.CUSTOMER_CONFIRMED, fact_id="future-pay-1",
         source_evidence_id="confirmation-1", source_evidence_digest="a" * 64,
         owner_id=str(owner), business_id="business-1", tax_year="2026-27",
@@ -46,6 +48,8 @@ def _fact(owner):
         confirmed_on=TODAY, frequency=FuturePayFrequency.MONTHLY,
         period_completeness=PeriodCompleteness.COMPLETE,
     )
+    values.update(changes)
+    return ConfirmedFuturePayFact(**values)
 
 
 @pytest.fixture
@@ -98,6 +102,33 @@ def test_disabled_and_preflight_failures_do_not_call_providers(prepared, monkeyp
     assert [name for name, _ in calls] == ["annual", "future"]
 
 
+def test_unauthenticated_no_adapter_and_invalid_annual_never_reach_future_provider(prepared, monkeypatch):
+    app, owner, _, annual, repository = prepared
+    monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
+    calls = []
+    _install(app, annual, repository,
+             annual_provider=lambda *args: calls.append("annual") or None,
+             future_provider=lambda *args: calls.append("future") or (_fact(owner),))
+    assert app.test_client().get("/v2/paye/current-forecast").status_code == 404
+    assert calls == []
+    assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
+    assert calls == ["annual"]
+    # A repository with no independently configured verifier is preflighted
+    # before either injected provider.
+    no_adapter = DurableAnnualPositionRepository(
+        _governance(), evidence_reference_policy=_policy(),
+        membership_issuer_reference="membership:approved-v1",
+        lifecycle_issuer_reference="lifecycle:approved-v1",
+    )
+    app2 = create_app(); app2.config.update(TESTING=True)
+    no_adapter_calls = []
+    _install(app2, annual, no_adapter,
+             annual_provider=lambda *args: no_adapter_calls.append("annual") or annual,
+             future_provider=lambda *args: no_adapter_calls.append("future") or (_fact(owner),))
+    assert _client(app2, owner).get("/v2/paye/current-forecast").status_code == 404
+    assert no_adapter_calls == []
+
+
 def test_success_is_minimal_and_never_claims_liability_or_actions(prepared, monkeypatch):
     app, owner, _, annual, repository = prepared
     monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
@@ -139,3 +170,63 @@ def test_invalid_installation_does_not_mutate_flask(prepared):
         )
     assert tuple((rule.rule, rule.endpoint) for rule in app.url_map.iter_rules()) == rules
     assert app.extensions == extensions
+
+
+def test_route_and_endpoint_collisions_do_not_mutate_flask(prepared):
+    app, _, _, annual, repository = prepared
+    _install(app, annual, repository)
+    rules, extensions = tuple((rule.rule, rule.endpoint) for rule in app.url_map.iter_rules()), dict(app.extensions)
+    with pytest.raises(DurablePayeForecastEndpointError):
+        _install(app, annual, repository)
+    assert tuple((rule.rule, rule.endpoint) for rule in app.url_map.iter_rules()) == rules
+    assert app.extensions == extensions
+
+
+class _TupleSubclass(tuple):
+    pass
+
+
+@pytest.mark.parametrize("factory", [
+    lambda owner: (),
+    lambda owner: [],
+    lambda owner: _TupleSubclass((_fact(owner),)),
+    lambda owner: (object.__new__(ConfirmedFuturePayFact),),
+    lambda owner: (_fact(owner + 1),),
+    lambda owner: (_fact(owner, tax_year="2025-26", pay_date=date(2025, 10, 31),
+                         period_start=date(2025, 10, 2), period_end=date(2025, 10, 31),
+                         confirmed_on=date(2025, 10, 1)),),
+    lambda owner: (_fact(owner, business_id="other-business"),),
+    lambda owner: (_fact(owner, confirmed_on=date(2026, 8, 1)),),
+    lambda owner: (_fact(owner, period_completeness=PeriodCompleteness.PARTIAL),),
+])
+def test_invalid_future_fact_shapes_and_bindings_are_value_free(prepared, monkeypatch, factory):
+    app, owner, _, annual, repository = prepared
+    monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
+    _install(app, annual, repository, future_provider=lambda current, *_: factory(current))
+    assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
+
+
+def test_duplicate_future_fact_identity_provenance_and_period_overlap_are_value_free(prepared, monkeypatch):
+    app, owner, _, annual, repository = prepared
+    monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
+    duplicate_id = _fact(owner, fact_id="future-pay-2", source_evidence_id="confirmation-2",
+                         source_evidence_digest="b" * 64)
+    same_id = _fact(owner, fact_id="future-pay-2", source_evidence_id="confirmation-3",
+                    source_evidence_digest="c" * 64, employment_id="manual-employment-2")
+    _install(app, annual, repository, future_provider=lambda *_: (duplicate_id, same_id))
+    assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
+
+
+def test_switch_is_independent_and_response_uncertainties_are_fixed(prepared, monkeypatch):
+    app, owner, _, annual, repository = prepared
+    monkeypatch.setenv("PAYE_DURABLE_COMPOSITION_ENABLED", "1")
+    _install(app, annual, repository)
+    assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
+    monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
+    body = _client(app, owner).get("/v2/paye/current-forecast").get_json()
+    assert body["uncertainties"] == [
+        "future_pay_is_confirmed_input_not_observed_payment",
+        "expected_tax_deduction_is_explicit_input_not_payroll_calculation",
+        "forecast_does_not_establish_final_tax_liability",
+    ]
+    assert "annual_liability" not in body

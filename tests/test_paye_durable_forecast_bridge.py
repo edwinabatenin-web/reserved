@@ -13,6 +13,7 @@ from reserved.engines.paye_reconciliation import make_paye_reconciliation_policy
 from reserved.services.paye_future_pay_forecast import (
     ConfirmedFuturePayFact, FuturePayFrequency, FuturePaySource,
     PeriodCompleteness, make_future_pay_forecast_policy,
+    project_paye_future_pay_forecast,
 )
 from tests.test_paye_annual_bridge import durable_annual
 from tests.test_paye_annual_bridge import app as app_fixture
@@ -73,8 +74,9 @@ def _compose(app, monkeypatch, *, today=OBSERVED, facts=None):
 
 def test_in_year_observation_composes_earlier_paye_evidence_and_later_confirmed_pay(app, monkeypatch):
     result = _compose(app, monkeypatch)
-    assert result.forecast.reconciled_tax_paid_to_date == Decimal("1200.00")
-    assert result.forecast.expected_future_tax_deduction == Decimal("750.00")
+    projection = dict(project_paye_future_pay_forecast(result.forecast))
+    assert projection["reconciled_tax_paid_to_date"] == Decimal("1200.00")
+    assert projection["expected_future_tax_deduction"] == Decimal("750.00")
 
 
 @pytest.mark.parametrize("today", [date(2026, 4, 5), date(2027, 4, 5), date(2027, 4, 6)])
@@ -113,6 +115,24 @@ def test_future_or_stale_paye_evidence_is_suppressed(app, monkeypatch):
                 repository=repository, annual_position=annual, business_reference="business-1",
                 tax_year="2026/27", nation="England", audit_reference="audit:paye-forecast-test",
                 reconciliation_policy=RECONCILIATION_POLICY, future_pay_facts=(_fact(),),
+                future_pay_policy=FORECAST_POLICY,
+            )
+
+
+def test_stale_paye_evidence_is_separately_suppressed(app, monkeypatch):
+    annual, repository = durable_annual(41)
+    db.save_paye_manual_entry(41, _entry())
+    observed = date(2026, 11, 20)
+    monkeypatch.setattr(bridge, "_server_date", lambda: observed)
+    with app.test_request_context("/"):
+        auth.set_user_session(41, "user_41")
+        with pytest.raises(ValueError):
+            bridge.compose_durable_authenticated_paye_forecast(
+                repository=repository, annual_position=annual, business_reference="business-1",
+                tax_year="2026/27", nation="England", audit_reference="audit:paye-forecast-test",
+                reconciliation_policy=RECONCILIATION_POLICY,
+                future_pay_facts=(_fact(pay_date=date(2026, 11, 30), period_start=date(2026, 11, 2),
+                                        period_end=date(2026, 11, 30), confirmed_on=observed),),
                 future_pay_policy=FORECAST_POLICY,
             )
 
