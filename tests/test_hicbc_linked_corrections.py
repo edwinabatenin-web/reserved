@@ -580,8 +580,8 @@ def test_informational_result_is_not_falsely_determinate(tmp_db):
     assert built["view"]["calculation_status"] != "calculated"
 
 
-def test_integration_gate_has_only_trusted_personalised_annual_caller():
-    """The sole reachable integration is the separately reviewed durable bridge."""
+def test_integration_gate_has_only_trusted_personalised_annual_callers():
+    """Only the separate first-person and linked durable services may integrate."""
     import ast
     import subprocess
     r = subprocess.run(
@@ -593,30 +593,31 @@ def test_integration_gate_has_only_trusted_personalised_annual_caller():
         line for line in r.stdout.splitlines()
         if "def integrate_hicbc" not in line and "integrate_hicbc(" in line
     ]
-    expected = ROOT / "reserved" / "hicbc_durable_annual_bridge.py"
-    assert len(callers) == 1
-    prefix = f"{expected}:"
-    suffix = ":    contribution = integrate_hicbc(result, PERSONALISED_ESTIMATE)"
-    assert callers[0].startswith(prefix) and callers[0].endswith(suffix)
-    reported_line = int(callers[0][len(prefix):-len(suffix)])
-    assert expected.read_text().splitlines()[reported_line - 1] == suffix[1:]
-    tree = ast.parse(expected.read_text())
-    calls = [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-        and node.func.id == "integrate_hicbc"
-    ]
-    assert len(calls) == 1
-    assert len(calls[0].args) == 2
-    assert isinstance(calls[0].args[1], ast.Name)
-    assert calls[0].args[1].id == "PERSONALISED_ESTIMATE"
-    imported = {
-        alias.name
-        for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
-        for alias in node.names
-        if node.module == "reserved.engines.hicbc_integration"
+    expected = {
+        ROOT / "reserved" / "hicbc_durable_annual_bridge.py",
+        ROOT / "reserved" / "services" / "hicbc_linked_annual_composition.py",
     }
-    assert imported == {"PERSONALISED_ESTIMATE", "integrate_hicbc"}
+    assert len(callers) == 2
+    for path in expected:
+        matching = [line for line in callers if line.startswith(f"{path}:")]
+        assert len(matching) == 1
+        tree = ast.parse(path.read_text())
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == "integrate_hicbc"
+        ]
+        assert len(calls) == 1
+        assert len(calls[0].args) == 2
+        assert isinstance(calls[0].args[1], ast.Name)
+        assert calls[0].args[1].id == "PERSONALISED_ESTIMATE"
+        imported = {
+            alias.name
+            for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+            for alias in node.names
+            if node.module == "reserved.engines.hicbc_integration"
+        }
+        assert imported == {"PERSONALISED_ESTIMATE", "integrate_hicbc"}
 
 
 # ── Final bounded corrections: adversarial regressions ───────────────────────
