@@ -129,6 +129,13 @@ def _capture_scope(
     if owner_id not in participants or len(participants) != 2:
         return None
     partner_id = next(iter(participants - {owner_id}))
+    partner_links = conn.execute(
+        "SELECT id FROM hicbc_links WHERE (user_low_id=? OR user_high_id=?) "
+        "AND tax_year=? AND status='active'",
+        (partner_id, partner_id, tax_year),
+    ).fetchall()
+    if len(partner_links) != 1 or partner_links[0]["id"] != link["id"]:
+        return None
     consents = conn.execute(
         "SELECT user_id,notice_version FROM hicbc_link_consents "
         "WHERE link_id=? AND withdrawn_at IS NULL",
@@ -140,6 +147,19 @@ def _capture_scope(
         return None
     cycle = link["permission_cycle"]
     if type(cycle) is not int or cycle <= 0:
+        return None
+    # Consent rows express current use, while immutable events bind each
+    # affirmation to the exact current permission cycle.  Require both: a
+    # replayed/unwithdrawn same-version row from an earlier cycle is not enough.
+    consent_events = conn.execute(
+        "SELECT actor_user_id,notice_version FROM hicbc_permission_events "
+        "WHERE link_id=? AND permission_cycle=? AND event_type='consent'",
+        (link["id"], cycle),
+    ).fetchall()
+    if ({row["actor_user_id"] for row in consent_events} != participants
+            or len(consent_events) != 2
+            or any(row["notice_version"] != database.HICBC_NOTICE_VERSION
+                   for row in consent_events)):
         return None
 
     owner_record = _one_current_record(

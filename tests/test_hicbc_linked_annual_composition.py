@@ -196,7 +196,12 @@ def test_other_participant_liability_is_projected_only_as_no_own_charge(setup):
     assert "partner" not in repr(result.public_value()).casefold()
 
 
-@pytest.mark.parametrize("mutation", ["withdraw", "wrong_notice", "extra_link"])
+@pytest.mark.parametrize(
+    "mutation", [
+        "withdraw", "wrong_notice", "stale_cycle", "owner_extra_link",
+        "partner_extra_link",
+    ],
+)
 def test_missing_or_ambiguous_current_permission_fails_before_partner_read(setup, mutation):
     if mutation == "withdraw":
         assert db.revoke_hicbc_link(42, YEAR)
@@ -205,14 +210,25 @@ def test_missing_or_ambiguous_current_permission_fails_before_partner_read(setup
             conn.execute(
                 "UPDATE hicbc_link_consents SET notice_version='obsolete' WHERE user_id=42"
             )
+    elif mutation == "stale_cycle":
+        # Current-looking consent rows cannot be replayed into a later cycle;
+        # each participant needs an exact consent event for that cycle.
+        with db._connection() as conn:
+            conn.execute(
+                "UPDATE hicbc_links SET permission_cycle=permission_cycle+1 "
+                "WHERE user_low_id=41 AND user_high_id=42 AND tax_year=?",
+                (YEAR,),
+            )
     else:
+        low, high = (41, 43) if mutation == "owner_extra_link" else (42, 43)
         with db._connection() as conn:
             conn.execute(
                 "INSERT INTO hicbc_links "
                 "(user_low_id,user_high_id,tax_year,purpose,status,initiator_id,"
                 "permission_cycle,created_at,accepted_at) "
-                "VALUES (41,43,?,'hicbc_responsibility','active',41,1,?,?)",
-                (YEAR, "2026-09-27T00:00:00+00:00", "2026-09-27T00:00:00+00:00"),
+                "VALUES (?,?,?,'hicbc_responsibility','active',?,1,?,?)",
+                (low, high, YEAR, low, "2026-09-27T00:00:00+00:00",
+                 "2026-09-27T00:00:00+00:00"),
             )
     calls = []
     result = _compose(setup, lambda *args: calls.append(args))
