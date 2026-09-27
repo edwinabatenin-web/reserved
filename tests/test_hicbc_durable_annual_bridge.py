@@ -1,6 +1,6 @@
 """Focused trusted-source HICBC annual composition tests (no HTTP activation)."""
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from threading import Event
@@ -10,7 +10,7 @@ from flask import Flask
 
 import reserved.auth as auth
 import reserved.database as db
-from reserved.annual_position_durable_repository import DurableGovernance
+from reserved.annual_position_durable_repository import DurableAnnualPositionRepository, DurableGovernance
 from reserved.annual_position_repository_contract import (
     make_structural_candidate,
     prepare_annual_position_record,
@@ -27,7 +27,9 @@ from reserved.hicbc_durable_annual_bridge import (
     _atomic_hicbc_row,
     compose_durable_authenticated_hicbc_preview,
 )
-from tests.test_annual_position_durable_repository import _membership, _repository
+from tests.test_annual_position_durable_repository import (
+    _AuthorityAdapter, _governance, _membership, _policy, _repository,
+)
 from tests.test_annual_to_cash_integration import AS_OF, compose
 
 
@@ -71,10 +73,13 @@ def _live_annual():
     return tax, compose(annual=ready)
 
 
-def _durable(owner):
+def _durable(owner, *, permit_revocation=False):
     tax, annual = _live_annual()
     membership = _membership(owner, business=BUSINESS)
-    repository = _repository(memberships=(membership,))
+    authorities = (membership,)
+    if permit_revocation:
+        authorities += (_membership(owner, business=BUSINESS, state="revoked"),)
+    repository = _repository(memberships=authorities)
     repository.register_owner_business_membership(
         user_id=owner, business_reference=BUSINESS, membership_authority=membership,
         audit_reference="audit:hicbc-membership",
@@ -124,6 +129,7 @@ def _compose(app, repository, annual, tax):
     return compose_durable_authenticated_hicbc_preview(
         repository=repository, annual_position=annual, annual_tax_position=tax,
         business_reference=BUSINESS, tax_year=YEAR, nation=NATION,
+        as_of=annual.as_of,
         audit_reference="audit:hicbc-read",
     )
 
@@ -156,11 +162,65 @@ def test_cross_owner_year_and_live_identity_substitution_fail_closed(app):
             compose_durable_authenticated_hicbc_preview(
                 repository=repository, annual_position=annual, annual_tax_position=tax,
                 business_reference=BUSINESS, tax_year="2025/26", nation=NATION,
+                as_of=annual.as_of,
                 audit_reference="audit:hicbc-read",
             )
         other_tax = calculate_annual_position({"employment_income": "70001", "country": NATION})
         with pytest.raises(ValueError, match="identity"):
             _compose(app, repository, annual, other_tax)
+        expired = compose_durable_authenticated_hicbc_preview(
+            repository=repository, annual_position=annual, annual_tax_position=tax,
+            business_reference=BUSINESS, tax_year=YEAR, nation=NATION,
+            as_of=annual.as_of + timedelta(days=46), audit_reference="audit:hicbc-read",
+        )
+    assert expired.projected_user_hicbc is None
+    assert expired.possible_charge_low is None and expired.possible_charge_high is None
+
+
+def test_missing_or_unavailable_external_verifier_cannot_read_persisted_hicbc(app):
+    tax, annual, repository = _durable(41)
+    _seed(41)
+    no_adapter = DurableAnnualPositionRepository(
+        _governance(), evidence_reference_policy=_policy(),
+        membership_issuer_reference="membership:approved-v1",
+        lifecycle_issuer_reference="lifecycle:approved-v1",
+        external_authority_adapter=None,
+    )
+    with app.test_request_context("/"):
+        auth.set_user_session(41, "user_41")
+        with pytest.raises(ValueError, match="current durable annual position"):
+            _compose(app, no_adapter, annual, tax)
+
+    class FalseAuthority(_AuthorityAdapter):
+        def verify_evidence_reference_policy(self, policy):
+            return False
+
+    class UnavailableAuthority(_AuthorityAdapter):
+        def verify_evidence_reference_policy(self, policy):
+            raise RuntimeError("synthetic verifier outage")
+
+    for adapter in (FalseAuthority(), UnavailableAuthority()):
+        with pytest.raises(Exception):
+            DurableAnnualPositionRepository(
+                _governance(), evidence_reference_policy=_policy(),
+                membership_issuer_reference="membership:approved-v1",
+                lifecycle_issuer_reference="lifecycle:approved-v1",
+                external_authority_adapter=adapter,
+            )
+
+
+def test_membership_revocation_prevents_every_subsequent_durable_hicbc_read(app):
+    tax, annual, repository = _durable(41, permit_revocation=True)
+    _seed(41)
+    revoked = _membership(41, business=BUSINESS, state="revoked")
+    repository.revoke_owner_business_membership(
+        user_id=41, business_reference=BUSINESS, membership_authority=revoked,
+        audit_reference="audit:hicbc-revoke-membership",
+    )
+    with app.test_request_context("/"):
+        auth.set_user_session(41, "user_41")
+        with pytest.raises(ValueError, match="current durable annual position"):
+            _compose(app, repository, annual, tax)
 
 
 def test_uncertainty_and_active_link_suppress_amount_then_revocation_releases_new_read(app):
@@ -171,7 +231,11 @@ def test_uncertainty_and_active_link_suppress_amount_then_revocation_releases_ne
         auth.set_user_session(41, "user_41")
         uncertain = _compose(app, repository, annual, tax)
     assert uncertain.projected_user_hicbc is None
-    assert "actionable" not in uncertain.public_value()
+    assert uncertain.public_value() == {
+        "tax_year": YEAR, "calculation_status": "insufficient_facts",
+        "responsibility_status": None, "projected_user_hicbc": None,
+        "possible_charge_low": None, "possible_charge_high": None,
+    }
 
     other = 42
     token = db.create_hicbc_link_invitation(41, YEAR)
@@ -182,6 +246,9 @@ def test_uncertainty_and_active_link_suppress_amount_then_revocation_releases_ne
         auth.set_user_session(41, "user_41")
         blocked = _compose(app, repository, annual, tax)
     assert blocked.projected_user_hicbc is None
+    assert all(blocked.public_value()[key] is None for key in (
+        "projected_user_hicbc", "possible_charge_low", "possible_charge_high",
+    ))
     assert db.revoke_hicbc_link(other, YEAR)
     _seed(41, representation="point", partner_ani_point="50000")
     with app.test_request_context("/"):
@@ -197,6 +264,9 @@ def test_stale_manual_evidence_and_duplicate_linked_profiles_cannot_create_outpu
         auth.set_user_session(41, "user_41")
         stale = _compose(app, repository, annual, tax)
     assert stale.projected_user_hicbc is None
+    assert all(stale.public_value()[key] is None for key in (
+        "projected_user_hicbc", "possible_charge_low", "possible_charge_high",
+    ))
 
     # The trusted annual bridge never reads a linked partner profile.  Even a
     # deliberately ambiguous duplicate profile cannot become a source; the
@@ -215,7 +285,22 @@ def test_stale_manual_evidence_and_duplicate_linked_profiles_cannot_create_outpu
         auth.set_user_session(41, "user_41")
         blocked = _compose(app, repository, annual, tax)
     assert blocked.projected_user_hicbc is None
-    assert blocked.public_value()["responsibility_status"] is None
+    assert all(blocked.public_value()[key] is None for key in (
+        "projected_user_hicbc", "possible_charge_low", "possible_charge_high",
+    ))
+
+
+def test_incomplete_hicbc_facts_return_the_same_uniform_unavailable_shape(app):
+    tax, annual, repository = _durable(41)
+    _seed(41, completeness="partial")
+    with app.test_request_context("/"):
+        auth.set_user_session(41, "user_41")
+        result = _compose(app, repository, annual, tax)
+    assert result.public_value() == {
+        "tax_year": YEAR, "calculation_status": "insufficient_facts",
+        "responsibility_status": None, "projected_user_hicbc": None,
+        "possible_charge_low": None, "possible_charge_high": None,
+    }
 
 
 def test_atomic_snapshot_linearises_link_revocation(app):

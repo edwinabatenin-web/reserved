@@ -15,6 +15,7 @@ anti-probing rule.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, timedelta
 from decimal import Decimal
 
 from reserved import database
@@ -26,7 +27,7 @@ from reserved.annual_position_durable_repository import (
 from reserved.annual_position_repository_contract import project_annual_position_record
 from reserved.billing.event_inbox_contract import canonical_owner_id_from_users_id
 from reserved.engines.annual_to_cash_integration import (
-    AnnualToCashPosition,
+    AnnualToCashPosition, AnnualToCashStatus,
     annual_to_cash_position_identity,
 )
 from reserved.engines.cash_ready_annual_position import annual_position_identity
@@ -102,6 +103,7 @@ def _atomic_hicbc_row(*, repository: DurableAnnualPositionRepository, owner: int
     with database._connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         try:
+            repository.assert_external_authority_available()
             repository._active_membership(conn, owner, business_reference)
         except DurableAnnualPositionError as exc:
             raise ValueError("current durable membership is unavailable") from exc
@@ -134,6 +136,7 @@ def compose_durable_authenticated_hicbc_preview(
     business_reference: str,
     tax_year: str,
     nation: str,
+    as_of: date,
     audit_reference: str,
 ) -> DurableHicbcAnnualPreview:
     """Compose a minimal HICBC estimate from an exact durable/live annual pair.
@@ -150,7 +153,8 @@ def compose_durable_authenticated_hicbc_preview(
         raise TypeError("annual cash input must be an exact annual-to-cash position")
     if type(annual_tax_position) is not AnnualPositionResult:
         raise TypeError("annual tax input must be an exact annual producer result")
-    if type(business_reference) is not str or type(tax_year) is not str or type(nation) is not str:
+    if (type(business_reference) is not str or type(tax_year) is not str or type(nation) is not str
+            or type(as_of) is not date):
         raise ValueError("durable HICBC scope is invalid")
     owner = _current_owner()
     if (annual_position.tax_year != tax_year or annual_position.nation != nation
@@ -162,6 +166,7 @@ def compose_durable_authenticated_hicbc_preview(
         raise ValueError("live annual tax source does not match annual-to-cash identity")
 
     try:
+        repository.assert_external_authority_available()
         durable_record = repository.read_current(
             authenticated_user_id=owner,
             business_reference=business_reference,
@@ -182,6 +187,21 @@ def compose_durable_authenticated_hicbc_preview(
             or durable_row.get("annual_cash_identity") != annual_identity):
         raise ValueError("durable annual position does not bind this HICBC composition")
 
+    stored_as_of = durable_row.get("as_of")
+    try:
+        if type(stored_as_of) is str:
+            stored_as_of = date.fromisoformat(stored_as_of)
+        stale_after_days = durable_row["stale_after_days"]
+    except (KeyError, TypeError, ValueError):
+        return _unavailable(tax_year)
+    if (type(stored_as_of) is not date or type(stale_after_days) is not int
+            or stale_after_days < 0
+            or annual_position.status is not AnnualToCashStatus.QUALIFIED_LOCAL_RESULT
+            or annual_position.as_of != stored_as_of
+            or as_of < annual_position.as_of
+            or as_of > annual_position.as_of + timedelta(days=stale_after_days)):
+        return _unavailable(tax_year)
+
     # The final transaction ties a still-current durable record, membership and
     # link state to the source row immediately before the result is returned.
     row, active_link = _atomic_hicbc_row(
@@ -200,14 +220,7 @@ def compose_durable_authenticated_hicbc_preview(
     result = built["result"]
     contribution = integrate_hicbc(result, PERSONALISED_ESTIMATE)
     if not contribution.included:
-        return DurableHicbcAnnualPreview(
-            tax_year=tax_year,
-            calculation_status=result.calculation_status,
-            responsibility_status=result.responsibility_status,
-            projected_user_hicbc=None,
-            possible_charge_low=contribution.charge_low,
-            possible_charge_high=contribution.charge_high,
-        )
+        return _unavailable(tax_year)
     return DurableHicbcAnnualPreview(
         tax_year=tax_year,
         calculation_status=result.calculation_status,
