@@ -89,7 +89,7 @@ def test_current_year_day_boundaries_and_leap_safe_day_helper():
     assert elapsed > 0 and total == 366
 
 
-@pytest.mark.parametrize("gross,headline", [
+@pytest.mark.parametrize("gross,headline,status", [
     ("20000.00", "Worth reviewing", MtdStatus.APPROACHING_MTD_THRESHOLD),
     ("20000.01", "Worth reviewing", MtdStatus.MTD_APPLIES),
 ])
