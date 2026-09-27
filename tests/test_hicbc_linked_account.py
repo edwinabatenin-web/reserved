@@ -325,6 +325,38 @@ def test_linked_only_evidence_is_used_when_no_manual_estimate(app):
     result = built["result"]
     assert result.has_relevant_partner is True  # link affirms the partner
     assert result.partner_evidence.source_kind == "linked_partner_source"
+    linked = next(e for e in result.evidence if e.source_kind == "linked_partner_source")
+    assert linked.subject_reference == _LINKED_SUBJECT_REFERENCE
+    rendered_view = json.dumps(built["view"], sort_keys=True)
+    assert linked.source_reference not in rendered_view
+    assert linked.evidence_id not in rendered_view
+
+
+def test_different_linked_partner_ids_emit_the_same_non_person_reference(app):
+    subjects = []
+    for suffix, owner_income, partner_income in (("one", 70000, 90000), ("two", 71000, 91000)):
+        owner = _user(f"owner_{suffix}", owner_income)
+        partner = _user(f"partner_{suffix}", partner_income)
+        token = db.create_hicbc_link_invitation(owner, TAX_YEAR)
+        db.accept_hicbc_link_invitation(partner, token, TAX_YEAR)
+        _mutual_consent(owner, partner)
+        db.save_hicbc_estimate(owner, {
+            "tax_year": TAX_YEAR,
+            "receives_child_benefit": 1,
+            "child_benefit_children": 1,
+            "child_benefit_weeks_entitled": 52,
+        })
+        built = build_responsibility(owner, TAX_YEAR)
+        linked = next(
+            evidence for evidence in built["result"].evidence
+            if evidence.source_kind == "linked_partner_source"
+        )
+        subjects.append(linked.subject_reference)
+        assert str(partner) not in linked.subject_reference
+        rendered_view = json.dumps(built["view"], sort_keys=True)
+        assert linked.source_reference not in rendered_view
+        assert linked.evidence_id not in rendered_view
+    assert subjects == [_LINKED_SUBJECT_REFERENCE, _LINKED_SUBJECT_REFERENCE]
 
 
 def test_revoked_link_removes_linked_evidence(app):
