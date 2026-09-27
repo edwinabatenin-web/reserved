@@ -580,7 +580,9 @@ def test_informational_result_is_not_falsely_determinate(tmp_db):
     assert built["view"]["calculation_status"] != "calculated"
 
 
-def test_integration_gate_has_no_production_caller():
+def test_integration_gate_has_only_trusted_personalised_annual_caller():
+    """The sole reachable integration is the separately reviewed durable bridge."""
+    import ast
     import subprocess
     r = subprocess.run(
         ["grep", "-rn", "--include=*.py", "integrate_hicbc",
@@ -591,7 +593,27 @@ def test_integration_gate_has_no_production_caller():
         line for line in r.stdout.splitlines()
         if "def integrate_hicbc" not in line and "integrate_hicbc(" in line
     ]
-    assert callers == []  # disconnected gate: no production caller in this pass
+    expected = ROOT / "reserved" / "hicbc_durable_annual_bridge.py"
+    assert callers == [
+        f"{expected}:242:    contribution = integrate_hicbc(result, PERSONALISED_ESTIMATE)"
+    ]
+    tree = ast.parse(expected.read_text())
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "integrate_hicbc"
+    ]
+    assert len(calls) == 1
+    assert len(calls[0].args) == 2
+    assert isinstance(calls[0].args[1], ast.Name)
+    assert calls[0].args[1].id == "PERSONALISED_ESTIMATE"
+    imported = {
+        alias.name
+        for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+        if node.module == "reserved.engines.hicbc_integration"
+    }
+    assert imported == {"PERSONALISED_ESTIMATE", "integrate_hicbc"}
 
 
 # ── Final bounded corrections: adversarial regressions ───────────────────────
