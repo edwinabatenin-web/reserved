@@ -87,7 +87,7 @@ VALID_KINDS = {"pytest", "rw3"}
 # ``validate_october_inventory``), never silently made to look closer to ready.
 OCTOBER_LAUNCH_COMPONENTS = [
     {"id": "paye_evidence_and_forecasting", "state": "not_executable",
-     "note": "The paid, disabled-first authenticated current-position endpoint executes locally over current owner-bound manual PAYE and annual evidence, but the accepted future-pay composer remains detached: authenticated owner/business orchestration, durable fact supply, customer-safe forecast presentation and required-period coverage are not implemented. Unknown future pay is a safe current-position result, not completion of the combined forecasting row."},
+     "note": "The paid, disabled-first authenticated current-forecast endpoint now executes locally with exact owner/business/tax-year binding over explicit confirmed future-pay inputs. The combined row remains not_executable because no durable customer workflow acquires, updates and supplies those confirmed future-pay facts, required-period/source coverage is incomplete, and target customer/privacy/operational evidence is absent. Unknown future pay is a safe current-position result, not completion of the combined forecasting row."},
     {"id": "paye_payslip_manual_evidence_journey", "state": "evidence_missing",
      "note": "The Founder-approved structured manual PAYE route now executes locally with owner/session/year isolation, durable replacement and deletion, paid access and current-position composition. Raw payslip upload/extraction is outside the authorised manual October scope unless separately approved; target custody, retention/backup, privacy/security and representative journey evidence remain absent."},
     {"id": "hmrc_integration", "state": "externally_blocked",
