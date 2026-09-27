@@ -134,6 +134,19 @@ class AccountErasureClearance:
     revoked_at: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class LocalTaxDataErasureResult:
+    """Counts of locally deleted tax-data rows.
+
+    This is deliberately narrower than a representation of a completed
+    account deletion.  It says nothing about backups, an identity provider,
+    other product data, or physical media sanitisation.
+    """
+
+    annual_position_records: int
+    paye_manual_entries: int
+
+
 @dataclass(frozen=True, slots=True, weakref_slot=True)
 class ApprovedEvidenceReferencePolicy:
     issuer_reference: str
@@ -256,6 +269,36 @@ class DurableAnnualPositionRepository:
     def _require_external_authority(self) -> None:
         if not self._external_authority_available:
             raise DurableAnnualPositionError("external authority verifier is not configured; operation is disabled")
+
+    def _require_current_erasure_clearances(self, *, authenticated_user_id: int,
+                                            legal_hold_clearance: AccountErasureClearance,
+                                            backup_expiry_clearance: AccountErasureClearance) -> None:
+        """Verify the two independently-issued lifecycle clearances.
+
+        The local repository can only establish that the supplied external
+        verifier accepted current clearances.  It cannot itself establish
+        backup expiry, legal status, or erasure outside this SQLite store.
+        """
+        self._require_external_authority()
+        _validate_erasure_clearance(legal_hold_clearance)
+        _validate_erasure_clearance(backup_expiry_clearance)
+        for clearance in (legal_hold_clearance, backup_expiry_clearance):
+            try:
+                verified = self._verify_account_erasure_clearance(clearance)
+            except Exception as exc:
+                raise DurableAnnualPositionError("account erasure authority verification is unavailable") from exc
+            if verified is not True:
+                raise DurableAnnualPositionError("account erasure clearance lacks independent verification")
+        now_value = datetime.now(timezone.utc)
+        for clearance, kind in ((legal_hold_clearance, "legal_hold_clear"),
+                                (backup_expiry_clearance, "backup_expiry_confirmed")):
+            if (clearance.issuer_reference != self._lifecycle_issuer_reference
+                    or clearance.clearance_kind != kind
+                    or clearance.owner_user_id != authenticated_user_id
+                    or clearance.account_reference != str(authenticated_user_id)
+                    or clearance.state != "current"
+                    or _utc(clearance.expires_at, "clearance expiry") <= now_value):
+                raise DurableAnnualPositionError("account erasure clearance is not current and account-bound")
 
     @staticmethod
     def _audit(value: str) -> str:
@@ -568,26 +611,11 @@ class DurableAnnualPositionRepository:
                                 backup_expiry_clearance: AccountErasureClearance) -> int:
         """Delete only after current immutable legal-hold and backup clearances."""
         self._audit(audit_reference)
-        self._require_external_authority()
-        _validate_erasure_clearance(legal_hold_clearance)
-        _validate_erasure_clearance(backup_expiry_clearance)
-        for clearance in (legal_hold_clearance, backup_expiry_clearance):
-            try:
-                verified = self._verify_account_erasure_clearance(clearance)
-            except Exception as exc:
-                raise DurableAnnualPositionError("account erasure authority verification is unavailable") from exc
-            if verified is not True:
-                raise DurableAnnualPositionError("account erasure clearance lacks independent verification")
-        now_value = datetime.now(timezone.utc)
-        for clearance, kind in ((legal_hold_clearance, "legal_hold_clear"),
-                                (backup_expiry_clearance, "backup_expiry_confirmed")):
-            if (clearance.issuer_reference != self._lifecycle_issuer_reference
-                    or clearance.clearance_kind != kind
-                    or clearance.owner_user_id != authenticated_user_id
-                    or clearance.account_reference != str(authenticated_user_id)
-                    or clearance.state != "current"
-                    or _utc(clearance.expires_at, "clearance expiry") <= now_value):
-                raise DurableAnnualPositionError("account erasure clearance is not current and account-bound")
+        self._require_current_erasure_clearances(
+            authenticated_user_id=authenticated_user_id,
+            legal_hold_clearance=legal_hold_clearance,
+            backup_expiry_clearance=backup_expiry_clearance,
+        )
         with database._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             self._require_user(conn, authenticated_user_id)
@@ -604,6 +632,53 @@ class DurableAnnualPositionRepository:
                              (identity, authenticated_user_id, "erased", audit_reference, now))
             return len(rows)
 
+    def execute_local_tax_data_erasure(self, *, authenticated_user_id: int, audit_reference: str,
+                                       legal_hold_clearance: AccountErasureClearance,
+                                       backup_expiry_clearance: AccountErasureClearance) -> LocalTaxDataErasureResult:
+        """Physically delete local PAYE and annual-position rows after clearance.
+
+        This is the bounded local-data portion of an account-erasure lifecycle.
+        It deletes every structured PAYE row (including replaced or soft-removed
+        rows) and every durable annual-position row owned by the authenticated
+        user, plus their local evidence, audit, and lifecycle rows.  It does
+        not delete the user identity, assert that other product stores are
+        empty, or claim that backups have been erased; backup expiry remains an
+        independently verified prerequisite.
+        """
+        self._audit(audit_reference)
+        self._require_current_erasure_clearances(
+            authenticated_user_id=authenticated_user_id,
+            legal_hold_clearance=legal_hold_clearance,
+            backup_expiry_clearance=backup_expiry_clearance,
+        )
+        with database._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_user(conn, authenticated_user_id)
+            identities = tuple(row[0] for row in conn.execute(
+                "SELECT record_identity FROM annual_position_records WHERE user_id=?",
+                (authenticated_user_id,),
+            ).fetchall())
+            if identities:
+                placeholders = ",".join("?" for _ in identities)
+                conn.execute(
+                    f"DELETE FROM annual_position_read_audit WHERE record_identity IN ({placeholders})",
+                    identities,
+                )
+                conn.execute(
+                    f"DELETE FROM annual_position_lifecycle_events WHERE record_identity IN ({placeholders})",
+                    identities,
+                )
+            annual_count = conn.execute(
+                "DELETE FROM annual_position_records WHERE user_id=?", (authenticated_user_id,)
+            ).rowcount
+            paye_count = conn.execute(
+                "DELETE FROM paye_manual_entries WHERE user_id=?", (authenticated_user_id,)
+            ).rowcount
+            return LocalTaxDataErasureResult(
+                annual_position_records=annual_count,
+                paye_manual_entries=paye_count,
+            )
+
 
 __all__ = [
     "AccountErasureClearance",
@@ -612,6 +687,7 @@ __all__ = [
     "DurableGovernance",
     "DurableAnnualPositionRepository",
     "ExternalAuthorityAdapter",
+    "LocalTaxDataErasureResult",
     "MembershipAuthorityEvidence",
     "RECORD_PURPOSE",
 ]

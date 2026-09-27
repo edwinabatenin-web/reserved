@@ -91,11 +91,11 @@ def _membership(user_id, *, business="business-1", state="active", version=1,
     )
 
 
-def _clearance(user_id, kind, *, state="current"):
+def _clearance(user_id, kind, *, state="current", expires_at="2030-01-01T00:00:00+00:00"):
     return AccountErasureClearance(
         issuer_reference="lifecycle:approved-v1", clearance_kind=kind, purpose="account_erasure",
         owner_user_id=user_id, account_reference=str(user_id), state=state,
-        issued_at="2026-09-01T00:00:00+00:00", expires_at="2030-01-01T00:00:00+00:00",
+        issued_at="2026-09-01T00:00:00+00:00", expires_at=expires_at,
         revoked_at="2026-09-02T00:00:00+00:00" if state == "revoked" else None,
     )
 
@@ -456,6 +456,137 @@ def test_cross_owner_erasure_is_scoped_to_historically_authenticated_owner(prepa
     ) == 0
     # Owner's historical record is untouched by the other owner's lifecycle request.
     assert repository.plan_account_erasure(authenticated_user_id=owner, audit_reference="audit:owner-plan") == (identity,)
+
+
+def _insert_paye_row(user_id: int, *, evidence_id: str) -> None:
+    """Insert minimised already-admitted PAYE storage for erasure-scope tests."""
+    with db._connection() as conn:
+        conn.execute(
+            """INSERT INTO paye_manual_entries
+               (user_id,tax_year,employment_slot,evidence_id,source_kind,provenance,
+                gross_to_date,tax_paid_to_date,tax_code,pay_frequency,pension_treatment,
+                effective_through,observed_on,completeness,created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (user_id, "2026/27", 1, evidence_id, "customer_confirmed_manual",
+             "manual-customer-confirmed", "100.00", "10.00", "1257L", "monthly",
+             "net_pay", "2026-09-01", "2026-09-02", "partial", "2026-09-02T00:00:00+00:00"),
+        )
+
+
+def test_cleared_local_tax_data_erasure_physically_deletes_owned_paye_and_annual_rows(prepared_db):
+    owner = _user()
+    membership = _membership(owner)
+    legal = _clearance(owner, "legal_hold_clear")
+    backup = _clearance(owner, "backup_expiry_confirmed")
+    repository = _repository(memberships=(membership,), clearances=(legal, backup))
+    repository.register_owner_business_membership(
+        user_id=owner, business_reference="business-1", membership_authority=membership,
+        audit_reference="audit:membership-create",
+    )
+    record, identity = _record(user_id=owner)
+    repository.create_or_read(authenticated_user_id=owner, business_reference="business-1", record=record,
+                              audit_reference="audit:create")
+    successor, _ = _record(user_id=owner, version=2, predecessor=identity, liability="3600.00")
+    repository.supersede(
+        authenticated_user_id=owner, business_reference="business-1", record=successor,
+        expected_current_identity=identity, audit_reference="audit:supersede",
+    )
+    _insert_paye_row(owner, evidence_id="paye-owner-1")
+
+    result = repository.execute_local_tax_data_erasure(
+        authenticated_user_id=owner, audit_reference="audit:local-physical-erasure",
+        legal_hold_clearance=legal, backup_expiry_clearance=backup,
+    )
+    assert result.annual_position_records == 2
+    assert result.paye_manual_entries == 1
+    with db._connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM annual_position_records WHERE user_id=?", (owner,)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM annual_position_evidence_references WHERE record_identity=?", (identity,)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM annual_position_lifecycle_events WHERE user_id=?", (owner,)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM annual_position_read_audit WHERE user_id=?", (owner,)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM paye_manual_entries WHERE user_id=?", (owner,)).fetchone()[0] == 0
+        # Authentication identity is intentionally outside this bounded local-tax erasure.
+        assert conn.execute("SELECT COUNT(*) FROM users WHERE id=?", (owner,)).fetchone()[0] == 1
+
+
+def test_local_tax_data_erasure_cannot_cross_owner_boundary(prepared_db):
+    owner, other = _user("owner"), _user("other")
+    membership = _membership(owner)
+    owner_legal, owner_backup = _clearance(owner, "legal_hold_clear"), _clearance(owner, "backup_expiry_confirmed")
+    other_legal, other_backup = _clearance(other, "legal_hold_clear"), _clearance(other, "backup_expiry_confirmed")
+    repository = _repository(
+        memberships=(membership,), clearances=(owner_legal, owner_backup, other_legal, other_backup),
+    )
+    repository.register_owner_business_membership(
+        user_id=owner, business_reference="business-1", membership_authority=membership,
+        audit_reference="audit:membership-create",
+    )
+    record, _ = _record(user_id=owner)
+    repository.create_or_read(authenticated_user_id=owner, business_reference="business-1", record=record,
+                              audit_reference="audit:create")
+    _insert_paye_row(owner, evidence_id="paye-owner-1")
+
+    result = repository.execute_local_tax_data_erasure(
+        authenticated_user_id=other, audit_reference="audit:other-local-erasure",
+        legal_hold_clearance=other_legal, backup_expiry_clearance=other_backup,
+    )
+    assert (result.annual_position_records, result.paye_manual_entries) == (0, 0)
+    with db._connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM annual_position_records WHERE user_id=?", (owner,)).fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM paye_manual_entries WHERE user_id=?", (owner,)).fetchone()[0] == 1
+
+
+@pytest.mark.parametrize(
+    "clearance",
+    (
+        lambda owner: _clearance(owner, "legal_hold_clear", expires_at="2026-09-02T00:00:00+00:00"),
+        lambda owner: _clearance(owner, "backup_expiry_confirmed", state="revoked"),
+    ),
+    ids=("expired", "revoked"),
+)
+def test_local_tax_data_erasure_rejects_expired_or_revoked_clearance(prepared_db, clearance):
+    owner = _user()
+    membership = _membership(owner)
+    legal = _clearance(owner, "legal_hold_clear")
+    backup = _clearance(owner, "backup_expiry_confirmed")
+    rejected = clearance(owner)
+    if rejected.clearance_kind == "legal_hold_clear":
+        legal = rejected
+    else:
+        backup = rejected
+    repository = _repository(memberships=(membership,), clearances=(legal, backup))
+    repository.register_owner_business_membership(
+        user_id=owner, business_reference="business-1", membership_authority=membership,
+        audit_reference="audit:membership-create",
+    )
+    record, _ = _record(user_id=owner)
+    repository.create_or_read(authenticated_user_id=owner, business_reference="business-1", record=record,
+                              audit_reference="audit:create")
+    _insert_paye_row(owner, evidence_id="paye-owner-1")
+
+    with pytest.raises(DurableAnnualPositionError, match="not current"):
+        repository.execute_local_tax_data_erasure(
+            authenticated_user_id=owner, audit_reference="audit:rejected-local-erasure",
+            legal_hold_clearance=legal, backup_expiry_clearance=backup,
+        )
+    with db._connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM annual_position_records WHERE user_id=?", (owner,)).fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM paye_manual_entries WHERE user_id=?", (owner,)).fetchone()[0] == 1
+
+
+def test_local_tax_data_erasure_is_disabled_without_external_verifier(prepared_db):
+    owner = _user()
+    legal = _clearance(owner, "legal_hold_clear")
+    backup = _clearance(owner, "backup_expiry_confirmed")
+    repository = DurableAnnualPositionRepository(
+        _governance(), evidence_reference_policy=_policy(),
+        membership_issuer_reference="membership:approved-v1", lifecycle_issuer_reference="lifecycle:approved-v1",
+    )
+    with pytest.raises(DurableAnnualPositionError, match="operation is disabled"):
+        repository.execute_local_tax_data_erasure(
+            authenticated_user_id=owner, audit_reference="audit:disabled-local-erasure",
+            legal_hold_clearance=legal, backup_expiry_clearance=backup,
+        )
 
 
 def _create_v11_fixture(path):
