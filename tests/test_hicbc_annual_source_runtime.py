@@ -215,6 +215,70 @@ def test_active_link_refusal_invariant_under_inputs_consent_withdrawal_relink(en
     assert post(client).status_code == 409  # no old permission revived, still no probing
 
 
+def test_authenticated_owner_year_source_isolated_across_link_revocation(env):
+    """The non-production annual source stays bound to one signed owner/year.
+
+    This is a boundary test, not evidence that the preview is a production
+    annual-to-cash integration.  It proves that a link blocks the arbitrary
+    first-person source, revocation releases only the current owner's own
+    tax-year row, and another signed owner cannot receive that row's result.
+    """
+    _, client, owner, other = env
+    seed(owner, partner_ani_point="50000")
+    seed(owner, tax_year="2025/26", partner_ani_point="90000")
+    seed(other, partner_ani_point="90000")
+    link(owner, other)
+    assert db.record_hicbc_link_consent(owner, YEAR, db.HICBC_NOTICE_VERSION)
+    assert db.record_hicbc_link_consent(other, YEAR, db.HICBC_NOTICE_VERSION)
+
+    # An active link wins over otherwise complete source facts: no linked facts
+    # are read, combined or exposed through this first-person endpoint.
+    blocked = post(client)
+    assert blocked.status_code == 409
+    assert blocked.json["projected_user_hicbc"] is None
+
+    assert db.revoke_hicbc_link(other, YEAR)
+    owner_result = post(client)
+    assert owner_result.status_code == 200
+    assert owner_result.json["tax_year"] == YEAR
+    assert owner_result.json["projected_user_hicbc"] == "703.00"
+
+    # The exact same source payload under a different authenticated session
+    # reads that owner's row, never the revoked owner's row or another year.
+    with client.session_transaction() as session:
+        session[_SK_USER_ID] = other
+    other_result = post(client)
+    assert other_result.status_code == 200
+    assert other_result.json["tax_year"] == YEAR
+    assert other_result.json["projected_user_hicbc"] == "0.00"
+    assert all(
+        forbidden not in owner_result.json and forbidden not in other_result.json
+        for forbidden in ("payment", "transfer", "reserve", "source_reference", "evidence_id")
+    )
+
+
+def test_uncertain_hicbc_preview_suppresses_any_actionable_amount(env):
+    """A real request may show uncertainty, but never an actionable HICBC sum."""
+    _, client, owner, _ = env
+    seed(
+        owner,
+        representation="range",
+        partner_ani_point=None,
+        partner_ani_low="65000",
+        partner_ani_high="75000",
+    )
+    response = post(client)
+    assert response.status_code == 200
+    assert response.json["calculation_status"] != "calculated"
+    assert response.json["projected_user_hicbc"] is None
+    assert response.json["possible_charge_low"] is not None
+    assert response.json["possible_charge_high"] is not None
+    assert all(
+        forbidden not in response.json
+        for forbidden in ("payment", "transfer", "reserve", "actionable", "source_reference")
+    )
+
+
 def test_preview_read_serialises_against_relink(env):
     _, _, owner, other = env
     started, finished = threading.Event(), threading.Event()
