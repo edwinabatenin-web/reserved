@@ -17,6 +17,7 @@ import weakref
 from reserved.annual_position_persistence_contract import AnnualPositionPersistenceProjection
 from reserved.annual_position_durable_repository import (
     DurableAnnualPositionError, DurableAnnualPositionRepository, RECORD_PURPOSE,
+    project_durable_paye_snapshot,
 )
 from reserved.annual_position_repository_contract import project_annual_position_record
 from reserved.billing.event_inbox_contract import canonical_owner_id_from_users_id
@@ -286,7 +287,7 @@ def compose_durable_authenticated_manual_paye(
     if annual_position.tax_year != tax_year or annual_position.nation != nation:
         raise ValueError("annual input does not match requested durable scope")
     try:
-        durable_record = repository.read_current(
+        snapshot = repository.read_current_paye_snapshot(
             authenticated_user_id=authenticated_owner_user_id,
             business_reference=business_reference, tax_year=tax_year, nation=nation,
             record_purpose=RECORD_PURPOSE, audit_reference=audit_reference,
@@ -294,6 +295,10 @@ def compose_durable_authenticated_manual_paye(
     except DurableAnnualPositionError as exc:
         raise ValueError("durable annual position or current membership is unavailable") from exc
     try:
+        durable_record, entries = project_durable_paye_snapshot(
+            snapshot, authenticated_user_id=authenticated_owner_user_id,
+            business_reference=business_reference, tax_year=tax_year, nation=nation,
+        )
         row = dict(project_annual_position_record(durable_record)[2])
     except Exception as exc:
         raise ValueError("durable annual position cannot be projected") from exc
@@ -303,11 +308,7 @@ def compose_durable_authenticated_manual_paye(
             or row.get("tax_year") != tax_year or row.get("nation") != nation
             or row.get("annual_cash_identity") != annual_identity):
         raise ValueError("durable annual position does not bind this PAYE composition")
-    batch = read_owner_bound_manual_paye_evidence(
-        authenticated_owner_user_id=authenticated_owner_user_id, tax_year=tax_year,
-    )
     engine_tax_year = _engine_tax_year(tax_year)
-    entries = _batch_rows(batch, authenticated_owner_user_id=authenticated_owner_user_id, tax_year=tax_year)
     reconciliation = reconcile_paye(
         annual_position.final_self_assessment_liability,
         _manual_evidence(entries, engine_tax_year=engine_tax_year,

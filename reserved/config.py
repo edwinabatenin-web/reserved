@@ -31,6 +31,11 @@ def paye_manual_journey_enabled() -> bool:
     return os.environ.get("PAYE_MANUAL_JOURNEY_ENABLED", "") == "1"
 
 
+def durable_paye_composition_enabled() -> bool:
+    """Explicit activation switch for the authenticated PAYE composition API."""
+    return os.environ.get("PAYE_DURABLE_COMPOSITION_ENABLED", "") == "1"
+
+
 def mtd_manual_scope_enabled() -> bool:
     """Independent disabled-first manual MTD journey; never enabled implicitly."""
     return os.environ.get("MTD_MANUAL_SCOPE_ENABLED", "") == "1"

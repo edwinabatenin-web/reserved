@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 
 import pytest
 
@@ -657,3 +658,60 @@ def test_fresh_schema_has_v12_current_head_control(prepared_db):
         membership_columns = {row[1] for row in conn.execute("PRAGMA table_info(owner_business_memberships)")}
     assert "authority_expires_at" in membership_columns
     assert "WHERE state = 'current'" in index
+
+
+def test_serialized_paye_snapshot_blocks_revocation_then_later_snapshot_fails(prepared_db, monkeypatch):
+    owner = _user("snapshot-owner")
+    active = _membership(owner)
+    revoked = _membership(owner, state="revoked")
+    repository = _repository(memberships=(active, revoked))
+    repository.register_owner_business_membership(
+        user_id=owner, business_reference="business-1", membership_authority=active,
+        audit_reference="audit:snapshot-membership",
+    )
+    record, _ = _record(user_id=owner)
+    repository.create_or_read(authenticated_user_id=owner, business_reference="business-1",
+                              record=record, audit_reference="audit:snapshot-create")
+    _insert_paye_row(owner, evidence_id="paye-snapshot-1")
+
+    entered, release, revoked_done = threading.Event(), threading.Event(), threading.Event()
+    original = DurableAnnualPositionRepository._active_membership
+    calls = {"count": 0}
+
+    def hold_first(conn, user_id, business_reference):
+        original(conn, user_id, business_reference)
+        calls["count"] += 1
+        if calls["count"] == 1:
+            entered.set()
+            assert release.wait(5)
+
+    monkeypatch.setattr(DurableAnnualPositionRepository, "_active_membership", staticmethod(hold_first))
+    output = []
+
+    def read_snapshot():
+        output.append(repository.read_current_paye_snapshot(
+            authenticated_user_id=owner, business_reference="business-1", tax_year="2026/27",
+            nation="England", record_purpose="annual_cash_position_durable_projection",
+            audit_reference="audit:snapshot-read",
+        ))
+
+    def revoke():
+        repository.revoke_owner_business_membership(
+            user_id=owner, business_reference="business-1", membership_authority=revoked,
+            audit_reference="audit:snapshot-revoke",
+        )
+        revoked_done.set()
+
+    reader = threading.Thread(target=read_snapshot)
+    reader.start(); assert entered.wait(5)
+    revoker = threading.Thread(target=revoke)
+    revoker.start()
+    assert not revoked_done.wait(0.2)
+    release.set(); reader.join(5); revoker.join(5)
+    assert len(output) == 1 and revoked_done.is_set()
+    with pytest.raises(DurableAnnualPositionError, match="membership"):
+        repository.read_current_paye_snapshot(
+            authenticated_user_id=owner, business_reference="business-1", tax_year="2026/27",
+            nation="England", record_purpose="annual_cash_position_durable_projection",
+            audit_reference="audit:snapshot-after-revoke",
+        )
