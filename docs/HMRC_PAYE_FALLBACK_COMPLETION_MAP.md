@@ -10,7 +10,7 @@ integration, independent review, or launch readiness.
 | PAYE reconciliation trust, explicit-policy issuance and authoritative projection | Yes | Yes | Yes | No | Integrated at `c23d343`; customer orchestration, persistence, UX/security evidence and launch assurance remain |
 | Customer-safe PAYE reconciliation evidence presentation | Yes | Yes | Yes | No | Paid authenticated durable current-position route accepted at `c6f5e4a`; target UX/security evidence remains |
 | Explicit-confirmed-period future-pay forecast composition (detached) | Yes | Yes | Yes | No | Authenticated owner/business orchestration, persistence, customer-safe presentation, full-period coverage and launch assurance remain |
-| Authenticated paid durable confirmed-input forecast route | Yes | Yes | Yes | No | Product integration at `318fe2d`; evidence bindings refreshed at `4160155`; durable customer fact capture/update/supply, required-period/source coverage and target launch evidence remain |
+| Authenticated paid durable confirmed-input forecast route and customer fact journey | Yes | Yes | Yes | No | Forecast route at `318fe2d`; minimum durable customer create/update/list/delete product at `db133925` with live bindings refreshed at `d49a540`; complete required-period/source coverage plus target, representative-human and launch evidence remain |
 | Authenticated manual multi-employment cumulative entry, durable replacement/deletion and partial review | Yes | Yes | Yes | No | Durable paid composition accepted at `c6f5e4a`; target custody, retention/backup, privacy/security and representative journey evidence remain |
 | Upload, extraction, customer confirmation, and secure raw-document deletion | No | No | No | No | Document-processing integration plus privacy/security controls |
 | Customer journey, persistence, replacement/deletion actions, structured retention, account deletion, and backups | Partial | Partial | Partial | No | Manual PAYE persistence/replacement/deletion exists; target retention, account deletion, backups and wider product evidence remain |
@@ -169,8 +169,10 @@ The later checkpoint `4160155ad50eacb0d38f6a8084744aeb2f945c3c`
 refreshes the integrated route's exact source bindings; it is evidence
 reconciliation, not the product integration commit.
 
-The accepted local candidate at `d49a540d3e898f16b56acb69851fd269f5fa50d5`
-now adds the minimum durable store and a paid, authenticated, CSRF-protected
+The accepted local product checkpoint
+`db133925e747fdbef8c3649a6c451567d9c1f24a`, with live paid-route assurance
+bindings refreshed at `d49a540d3e898f16b56acb69851fd269f5fa50d5`,
+adds the minimum durable store and a paid, authenticated, CSRF-protected
 customer create, exact-update, list and delete journey inside the existing
 manual-PAYE page. Browser input cannot select owner, business, tax year,
 nation, source identity or confirmation time. A validated employment slot maps
