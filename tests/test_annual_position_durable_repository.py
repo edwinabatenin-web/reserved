@@ -686,7 +686,7 @@ def test_v11_upgrade_failure_does_not_stamp_and_retry_completes(tmp_path, monkey
     assert _v12_schema_objects(path)[0] == 11
     db.init_db()
     version, objects = _v12_schema_objects(path)
-    assert version == db._SCHEMA_VERSION == 18
+    assert version == db._SCHEMA_VERSION == 19
     assert objects == {
         "owner_business_memberships", "annual_position_records", "annual_position_evidence_references",
         "annual_position_lifecycle_events", "annual_position_read_audit", "annual_position_one_current_head",
@@ -700,7 +700,7 @@ def test_fresh_schema_has_v12_current_head_control(prepared_db):
     version, objects = _v12_schema_objects(prepared_db)
     with sqlite3.connect(prepared_db) as conn:
         index = conn.execute("SELECT sql FROM sqlite_master WHERE type='index' AND name='annual_position_one_current_head'").fetchone()[0]
-    assert version == db._SCHEMA_VERSION == 18
+    assert version == db._SCHEMA_VERSION == 19
     assert objects == {
         "owner_business_memberships", "annual_position_records", "annual_position_evidence_references",
         "annual_position_lifecycle_events", "annual_position_read_audit", "annual_position_one_current_head",

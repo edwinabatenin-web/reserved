@@ -21,7 +21,8 @@ import json
 import re
 import weakref
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from reserved import database
 from reserved.annual_position_repository_contract import (
@@ -80,6 +81,7 @@ _AUDIT = re.compile(r"^audit:[A-Za-z0-9][A-Za-z0-9._/-]{0,95}$")
 _IDENTITY = re.compile(r"^annual-position-structural:sha256-[0-9a-f]{64}$")
 _CLEARANCE = re.compile(r"^(?:legal-hold|backup-expiry):cleared-[A-Za-z0-9][A-Za-z0-9._/-]{0,95}$")
 _INTERNAL_REFERENCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+_FUTURE_SOURCE = re.compile(r"^future-source:[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 _UNSAFE_MARKERS = ("secret", "token", "password", "credential", "apikey", "api_key", "bearer", "private_key")
 RECORD_PURPOSE = "annual_cash_position_durable_projection"
 def _utc(value: str, label: str) -> datetime:
@@ -183,6 +185,7 @@ class LocalTaxDataErasureResult:
 
     annual_position_records: int
     paye_manual_entries: int
+    paye_confirmed_future_periods: int
 
 
 @dataclass(frozen=True, slots=True, weakref_slot=True)
@@ -699,6 +702,184 @@ class DurableAnnualPositionRepository:
                 nation=nation, record=decoded, entries=rows,
             )
 
+    @staticmethod
+    def _future_period_values(*, tax_year, source_identity, period_start, period_end,
+                              expected_gross_pay, expected_tax_deducted, confirmed_at):
+        if (type(tax_year) is not str or len(tax_year) != 7 or tax_year[4] != "/"
+                or not tax_year[:4].isdigit() or not tax_year[5:].isdigit()):
+            raise DurableAnnualPositionError("future-pay tax year is invalid")
+        start_year = int(tax_year[:4])
+        if int(tax_year[5:]) != (start_year + 1) % 100:
+            raise DurableAnnualPositionError("future-pay tax year is invalid")
+        if (type(source_identity) is not str
+                or _FUTURE_SOURCE.fullmatch(source_identity) is None
+                or any(marker in source_identity.casefold() for marker in _UNSAFE_MARKERS)):
+            raise DurableAnnualPositionError("future-pay source identity is invalid")
+        if type(period_start) is not date or type(period_end) is not date:
+            raise DurableAnnualPositionError("future-pay period dates are invalid")
+        first, last = date(start_year, 4, 6), date(start_year + 1, 4, 5)
+        if not first <= period_start <= period_end <= last:
+            raise DurableAnnualPositionError("future-pay period is outside its tax year")
+        if type(confirmed_at) is not datetime or confirmed_at.tzinfo is not timezone.utc:
+            raise DurableAnnualPositionError("future-pay confirmation time is invalid")
+        if confirmed_at.isoformat() != confirmed_at.isoformat(timespec="seconds"):
+            raise DurableAnnualPositionError("future-pay confirmation time must use whole seconds")
+        if confirmed_at.date() > period_end:
+            raise DurableAnnualPositionError("future-pay confirmation follows its period")
+        amounts = []
+        for value, label, allow_zero in (
+            (expected_gross_pay, "gross pay", False),
+            (expected_tax_deducted, "tax deducted", True),
+        ):
+            if (type(value) is not Decimal or not value.is_finite()
+                    or value.as_tuple().exponent != -2 or value.is_signed()
+                    or value > Decimal("1000000000000000000.00")
+                    or (not allow_zero and value.is_zero())):
+                raise DurableAnnualPositionError(f"future-pay {label} is invalid")
+            amounts.append(value)
+        if amounts[1] > amounts[0]:
+            raise DurableAnnualPositionError("future-pay tax exceeds gross pay")
+        return (
+            source_identity, period_start.isoformat(), period_end.isoformat(),
+            f"{amounts[0]:.2f}", f"{amounts[1]:.2f}", confirmed_at.isoformat(),
+        )
+
+    def save_confirmed_future_pay_period(
+        self, *, authenticated_user_id: int, business_reference: str, tax_year: str,
+        source_identity: str, period_start: date, period_end: date,
+        expected_gross_pay: Decimal, expected_tax_deducted: Decimal,
+        audit_reference: str,
+    ) -> str:
+        """Create or replace one customer-confirmed minimum future-pay period."""
+        self._audit(audit_reference)
+        self.assert_external_authority_available()
+        try:
+            confirmed_at = datetime.fromisoformat(_utc_now())
+        except ValueError as exc:
+            raise DurableAnnualPositionError("trusted future-pay clock is invalid") from exc
+        values = self._future_period_values(
+            tax_year=tax_year, source_identity=source_identity,
+            period_start=period_start, period_end=period_end,
+            expected_gross_pay=expected_gross_pay,
+            expected_tax_deducted=expected_tax_deducted,
+            confirmed_at=confirmed_at,
+        )
+        with database._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            database.require_local_tax_writes_open(conn, authenticated_user_id)
+            self._require_user(conn, authenticated_user_id)
+            self._active_membership(conn, authenticated_user_id, business_reference)
+            current = conn.execute(
+                "SELECT 1 FROM annual_position_records WHERE user_id=? AND business_reference=? "
+                "AND tax_year=? AND record_purpose=? AND state='current'",
+                (authenticated_user_id, business_reference, tax_year, RECORD_PURPOSE),
+            ).fetchall()
+            if len(current) != 1:
+                raise DurableAnnualPositionError("current annual position is unavailable")
+            conn.execute(
+                "INSERT INTO paye_confirmed_future_periods "
+                "(user_id,business_reference,tax_year,source_identity,period_start,period_end,"
+                "expected_gross_pay,expected_tax_deducted,confirmed_at) VALUES (?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(user_id,business_reference,tax_year,source_identity,period_start,period_end) "
+                "DO UPDATE SET expected_gross_pay=excluded.expected_gross_pay,"
+                "expected_tax_deducted=excluded.expected_tax_deducted,"
+                "confirmed_at=excluded.confirmed_at",
+                (authenticated_user_id, business_reference, tax_year, *values),
+            )
+        return source_identity
+
+    def delete_confirmed_future_pay_period(
+        self, *, authenticated_user_id: int, business_reference: str, tax_year: str,
+        source_identity: str, period_start: date, period_end: date,
+        audit_reference: str,
+    ) -> bool:
+        """Delete exactly one owned confirmed future-pay period."""
+        self._audit(audit_reference)
+        self.assert_external_authority_available()
+        values = self._future_period_values(
+            tax_year=tax_year, source_identity=source_identity,
+            period_start=period_start, period_end=period_end,
+            expected_gross_pay=Decimal("0.01"),
+            expected_tax_deducted=Decimal("0.00"),
+            confirmed_at=datetime.combine(period_start, datetime.min.time(), timezone.utc),
+        )
+        with database._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            database.require_local_tax_writes_open(conn, authenticated_user_id)
+            self._require_user(conn, authenticated_user_id)
+            self._active_membership(conn, authenticated_user_id, business_reference)
+            return conn.execute(
+                "DELETE FROM paye_confirmed_future_periods WHERE user_id=? "
+                "AND business_reference=? AND tax_year=? AND source_identity=? "
+                "AND period_start=? AND period_end=?",
+                (authenticated_user_id, business_reference, tax_year, values[0], values[1], values[2]),
+            ).rowcount == 1
+
+    def read_confirmed_future_pay_facts(
+        self, *, authenticated_user_id: int, business_reference: str, tax_year: str,
+        nation: str, annual_position,
+    ):
+        """Return exact forecast facts from the current owner-bound repository."""
+        from reserved.engines.annual_to_cash_integration import (
+            AnnualToCashPosition, annual_to_cash_position_identity,
+        )
+        from reserved.services.paye_future_pay_forecast import (
+            ConfirmedFuturePayFact, FuturePayFrequency, FuturePaySource,
+            PeriodCompleteness,
+        )
+        if type(annual_position) is not AnnualToCashPosition:
+            raise DurableAnnualPositionError("live annual position is invalid")
+        self.assert_external_authority_available()
+        with database._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_user(conn, authenticated_user_id)
+            self._active_membership(conn, authenticated_user_id, business_reference)
+            found = conn.execute(
+                "SELECT envelope_json FROM annual_position_records WHERE user_id=? "
+                "AND business_reference=? AND tax_year=? AND nation=? AND record_purpose=? "
+                "AND state='current'",
+                (authenticated_user_id, business_reference, tax_year, nation, RECORD_PURPOSE),
+            ).fetchall()
+            if len(found) != 1:
+                raise DurableAnnualPositionError("current annual position is unavailable")
+            row = dict(project_annual_position_record(decode_annual_position_record(
+                _tuplify(json.loads(found[0][0])), self._contract_governance,
+                "audit:durable-future-pay-read",
+            ))[2])
+            if row.get("annual_cash_identity") != annual_to_cash_position_identity(annual_position):
+                raise DurableAnnualPositionError("live annual position is not current")
+            rows = [dict(value) for value in conn.execute(
+                "SELECT source_identity,period_start,period_end,expected_gross_pay,"
+                "expected_tax_deducted,confirmed_at FROM paye_confirmed_future_periods "
+                "WHERE user_id=? AND business_reference=? AND tax_year=? "
+                "ORDER BY period_start,period_end,source_identity",
+                (authenticated_user_id, business_reference, tax_year),
+            ).fetchall()]
+        facts = []
+        engine_tax_year = tax_year.replace("/", "-")
+        for value in rows:
+            canonical = _canonical((authenticated_user_id, business_reference, tax_year,
+                                    *tuple(value.values()))).encode("ascii")
+            digest = hashlib.sha256(canonical).hexdigest()
+            facts.append(ConfirmedFuturePayFact(
+                source=FuturePaySource.CUSTOMER_CONFIRMED,
+                fact_id=f"future-pay:{digest}",
+                source_evidence_id=f"future-evidence:{digest}",
+                source_evidence_digest=digest,
+                owner_id=canonical_owner_id_from_users_id(authenticated_user_id),
+                business_id=business_reference, tax_year=engine_tax_year,
+                employment_id=value["source_identity"],
+                gross_pay=value["expected_gross_pay"],
+                expected_tax_deduction=value["expected_tax_deducted"],
+                pay_date=date.fromisoformat(value["period_end"]),
+                period_start=date.fromisoformat(value["period_start"]),
+                period_end=date.fromisoformat(value["period_end"]),
+                confirmed_on=datetime.fromisoformat(value["confirmed_at"]).date(),
+                frequency=FuturePayFrequency.ONE_OFF,
+                period_completeness=PeriodCompleteness.COMPLETE,
+            ))
+        return tuple(facts)
+
     def plan_account_erasure(self, *, authenticated_user_id: int, audit_reference: str) -> tuple[str, ...]:
         """Return only the owned records that require separately-cleared erasure execution."""
         self._audit(audit_reference)
@@ -789,9 +970,14 @@ class DurableAnnualPositionRepository:
             paye_count = conn.execute(
                 "DELETE FROM paye_manual_entries WHERE user_id=?", (authenticated_user_id,)
             ).rowcount
+            future_count = conn.execute(
+                "DELETE FROM paye_confirmed_future_periods WHERE user_id=?",
+                (authenticated_user_id,),
+            ).rowcount
             return LocalTaxDataErasureResult(
                 annual_position_records=annual_count,
                 paye_manual_entries=paye_count,
+                paye_confirmed_future_periods=future_count,
             )
 
 

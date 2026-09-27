@@ -488,6 +488,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_paye_manual_entries_active_slot
     ON paye_manual_entries(user_id, tax_year, employment_slot)
     WHERE replaced_at IS NULL AND deleted_at IS NULL;
 
+-- ── Confirmed future-pay periods (minimum Founder-approved fields only) ────
+CREATE TABLE IF NOT EXISTS paye_confirmed_future_periods (
+    user_id                 INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    business_reference      TEXT NOT NULL,
+    tax_year                TEXT NOT NULL,
+    source_identity         TEXT NOT NULL,
+    period_start            TEXT NOT NULL,
+    period_end              TEXT NOT NULL,
+    expected_gross_pay      TEXT NOT NULL,
+    expected_tax_deducted   TEXT NOT NULL,
+    confirmed_at            TEXT NOT NULL,
+    PRIMARY KEY(user_id, business_reference, tax_year, source_identity, period_start, period_end)
+);
+CREATE INDEX IF NOT EXISTS idx_paye_confirmed_future_scope
+    ON paye_confirmed_future_periods(user_id, business_reference, tax_year, period_start);
+
 -- Private raw-payslip lifecycle metadata.  This records no raw bytes,
 -- filename, session secret, employer/payroll identifier, or extraction text.
 -- A server-generated storage identity and verified local-file identity are
@@ -601,7 +617,7 @@ CREATE TABLE IF NOT EXISTS annual_position_lifecycle_events (
 # - The DDL block above always reflects the full target schema; migrations
 #   handle upgrade paths for databases created before the current DDL.
 #
-_SCHEMA_VERSION = 18   # increment when adding new migration entries below
+_SCHEMA_VERSION = 19   # increment when adding new migration entries below
 
 _MIGRATIONS: dict[int, list[str]] = {
     # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
@@ -901,6 +917,24 @@ _MIGRATIONS: dict[int, list[str]] = {
             state TEXT NOT NULL CHECK(state IN ('blocked', 'erased')),
             updated_at TEXT NOT NULL
         )""",
+    ],
+    # Version 19 — only the Founder-approved structured future-pay facts. The
+    # owner/business/tax-year columns are repository scope, not additional
+    # forecast inputs. No raw document, free text or provider payload is stored.
+    19: [
+        """CREATE TABLE IF NOT EXISTS paye_confirmed_future_periods (
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            business_reference TEXT NOT NULL,
+            tax_year TEXT NOT NULL,
+            source_identity TEXT NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            expected_gross_pay TEXT NOT NULL,
+            expected_tax_deducted TEXT NOT NULL,
+            confirmed_at TEXT NOT NULL,
+            PRIMARY KEY(user_id, business_reference, tax_year, source_identity, period_start, period_end)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_paye_confirmed_future_scope ON paye_confirmed_future_periods(user_id, business_reference, tax_year, period_start)",
     ],
 }
 

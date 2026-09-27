@@ -1,10 +1,11 @@
 """Hostile real-request coverage for the disabled current PAYE forecast read."""
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 import pytest
 
 import reserved.database as db
+import reserved.annual_position_durable_repository as durable_repository_module
 import reserved.paye_durable_forecast_bridge as forecast_bridge
 from reserved import create_app
 from reserved.auth import _SK_USER_ID
@@ -14,6 +15,7 @@ from reserved.engines.annual_to_cash_integration import (
 )
 from reserved.paye_forecast_endpoint import (
     DurablePayeForecastEndpointError, DurablePayeForecastRuntime,
+    RepositoryFuturePayFactsProvider,
     install_durable_paye_forecast_endpoint,
 )
 from reserved.services.paye_future_pay_forecast import (
@@ -21,6 +23,7 @@ from reserved.services.paye_future_pay_forecast import (
     PeriodCompleteness, make_future_pay_forecast_policy,
 )
 from reserved.annual_position_durable_repository import DurableAnnualPositionRepository
+from reserved.annual_position_durable_repository import DurableAnnualPositionError
 from tests.test_annual_position_durable_repository import _governance, _policy
 from tests.test_paye_annual_bridge import durable_annual
 from tests.test_annual_to_cash_integration import (
@@ -67,6 +70,10 @@ def prepared(tmp_path, monkeypatch):
     monkeypatch.setenv("FLASK_ENV", "development")
     monkeypatch.delenv("PAYE_DURABLE_FORECAST_ENABLED", raising=False)
     monkeypatch.setattr(forecast_bridge, "_server_date", lambda: TODAY)
+    monkeypatch.setattr(
+        durable_repository_module, "_utc_now",
+        lambda: "2026-10-01T09:30:00+00:00",
+    )
     billing = billing_runtime(tmp_path / "primary")
     app = create_app(billing_runtime=billing); app.config.update(TESTING=True)
     owner = db.get_or_create_user("forecast-owner", email="forecast@example.test")
@@ -252,6 +259,194 @@ def test_application_factory_composes_only_complete_paid_forecast_runtime(
     assert client.get("/v2/paye/current-forecast").status_code == 403
     paid_event(billing, owner)
     assert client.get("/v2/paye/current-forecast").status_code == 200
+
+
+def test_repository_backed_confirmed_period_can_be_updated_deleted_and_forecast(
+    prepared, monkeypatch,
+):
+    _app, owner, _other, annual, repository, tmp_path = prepared
+    source = "future-source:employment-1"
+    assert repository.save_confirmed_future_pay_period(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", source_identity=source,
+        period_start=date(2026, 10, 2), period_end=date(2026, 10, 31),
+        expected_gross_pay=Decimal("5000.00"),
+        expected_tax_deducted=Decimal("750.00"),
+        audit_reference="audit:future-pay-create",
+    ) == source
+    facts = repository.read_confirmed_future_pay_facts(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", nation="England", annual_position=annual,
+    )
+    assert len(facts) == 1
+    assert facts[0].gross_pay == Decimal("5000.00")
+    assert facts[0].expected_tax_deduction == Decimal("750.00")
+    assert facts[0].source is FuturePaySource.CUSTOMER_CONFIRMED
+
+    repository.save_confirmed_future_pay_period(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", source_identity=source,
+        period_start=date(2026, 11, 1), period_end=date(2026, 11, 30),
+        expected_gross_pay=Decimal("2000.00"),
+        expected_tax_deducted=Decimal("300.00"),
+        audit_reference="audit:future-pay-second-period",
+    )
+    two_periods = repository.read_confirmed_future_pay_facts(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", nation="England", annual_position=annual,
+    )
+    assert len(two_periods) == 2
+    assert len({fact.source_evidence_id for fact in two_periods}) == 2
+    assert {fact.employment_id for fact in two_periods} == {source}
+
+    repository.save_confirmed_future_pay_period(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", source_identity=source,
+        period_start=date(2026, 10, 2), period_end=date(2026, 10, 31),
+        expected_gross_pay=Decimal("5100.00"),
+        expected_tax_deducted=Decimal("765.00"),
+        audit_reference="audit:future-pay-update",
+    )
+    updated = repository.read_confirmed_future_pay_facts(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", nation="England", annual_position=annual,
+    )
+    assert [fact.expected_tax_deduction for fact in updated] == [
+        Decimal("765.00"), Decimal("300.00"),
+    ]
+
+    monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
+    billing = billing_runtime(tmp_path / "repository-backed")
+    runtime = _runtime(
+        annual, repository,
+        future_provider=RepositoryFuturePayFactsProvider(repository),
+    )
+    app = create_app(billing_runtime=billing, paye_forecast_runtime=runtime)
+    app.config.update(TESTING=True)
+    paid_event(billing, owner)
+    body = _client(app, owner).get("/v2/paye/current-forecast").get_json()
+    assert body["expected_future_tax_deduction"] == "1065.00"
+    assert body["confirmed_fact_count"] == 2
+
+    assert repository.delete_confirmed_future_pay_period(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", source_identity=source,
+        period_start=date(2026, 10, 2), period_end=date(2026, 10, 31),
+        audit_reference="audit:future-pay-delete",
+    ) is True
+    remaining = repository.read_confirmed_future_pay_facts(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", nation="England", annual_position=annual,
+    )
+    assert len(remaining) == 1
+    assert remaining[0].period_start == date(2026, 11, 1)
+
+
+def test_future_pay_store_is_minimum_field_only_owner_bound_and_rejects_raw_content(
+    prepared,
+):
+    _app, owner, other, annual, repository, _tmp_path = prepared
+    with db._connection() as conn:
+        columns = tuple(
+            row[1] for row in conn.execute(
+                "PRAGMA table_info(paye_confirmed_future_periods)"
+            ).fetchall()
+        )
+    assert columns == (
+        "user_id", "business_reference", "tax_year", "source_identity",
+        "period_start", "period_end", "expected_gross_pay",
+        "expected_tax_deducted", "confirmed_at",
+    )
+    values = dict(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", source_identity="future-source:employment-minimum",
+        period_start=date(2026, 10, 2), period_end=date(2026, 10, 31),
+        expected_gross_pay=Decimal("5000.00"),
+        expected_tax_deducted=Decimal("750.00"),
+        audit_reference="audit:future-pay-minimum",
+    )
+    with pytest.raises(TypeError):
+        repository.save_confirmed_future_pay_period(
+            **values, raw_payslip=b"prohibited",
+        )
+    with pytest.raises(TypeError):
+        repository.save_confirmed_future_pay_period(
+            **values, free_text="prohibited",
+        )
+    with pytest.raises(TypeError):
+        repository.save_confirmed_future_pay_period(
+            **values, confirmed_at=datetime(2026, 10, 1, 9, 30, tzinfo=timezone.utc),
+        )
+    with pytest.raises(DurableAnnualPositionError, match="source identity"):
+        repository.save_confirmed_future_pay_period(
+            **(values | {"source_identity": "secret:raw-payslip"}),
+        )
+    with pytest.raises(DurableAnnualPositionError, match="active owner-to-business"):
+        repository.save_confirmed_future_pay_period(
+            **(values | {"authenticated_user_id": other}),
+        )
+    repository.save_confirmed_future_pay_period(**values)
+    with pytest.raises(DurableAnnualPositionError):
+        repository.read_confirmed_future_pay_facts(
+            authenticated_user_id=other, business_reference="business-1",
+            tax_year="2026/27", nation="England", annual_position=annual,
+        )
+
+
+def test_repository_future_provider_must_share_the_runtime_repository(prepared):
+    _app, _owner, _other, annual, repository, _tmp_path = prepared
+    other_repository = DurableAnnualPositionRepository(
+        _governance(), evidence_reference_policy=_policy(),
+        membership_issuer_reference="membership:approved-v1",
+        lifecycle_issuer_reference="lifecycle:approved-v1",
+    )
+    with pytest.raises(DurablePayeForecastEndpointError, match="does not match"):
+        _runtime(
+            annual, repository,
+            future_provider=RepositoryFuturePayFactsProvider(other_repository),
+        )
+
+
+def test_repository_future_facts_are_rechecked_after_composition(prepared, monkeypatch):
+    _app, owner, _other, annual, repository, tmp_path = prepared
+    source = "future-source:race-check"
+    repository.save_confirmed_future_pay_period(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", source_identity=source,
+        period_start=date(2026, 10, 2), period_end=date(2026, 10, 31),
+        expected_gross_pay=Decimal("5000.00"),
+        expected_tax_deducted=Decimal("750.00"),
+        audit_reference="audit:future-pay-race-create",
+    )
+    original = repository.read_confirmed_future_pay_facts
+    reads = []
+
+    def read_then_change(**kwargs):
+        result = original(**kwargs)
+        reads.append(result)
+        if len(reads) == 1:
+            repository.delete_confirmed_future_pay_period(
+                authenticated_user_id=owner, business_reference="business-1",
+                tax_year="2026/27", source_identity=source,
+                period_start=date(2026, 10, 2), period_end=date(2026, 10, 31),
+                audit_reference="audit:future-pay-race-delete",
+            )
+        return result
+
+    monkeypatch.setattr(repository, "read_confirmed_future_pay_facts", read_then_change)
+    monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
+    billing = billing_runtime(tmp_path / "repository-race")
+    app = create_app(
+        billing_runtime=billing,
+        paye_forecast_runtime=_runtime(
+            annual, repository,
+            future_provider=RepositoryFuturePayFactsProvider(repository),
+        ),
+    )
+    app.config.update(TESTING=True)
+    paid_event(billing, owner)
+    assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
+    assert len(reads) == 2 and reads[0] and reads[1] == ()
 
 
 def test_forecast_runtime_without_billing_or_with_invalid_shape_remains_closed(

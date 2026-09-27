@@ -33,6 +33,24 @@ class DurablePayeForecastEndpointError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class RepositoryFuturePayFactsProvider:
+    """Read only customer-confirmed periods from the bound durable repository."""
+
+    repository: object
+
+    def __post_init__(self):
+        from reserved.annual_position_durable_repository import DurableAnnualPositionRepository
+        if type(self.repository) is not DurableAnnualPositionRepository:
+            raise DurablePayeForecastEndpointError("exact durable repository is required")
+
+    def __call__(self, owner, business, tax_year, nation, annual):
+        return self.repository.read_confirmed_future_pay_facts(
+            authenticated_user_id=owner, business_reference=business,
+            tax_year=tax_year, nation=nation, annual_position=annual,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class DurablePayeForecastRuntime:
     """Complete server-owned dependencies for the forecast route."""
 
@@ -59,6 +77,11 @@ class DurablePayeForecastRuntime:
                 or type(self.future_pay_policy) is not FuturePayForecastPolicy):
             raise DurablePayeForecastEndpointError(
                 "exact reconciliation and future-pay policies are required"
+            )
+        if (type(self.future_facts_provider) is RepositoryFuturePayFactsProvider
+                and self.future_facts_provider.repository is not self.repository):
+            raise DurablePayeForecastEndpointError(
+                "future-pay repository does not match the forecast repository"
             )
 
 
@@ -136,6 +159,14 @@ def current_forecast_payload(runtime: DurablePayeForecastRuntime, owner: int) ->
         future_pay_facts=facts, future_pay_policy=runtime.future_pay_policy,
         audit_reference="audit:paye-forecast-current",
     )
+    if type(runtime.future_facts_provider) is RepositoryFuturePayFactsProvider:
+        final_facts = runtime.future_facts_provider(
+            owner, business, tax_year, nation, annual,
+        )
+        if final_facts != facts:
+            raise DurablePayeForecastEndpointError(
+                "future-pay facts changed during composition"
+            )
     return _response(result.forecast)
 
 
@@ -177,5 +208,6 @@ def install_durable_paye_forecast_endpoint(
 
 __all__ = [
     "DurablePayeForecastEndpointError", "DurablePayeForecastRuntime",
+    "RepositoryFuturePayFactsProvider",
     "current_forecast_payload", "install_durable_paye_forecast_endpoint",
 ]

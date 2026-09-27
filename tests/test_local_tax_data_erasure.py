@@ -123,6 +123,15 @@ def _seed_structured(owner, other):
                  1, None, f"governance-{suffix}", "{}", "0" * 64, "current",
                  "2026-09-02T00:00:00+00:00"),
             )
+            conn.execute(
+                """INSERT INTO paye_confirmed_future_periods
+                   (user_id,business_reference,tax_year,source_identity,period_start,
+                    period_end,expected_gross_pay,expected_tax_deducted,confirmed_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (user_id, f"business-{suffix}", "2026/27", f"future-source:{suffix}",
+                 "2026-10-01", "2026-10-31", "1000.00", "150.00",
+                 "2026-09-27T12:00:00+00:00"),
+            )
 
 
 def test_disabled_and_csrf_rejections_never_consult_clearance_provider(prepared, monkeypatch):
@@ -204,7 +213,8 @@ def test_enabled_route_erases_owned_raw_first_and_reports_only_local_scope(prepa
     assert response.get_json() == {
         "status": "local_tax_data_erased", "scope": "local_tax_data_only",
         "raw_payslip_files_deleted": 1, "annual_position_records_deleted": 0,
-        "paye_manual_entries_deleted": 0, "backup_erasure": "not_asserted",
+        "paye_manual_entries_deleted": 0, "paye_confirmed_future_periods_deleted": 0,
+        "backup_erasure": "not_asserted",
         "identity_erasure": "not_asserted", "quarantine_erasure": "not_asserted",
     }
     with db._connection() as conn:
@@ -231,6 +241,7 @@ def test_route_erases_all_owner_sessions_and_structured_rows_without_crossing_ow
     assert response.get_json()["raw_payslip_files_deleted"] == 2
     assert response.get_json()["annual_position_records_deleted"] == 1
     assert response.get_json()["paye_manual_entries_deleted"] == 1
+    assert response.get_json()["paye_confirmed_future_periods_deleted"] == 1
     with db._connection() as conn:
         for handle in (first, second):
             assert conn.execute("SELECT 1 FROM paye_payslip_intakes WHERE storage_id=?",
@@ -244,6 +255,10 @@ def test_route_erases_all_owner_sessions_and_structured_rows_without_crossing_ow
         assert conn.execute("SELECT COUNT(*) FROM annual_position_records WHERE user_id=?",
                             (other,)).fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM paye_manual_entries WHERE user_id=?",
+                            (other,)).fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM paye_confirmed_future_periods WHERE user_id=?",
+                            (owner,)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM paye_confirmed_future_periods WHERE user_id=?",
                             (other,)).fetchone()[0] == 1
 
 
