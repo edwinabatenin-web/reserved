@@ -70,7 +70,7 @@ rather than being silently reinterpreted as current runtime evidence.
 
 | Evidence | SHA-256 | Use |
 |---|---|---|
-| `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `5e2a1f6ae76751e0e671a6041fff06f57d43413fe1468388fbd9addb7bffd08f` | Current candidate inventory including the disabled-first owner-bound PAYE position, confirmed-input forecast and MTD journeys; production-shaped access is subject to the separately installed paid-entitlement runtime. |
+| `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `9a222f0873d94bb2f994fb6eeb067cc67ebe627b371cf02f2eabadc14b53c007` | Current candidate inventory including the disabled-first owner-bound PAYE position, confirmed-input forecast and MTD journeys; production-shaped access is subject to the separately installed paid-entitlement runtime. |
 | `tests/test_w10_paid_surface_inventory.py` | `a2ee6a2b0e704cf167e68a28926a60a5b76ab773dcc55371c999d737867104ce` | Current inventory/source/registry freshness assurance. |
 | `5612f7a...:docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md` | `7af205f420c2cf3a9039fff7aad1af65e55221005231b2fabe3bd99c94f96c4d` | Historical W10 state and explicit S5B next action, verified from the Git blob. |
 | `FOUNDER_DECISIONS.md` | `78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f` | Current October scope, paid-subscription lifecycle/withdrawal authority and ordinary-engineering authority at the refreshed repository identity. |
@@ -108,8 +108,8 @@ disposition forward by name alone.
     "FOUNDER_DECISIONS.md": "78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f",
     "docs/API_CONTRACT_GAP_REPORT.md": "b0eeeea6357e88dd1db59dd5ddf2d4e4e712f79f73d3a61c52838cda390ac85f",
     "docs/TECHNICAL_ARCHITECTURE.md": "7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79",
-    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "1d57f178865d8ca70f08ddd832848073aea95303ee28d1a39f18e2d670f531c9",
-    "reserved/__init__.py": "fbcdbdc303783a0cfb1f8f1a69420beb331822b726786af6a442add3eb943a81",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "9a222f0873d94bb2f994fb6eeb067cc67ebe627b371cf02f2eabadc14b53c007",
+    "reserved/__init__.py": "d3ce81ff94f3bfe21329d5a678251319d2f021d36a618effd5a49d9426e051ad",
     "reserved/providers/banking/yapily.py": "885d021f20f8a76b5f2d26ed692f1e2cae4a7c9764c885da286a61c1c2b68475",
     "reserved/security.py": "73a5d20f1aa69fafda1ab4a9d6c01668fc9a465686e2d8198f8649364e43ae2b",
     "reserved/templates/connections.html": "e58bf5d92892dd5c88f4df1dce6dc7b91b2fea30ebbe9878b8240e22262511e6",
