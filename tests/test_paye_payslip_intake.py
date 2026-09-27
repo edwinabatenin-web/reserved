@@ -102,6 +102,17 @@ def test_hostile_type_and_size_inputs_are_rejected_without_storage(tmp_path, con
     assert _files(tmp_path) == ()
 
 
+@pytest.mark.parametrize("tax_year", ("2026/99", "2026/26", "1999/00", "not-a-year"))
+def test_non_consecutive_or_non_uk_tax_year_is_rejected_without_storage(tmp_path, tax_year):
+    boundary = _boundary(tmp_path)
+    with pytest.raises(PayslipIntakeError, match="tax year"):
+        boundary.begin(
+            authenticated_user_id=OWNER, session_binding=SESSION, tax_year=tax_year,
+            content_type="application/pdf", document_bytes=PDF,
+        )
+    assert _files(tmp_path) == ()
+
+
 def test_handle_is_opaque_and_user_controlled_path_traversal_is_rejected(tmp_path):
     boundary = _boundary(tmp_path)
     handle = _begin(boundary)
@@ -155,6 +166,39 @@ def test_confirmation_failure_deterministically_cleans_up_raw_file(tmp_path, ada
     assert _files(tmp_path) == ()
     with pytest.raises(PayslipIntakeError, match="unavailable"):
         boundary.cancel(handle=handle, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR)
+
+
+@pytest.mark.parametrize("substitution", ("symlink", "replacement"))
+def test_substituted_file_never_reaches_adapter_and_fails_closed(tmp_path, substitution):
+    adapter = _WorkingAdapter()
+    boundary = _boundary(tmp_path, adapter=adapter)
+    handle = _begin(boundary)
+    stored = _files(tmp_path)[0]
+    stored.unlink()
+    if substitution == "symlink":
+        foreign = tmp_path / "foreign.pdf"
+        foreign.write_bytes(PDF)
+        stored.symlink_to(foreign)
+    else:
+        stored.write_bytes(PDF)
+    with pytest.raises(PayslipIntakeError, match="identity changed|could not be read|path is unsafe"):
+        boundary.confirm(
+            handle=handle, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR,
+            decisions=_decisions(), confirmation_id="confirmation-1",
+        )
+    assert adapter.calls == []
+    assert stored.exists() or stored.is_symlink()
+
+
+def test_cancel_does_not_unlink_a_replacement_file(tmp_path):
+    boundary = _boundary(tmp_path)
+    handle = _begin(boundary)
+    stored = _files(tmp_path)[0]
+    stored.unlink()
+    stored.write_bytes(PDF)
+    with pytest.raises(PayslipIntakeError, match="identity changed"):
+        boundary.cancel(handle=handle, authenticated_user_id=OWNER, session_binding=SESSION, tax_year=YEAR)
+    assert stored.read_bytes() == PDF
 
 
 def test_owner_session_erasure_is_isolated_and_deletes_every_pending_file(tmp_path):

@@ -16,10 +16,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+import hashlib
 import os
 from pathlib import Path
 import re
 import secrets
+import stat
 from typing import Protocol
 
 from reserved.engines.paye_extraction_confirmation import (
@@ -66,6 +68,10 @@ class _StoredPayslip:
     tax_year: str
     content_type: str
     path: Path
+    device: int
+    inode: int
+    byte_count: int
+    content_sha256: str
 
 
 class PayslipIntakeBoundary:
@@ -102,6 +108,9 @@ class PayslipIntakeBoundary:
     def _year(value: object) -> str:
         if type(value) is not str or _TAX_YEAR.fullmatch(value) is None:
             raise PayslipIntakeError("tax year is invalid")
+        start_year, end_year = int(value[:4]), int(value[5:])
+        if not 2000 <= start_year <= 2999 or end_year != (start_year + 1) % 100:
+            raise PayslipIntakeError("tax year is not a consecutive UK tax-year span")
         return value
 
     def _require_enabled(self) -> None:
@@ -131,7 +140,7 @@ class PayslipIntakeBoundary:
             raise PayslipIntakeError("payslip storage path is unsafe")
         return path
 
-    def _write(self, path: Path, document_bytes: bytes) -> None:
+    def _write(self, path: Path, document_bytes: bytes) -> tuple[int, int, int, str]:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
@@ -145,12 +154,23 @@ class PayslipIntakeBoundary:
                 output.write(document_bytes)
                 output.flush()
                 os.fsync(output.fileno())
-        except OSError as exc:
+                metadata = os.fstat(output.fileno())
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_size != len(document_bytes):
+                    raise PayslipIntakeError("payslip storage write could not be verified")
+                return (
+                    metadata.st_dev,
+                    metadata.st_ino,
+                    metadata.st_size,
+                    hashlib.sha256(document_bytes).hexdigest(),
+                )
+        except (OSError, PayslipIntakeError) as exc:
             if created:
                 try:
                     path.unlink(missing_ok=True)
                 except OSError:
                     pass
+            if isinstance(exc, PayslipIntakeError):
+                raise
             raise PayslipIntakeError("payslip document could not be stored") from exc
         finally:
             if fd is not None:
@@ -158,11 +178,56 @@ class PayslipIntakeBoundary:
             if path.is_symlink():
                 raise PayslipIntakeError("payslip storage path is unsafe")
 
+    @staticmethod
+    def _matches(record: _StoredPayslip, metadata: os.stat_result) -> bool:
+        return (stat.S_ISREG(metadata.st_mode) and metadata.st_dev == record.device
+                and metadata.st_ino == record.inode and metadata.st_size == record.byte_count
+                and 0 < metadata.st_size <= MAX_PAYSLIP_BYTES)
+
+    def _read_verified(self, intake_id: str, record: _StoredPayslip) -> bytes:
+        expected = self._path_for(intake_id, record.content_type)
+        if record.path != expected:
+            raise PayslipIntakeError("payslip storage path is unsafe")
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = None
+        try:
+            fd = os.open(record.path, flags)
+            before = os.fstat(fd)
+            if not self._matches(record, before):
+                raise PayslipIntakeError("payslip storage identity changed")
+            with os.fdopen(fd, "rb") as source:
+                fd = None
+                document_bytes = source.read(MAX_PAYSLIP_BYTES + 1)
+                after = os.fstat(source.fileno())
+            if (not self._matches(record, after) or len(document_bytes) != record.byte_count
+                    or hashlib.sha256(document_bytes).hexdigest() != record.content_sha256
+                    or not document_bytes.startswith(_TYPES[record.content_type][1])):
+                raise PayslipIntakeError("payslip storage integrity check failed")
+            return document_bytes
+        except PayslipIntakeError:
+            raise
+        except OSError as exc:
+            raise PayslipIntakeError("payslip document could not be read") from exc
+        finally:
+            if fd is not None:
+                os.close(fd)
+
     def _delete(self, intake_id: str, record: _StoredPayslip) -> None:
         # Reconstruct and validate the path rather than trusting retained input.
         expected = self._path_for(intake_id, record.content_type)
-        if record.path != expected or record.path.is_symlink():
+        if record.path != expected:
             raise PayslipIntakeError("payslip storage path is unsafe")
+        try:
+            metadata = record.path.lstat()
+        except FileNotFoundError:
+            self._records.pop(intake_id, None)
+            return
+        except OSError as exc:
+            raise PayslipIntakeError("payslip storage path is unavailable") from exc
+        if not self._matches(record, metadata):
+            raise PayslipIntakeError("payslip storage identity changed")
         try:
             record.path.unlink(missing_ok=True)
         except OSError as exc:
@@ -193,8 +258,10 @@ class PayslipIntakeBoundary:
         content_type, document_bytes = self._validate_document(content_type, document_bytes)
         intake_id = secrets.token_hex(32)
         path = self._path_for(intake_id, content_type)
-        self._write(path, document_bytes)
-        self._records[intake_id] = _StoredPayslip(owner, session, year, content_type, path)
+        device, inode, byte_count, content_sha256 = self._write(path, document_bytes)
+        self._records[intake_id] = _StoredPayslip(
+            owner, session, year, content_type, path, device, inode, byte_count, content_sha256,
+        )
         return PayslipIntakeHandle(intake_id=intake_id, tax_year=year)
 
     def cancel(self, *, handle: PayslipIntakeHandle, authenticated_user_id: int,
@@ -217,7 +284,7 @@ class PayslipIntakeBoundary:
         try:
             if self._extraction_adapter is None:
                 raise PayslipIntakeError("payslip extraction adapter is not configured")
-            document_bytes = record.path.read_bytes()
+            document_bytes = self._read_verified(intake_id, record)
             candidate = self._extraction_adapter.extract_payslip(
                 document_bytes=document_bytes, content_type=record.content_type, tax_year=record.tax_year,
             )
