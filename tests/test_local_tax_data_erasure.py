@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import pytest
 from flask import session
 from flask_wtf.csrf import generate_csrf
@@ -161,3 +162,17 @@ def test_invalid_or_duplicate_installation_does_not_mutate_app(prepared):
     _install(app, repository, boundary, clearances, [])
     with pytest.raises(LocalTaxDataErasureInstallationError):
         _install(app, repository, boundary, clearances, [])
+
+
+@pytest.mark.parametrize("mutate", (
+    lambda legal, backup: (_clearance(999, "legal_hold_clear"), backup),
+    lambda legal, backup: (replace(legal, state="revoked", revoked_at="2026-09-02T00:00:00+00:00"), backup),
+    lambda legal, backup: (legal, replace(backup, expires_at="2020-01-01T00:00:00+00:00")),
+))
+def test_clearance_failures_do_not_report_success(prepared, monkeypatch, mutate):
+    app, owner, _, repository, boundary, clearances = prepared
+    calls = []; _install(app, repository, boundary, mutate(*clearances), calls)
+    monkeypatch.setenv("LOCAL_TAX_DATA_ERASURE_ENABLED", "1")
+    client, token = _client(app, owner)
+    assert client.post("/v2/account/local-tax-data-erasure", data={"csrf_token": token}).status_code == 403
+    assert calls == [owner]
