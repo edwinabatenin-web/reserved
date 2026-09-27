@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 def create_app(
     *, billing_runtime: object = None, paye_runtime: object = None,
-    paye_forecast_runtime: object = None,
+    paye_forecast_runtime: object = None, hicbc_runtime: object = None,
 ) -> Flask:
     # ── Logging ───────────────────────────────────────────────────────────────
     _log_level = logging.DEBUG if os.environ.get("FLASK_DEBUG") == "1" else logging.INFO
@@ -79,6 +79,7 @@ def create_app(
     billing_boundary_required = (
         is_production_environment() or billing_runtime is not None
         or paye_runtime is not None or paye_forecast_runtime is not None
+        or hicbc_runtime is not None
     )
     if billing_boundary_required:
         install_disabled_paid_surface_enforcement(app)
@@ -127,6 +128,24 @@ def create_app(
                 )
         else:
             log.error("Invalid PAYE forecast runtime ignored; forecast remains unavailable")
+
+    # Durable HICBC composition uses a separate exact dependency set. It is
+    # always a static paid surface, remains disabled by default and cannot be
+    # installed unless exact active paid-access enforcement is already present.
+    if hicbc_runtime is not None:
+        from .hicbc_durable_endpoint import (
+            DurableHicbcRuntime,
+            install_durable_hicbc_annual_endpoint,
+        )
+        if type(hicbc_runtime) is DurableHicbcRuntime:
+            try:
+                install_durable_hicbc_annual_endpoint(app, hicbc_runtime)
+            except Exception:
+                log.exception(
+                    "HICBC durable runtime installation failed; annual position remains unavailable"
+                )
+        else:
+            log.error("Invalid HICBC runtime ignored; annual position remains unavailable")
 
     # ── Template globals ──────────────────────────────────────────────────────
     # Expose canonical_base and turnstile_site_key to every template so that
