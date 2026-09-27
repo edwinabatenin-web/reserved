@@ -42,7 +42,7 @@ import os
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from flask import (
-    Blueprint, abort, g, jsonify, redirect, render_template,
+    Blueprint, abort, current_app, g, jsonify, redirect, render_template,
     request, session, url_for,
 )
 from markupsafe import Markup
@@ -73,7 +73,11 @@ from reserved.database import (
     persist_match_result,
 )
 from reserved.extensions import csrf
-from reserved.config import paye_manual_baseline_enabled, paye_manual_journey_enabled
+from reserved.config import (
+    durable_paye_composition_enabled,
+    paye_manual_baseline_enabled,
+    paye_manual_journey_enabled,
+)
 from reserved.services.paye_manual_baseline import review_manual_baseline
 from reserved.services.paye_customer_orchestration import (
     admit_manual_entry, annual_position_boundary_state, customer_read_model,
@@ -668,6 +672,29 @@ def delete_paye_manual_journey_entry(evidence_id):
     # Do not distinguish absent/other-owner/already-deleted records.
     delete_paye_manual_entry(g.user_id, year, evidence_id)
     return redirect(url_for("v2.paye_manual_journey"))
+
+
+@v2.get("/paye/current-position")
+@require_auth
+def paye_durable_current_position():
+    """Paid, disabled-first evidence state from the durable manual PAYE bridge."""
+    if (not durable_paye_composition_enabled() or request.args
+            or request.content_length not in (None, 0)):
+        abort(404)
+    from reserved.paye_durable_endpoint import (
+        DurablePayeRuntime,
+        current_position_payload,
+    )
+    try:
+        runtime = current_app.extensions.get("reserved.paye.durable_endpoint")
+        if type(runtime) is not DurablePayeRuntime:
+            raise ValueError
+        if type(g.user_id) is not int or g.user_id <= 0 or get_user(g.user_id) is None:
+            raise ValueError
+        payload = current_position_payload(runtime, g.user_id)
+    except Exception:
+        abort(404)
+    return jsonify(payload)
 
 
 @v2.route("/mtd/scope-indication", methods=["GET", "POST"])

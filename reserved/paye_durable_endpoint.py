@@ -8,28 +8,43 @@ resolver. A browser cannot select a business, year, nation or future-pay fact.
 
 from __future__ import annotations
 
-from flask import Flask, abort, jsonify, request
+from dataclasses import dataclass
 
-from reserved.auth import require_auth
-from reserved.config import durable_paye_composition_enabled
+from flask import Flask
+
 from reserved.engines.paye_reconciliation import PayeReconciliationPolicy
 from reserved.paye_annual_bridge import compose_durable_authenticated_manual_paye
 
 
 _KEY = "reserved.paye.durable_endpoint"
 _RULE = "/v2/paye/current-position"
-_ENDPOINT = "paye_durable_current_position"
+_ENDPOINT = "v2.paye_durable_current_position"
 
 
 class DurablePayeEndpointError(ValueError):
     """Installation failed before modifying the Flask application."""
 
 
-class DurablePayeEndpointHandle:
-    __slots__ = ()
+@dataclass(frozen=True, slots=True)
+class DurablePayeRuntime:
+    """Complete server-owned dependencies for the current-position route."""
 
-    def __new__(cls):
-        raise TypeError("durable PAYE endpoint handles are installer-issued only")
+    repository: object
+    annual_position_provider: object
+    owner_scope_resolver: object
+    reconciliation_policy: object
+
+    def __post_init__(self):
+        from reserved.annual_position_durable_repository import DurableAnnualPositionRepository
+
+        if type(self.repository) is not DurableAnnualPositionRepository:
+            raise DurablePayeEndpointError("exact durable repository is required")
+        if not callable(self.annual_position_provider) or not callable(self.owner_scope_resolver):
+            raise DurablePayeEndpointError(
+                "explicit annual and owner-scope dependencies are required"
+            )
+        if type(self.reconciliation_policy) is not PayeReconciliationPolicy:
+            raise DurablePayeEndpointError("exact reconciliation policy is required")
 
 
 def _scope(value):
@@ -43,69 +58,48 @@ def _scope(value):
     return business, tax_year, nation
 
 
-def install_durable_paye_composition_endpoint(
-    app: Flask,
-    *,
-    repository,
-    annual_position_provider,
-    owner_scope_resolver,
-    reconciliation_policy,
-):
-    """Install one GET endpoint after complete dependency/route validation.
-
-    The feature switch is read during each request. An unconfigured or disabled
-    application returns a value-free 404, so installing the endpoint does not
-    activate it. Every other unavailable/mismatched dependency also fails
-    closed without a financial result.
-    """
-    from reserved.annual_position_durable_repository import DurableAnnualPositionRepository
-
-    if type(app) is not Flask or app._got_first_request or _KEY in app.extensions:
-        raise DurablePayeEndpointError("exact pre-request Flask installation is required")
-    if type(repository) is not DurableAnnualPositionRepository:
-        raise DurablePayeEndpointError("exact durable repository is required")
-    if not callable(annual_position_provider) or not callable(owner_scope_resolver):
-        raise DurablePayeEndpointError("explicit annual and owner-scope dependencies are required")
-    if type(reconciliation_policy) is not PayeReconciliationPolicy:
-        raise DurablePayeEndpointError("exact reconciliation policy is required")
-    if _ENDPOINT in app.view_functions or any(rule.rule == _RULE for rule in app.url_map.iter_rules()):
+def install_durable_paye_composition_endpoint(app: Flask, runtime: DurablePayeRuntime):
+    """Bind complete dependencies to the pre-registered, paid-only route."""
+    if (type(app) is not Flask or app._got_first_request or _KEY in app.extensions
+            or type(runtime) is not DurablePayeRuntime):
+        raise DurablePayeEndpointError("exact pre-request runtime installation is required")
+    rules = tuple(
+        rule for rule in app.url_map.iter_rules()
+        if rule.endpoint == _ENDPOINT or rule.rule == _RULE
+    )
+    if (len(rules) != 1 or rules[0].endpoint != _ENDPOINT or rules[0].rule != _RULE
+            or rules[0].methods != {"GET", "HEAD", "OPTIONS"}):
         raise DurablePayeEndpointError("PAYE endpoint registration is ambiguous")
+    app.extensions[_KEY] = runtime
+    return runtime
 
-    @require_auth
-    def current_position():
-        # No browser-selected scope, optional payload, or future-pay data is
-        # accepted. Empty request shape prevents accidental parameter channels.
-        if not durable_paye_composition_enabled() or request.args:
-            abort(404)
-        from reserved.auth import current_user_id
-        try:
-            owner = current_user_id()
-            if type(owner) is not int or owner <= 0:
-                raise ValueError
-            scope = _scope(owner_scope_resolver(owner))
-            if scope is None:
-                raise ValueError
-            business, tax_year, nation = scope
-            annual = annual_position_provider(owner, business, tax_year, nation)
-            result = compose_durable_authenticated_manual_paye(
-                repository=repository, annual_position=annual,
-                authenticated_owner_user_id=owner, business_reference=business,
-                tax_year=tax_year, nation=nation, audit_reference="audit:paye-current-position",
-                reconciliation_policy=reconciliation_policy,
-            )
-        except Exception:
-            abort(404)
-        # This is intentionally evidence-state-only: no tax balance, reserve,
-        # payment, refund, transfer, filing, recommendation or action field.
-        return jsonify({
-            "tax_year": tax_year,
-            "paye_evidence_status": result.reconciliation.calculation_status,
-            "tax_paid_known": result.reconciliation.tax_paid_known,
-            "future_pay_status": "unknown" if result.future_pay_forecast is None else "confirmed_periods_only",
-        })
 
-    # All validation occurred before the single bounded Flask mutation below.
-    app.add_url_rule(_RULE, endpoint=_ENDPOINT, view_func=current_position, methods=("GET",))
-    handle = object.__new__(DurablePayeEndpointHandle)
-    app.extensions[_KEY] = handle
-    return handle
+def current_position_payload(runtime: DurablePayeRuntime, owner: int) -> dict:
+    """Compose the value-bounded response from exact server-owned inputs."""
+    if type(runtime) is not DurablePayeRuntime or type(owner) is not int or owner <= 0:
+        raise DurablePayeEndpointError("durable PAYE runtime is unavailable")
+    scope = _scope(runtime.owner_scope_resolver(owner))
+    if scope is None:
+        raise DurablePayeEndpointError("owner scope is unavailable")
+    business, tax_year, nation = scope
+    annual = runtime.annual_position_provider(owner, business, tax_year, nation)
+    result = compose_durable_authenticated_manual_paye(
+        repository=runtime.repository, annual_position=annual,
+        authenticated_owner_user_id=owner, business_reference=business,
+        tax_year=tax_year, nation=nation, audit_reference="audit:paye-current-position",
+        reconciliation_policy=runtime.reconciliation_policy,
+    )
+    return {
+        "tax_year": tax_year,
+        "paye_evidence_status": result.reconciliation.calculation_status,
+        "tax_paid_known": result.reconciliation.tax_paid_known,
+        "future_pay_status": (
+            "unknown" if result.future_pay_forecast is None else "confirmed_periods_only"
+        ),
+    }
+
+
+__all__ = [
+    "DurablePayeEndpointError", "DurablePayeRuntime",
+    "current_position_payload", "install_durable_paye_composition_endpoint",
+]

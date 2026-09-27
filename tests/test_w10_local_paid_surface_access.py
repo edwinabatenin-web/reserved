@@ -23,6 +23,7 @@ CASES = (
     ('v2.paye_manual_baseline', '/v2/paye/manual-baseline', 'POST'),
     ('v2.paye_manual_journey', '/v2/paye/manual', 'GET'),
     ('v2.delete_paye_manual_journey_entry', '/v2/paye/manual/entries/synthetic/delete', 'POST'),
+    ('v2.paye_durable_current_position', '/v2/paye/current-position', 'GET'),
     ('v2.mtd_manual_scope', '/v2/mtd/scope-indication', 'POST'),
     ('v2.invoices', '/v2/invoices', 'GET'),
     ('v2.invoices_seed', '/v2/invoices/seed', 'POST'),
@@ -97,7 +98,7 @@ def denied(response):
 @pytest.mark.parametrize('endpoint,path,method', CASES)
 @pytest.mark.parametrize('state', ['missing', 'expired', 'withdrawn'])
 def test_every_paid_handler_denied_before_body(app, repo, endpoint, path, method, state):
-    assert tuple(c[0] for c in CASES) == paid.PAID_ENDPOINTS and len(CASES) == 30
+    assert tuple(c[0] for c in CASES) == paid.PAID_ENDPOINTS and len(CASES) == 31
     now = f.CLOCK
     if state != 'missing':
         initial = f._append(repo)
@@ -179,7 +180,7 @@ def test_conditional_absence_never_registers_hicbc(app, repo, monkeypatch):
     application.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
     before = dict(application.view_functions)
     client, _ = install(application, repo)
-    assert len([n for n in before if n in paid.PAID_ENDPOINTS]) == 21
+    assert len([n for n in before if n in paid.PAID_ENDPOINTS]) == 22
     assert application.view_functions.keys() == before.keys()
     assert not any(n.startswith('hicbc.') for n in before)
     assert client.get('/v2/hicbc/').status_code == 404

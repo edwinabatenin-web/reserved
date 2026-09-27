@@ -62,18 +62,18 @@ only when `HICBC_ENABLED` is explicitly enabled.
   "paid_entitlement_enforcement_status": "guard_kernel_only_runtime_adapter_and_route_wiring_not_started",
   "route_hardening_changes": true,
   "route_counts": {
-    "always": 48,
+    "always": 49,
     "hicbc_feature_enabled_additional": 9,
-    "hicbc_feature_enabled_total": 57
+    "hicbc_feature_enabled_total": 58
   },
   "classification_counts": {
     "public_infrastructure_auth_legal_support": 14,
-    "authenticated_product_candidate_pending_founder_decision": 30,
+    "authenticated_product_candidate_pending_founder_decision": 31,
     "billing_purchase_return_recovery_candidate": 2,
     "internal_admin_unknown_requiring_reconciliation": 11
   },
   "source_sha256": {
-    "reserved/__init__.py": "25ae236e69d39f4f7a0f7220c077b5a5593530f93ceecac70e59c2ee6e80eec0",
+    "reserved/__init__.py": "b43e5de904fa55da5a0387e2501641fa604f381749718ab526c1f4d7ea6fb7c1",
     "reserved/api/routes.py": "9d865764b222c0985b27c23707a7cea8a8327152795deb14e91a27feef081364",
     "reserved/auth.py": "adfe50a348a94e1f1a7405a41d92ec39b5d1a9db8c92b64222410701af39ae91",
     "reserved/config.py": "dd35367653820e5162aa7bdba6cdaeac47614ac072b5bceba0772c6f1c8374be",
@@ -81,7 +81,7 @@ only when `HICBC_ENABLED` is explicitly enabled.
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
     "reserved/web/hicbc.py": "f64b1f7db99c42d27d6ec4995b78bd20e0214ddeed1934a157f543cb283d8f23",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
-    "reserved/web/v2.py": "da269a98691d6b1f19d88a201102dff9f4a0dfb1a7362bbb98b2d35615c5603d"
+    "reserved/web/v2.py": "66697844f581226ea7817cd22d5f9c1728431499edf96c0968c6e00583c08560"
   },
   "routes": [
     {
@@ -353,6 +353,16 @@ only when `HICBC_ENABLED` is explicitly enabled.
       "csrf": "global",
       "classification": "authenticated_product_candidate_pending_founder_decision",
       "note": "Owner-bound deletion within the disabled-by-default manual PAYE journey. Ordinary paid product surface."
+    },
+    {
+      "endpoint": "v2.paye_durable_current_position",
+      "rule": "/v2/paye/current-position",
+      "methods": ["GET"],
+      "registration": "always",
+      "guard": "customer_session",
+      "csrf": "not_applicable",
+      "classification": "authenticated_product_candidate_pending_founder_decision",
+      "note": "Disabled-first owner-bound structured manual PAYE current-position evidence read. A complete injected PAYE runtime supplies server-owned scope and annual inputs; the settled paid-access boundary remains independently mandatory."
     },
     {
       "endpoint": "v2.mtd_manual_scope",

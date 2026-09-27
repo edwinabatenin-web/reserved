@@ -17,7 +17,7 @@ from .api.routes import api
 log = logging.getLogger(__name__)
 
 
-def create_app(*, billing_runtime: object = None) -> Flask:
+def create_app(*, billing_runtime: object = None, paye_runtime: object = None) -> Flask:
     # ── Logging ───────────────────────────────────────────────────────────────
     _log_level = logging.DEBUG if os.environ.get("FLASK_DEBUG") == "1" else logging.INFO
     logging.basicConfig(
@@ -73,7 +73,9 @@ def create_app(*, billing_runtime: object = None) -> Flask:
     # always closed by default.  Supplying any runtime candidate also installs
     # the closed boundary first, so an invalid or failed injection cannot make
     # a paid feature available.
-    billing_boundary_required = is_production_environment() or billing_runtime is not None
+    billing_boundary_required = (
+        is_production_environment() or billing_runtime is not None or paye_runtime is not None
+    )
     if billing_boundary_required:
         install_disabled_paid_surface_enforcement(app)
     if type(billing_runtime) is StripeBillingRuntime:
@@ -86,6 +88,23 @@ def create_app(*, billing_runtime: object = None) -> Flask:
             log.exception("Billing runtime installation failed; paid features remain unavailable")
     elif billing_runtime is not None:
         log.error("Invalid billing runtime ignored; paid features remain unavailable")
+
+    # The durable PAYE route is always registered as a disabled paid surface.
+    # Only a complete explicitly injected runtime can supply its server-owned
+    # repository, annual-position and scope dependencies.  Billing remains a
+    # separate outer access boundary: PAYE injection never grants entitlement.
+    if paye_runtime is not None:
+        from .paye_durable_endpoint import (
+            DurablePayeRuntime,
+            install_durable_paye_composition_endpoint,
+        )
+        if type(paye_runtime) is DurablePayeRuntime:
+            try:
+                install_durable_paye_composition_endpoint(app, paye_runtime)
+            except Exception:
+                log.exception("PAYE runtime installation failed; current position remains unavailable")
+        else:
+            log.error("Invalid PAYE runtime ignored; current position remains unavailable")
 
     # ── Template globals ──────────────────────────────────────────────────────
     # Expose canonical_base and turnstile_site_key to every template so that

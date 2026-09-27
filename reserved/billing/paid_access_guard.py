@@ -50,6 +50,7 @@ PAID_ENDPOINTS = (
     "v2.paye_manual_baseline",
     "v2.paye_manual_journey",
     "v2.delete_paye_manual_journey_entry",
+    "v2.paye_durable_current_position",
     "v2.mtd_manual_scope",
     "v2.invoices",
     "v2.invoices_seed",

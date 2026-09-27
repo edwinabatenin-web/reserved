@@ -8,7 +8,8 @@ from reserved import create_app
 from reserved.auth import _SK_USER_ID
 from reserved.engines.paye_reconciliation import make_paye_reconciliation_policy
 from reserved.paye_durable_endpoint import (
-    DurablePayeEndpointError, install_durable_paye_composition_endpoint,
+    DurablePayeEndpointError, DurablePayeRuntime,
+    install_durable_paye_composition_endpoint,
 )
 from tests.test_paye_annual_bridge import durable_annual, entry
 
@@ -31,12 +32,13 @@ def prepared(tmp_path, monkeypatch):
 
 
 def install(app, annual, repository, scope=None, provider=None):
-    return install_durable_paye_composition_endpoint(
-        app, repository=repository,
+    runtime = DurablePayeRuntime(
+        repository=repository,
         annual_position_provider=provider or (lambda *_: annual),
         owner_scope_resolver=scope or (lambda _: ("business-1", "2026/27", "England")),
         reconciliation_policy=make_paye_reconciliation_policy(45, Decimal("1.00")),
     )
+    return install_durable_paye_composition_endpoint(app, runtime)
 
 
 def signed_client(app, owner):
@@ -83,10 +85,18 @@ def test_invalid_installation_leaves_flask_unmodified(prepared):
     before_rules = tuple((rule.rule, rule.endpoint) for rule in app.url_map.iter_rules())
     before_extensions = dict(app.extensions)
     with pytest.raises(DurablePayeEndpointError):
-        install_durable_paye_composition_endpoint(
-            app, repository=repository, annual_position_provider=lambda *_: annual,
+        DurablePayeRuntime(
+            repository=repository, annual_position_provider=lambda *_: annual,
             owner_scope_resolver=lambda _: ("business-1", "2026/27", "England"),
             reconciliation_policy=object(),
         )
     assert tuple((rule.rule, rule.endpoint) for rule in app.url_map.iter_rules()) == before_rules
     assert app.extensions == before_extensions
+
+
+def test_duplicate_runtime_installation_is_refused_without_replacement(prepared):
+    app, _, _, annual, repository = prepared
+    first = install(app, annual, repository)
+    with pytest.raises(DurablePayeEndpointError):
+        install(app, annual, repository)
+    assert app.extensions["reserved.paye.durable_endpoint"] is first
