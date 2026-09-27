@@ -26,6 +26,11 @@ def paye_manual_baseline_enabled() -> bool:
     return os.environ.get("PAYE_MANUAL_BASELINE_ENABLED", "") == "1"
 
 
+def paye_manual_journey_enabled() -> bool:
+    """Independent disabled-first switch for the structured PAYE journey."""
+    return os.environ.get("PAYE_MANUAL_JOURNEY_ENABLED", "") == "1"
+
+
 def mtd_manual_scope_enabled() -> bool:
     """Independent local manual MTD journey; never enabled implicitly."""
     return os.environ.get("MTD_MANUAL_SCOPE_ENABLED", "") == "1"

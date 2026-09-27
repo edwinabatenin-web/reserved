@@ -458,6 +458,35 @@ CREATE TABLE IF NOT EXISTS invoice_matches (
     matched_amount REAL    NOT NULL,
     review_state   TEXT    NOT NULL DEFAULT 'pending_review'
 );
+
+-- Customer-confirmed structured PAYE facts. Raw payslips, employer names,
+-- payroll references and National Insurance numbers are deliberately absent.
+CREATE TABLE IF NOT EXISTS paye_manual_entries (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tax_year          TEXT    NOT NULL,
+    employment_slot   INTEGER NOT NULL CHECK(employment_slot BETWEEN 1 AND 20),
+    evidence_id       TEXT    NOT NULL UNIQUE,
+    source_kind       TEXT    NOT NULL CHECK(source_kind = 'customer_confirmed_manual'),
+    provenance        TEXT    NOT NULL,
+    gross_to_date     TEXT,
+    tax_paid_to_date  TEXT,
+    tax_code          TEXT,
+    pay_frequency     TEXT    NOT NULL,
+    pension_treatment TEXT    NOT NULL,
+    effective_through TEXT    NOT NULL,
+    observed_on       TEXT    NOT NULL,
+    completeness      TEXT    NOT NULL CHECK(completeness IN ('partial', 'unknown')),
+    replaced_at       TEXT,
+    deleted_at        TEXT,
+    created_at        TEXT    NOT NULL,
+    UNIQUE(user_id, tax_year, evidence_id)
+);
+CREATE INDEX IF NOT EXISTS idx_paye_manual_entries_owner
+    ON paye_manual_entries(user_id, tax_year, employment_slot, deleted_at, replaced_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_paye_manual_entries_active_slot
+    ON paye_manual_entries(user_id, tax_year, employment_slot)
+    WHERE replaced_at IS NULL AND deleted_at IS NULL;
 """
 
 
@@ -480,7 +509,7 @@ CREATE TABLE IF NOT EXISTS invoice_matches (
 # - The DDL block above always reflects the full target schema; migrations
 #   handle upgrade paths for databases created before the current DDL.
 #
-_SCHEMA_VERSION = 11   # increment when adding new migration entries below
+_SCHEMA_VERSION = 12   # increment when adding new migration entries below
 
 _MIGRATIONS: dict[int, list[str]] = {
     # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
@@ -646,6 +675,28 @@ _MIGRATIONS: dict[int, list[str]] = {
             created_at       TEXT    NOT NULL,
             expires_at       TEXT    NOT NULL
         )""",
+    ],
+    # Version 12 — structured, owner-bound manual PAYE evidence. This stores
+    # no raw document or direct employer identifiers; replacement/deletion are
+    # explicit state transitions and user deletion cascades through the FK.
+    12: [
+        """CREATE TABLE IF NOT EXISTS paye_manual_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            tax_year TEXT NOT NULL,
+            employment_slot INTEGER NOT NULL CHECK(employment_slot BETWEEN 1 AND 20),
+            evidence_id TEXT NOT NULL UNIQUE,
+            source_kind TEXT NOT NULL CHECK(source_kind = 'customer_confirmed_manual'),
+            provenance TEXT NOT NULL,
+            gross_to_date TEXT, tax_paid_to_date TEXT, tax_code TEXT,
+            pay_frequency TEXT NOT NULL, pension_treatment TEXT NOT NULL,
+            effective_through TEXT NOT NULL, observed_on TEXT NOT NULL,
+            completeness TEXT NOT NULL CHECK(completeness IN ('partial', 'unknown')),
+            replaced_at TEXT, deleted_at TEXT, created_at TEXT NOT NULL,
+            UNIQUE(user_id, tax_year, evidence_id)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_paye_manual_entries_owner ON paye_manual_entries(user_id, tax_year, employment_slot, deleted_at, replaced_at)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_paye_manual_entries_active_slot ON paye_manual_entries(user_id, tax_year, employment_slot) WHERE replaced_at IS NULL AND deleted_at IS NULL",
     ],
 }
 
@@ -1410,6 +1461,84 @@ def get_user(user_id: int) -> dict | None:
             (user_id,),
         ).fetchone()
         return dict(row) if row else None
+
+
+# ── Structured manual PAYE evidence ───────────────────────────────────────────
+
+def save_paye_manual_entry(user_id: int, data: dict) -> None:
+    """Save one confirmed, minimised PAYE entry for its authenticated owner.
+
+    ``data`` is admitted by the PAYE orchestration service. This narrow storage
+    adapter deliberately accepts only structured cumulative figures and fixed
+    provenance; it never receives a payslip, uploaded content, employer name,
+    payroll reference, National Insurance number or future-pay assumption.
+    """
+    if type(user_id) is not int or user_id <= 0 or type(data) is not dict:
+        raise ValueError("Invalid PAYE entry")
+    from reserved.services.paye_customer_orchestration import validate_admitted_manual_entry
+    validate_admitted_manual_entry(data)
+    now = _now()
+    with _connection() as conn:
+        if conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
+            raise ValueError("Unknown PAYE entry owner")
+        # A confirmed correction replaces only the active entry in the same
+        # opaque employment slot. Historical rows remain unavailable to normal
+        # reads, preserving an auditable replacement transition without keeping
+        # any raw source document.
+        conn.execute(
+            "UPDATE paye_manual_entries SET replaced_at = ? WHERE user_id = ? "
+            "AND tax_year = ? AND employment_slot = ? AND replaced_at IS NULL AND deleted_at IS NULL",
+            (now, user_id, data["tax_year"], data["employment_slot"]),
+        )
+        conn.execute(
+            """INSERT INTO paye_manual_entries
+               (user_id, tax_year, employment_slot, evidence_id, source_kind, provenance,
+                gross_to_date, tax_paid_to_date, tax_code, pay_frequency, pension_treatment,
+                effective_through, observed_on, completeness, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, data["tax_year"], data["employment_slot"], data["evidence_id"],
+             data["source_kind"], data["provenance"], data["gross_to_date"],
+             data["tax_paid_to_date"], data["tax_code"], data["pay_frequency"],
+             data["pension_treatment"], data["effective_through"], data["observed_on"],
+             data["completeness"], now),
+        )
+
+
+def list_active_paye_manual_entries(user_id: int, tax_year: str) -> list[dict]:
+    """Return current structured entries for one authenticated owner/year."""
+    if type(user_id) is not int or user_id <= 0 or type(tax_year) is not str:
+        raise ValueError("Invalid PAYE owner/year")
+    with _connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM paye_manual_entries WHERE user_id = ? AND tax_year = ? "
+            "AND replaced_at IS NULL AND deleted_at IS NULL ORDER BY employment_slot, id",
+            (user_id, tax_year),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def delete_paye_manual_entry(user_id: int, tax_year: str, evidence_id: str) -> bool:
+    """Remove one owner-bound entry from current use; retain its audit row."""
+    if type(user_id) is not int or user_id <= 0 or type(tax_year) is not str or type(evidence_id) is not str:
+        raise ValueError("Invalid PAYE deletion request")
+    with _connection() as conn:
+        changed = conn.execute(
+            "UPDATE paye_manual_entries SET deleted_at = ? WHERE user_id = ? AND tax_year = ? "
+            "AND evidence_id = ? AND replaced_at IS NULL AND deleted_at IS NULL",
+            (_now(), user_id, tax_year, evidence_id),
+        ).rowcount
+    return changed == 1
+
+
+def delete_all_paye_manual_entries_for_user(user_id: int) -> int:
+    """Account-erasure hook for structured PAYE entries; no raw document exists."""
+    if type(user_id) is not int or user_id <= 0:
+        raise ValueError("Invalid PAYE deletion owner")
+    with _connection() as conn:
+        return conn.execute(
+            "UPDATE paye_manual_entries SET deleted_at = ? WHERE user_id = ? AND deleted_at IS NULL",
+            (_now(), user_id),
+        ).rowcount
 
 
 def migrate_session_to_user(session_key: str, user_id: int) -> dict:

@@ -25,6 +25,8 @@ _ROUTES = (
     ("v2.connections", "/v2/connections", "GET"),
     ("v2.dashboard_view", "/v2/dashboard", "GET"),
     ("v2.paye_manual_baseline", "/v2/paye/manual-baseline", "GET POST"),
+    ("v2.paye_manual_journey", "/v2/paye/manual", "GET POST"),
+    ("v2.delete_paye_manual_journey_entry", "/v2/paye/manual/entries/<evidence_id>/delete", "POST"),
     ("v2.mtd_manual_scope", "/v2/mtd/scope-indication", "GET POST"),
     ("v2.invoices", "/v2/invoices", "GET"),
     ("v2.invoices_seed", "/v2/invoices/seed", "POST"),

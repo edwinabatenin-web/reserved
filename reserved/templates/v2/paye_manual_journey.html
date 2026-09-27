@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Manual PAYE evidence — Reserved{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">Limited preview</p><h1>Manual PAYE evidence</h1><p>Tax year {{ tax_year }}. Add one cumulative entry for each employment.</p></div></section>
+<section class="panel">
+  <p>Use current cumulative figures from the beginning of the tax year. This route stores only the figures you confirm, their source/provenance, dates and completeness. Do not enter employer names, payroll references, National Insurance numbers or upload a payslip.</p>
+  <p>Unknown is not zero. These partial facts cannot confirm tax still to pay, an overpayment or a refund.</p>
+  {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="{{ url_for('v2.paye_manual_journey') }}" autocomplete="off" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset><legend>Confirmed cumulative figures</legend>
+      <label for="employment-slot">Employment</label><select id="employment-slot" name="employment_slot" required>{% for slot in range(1, 21) %}<option value="{{ slot }}">Employment {{ slot }}</option>{% endfor %}</select>
+      <label for="gross-pay">Cumulative gross pay (£)</label><input id="gross-pay" name="gross_pay_to_date" type="text" inputmode="decimal" maxlength="13">
+      <label for="tax-paid">Cumulative tax deducted (£)</label><input id="tax-paid" name="tax_paid_to_date" type="text" inputmode="decimal" maxlength="13">
+      <label for="tax-code">Tax code (leave blank if unknown)</label><input id="tax-code" name="tax_code" type="text" maxlength="32">
+      <label for="pay-frequency">Pay frequency</label><select id="pay-frequency" name="pay_frequency"><option value="unknown">Unknown</option><option value="weekly">Weekly</option><option value="fortnightly">Fortnightly</option><option value="four_weekly">Four weekly</option><option value="monthly">Monthly</option><option value="annually">Annually</option><option value="other">Other</option></select>
+      <label for="pension-treatment">Pension treatment</label><select id="pension-treatment" name="pension_treatment"><option value="unknown">Unknown</option><option value="none">None</option><option value="salary_sacrifice">Salary sacrifice</option><option value="net_pay">Net pay</option><option value="relief_at_source">Relief at source</option></select>
+      <label for="effective-date">Figures effective through</label><input id="effective-date" name="effective_through" type="date" required>
+    </fieldset>
+    <label><input type="checkbox" name="confirmation" value="yes" required> I confirm these are cumulative facts for this employment and have left unknown values blank.</label>
+    <button type="submit">Save confirmed PAYE facts</button>
+  </form>
+</section>
+<section class="panel"><h2>Your current PAYE evidence</h2>
+  {% if entries %}<ul>{% for entry in entries %}<li><strong>Employment {{ entry.employment_slot }}</strong>: gross {{ entry.gross }}, tax deducted {{ entry.tax_paid }}; effective {{ entry.effective_through }}; {{ entry.completeness }}{% if entry.state == 'needs-update' %}. This entry may be out of date.{% endif %}{% if entry.missing %}. Missing: {{ entry.missing|join(', ') }}.{% endif %}
+    <form method="post" action="{{ url_for('v2.delete_paye_manual_journey_entry', evidence_id=entry.evidence_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Remove this entry from your current PAYE view</button></form></li>{% endfor %}</ul>{% else %}<p>No confirmed PAYE facts have been saved.</p>{% endif %}
+  <p>{{ annual_boundary }}</p>
+</section>
+<p><a href="{{ url_for('v2.dashboard_view') }}">Back to dashboard</a></p>
+{% endblock %}
