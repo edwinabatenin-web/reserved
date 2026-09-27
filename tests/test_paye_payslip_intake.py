@@ -453,6 +453,7 @@ def test_account_lifecycle_cleanup_stops_and_preserves_metadata_on_replacement(t
         boundary.erase_owner_for_account_lifecycle(authenticated_user_id=OWNER)
     assert _metadata(first.intake_id) is not None
     assert _metadata(second.intake_id) is not None
+    assert len(_files(tmp_path)) == 2
 
 
 def test_account_lifecycle_barrier_makes_concurrent_intake_post_linearization(tmp_path):

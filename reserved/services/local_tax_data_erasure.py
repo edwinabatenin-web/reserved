@@ -10,11 +10,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from flask import Flask, abort, jsonify, request, session
+from flask import Flask, abort, jsonify, request
 
-from reserved.auth import _SK_USER_ID
+from reserved.auth import current_user_id, require_auth
 from reserved.config import local_tax_data_erasure_enabled
-from reserved.database import get_user
 from reserved.services.paye_payslip_intake import PayslipIntakeError
 
 
@@ -64,12 +63,13 @@ def install_local_tax_data_erasure(app, *, durable_repository, payslip_boundary,
     if not _route_is_available(app):
         raise LocalTaxDataErasureInstallationError("local tax-data erasure route collision")
 
+    @require_auth
     def erase_local_tax_data():
         # Keep these cheap gates before consulting any authority provider.
         if not local_tax_data_erasure_enabled():
             abort(404)
-        owner = session.get(_SK_USER_ID)
-        if type(owner) is not int or get_user(owner) is None:
+        owner = current_user_id()
+        if type(owner) is not int or owner <= 0:
             abort(403)
         if (request.args or request.files or request.mimetype != "application/x-www-form-urlencoded"
                 or set(request.form.keys()) != {"csrf_token"}

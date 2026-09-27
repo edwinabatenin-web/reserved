@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from contextlib import contextmanager
+import fcntl
 import hashlib
 import os
 from pathlib import Path
@@ -129,6 +131,22 @@ class PayslipIntakeBoundary:
             if isinstance(exc, PayslipIntakeError):
                 raise
             raise PayslipIntakeError("payslip quarantine is unavailable") from exc
+        try:
+            os.mkdir(".locks", 0o700, dir_fd=self._root_fd)
+        except FileExistsError:
+            pass
+        try:
+            self._locks_fd = os.open(".locks", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                     dir_fd=self._root_fd)
+            lock_stat = os.fstat(self._locks_fd)
+            if (not stat.S_ISDIR(lock_stat.st_mode) or lock_stat.st_mode & 0o077
+                    or lock_stat.st_uid != os.geteuid()):
+                raise PayslipIntakeError("payslip lock directory is unavailable")
+        except (OSError, PayslipIntakeError) as exc:
+            self.close()
+            if isinstance(exc, PayslipIntakeError):
+                raise
+            raise PayslipIntakeError("payslip lock directory is unavailable") from exc
         self._enabled = enabled
         self._extraction_adapter = extraction_adapter
         self._records: dict[str, _StoredPayslip] = {}
@@ -141,7 +159,7 @@ class PayslipIntakeBoundary:
 
     def close(self) -> None:
         """Release the private directory handle when the composed runtime stops."""
-        for name in ("_quarantine_fd", "_root_fd"):
+        for name in ("_locks_fd", "_quarantine_fd", "_root_fd"):
             fd = getattr(self, name, -1)
             setattr(self, name, -1)
             if fd >= 0:
@@ -186,6 +204,70 @@ class PayslipIntakeBoundary:
     def _owner_lock(self, owner: int) -> threading.RLock:
         with self._owner_locks_guard:
             return self._owner_locks.setdefault(owner, threading.RLock())
+
+    @staticmethod
+    def _owner_state_name(owner: int) -> str:
+        digest = hashlib.sha256(
+            b"reserved:payslip-owner-lock:v1\0" + str(owner).encode("ascii")
+        ).hexdigest()
+        return f"{digest}.state"
+
+    def _read_owner_state(self, owner: int) -> str:
+        name = self._owner_state_name(owner)
+        try:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=self._locks_fd)
+        except FileNotFoundError:
+            return "open"
+        except OSError as exc:
+            raise PayslipIntakeError("payslip owner lock state is unavailable") from exc
+        try:
+            value = os.read(fd, 16)
+            if value == b"":
+                return "open"
+            if value not in (b"open\n", b"blocked\n", b"erased\n"):
+                raise PayslipIntakeError("payslip owner lock state is invalid")
+            return value.decode("ascii").strip()
+        finally:
+            os.close(fd)
+
+    def _write_owner_state(self, owner: int, state: str) -> None:
+        if state not in ("blocked", "erased"):
+            raise PayslipIntakeError("payslip owner lock state is invalid")
+        name = self._owner_state_name(owner)
+        try:
+            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+                         0o600, dir_fd=self._locks_fd)
+            try:
+                os.write(fd, (state + "\n").encode("ascii"))
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            os.fsync(self._locks_fd)
+        except OSError as exc:
+            raise PayslipIntakeError("payslip owner lock state could not be persisted") from exc
+
+    @contextmanager
+    def _owner_guard(self, owner: int, *, permit_blocked: bool = False):
+        """Cross-instance owner lock plus the local reentrant mutation lock."""
+        with self._owner_lock(owner):
+            name = self._owner_state_name(owner)
+            fd = -1
+            try:
+                fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600,
+                             dir_fd=self._locks_fd)
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                state = self._read_owner_state(owner)
+                if state == "erased" or (state == "blocked" and not permit_blocked):
+                    raise PayslipIntakeError("payslip owner lifecycle is unavailable")
+                yield state
+            except OSError as exc:
+                raise PayslipIntakeError("payslip owner lock is unavailable") from exc
+            finally:
+                if fd >= 0:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+                    finally:
+                        os.close(fd)
 
     @staticmethod
     def _timestamp() -> str:
@@ -323,6 +405,40 @@ class PayslipIntakeBoundary:
             raise PayslipIntakeError("payslip document could not enter deletion quarantine") from exc
         return self._delete_quarantined_or_finish(intake_id, record, quarantine)
 
+    def _preflight_account_lifecycle_delete(self, *, state: str, intake_id: str,
+                                             record: _StoredPayslip) -> None:
+        """Reject a whole-owner cleanup before it has deleted any owned file."""
+        filename = self._filename_for(intake_id, record.content_type)
+        quarantine = self._quarantine_filename(intake_id, record.content_type)
+        try:
+            original = os.stat(filename, dir_fd=self._root_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            original = None
+        except OSError as exc:
+            raise PayslipIntakeError("payslip storage path is unavailable") from exc
+        try:
+            quarantined = os.stat(quarantine, dir_fd=self._root_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            quarantined = None
+        except OSError as exc:
+            raise PayslipIntakeError("payslip deletion quarantine is unavailable") from exc
+        if original is not None and quarantined is not None:
+            raise PayslipIntakeError("payslip deletion state is ambiguous")
+        if original is not None:
+            if not self._matches(record, original):
+                raise PayslipIntakeError("payslip storage identity changed")
+            return
+        if quarantined is not None:
+            if not self._matches(record, quarantined):
+                raise PayslipIntakeError("payslip deletion quarantine identity changed")
+            if state != "deleting":
+                raise PayslipIntakeError("payslip deletion state is unavailable")
+            return
+        # Only an already-deleting row can be proven locally absent.  A pending
+        # row with no file is retained for operational disposition.
+        if state != "deleting":
+            raise PayslipIntakeError("payslip storage file is unavailable")
+
     def _delete_quarantined_or_finish(self, intake_id: str, record: _StoredPayslip, quarantine: str) -> None:
         try:
             metadata = os.stat(quarantine, dir_fd=self._root_fd, follow_symlinks=False)
@@ -425,7 +541,7 @@ class PayslipIntakeBoundary:
                 intake_id, record = decoded
                 expected[(intake_id, _TYPES[record.content_type][0], row["state"])] = record
         for name in os.listdir(self._root_fd):
-            if name == ".quarantine":
+            if name in (".quarantine", ".locks"):
                 continue
             match = _DOCUMENT_NAME.fullmatch(name) or _DELETING_NAME.fullmatch(name)
             deletion_name = name.startswith(".deleting-")
@@ -549,7 +665,7 @@ class PayslipIntakeBoundary:
         # An account-lifecycle erasure holds this same owner lock across both
         # raw cleanup and structured deletion, making a later intake clearly
         # post-linearization rather than silently escaping the erasure.
-        with self._owner_lock(owner):
+        with self._owner_guard(owner):
             intake_id = secrets.token_hex(32)
             path = self._path_for(intake_id, content_type)
             device, inode, byte_count, content_sha256 = self._write(intake_id, content_type, document_bytes)
@@ -561,55 +677,60 @@ class PayslipIntakeBoundary:
     def cancel(self, *, handle: PayslipIntakeHandle, authenticated_user_id: int,
                session_binding: str, tax_year: str) -> None:
         """Delete one still-pending raw file for its exact owner/session/year."""
-        intake_id, record = self._owned_record(
-            handle=handle, authenticated_user_id=authenticated_user_id,
-            session_binding=session_binding, tax_year=tax_year,
-        )
-        self._mark_deleting(intake_id=intake_id, record=record)
-        self._delete(intake_id, record)
-        self._remove_completed_metadata(intake_id)
+        owner = self._owner(authenticated_user_id)
+        with self._owner_guard(owner):
+            intake_id, record = self._owned_record(
+                handle=handle, authenticated_user_id=owner,
+                session_binding=session_binding, tax_year=tax_year,
+            )
+            self._mark_deleting(intake_id=intake_id, record=record)
+            self._delete(intake_id, record)
+            self._remove_completed_metadata(intake_id)
 
     def confirm(self, *, handle: PayslipIntakeHandle, authenticated_user_id: int,
                 session_binding: str, tax_year: str, decisions, confirmation_id: str,
                 consumed_candidate_digests=frozenset()) -> PayeExtractionConfirmation:
         """Extract and confirm once, always deleting the raw file afterwards."""
-        intake_id, record = self._owned_record(
-            handle=handle, authenticated_user_id=authenticated_user_id,
-            session_binding=session_binding, tax_year=tax_year,
-        )
-        self._mark_deleting(intake_id=intake_id, record=record)
-        try:
-            if self._extraction_adapter is None:
-                raise PayslipIntakeError("payslip extraction adapter is not configured")
-            document_bytes = self._read_verified(intake_id, record)
-            candidate = self._extraction_adapter.extract_payslip(
-                document_bytes=document_bytes, content_type=record.content_type, tax_year=record.tax_year,
+        owner = self._owner(authenticated_user_id)
+        with self._owner_guard(owner):
+            intake_id, record = self._owned_record(
+                handle=handle, authenticated_user_id=owner,
+                session_binding=session_binding, tax_year=tax_year,
             )
-            if type(candidate) is not PayeExtractionCandidate or candidate.tax_year != record.tax_year.replace("/", "-"):
-                raise PayslipIntakeError("payslip extraction result is unavailable")
-            return confirm_paye_extraction(
-                candidate, decisions, confirmation_id,
-                consumed_candidate_digests=consumed_candidate_digests,
-            )
-        except PayslipIntakeError:
-            raise
-        except Exception as exc:
-            raise PayslipIntakeError("payslip extraction or confirmation failed") from exc
-        finally:
-            self._delete(intake_id, record)
-            self._remove_completed_metadata(intake_id)
+            self._mark_deleting(intake_id=intake_id, record=record)
+            try:
+                if self._extraction_adapter is None:
+                    raise PayslipIntakeError("payslip extraction adapter is not configured")
+                document_bytes = self._read_verified(intake_id, record)
+                candidate = self._extraction_adapter.extract_payslip(
+                    document_bytes=document_bytes, content_type=record.content_type, tax_year=record.tax_year,
+                )
+                if type(candidate) is not PayeExtractionCandidate or candidate.tax_year != record.tax_year.replace("/", "-"):
+                    raise PayslipIntakeError("payslip extraction result is unavailable")
+                return confirm_paye_extraction(
+                    candidate, decisions, confirmation_id,
+                    consumed_candidate_digests=consumed_candidate_digests,
+                )
+            except PayslipIntakeError:
+                raise
+            except Exception as exc:
+                raise PayslipIntakeError("payslip extraction or confirmation failed") from exc
+            finally:
+                self._delete(intake_id, record)
+                self._remove_completed_metadata(intake_id)
 
     def erase_owner_session(self, *, authenticated_user_id: int, session_binding: str) -> int:
         """Delete all pending raw files for one owner and one signed session only."""
         self._require_enabled()
         owner, session_hash = self._owner(authenticated_user_id), self._session_hash(session_binding)
-        owned = tuple((intake_id, record) for intake_id, record in self._records.items()
-                      if record.owner_user_id == owner and record.session_hash == session_hash)
-        for intake_id, record in owned:
-            self._mark_deleting(intake_id=intake_id, record=record)
-            self._delete(intake_id, record)
-            self._remove_completed_metadata(intake_id)
-        return len(owned)
+        with self._owner_guard(owner):
+            owned = tuple((intake_id, record) for intake_id, record in self._records.items()
+                          if record.owner_user_id == owner and record.session_hash == session_hash)
+            for intake_id, record in owned:
+                self._mark_deleting(intake_id=intake_id, record=record)
+                self._delete(intake_id, record)
+                self._remove_completed_metadata(intake_id)
+            return len(owned)
 
     def erase_owner_for_account_lifecycle(self, *, authenticated_user_id: int) -> int:
         """Erase only this owner's pending raw files for an account lifecycle.
@@ -633,8 +754,14 @@ class PayslipIntakeBoundary:
         if after_raw_erasure is not None and not callable(after_raw_erasure):
             raise PayslipIntakeError("account lifecycle continuation is unavailable")
         owner = self._owner(authenticated_user_id)
-        with self._owner_lock(owner):
-            return self._erase_owner_for_account_lifecycle_locked(owner, after_raw_erasure)
+        with self._owner_guard(owner, permit_blocked=True):
+            # A failed raw or structured phase deliberately leaves the durable
+            # owner state blocked; only an entire retry may advance to erased.
+            self._write_owner_state(owner, "blocked")
+            result = self._erase_owner_for_account_lifecycle_locked(owner, after_raw_erasure)
+            if after_raw_erasure is not None:
+                self._write_owner_state(owner, "erased")
+            return result
 
     def _erase_owner_for_account_lifecycle_locked(self, owner: int, after_raw_erasure):
         with database._connection() as conn:
@@ -648,6 +775,13 @@ class PayslipIntakeBoundary:
             if item is None:
                 raise PayslipIntakeError("owner payslip metadata is unavailable")
             decoded.append((row["state"], *item))
+        # This complete non-mutating inventory pass is intentionally before a
+        # single state transition or deletion: a corrupt later row must not
+        # turn an account cleanup into a partial raw-file erasure.
+        for state, intake_id, record in decoded:
+            self._preflight_account_lifecycle_delete(
+                state=state, intake_id=intake_id, record=record,
+            )
         for state, intake_id, record in decoded:
             if record.owner_user_id != owner:
                 raise PayslipIntakeError("owner payslip metadata is unavailable")

@@ -55,7 +55,8 @@ def prepared(tmp_path, monkeypatch):
     other = db.get_or_create_user("route-other", email="other@example.test")
     legal, backup = _clearance(owner, "legal_hold_clear"), _clearance(owner, "backup_expiry_confirmed")
     policy = ApprovedEvidenceReferencePolicy(
-        issuer_reference="evidence-policy:route-test-v1", policy_version="v1", allowed_references=(),
+        issuer_reference="evidence-policy:route-test-v1", policy_version="v1",
+        allowed_references=("annual:route-test",),
     )
     repository = DurableAnnualPositionRepository(
         DurableGovernance("retention:route-test-v1", "erasure:route-test-v1", "crypto:route-test-v1", "target:route-test-v1"),
