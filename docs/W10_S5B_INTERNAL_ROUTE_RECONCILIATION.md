@@ -70,7 +70,7 @@ rather than being silently reinterpreted as current runtime evidence.
 
 | Evidence | SHA-256 | Use |
 |---|---|---|
-| `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `c0d0a3ecd648914d5fd3f665c73661bd9f929e1d24244a30621d563357fa0690` | Current candidate inventory including the disabled-first owner-bound PAYE and MTD journeys; production-shaped MTD access is subject to the separately installed paid-entitlement runtime. |
+| `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `0a1881eef289f479ec820dd0a9d4cd43f409bee63ebaa02c8a63754f092ca06e` | Current candidate inventory including the disabled-first owner-bound PAYE and MTD journeys; production-shaped MTD access is subject to the separately installed paid-entitlement runtime. |
 | `tests/test_w10_paid_surface_inventory.py` | `a2ee6a2b0e704cf167e68a28926a60a5b76ab773dcc55371c999d737867104ce` | Current inventory/source/registry freshness assurance. |
 | `5612f7a...:docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md` | `7af205f420c2cf3a9039fff7aad1af65e55221005231b2fabe3bd99c94f96c4d` | Historical W10 state and explicit S5B next action, verified from the Git blob. |
 | `FOUNDER_DECISIONS.md` | `78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f` | Current October scope, paid-subscription lifecycle/withdrawal authority and ordinary-engineering authority at the refreshed repository identity. |
@@ -108,7 +108,7 @@ disposition forward by name alone.
     "FOUNDER_DECISIONS.md": "78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f",
     "docs/API_CONTRACT_GAP_REPORT.md": "b0eeeea6357e88dd1db59dd5ddf2d4e4e712f79f73d3a61c52838cda390ac85f",
     "docs/TECHNICAL_ARCHITECTURE.md": "7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79",
-    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "c0d0a3ecd648914d5fd3f665c73661bd9f929e1d24244a30621d563357fa0690",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "0a1881eef289f479ec820dd0a9d4cd43f409bee63ebaa02c8a63754f092ca06e",
     "reserved/__init__.py": "5f35d6d88542218cd8d5dbdac9662ef6711768ae5a3749a92d779325b42a2f34",
     "reserved/providers/banking/yapily.py": "885d021f20f8a76b5f2d26ed692f1e2cae4a7c9764c885da286a61c1c2b68475",
     "reserved/security.py": "73a5d20f1aa69fafda1ab4a9d6c01668fc9a465686e2d8198f8649364e43ae2b",
