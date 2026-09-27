@@ -12,7 +12,9 @@ from reserved.auth import require_auth
 from reserved.config import durable_paye_forecast_enabled
 from reserved.engines.annual_to_cash_integration import AnnualToCashPosition
 from reserved.engines.paye_reconciliation import PayeReconciliationPolicy
-from reserved.paye_annual_bridge import compose_durable_authenticated_manual_paye
+from reserved.paye_durable_forecast_bridge import (
+    compose_durable_authenticated_paye_forecast,
+)
 from reserved.services.paye_future_pay_forecast import (
     ConfirmedFuturePayFact, FuturePayForecastPolicy,
     project_paye_future_pay_forecast,
@@ -107,17 +109,14 @@ def install_durable_paye_forecast_endpoint(
             if (type(facts) is not tuple or not facts
                     or any(type(item) is not ConfirmedFuturePayFact for item in facts)):
                 raise ValueError
-            result = compose_durable_authenticated_manual_paye(
+            result = compose_durable_authenticated_paye_forecast(
                 repository=repository, annual_position=annual,
-                authenticated_owner_user_id=owner, business_reference=business,
-                tax_year=tax_year, nation=nation,
-                audit_reference="audit:paye-forecast-current",
+                business_reference=business, tax_year=tax_year, nation=nation,
                 reconciliation_policy=reconciliation_policy,
                 future_pay_facts=facts, future_pay_policy=future_pay_policy,
+                audit_reference="audit:paye-forecast-current",
             )
-            if result.future_pay_forecast is None:
-                raise ValueError
-            payload = _response(result.future_pay_forecast)
+            payload = _response(result.forecast)
         except Exception:
             abort(404)
         return jsonify(payload)
