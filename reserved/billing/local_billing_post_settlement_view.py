@@ -24,6 +24,26 @@ class LocalBillingPostSettlementViewError(ValueError):
     """Value-free installation refusal."""
 
 
+@dataclass(frozen=True, slots=True)
+class LocalBillingPostSettlementRuntime:
+    """Complete server-owned dependencies for the default-off local panel."""
+
+    membership_resolver: object
+    live_full_withdrawal_fact_resolver: object
+    live_later_period_restoration_fact_resolver: object
+    clock: object = None
+
+    def __post_init__(self):
+        if not all(callable(value) for value in (
+                self.membership_resolver,
+                self.live_full_withdrawal_fact_resolver,
+                self.live_later_period_restoration_fact_resolver)):
+            raise LocalBillingPostSettlementViewError(
+                'complete callable runtime dependencies are required')
+        if self.clock is not None and not callable(self.clock):
+            raise LocalBillingPostSettlementViewError('runtime clock is invalid')
+
+
 @dataclass(frozen=True)
 class _Access:
     membership_resolver: object

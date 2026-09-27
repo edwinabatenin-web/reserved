@@ -22,6 +22,7 @@ def create_app(
     *, billing_runtime: object = None, paye_runtime: object = None,
     paye_forecast_runtime: object = None, hicbc_runtime: object = None,
     hicbc_linked_runtime: object = None, erasure_runtime: object = None,
+    post_settlement_runtime: object = None,
 ) -> Flask:
     # ── Logging ───────────────────────────────────────────────────────────────
     _log_level = logging.DEBUG if os.environ.get("FLASK_DEBUG") == "1" else logging.INFO
@@ -186,6 +187,34 @@ def create_app(
                 )
         else:
             log.error("Invalid local tax-data erasure runtime ignored; erasure remains unavailable")
+
+    # This local post-settlement status panel is deliberately independent of
+    # billing entitlement composition. It stays absent unless an exact complete
+    # runtime is injected, and the panel's own installer retains its production
+    # refusal and exact route/template collision checks.
+    if post_settlement_runtime is not None:
+        from .billing.local_billing_post_settlement_view import (
+            LocalBillingPostSettlementRuntime,
+            install_local_billing_post_settlement_view,
+        )
+        if type(post_settlement_runtime) is LocalBillingPostSettlementRuntime:
+            try:
+                install_local_billing_post_settlement_view(
+                    app,
+                    membership_resolver=post_settlement_runtime.membership_resolver,
+                    live_full_withdrawal_fact_resolver=(
+                        post_settlement_runtime.live_full_withdrawal_fact_resolver),
+                    live_later_period_restoration_fact_resolver=(
+                        post_settlement_runtime
+                        .live_later_period_restoration_fact_resolver),
+                    clock=post_settlement_runtime.clock,
+                )
+            except Exception:
+                log.exception(
+                    "Post-settlement panel runtime installation failed; panel remains absent"
+                )
+        else:
+            log.error("Invalid post-settlement panel runtime ignored; panel remains absent")
 
     # ── Template globals ──────────────────────────────────────────────────────
     # Expose canonical_base and turnstile_site_key to every template so that
