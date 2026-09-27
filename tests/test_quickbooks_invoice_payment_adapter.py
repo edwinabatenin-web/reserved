@@ -153,6 +153,44 @@ def test_bounded_same_code_multiline_invoice_maps_each_exact_tax_exclusive_line(
     assert document.canonical_state is CanonicalDocumentState.UNKNOWN
 
 
+def test_multiline_exact_high_magnitude_rate_maps_without_default_context_rounding():
+    raw = multiline_invoice_raw()
+    raw["Line"][0]["Amount"] = Decimal("99999999999999999.99")
+    raw["Line"][1]["Amount"] = Decimal("0.01")
+    raw["Line"][-1]["Amount"] = Decimal("100000000000000000.00")
+    detail = raw["TxnTaxDetail"]["TaxLine"][0]["TaxLineDetail"]
+    detail["TaxPercent"] = Decimal("100")
+    detail["NetAmountTaxable"] = Decimal("100000000000000000.00")
+    raw["TxnTaxDetail"]["TotalTax"] = Decimal("100000000000000000.00")
+    raw["TxnTaxDetail"]["TaxLine"][0]["Amount"] = Decimal("100000000000000000.00")
+    raw["TotalAmt"] = Decimal("200000000000000000.00")
+    result = mapped_invoice(raw)
+    assert [line.tax.vat_amount for line in result.document.lines] == [
+        Decimal("99999999999999999.99"), Decimal("0.01")]
+
+
+def test_multiline_non_cent_hostile_rate_fails_without_default_context_rounding():
+    raw = multiline_invoice_raw()
+    raw["Line"][0]["Amount"] = Decimal("99999999999999999.99")
+    raw["Line"][1]["Amount"] = Decimal("0.01")
+    raw["Line"][-1]["Amount"] = Decimal("100000000000000000.00")
+    detail = raw["TxnTaxDetail"]["TaxLine"][0]["TaxLineDetail"]
+    detail["TaxPercent"] = Decimal("99.999999999999")
+    detail["NetAmountTaxable"] = Decimal("100000000000000000.00")
+    raw["TxnTaxDetail"]["TotalTax"] = Decimal("99999999999999000.00")
+    raw["TxnTaxDetail"]["TaxLine"][0]["Amount"] = Decimal("99999999999999000.00")
+    raw["TotalAmt"] = Decimal("199999999999999000.00")
+    with pytest.raises(QuickBooksAdapterError, match="derived line tax"):
+        mapped_invoice(raw)
+
+
+def test_multiline_subtotal_identifier_cannot_duplicate_sales_identifier():
+    raw = multiline_invoice_raw()
+    raw["Line"][-1]["Id"] = "line-1"
+    with pytest.raises(QuickBooksAdapterError, match="subtotal identifier"):
+        mapped_invoice(raw)
+
+
 @pytest.mark.parametrize("mutation", [
     lambda raw: raw["Line"][1]["SalesItemLineDetail"]["TaxCodeRef"].__setitem__("value", "OTHER"),
     lambda raw: raw["TxnTaxDetail"]["TaxLine"][0]["TaxLineDetail"].pop("TaxPercent"),

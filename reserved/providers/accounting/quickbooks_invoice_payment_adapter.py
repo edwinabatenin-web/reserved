@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, localcontext
 import re
 from typing import Any, Mapping
 
@@ -91,9 +91,26 @@ def _decimal(value: Any, field: str) -> Decimal:
     return result
 
 
+def _percent_rate(value: Decimal) -> Decimal:
+    """Divide a finite Decimal percentage by 100 without context rounding."""
+    sign, digits, exponent = value.as_tuple()
+    return Decimal((sign, digits, exponent - 2))
+
+
+def _exact_product(left: Decimal, right: Decimal) -> Decimal:
+    """Multiply bounded Decimal inputs with enough precision for every digit."""
+    precision = max(1, len(left.as_tuple().digits) + len(right.as_tuple().digits))
+    with localcontext() as context:
+        context.prec = precision
+        return left * right
+
+
 def _derived_money(value: Decimal, field: str) -> Decimal:
     """Normalize only representational trailing zeroes; never round a value."""
-    pennies = value.quantize(Decimal("0.01"))
+    _, digits, exponent = value.as_tuple()
+    with localcontext() as context:
+        context.prec = max(1, len(digits) + max(0, exponent + 2))
+        pennies = value.quantize(Decimal("0.01"))
     if pennies != value:
         raise _fail(f"{field} requires rounding")
     return _money(pennies, field)
@@ -457,6 +474,9 @@ def adapt_invoice(observation: InvoiceObservation, *, binding: RealmBinding,
         subtotal = _object(raw_lines[-1], "subtotal line")
         if subtotal.get("DetailType") != "SubTotalLineDetail":
             raise _fail("last line must be a terminal SubTotalLineDetail")
+        subtotal_id = _safe_id(_member(subtotal, "Id"), "subtotal Line.Id")
+        if subtotal_id in {line_id for line_id, _, _ in parsed_sales}:
+            raise _fail("subtotal identifier duplicates a sales line identifier")
         if _money(_member(subtotal, "Amount"), "subtotal Amount") != net:
             raise _fail("subtotal does not equal the sales-line sum")
 
@@ -479,8 +499,8 @@ def adapt_invoice(observation: InvoiceObservation, *, binding: RealmBinding,
     rate = None
     if "TaxPercent" in detail:
         provider_percent = _decimal(_member(detail, "TaxPercent"), "TaxPercent")
-        rate = provider_percent / Decimal("100")
-        if taxable * rate != tax_amount:
+        rate = _percent_rate(provider_percent)
+        if _exact_product(taxable, rate) != tax_amount:
             raise _fail("TaxPercent does not reconcile exactly")
     if len(parsed_sales) > 1 and rate is None:
         raise _fail("multiple sales lines require exact TaxPercent")
@@ -492,7 +512,8 @@ def adapt_invoice(observation: InvoiceObservation, *, binding: RealmBinding,
         # Multi-line tax allocation is accepted only when the one explicit rate
         # produces an exact, two-decimal amount for every source sales line.
         line_tax = (total_tax if len(parsed_sales) == 1
-                    else _derived_money(line_net * rate, "derived line tax"))
+                    else _derived_money(_exact_product(line_net, rate),
+                                        "derived line tax"))
         line_gross = _derived_money(line_net + line_tax, "derived line gross")
         lines.append(AccountingLine(
             line_id=line_id, money=Money(line_gross, currency),
