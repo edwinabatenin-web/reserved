@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Callable
 
 from reserved import database
 from reserved.annual_position_durable_repository import (
@@ -136,7 +137,7 @@ def compose_durable_authenticated_hicbc_preview(
     business_reference: str,
     tax_year: str,
     nation: str,
-    as_of: date,
+    clock: Callable[[], date],
     audit_reference: str,
 ) -> DurableHicbcAnnualPreview:
     """Compose a minimal HICBC estimate from an exact durable/live annual pair.
@@ -154,8 +155,14 @@ def compose_durable_authenticated_hicbc_preview(
     if type(annual_tax_position) is not AnnualPositionResult:
         raise TypeError("annual tax input must be an exact annual producer result")
     if (type(business_reference) is not str or type(tax_year) is not str or type(nation) is not str
-            or type(as_of) is not date):
+            or not callable(clock)):
         raise ValueError("durable HICBC scope is invalid")
+    try:
+        as_of = clock()
+    except Exception as exc:
+        raise ValueError("trusted HICBC server clock is unavailable") from exc
+    if type(as_of) is not date:
+        raise ValueError("trusted HICBC server clock is invalid")
     owner = _current_owner()
     if (annual_position.tax_year != tax_year or annual_position.nation != nation
             or annual_tax_position.tax_year != tax_year

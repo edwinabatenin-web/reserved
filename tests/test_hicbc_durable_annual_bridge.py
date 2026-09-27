@@ -129,7 +129,7 @@ def _compose(app, repository, annual, tax):
     return compose_durable_authenticated_hicbc_preview(
         repository=repository, annual_position=annual, annual_tax_position=tax,
         business_reference=BUSINESS, tax_year=YEAR, nation=NATION,
-        as_of=annual.as_of,
+        clock=lambda: annual.as_of,
         audit_reference="audit:hicbc-read",
     )
 
@@ -162,7 +162,7 @@ def test_cross_owner_year_and_live_identity_substitution_fail_closed(app):
             compose_durable_authenticated_hicbc_preview(
                 repository=repository, annual_position=annual, annual_tax_position=tax,
                 business_reference=BUSINESS, tax_year="2025/26", nation=NATION,
-                as_of=annual.as_of,
+                clock=lambda: annual.as_of,
                 audit_reference="audit:hicbc-read",
             )
         other_tax = calculate_annual_position({"employment_income": "70001", "country": NATION})
@@ -171,10 +171,18 @@ def test_cross_owner_year_and_live_identity_substitution_fail_closed(app):
         expired = compose_durable_authenticated_hicbc_preview(
             repository=repository, annual_position=annual, annual_tax_position=tax,
             business_reference=BUSINESS, tax_year=YEAR, nation=NATION,
-            as_of=annual.as_of + timedelta(days=46), audit_reference="audit:hicbc-read",
+            clock=lambda: annual.as_of + timedelta(days=46), audit_reference="audit:hicbc-read",
         )
     assert expired.projected_user_hicbc is None
     assert expired.possible_charge_low is None and expired.possible_charge_high is None
+    with app.test_request_context("/"):
+        auth.set_user_session(41, "user_41")
+        with pytest.raises(ValueError, match="server clock"):
+            compose_durable_authenticated_hicbc_preview(
+                repository=repository, annual_position=annual, annual_tax_position=tax,
+                business_reference=BUSINESS, tax_year=YEAR, nation=NATION,
+                clock=lambda: "not-a-date", audit_reference="audit:hicbc-read",
+            )
 
 
 def test_missing_or_unavailable_external_verifier_cannot_read_persisted_hicbc(app):
