@@ -7,7 +7,7 @@ the customer may supply only the approved minimum confirmed-period fields.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 import re
 
@@ -30,6 +30,9 @@ _KEY = "reserved.paye.durable_forecast_endpoint"
 _RULE = "/v2/paye/current-forecast"
 _ENDPOINT = "v2.paye_durable_current_forecast"
 _MONEY = re.compile(r"^(?:0|[1-9][0-9]{0,18})(?:\.[0-9]{1,2})?$")
+_FUTURE_EMPLOYMENT_SOURCE = re.compile(
+    r"^future-source:employment-([1-9]|1[0-9]|20)$"
+)
 
 
 class DurablePayeForecastEndpointError(ValueError):
@@ -145,12 +148,90 @@ def confirmed_future_pay_periods(runtime: DurablePayeForecastRuntime, owner: int
         "tax_year": tax_year,
         "periods": tuple({
             "source_identity": record.source_identity,
+            "employment_slot": int(record.source_identity.rsplit("-", 1)[1])
+            if _FUTURE_EMPLOYMENT_SOURCE.fullmatch(record.source_identity) else None,
             "period_start": record.period_start.isoformat(),
             "period_end": record.period_end.isoformat(),
             "expected_gross_pay": f"{record.expected_gross_pay:.2f}",
             "expected_tax_deducted": f"{record.expected_tax_deducted:.2f}",
             "confirmed_at": record.confirmed_at.date().isoformat(),
         } for record in records),
+    }
+
+
+def observed_future_pay_coverage(current_entries: list[dict], future_context: dict) -> dict:
+    """Describe only recorded date coverage; never certify a complete universe."""
+    if type(current_entries) is not list or type(future_context) is not dict:
+        raise DurablePayeForecastEndpointError("coverage inputs are invalid")
+    tax_year = future_context.get("tax_year")
+    scope = _scope(("coverage-only", tax_year, "coverage-only"))
+    periods = future_context.get("periods")
+    if scope is None or type(periods) is not tuple:
+        raise DurablePayeForecastEndpointError("coverage inputs are invalid")
+    start_year = int(tax_year[:4])
+    year_start, year_end = date(start_year, 4, 6), date(start_year + 1, 4, 5)
+    latest_current: dict[int, date] = {}
+    future_by_slot: dict[int, list[tuple[date, date]]] = {}
+    for entry in current_entries:
+        if (type(entry) is not dict or entry.get("tax_year") != tax_year
+                or type(entry.get("employment_slot")) is not int
+                or not 1 <= entry["employment_slot"] <= 20
+                or type(entry.get("effective_through")) is not str):
+            raise DurablePayeForecastEndpointError("current coverage evidence is invalid")
+        effective = _date_field(entry["effective_through"])
+        if not year_start <= effective <= year_end:
+            raise DurablePayeForecastEndpointError("current coverage evidence is invalid")
+        slot = entry["employment_slot"]
+        latest_current[slot] = max(effective, latest_current.get(slot, year_start))
+    for period in periods:
+        if (type(period) is not dict or type(period.get("employment_slot")) is not int
+                or not 1 <= period["employment_slot"] <= 20):
+            raise DurablePayeForecastEndpointError("future coverage evidence is invalid")
+        interval = (_date_field(period.get("period_start")),
+                    _date_field(period.get("period_end")))
+        if not year_start <= interval[0] <= interval[1] <= year_end:
+            raise DurablePayeForecastEndpointError("future coverage evidence is invalid")
+        future_by_slot.setdefault(period["employment_slot"], []).append(interval)
+
+    observed = []
+    for slot in sorted(set(latest_current) | set(future_by_slot)):
+        future = sorted(future_by_slot.get(slot, ()))
+        covered = list(future)
+        current = latest_current.get(slot)
+        if current is not None:
+            covered.append((year_start, current))
+        merged = []
+        for interval_start, interval_end in sorted(covered):
+            if not merged or interval_start > merged[-1][1] + timedelta(days=1):
+                merged.append([interval_start, interval_end])
+            else:
+                merged[-1][1] = max(merged[-1][1], interval_end)
+        cursor = year_start
+        uncovered = []
+        for interval_start, interval_end in merged:
+            if cursor < interval_start:
+                uncovered.append((cursor, interval_start - timedelta(days=1)))
+            cursor = max(cursor, interval_end + timedelta(days=1))
+        if cursor <= year_end:
+            uncovered.append((cursor, year_end))
+        observed.append({
+            "employment_slot": slot,
+            "latest_current_evidence_date": current.isoformat() if current else None,
+            "confirmed_future_intervals": tuple({
+                "period_start": interval_start.isoformat(),
+                "period_end": interval_end.isoformat(),
+            } for interval_start, interval_end in future),
+            "uncovered_intervals": tuple({
+                "period_start": interval_start.isoformat(),
+                "period_end": interval_end.isoformat(),
+            } for interval_start, interval_end in uncovered),
+        })
+    return {
+        "tax_year": tax_year,
+        "coverage_scope": "submitted_confirmed_periods_only",
+        "required_coverage_status": "not_established",
+        "employment_universe_status": "unverified",
+        "observed_employments": tuple(observed),
     }
 
 
@@ -308,5 +389,6 @@ __all__ = [
     "confirmed_future_pay_periods", "current_forecast_payload",
     "delete_confirmed_future_pay_period_from_customer",
     "install_durable_paye_forecast_endpoint",
+    "observed_future_pay_coverage",
     "save_confirmed_future_pay_period_from_customer",
 ]

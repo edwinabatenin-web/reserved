@@ -42,6 +42,16 @@ accepted from the browser. Global CSRF enforcement and the existing paid-route
 wrapper remain unchanged; missing flags, entitlement, runtime, authority or
 membership fail closed.
 
+The same page derives a read-only factual coverage view from already-recorded
+current cumulative evidence and confirmed future intervals. It groups only
+observed employment slots, reports the latest current-evidence date, lists the
+exact saved future intervals and shows uncovered tax-year date ranges. Its
+fixed status remains `submitted_confirmed_periods_only`; required coverage is
+`not_established` and the employment universe is `unverified`. Missing dates
+are expressly not treated as zero pay. The view does not store a completeness
+declaration, infer a pay schedule or employment, alter forecast arithmetic, or
+claim full-year/required coverage.
+
 The paid forecast runtime can use only an exact provider bound to the same
 repository. Stored rows are re-read after forecast composition; a concurrent
 update or deletion suppresses the result instead of releasing stale facts.

@@ -49,6 +49,15 @@
   <h3>Your saved future-pay periods</h3>
   {% if future_context.periods %}<ul>{% for period in future_context.periods %}<li><strong>{{ period.period_start }} to {{ period.period_end }}</strong>: gross £{{ period.expected_gross_pay }}, expected tax deducted £{{ period.expected_tax_deducted }}; confirmed {{ period.confirmed_at }}.
     <form method="post" action="{{ url_for('v2.paye_manual_journey') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="form_kind" value="future_pay_delete"><input type="hidden" name="source_identity" value="{{ period.source_identity }}"><input type="hidden" name="period_start" value="{{ period.period_start }}"><input type="hidden" name="period_end" value="{{ period.period_end }}"><button type="submit">Delete this future-pay period</button></form></li>{% endfor %}</ul>{% else %}<p>No confirmed future-pay periods have been saved.</p>{% endif %}
+  {% if coverage_context %}
+  <h3>Coverage of submitted confirmed periods</h3>
+  <p data-coverage-scope="{{ coverage_context.coverage_scope }}"><strong>Required coverage is not established.</strong> This view includes observed employment slots only. The complete employment universe is unverified, and missing dates mean no confirmed evidence is recorded here—not zero pay.</p>
+  {% if coverage_context.observed_employments %}<ul>{% for employment in coverage_context.observed_employments %}<li><strong>Employment {{ employment.employment_slot }}</strong>.
+    {% if employment.latest_current_evidence_date %}Latest current cumulative evidence: {{ employment.latest_current_evidence_date }}.{% else %}No current cumulative evidence is recorded for this observed slot.{% endif %}
+    {% if employment.confirmed_future_intervals %} Confirmed future intervals: {% for interval in employment.confirmed_future_intervals %}{{ interval.period_start }} to {{ interval.period_end }}{% if not loop.last %}; {% endif %}{% endfor %}.{% else %} No confirmed future intervals are recorded.{% endif %}
+    {% if employment.uncovered_intervals %} Uncovered dates: {% for interval in employment.uncovered_intervals %}{{ interval.period_start }} to {{ interval.period_end }}{% if not loop.last %}; {% endif %}{% endfor %}.{% else %} No uncovered dates appear within this observed slot's submitted records; required coverage and the employment universe remain unverified.{% endif %}
+  </li>{% endfor %}</ul>{% else %}<p>No employment slot has recorded current or future evidence. Required coverage and the employment universe remain unverified.</p>{% endif %}
+  {% endif %}
 </section>
 {% endif %}
 <p><a href="{{ url_for('v2.dashboard_view') }}">Back to dashboard</a></p>

@@ -640,6 +640,7 @@ def paye_manual_journey():
     error = None
     future_error = None
     future_context = None
+    coverage_context = None
     if request.method == "POST":
         try:
             if (request.mimetype != "application/x-www-form-urlencoded"
@@ -701,10 +702,17 @@ def paye_manual_journey():
         except (ValueError, TypeError):
             future_context = None
     entries = list_active_paye_manual_entries(g.user_id, year)
+    if future_context is not None:
+        try:
+            from reserved.paye_forecast_endpoint import observed_future_pay_coverage
+            coverage_context = observed_future_pay_coverage(entries, future_context)
+        except (ValueError, TypeError):
+            coverage_context = None
     return render_template(
         "v2/paye_manual_journey.html", tax_year=year, entries=customer_read_model(entries, as_of=as_of),
         annual_boundary=annual_position_boundary_state(entries), error=error,
         future_error=future_error, future_context=future_context,
+        coverage_context=coverage_context,
     ), 400 if error or future_error else 200
 
 

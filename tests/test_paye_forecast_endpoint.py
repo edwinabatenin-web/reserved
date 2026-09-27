@@ -15,6 +15,7 @@ from reserved.engines.annual_to_cash_integration import (
 )
 from reserved.paye_forecast_endpoint import (
     DurablePayeForecastEndpointError, DurablePayeForecastRuntime,
+    observed_future_pay_coverage,
     RepositoryFuturePayFactsProvider,
     install_durable_paye_forecast_endpoint,
 )
@@ -299,6 +300,10 @@ def test_paid_manual_journey_creates_updates_lists_and_deletes_minimum_future_pe
     assert "gross £5000.00" in body
     assert "future-source:employment-1" in body
     assert "payslip" in body
+    assert "Required coverage is not established" in body
+    assert "complete employment universe is unverified" in body
+    assert "2026-10-01 to 2026-10-01" in body
+    assert "2026-11-01 to 2027-04-05" in body
 
     updated = values | {
         "expected_gross_pay": "5100.00",
@@ -335,6 +340,63 @@ def test_paid_manual_journey_creates_updates_lists_and_deletes_minimum_future_pe
         authenticated_user_id=owner, business_reference="business-1",
         tax_year="2026/27", audit_reference="audit:future-pay-test-empty",
     ) == ()
+
+
+def test_coverage_view_reports_only_observed_slots_exact_intervals_and_gaps():
+    view = observed_future_pay_coverage(
+        [
+            {"tax_year": "2026/27", "employment_slot": 1,
+             "effective_through": "2026-09-30"},
+            {"tax_year": "2026/27", "employment_slot": 1,
+             "effective_through": "2026-09-15"},
+        ],
+        {
+            "tax_year": "2026/27",
+            "periods": (
+                {"employment_slot": 1, "period_start": "2026-10-02",
+                 "period_end": "2026-10-31"},
+                {"employment_slot": 1, "period_start": "2026-11-01",
+                 "period_end": "2026-11-30"},
+                {"employment_slot": 2, "period_start": "2026-12-01",
+                 "period_end": "2026-12-31"},
+            ),
+        },
+    )
+    assert view["coverage_scope"] == "submitted_confirmed_periods_only"
+    assert view["required_coverage_status"] == "not_established"
+    assert view["employment_universe_status"] == "unverified"
+    assert tuple(item["employment_slot"] for item in view["observed_employments"]) == (1, 2)
+    first, second = view["observed_employments"]
+    assert first["latest_current_evidence_date"] == "2026-09-30"
+    assert first["confirmed_future_intervals"] == (
+        {"period_start": "2026-10-02", "period_end": "2026-10-31"},
+        {"period_start": "2026-11-01", "period_end": "2026-11-30"},
+    )
+    assert first["uncovered_intervals"] == (
+        {"period_start": "2026-10-01", "period_end": "2026-10-01"},
+        {"period_start": "2026-12-01", "period_end": "2027-04-05"},
+    )
+    assert second["latest_current_evidence_date"] is None
+    assert second["uncovered_intervals"] == (
+        {"period_start": "2026-04-06", "period_end": "2026-11-30"},
+        {"period_start": "2027-01-01", "period_end": "2027-04-05"},
+    )
+    assert "gross" not in repr(view).lower()
+    assert "tax_deducted" not in repr(view)
+
+
+@pytest.mark.parametrize("current,future", [
+    ([{"tax_year": "2026/27", "employment_slot": 0,
+       "effective_through": "2026-09-30"}], {"tax_year": "2026/27", "periods": ()}),
+    ([], {"tax_year": "2026/27", "periods": ({
+        "employment_slot": None, "period_start": "2026-10-02",
+        "period_end": "2026-10-31",
+    },)}),
+    ([], {"tax_year": "2026/28", "periods": ()}),
+])
+def test_coverage_view_rejects_unbound_or_invalid_evidence(current, future):
+    with pytest.raises(DurablePayeForecastEndpointError):
+        observed_future_pay_coverage(current, future)
 
 
 def test_future_pay_customer_form_is_disabled_closed_and_rejects_extra_fields(
