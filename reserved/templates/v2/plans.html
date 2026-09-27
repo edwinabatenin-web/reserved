@@ -10,6 +10,14 @@
     </div>
 </section>
 
+{% set local_billing_lifecycle_status_count =
+    (1 if local_billing_initial_paid_copy is defined else 0) +
+    (1 if local_billing_cancellation_copy is defined else 0) +
+    (1 if local_billing_full_withdrawal_copy is defined else 0) +
+    (1 if local_billing_later_period_restoration_copy is defined else 0) +
+    (1 if local_billing_successful_renewal_copy is defined else 0) +
+    (1 if local_billing_recovery_copy is defined else 0) %}
+{% if local_billing_lifecycle_status_count == 1 %}
 {% if local_billing_initial_paid_copy is defined %}
 <section class="panel" aria-labelledby="w10-local-initial-paid-heading">
     <h2 id="w10-local-initial-paid-heading">{{ local_billing_initial_paid_copy.heading }}</h2>
@@ -76,6 +84,8 @@
     <p>{{ local_billing_recovery_copy.deadline_consequence }}</p>
     <p>{{ local_billing_recovery_copy.verified_recovery_consequence }}</p>
 </section>
+{% endif %}
+
 {% endif %}
 
 {% if billing_plans_fragment is defined %}
