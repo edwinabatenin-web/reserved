@@ -154,12 +154,15 @@ def test_legacy_get_is_only_an_exact_canonical_redirect(
     assert response.headers["Location"].endswith(canonical_path)
 
     canonical = client.get(canonical_path)
-    if authenticated:
+    if production:
+        # Production composes paid surfaces closed until a complete billing
+        # runtime is explicitly injected; authentication alone is not access.
+        assert canonical.status_code == 404
+    elif authenticated:
         assert canonical.status_code == 200
     else:
         assert canonical.status_code == 302
-        expected_login = "/v2/login" if production else "/v2/demo-login"
-        assert canonical.headers["Location"].endswith(expected_login)
+        assert canonical.headers["Location"].endswith("/v2/demo-login")
 
 
 @pytest.mark.parametrize(
