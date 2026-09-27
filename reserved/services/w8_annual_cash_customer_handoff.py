@@ -506,6 +506,21 @@ def annual_to_cash_source_identity(
     return _source_position_identity(validated)
 
 
+def annual_to_cash_evidence_references(
+    value: AnnualToCashPosition,
+) -> tuple[str, ...]:
+    """Return the exact source identities carried by a complete snapshot.
+
+    This does not admit the snapshot or translate the identities into a
+    persistence policy.  It exposes the already-validated source inventory so
+    an authenticated adapter can prove that a handoff came from the same live
+    annual/cash object while retaining separately approved durable aliases.
+    """
+    references = _source_references(value)
+    _validate(value, references)
+    return references
+
+
 def compose_w8_annual_cash_customer_handoff(
     value: AnnualToCashPosition,
     *,

@@ -24,6 +24,14 @@ from reserved.engines.cash_ready_annual_position import (
     student_loan_position_identity,
 )
 from reserved.engines.integrated_annual_position import calculate_annual_position
+from reserved.services.w8_annual_cash_customer_handoff import (
+    annual_to_cash_evidence_references,
+    compose_w8_annual_cash_customer_handoff,
+)
+from reserved.services.w8_customer_result import (
+    compose_w8_customer_result,
+    w8_customer_result_identity,
+)
 from reserved.hicbc_durable_annual_bridge import (
     _atomic_hicbc_row,
     compose_durable_authenticated_hicbc_preview,
@@ -79,7 +87,7 @@ def _live_annual():
     return tax, compose(annual=ready)
 
 
-def _durable(owner, *, permit_revocation=False):
+def _durable(owner, *, permit_revocation=False, candidate_overrides=None):
     tax, annual = _live_annual()
     membership = _membership(owner, business=BUSINESS)
     authorities = (membership,)
@@ -94,10 +102,20 @@ def _durable(owner, *, permit_revocation=False):
         "retention:approved-policy-v1", "erasure:approved-disposition-v1",
         "crypto:approved-key-v1", "target:local-integration-v1",
     ).contract_handle()
-    candidate = make_structural_candidate(
+    source_references = annual_to_cash_evidence_references(annual)
+    evidence_references = ("annual:no-loan", "cash:deductions-credits", "charge:balancing")
+    handoff = compose_w8_annual_cash_customer_handoff(
+        annual, evidence_references=source_references,
+    )
+    customer_result = compose_w8_customer_result(
+        handoff.presentation_input, nation=NATION, tax_year=YEAR,
+        user_id=str(owner), business_id=BUSINESS,
+        evidence_references=evidence_references,
+    )
+    candidate_values = dict(
         record_version=1, user_id=str(owner), business_id=BUSINESS, tax_year=YEAR,
         nation=NATION, annual_cash_identity=annual_to_cash_position_identity(annual),
-        customer_result_identity="w8-customer-result:sha256-" + "b" * 64,
+        customer_result_identity=w8_customer_result_identity(customer_result),
         evidence_classification="qualified_local_estimate",
         annual_liability=str(annual.final_self_assessment_liability),
         obligations=(("balancing_payment", "15432.00", "2028-01-31"),
@@ -106,9 +124,11 @@ def _durable(owner, *, permit_revocation=False):
         adjustments=(("deductions_and_credits", "0.00"), ("prior_payments_on_account", "0.00"),
                      ("payments_made", "0.00"), ("credit_or_refund", "0.00")),
         funding="exact", funding_amount=None,
-        evidence_references=("annual:no-loan", "cash:deductions-credits", "charge:balancing"),
+        evidence_references=evidence_references,
         ruleset_version="uk-2026-27-v4", as_of="2027-04-05", stale_after_days=45,
     )
+    candidate_values.update(candidate_overrides or {})
+    candidate = make_structural_candidate(**candidate_values)
     record = prepare_annual_position_record(candidate, governance)
     repository.create_or_read(
         authenticated_user_id=owner, business_reference=BUSINESS, record=record,
@@ -152,6 +172,24 @@ def test_live_durable_annual_source_allows_only_minimal_determinate_hicbc(app):
         "possible_charge_low": "703.00", "possible_charge_high": "703.00",
     }
     assert not {"payment", "refund", "reserve", "source", "action"} & set(result.public_value())
+
+
+@pytest.mark.parametrize(
+    "candidate_overrides",
+    [
+        {"customer_result_identity": "w8-customer-result:sha256-" + "b" * 64},
+        {"annual_liability": "15431.99"},
+    ],
+)
+def test_durable_customer_identity_and_mirrored_cash_facts_must_match_live_source(
+    app, candidate_overrides,
+):
+    tax, annual, repository = _durable(41, candidate_overrides=candidate_overrides)
+    _seed(41)
+    with app.test_request_context("/"):
+        auth.set_user_session(41, "user_41")
+        with pytest.raises(ValueError, match="customer composition does not match"):
+            _compose(app, repository, annual, tax)
 
 
 def test_cross_owner_year_and_live_identity_substitution_fail_closed(app, monkeypatch):

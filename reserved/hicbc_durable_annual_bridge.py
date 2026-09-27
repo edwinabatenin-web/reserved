@@ -36,6 +36,14 @@ from reserved.engines.integrated_annual_position import (
     annual_position_geography,
 )
 from reserved.engines.hicbc_integration import PERSONALISED_ESTIMATE, integrate_hicbc
+from reserved.services.w8_annual_cash_customer_handoff import (
+    annual_to_cash_evidence_references,
+    compose_w8_annual_cash_customer_handoff,
+)
+from reserved.services.w8_customer_result import (
+    compose_w8_customer_result,
+    w8_customer_result_identity,
+)
 from reserved.web.hicbc import _responsibility_from_sources
 
 
@@ -107,6 +115,65 @@ def _current_owner() -> int:
     if type(owner) is not int or owner <= 0:
         raise ValueError("authenticated HICBC composition owner is invalid")
     return owner
+
+
+def _assert_exact_durable_customer_composition(
+    *, annual_position: AnnualToCashPosition, durable_row: dict,
+    owner: int, business_reference: str,
+) -> None:
+    """Prove the durable row is the exact owner-bound annual/cash result.
+
+    The annual/cash identity alone does not prove that the separately stored
+    customer identity and presentation facts were derived from that source.
+    Recompose the reviewed handoff and customer result, then compare every
+    duplicated durable presentation field before HICBC may use the record.
+    """
+    try:
+        source_references = annual_to_cash_evidence_references(annual_position)
+        evidence_references = tuple(durable_row["evidence_references"])
+        handoff = compose_w8_annual_cash_customer_handoff(
+            annual_position, evidence_references=source_references,
+        )
+        if handoff is None:
+            raise ValueError("annual/cash customer handoff is unavailable")
+        customer_result = compose_w8_customer_result(
+            handoff.presentation_input,
+            nation=handoff.nation,
+            tax_year=handoff.tax_year,
+            user_id=canonical_owner_id_from_users_id(owner),
+            business_id=business_reference,
+            evidence_references=evidence_references,
+        )
+        if customer_result is None:
+            raise ValueError("annual/cash customer result is unavailable")
+        presentation = customer_result.presentation_input
+        expected = {
+            "customer_result_identity": w8_customer_result_identity(customer_result),
+            "evidence_classification": presentation.evidence.value,
+            "annual_liability": f"{presentation.annual_liability:.2f}",
+            "obligations": tuple(
+                (item.kind.value, f"{item.amount:.2f}", item.due_date.isoformat())
+                for item in presentation.obligations
+            ),
+            "adjustments": tuple(
+                (item.kind.value, f"{item.amount:.2f}")
+                for item in presentation.adjustments
+            ),
+            "funding": presentation.funding.value,
+            "funding_amount": (
+                None if presentation.funding_amount is None
+                else f"{presentation.funding_amount:.2f}"
+            ),
+            "evidence_references": evidence_references,
+            "ruleset_version": annual_position.ruleset_version,
+            "as_of": annual_position.as_of.isoformat(),
+            "customer_result_limitations": customer_result.limitations,
+            "customer_result_prohibited_uses": customer_result.prohibited_uses,
+        }
+    except (AttributeError, KeyError, TypeError, ValueError, ArithmeticError) as exc:
+        raise ValueError("durable annual customer composition is unavailable") from exc
+    if any(durable_row.get(name) != value for name, value in expected.items()):
+        raise ValueError("durable annual customer composition does not match live source")
 
 
 def _atomic_hicbc_row(*, repository: DurableAnnualPositionRepository, owner: int,
@@ -208,6 +275,13 @@ def compose_durable_authenticated_hicbc_preview(
             or durable_row.get("nation") != nation
             or durable_row.get("annual_cash_identity") != annual_identity):
         raise ValueError("durable annual position does not bind this HICBC composition")
+
+    _assert_exact_durable_customer_composition(
+        annual_position=annual_position,
+        durable_row=durable_row,
+        owner=owner,
+        business_reference=business_reference,
+    )
 
     stored_as_of = durable_row.get("as_of")
     try:
