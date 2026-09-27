@@ -153,6 +153,17 @@ def test_later_full_withdrawal_invalidates_prior_cancellation_claim(scheduled):
     _page(client, False)
 
 
+def test_reconciliation_conflict_invalidates_prior_cancellation_claim(scheduled):
+    client, uid, harness, fact = scheduled
+    local.install_local_billing_cancellation_view(
+        client.application, **_args(uid, harness, fact))
+    _page(client, True)
+    harness.event['pending_webhooks'] = 2
+    result = harness.cancel()
+    assert result.disposition == 'reconciliation_required'
+    _page(client, False)
+
+
 @pytest.mark.parametrize('key,value', [
     ('FLASK_ENV', 'production'),
     ('CLERK_PUBLISHABLE_KEY', 'pk_live_synthetic'),

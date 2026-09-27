@@ -1273,9 +1273,10 @@ def _live_cancellation_control(fact):
     state = _check(authority, snapshot)
     lineage, control, lifecycle_head = repository.read_lifecycle(snapshot.instance,
                                                                   state['receipt_key'])
+    conflicts = repository.read_conflicts(snapshot.instance, key=state['receipt_key'])
     if (snapshot.revision != revision or snapshot.lifecycle_head != head
             or lifecycle_head != head or control is None or canonical(control) != material
-            or not lineage):
+            or not lineage or conflicts):
         raise InitialIngressError('stale cancellation fact')
     _check(authority, snapshot)
     return dict(control)
