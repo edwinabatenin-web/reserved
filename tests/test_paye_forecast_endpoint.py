@@ -302,7 +302,8 @@ def test_paid_manual_journey_creates_updates_lists_and_deletes_minimum_future_pe
     assert "payslip" in body
     assert "Required coverage is not established" in body
     assert "complete employment universe is unverified" in body
-    assert "2026-10-01 to 2026-10-01" in body
+    assert "point-in-time observation, not proof of continuous date coverage" in body
+    assert "2026-04-06 to 2026-10-01" in body
     assert "2026-11-01 to 2027-04-05" in body
 
     updated = values | {
@@ -368,21 +369,37 @@ def test_coverage_view_reports_only_observed_slots_exact_intervals_and_gaps():
     assert tuple(item["employment_slot"] for item in view["observed_employments"]) == (1, 2)
     first, second = view["observed_employments"]
     assert first["latest_current_evidence_date"] == "2026-09-30"
+    assert first["current_evidence_coverage_status"] == "point_in_time_observation_only"
     assert first["confirmed_future_intervals"] == (
         {"period_start": "2026-10-02", "period_end": "2026-10-31"},
         {"period_start": "2026-11-01", "period_end": "2026-11-30"},
     )
     assert first["uncovered_intervals"] == (
-        {"period_start": "2026-10-01", "period_end": "2026-10-01"},
+        {"period_start": "2026-04-06", "period_end": "2026-10-01"},
         {"period_start": "2026-12-01", "period_end": "2027-04-05"},
     )
     assert second["latest_current_evidence_date"] is None
+    assert second["current_evidence_coverage_status"] == "not_recorded"
     assert second["uncovered_intervals"] == (
         {"period_start": "2026-04-06", "period_end": "2026-11-30"},
         {"period_start": "2027-01-01", "period_end": "2027-04-05"},
     )
     assert "gross" not in repr(view).lower()
     assert "tax_deducted" not in repr(view)
+
+
+def test_partial_current_observation_never_implies_started_later_date_coverage():
+    view = observed_future_pay_coverage(
+        [{"tax_year": "2026/27", "employment_slot": 3,
+          "effective_through": "2026-12-15", "completeness": "partial"}],
+        {"tax_year": "2026/27", "periods": ()},
+    )
+    employment = view["observed_employments"][0]
+    assert employment["latest_current_evidence_date"] == "2026-12-15"
+    assert employment["current_evidence_coverage_status"] == "point_in_time_observation_only"
+    assert employment["uncovered_intervals"] == (
+        {"period_start": "2026-04-06", "period_end": "2027-04-05"},
+    )
 
 
 @pytest.mark.parametrize("current,future", [

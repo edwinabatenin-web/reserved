@@ -44,8 +44,10 @@ membership fail closed.
 
 The same page derives a read-only factual coverage view from already-recorded
 current cumulative evidence and confirmed future intervals. It groups only
-observed employment slots, reports the latest current-evidence date, lists the
-exact saved future intervals and shows uncovered tax-year date ranges. Its
+observed employment slots, reports the latest current-evidence observation date,
+lists the exact saved future intervals and shows tax-year dates without an
+explicit confirmed interval. A partial current cumulative observation is never
+expanded backwards to the tax-year start or an inferred employment start. Its
 fixed status remains `submitted_confirmed_periods_only`; required coverage is
 `not_established` and the employment universe is `unverified`. Missing dates
 are expressly not treated as zero pay. The view does not store a completeness

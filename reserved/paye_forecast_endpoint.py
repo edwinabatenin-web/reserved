@@ -196,12 +196,9 @@ def observed_future_pay_coverage(current_entries: list[dict], future_context: di
     observed = []
     for slot in sorted(set(latest_current) | set(future_by_slot)):
         future = sorted(future_by_slot.get(slot, ()))
-        covered = list(future)
         current = latest_current.get(slot)
-        if current is not None:
-            covered.append((year_start, current))
         merged = []
-        for interval_start, interval_end in sorted(covered):
+        for interval_start, interval_end in future:
             if not merged or interval_start > merged[-1][1] + timedelta(days=1):
                 merged.append([interval_start, interval_end])
             else:
@@ -217,6 +214,9 @@ def observed_future_pay_coverage(current_entries: list[dict], future_context: di
         observed.append({
             "employment_slot": slot,
             "latest_current_evidence_date": current.isoformat() if current else None,
+            "current_evidence_coverage_status": (
+                "point_in_time_observation_only" if current else "not_recorded"
+            ),
             "confirmed_future_intervals": tuple({
                 "period_start": interval_start.isoformat(),
                 "period_end": interval_end.isoformat(),
