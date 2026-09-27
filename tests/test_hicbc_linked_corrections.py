@@ -594,9 +594,12 @@ def test_integration_gate_has_only_trusted_personalised_annual_caller():
         if "def integrate_hicbc" not in line and "integrate_hicbc(" in line
     ]
     expected = ROOT / "reserved" / "hicbc_durable_annual_bridge.py"
-    assert callers == [
-        f"{expected}:242:    contribution = integrate_hicbc(result, PERSONALISED_ESTIMATE)"
-    ]
+    assert len(callers) == 1
+    prefix = f"{expected}:"
+    suffix = ":    contribution = integrate_hicbc(result, PERSONALISED_ESTIMATE)"
+    assert callers[0].startswith(prefix) and callers[0].endswith(suffix)
+    reported_line = int(callers[0][len(prefix):-len(suffix)])
+    assert expected.read_text().splitlines()[reported_line - 1] == suffix[1:]
     tree = ast.parse(expected.read_text())
     calls = [
         node for node in ast.walk(tree)
