@@ -494,7 +494,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_paye_manual_entries_active_slot
 -- sufficient to reconstruct pending files safely after a process restart.
 CREATE TABLE IF NOT EXISTS paye_payslip_intakes (
     storage_id          TEXT PRIMARY KEY,
-    user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id             INTEGER NOT NULL REFERENCES users(id),
     session_hash        TEXT NOT NULL,
     tax_year            TEXT NOT NULL,
     content_type        TEXT NOT NULL CHECK(content_type IN ('application/pdf', 'image/png', 'image/jpeg')),
@@ -502,10 +502,9 @@ CREATE TABLE IF NOT EXISTS paye_payslip_intakes (
     file_inode          INTEGER NOT NULL,
     byte_count          INTEGER NOT NULL CHECK(byte_count > 0 AND byte_count <= 10485760),
     content_sha256      TEXT NOT NULL CHECK(length(content_sha256) = 64),
-    state               TEXT NOT NULL CHECK(state IN ('pending', 'deleting', 'deleted')),
+    state               TEXT NOT NULL CHECK(state IN ('pending', 'deleting')),
     created_at          TEXT NOT NULL,
-    deletion_started_at TEXT,
-    deleted_at          TEXT
+    deletion_started_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_paye_payslip_intakes_pending_owner
     ON paye_payslip_intakes(user_id, session_hash, state);
@@ -828,7 +827,7 @@ _MIGRATIONS: dict[int, list[str]] = {
     15: [
         """CREATE TABLE IF NOT EXISTS paye_manual_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
             tax_year TEXT NOT NULL,
             employment_slot INTEGER NOT NULL CHECK(employment_slot BETWEEN 1 AND 20),
             evidence_id TEXT NOT NULL UNIQUE,
@@ -859,10 +858,9 @@ _MIGRATIONS: dict[int, list[str]] = {
             file_inode INTEGER NOT NULL,
             byte_count INTEGER NOT NULL CHECK(byte_count > 0 AND byte_count <= 10485760),
             content_sha256 TEXT NOT NULL CHECK(length(content_sha256) = 64),
-            state TEXT NOT NULL CHECK(state IN ('pending', 'deleting', 'deleted')),
+            state TEXT NOT NULL CHECK(state IN ('pending', 'deleting')),
             created_at TEXT NOT NULL,
-            deletion_started_at TEXT,
-            deleted_at TEXT
+            deletion_started_at TEXT
         )""",
         "CREATE INDEX IF NOT EXISTS idx_paye_payslip_intakes_pending_owner ON paye_payslip_intakes(user_id, session_hash, state)",
     ],

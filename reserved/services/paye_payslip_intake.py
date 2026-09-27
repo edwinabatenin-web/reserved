@@ -11,7 +11,10 @@ Extraction is an injected adapter and is fail-closed when absent.  Its SQLite
 metadata contains only redacted owner/session/file identity sufficient for
 crash recovery, never raw content or a client filename.  This is deliberately
 not a claim that backups, external OCR providers, or any wider account erasure
-have completed.
+have completed.  It is supported only where the private 0700 storage directory
+is custody-controlled and has no hostile same-UID mutator.  Portable
+Python/macOS does not offer unlink-by-inode, so same-UID namespace races remain
+outside this disabled-first boundary's supported threat model.
 """
 
 from __future__ import annotations
@@ -108,7 +111,6 @@ class PayslipIntakeBoundary:
         self._enabled = enabled
         self._extraction_adapter = extraction_adapter
         self._records: dict[str, _StoredPayslip] = {}
-        self._before_quarantine = None  # deterministic test seam; never set by a route.
         database.init_db()
         self._recover_after_restart()
 
@@ -263,12 +265,13 @@ class PayslipIntakeBoundary:
                 os.close(fd)
 
     def _delete(self, intake_id: str, record: _StoredPayslip) -> None:
-        """Atomically quarantine then delete only the original verified object.
+        """Use verified private-directory transitions before local deletion.
 
-        ``unlink`` has no inode-bound API on portable Python.  Renaming inside
-        the held directory descriptor makes the namespace transition atomic;
-        re-checking the quarantined object means a replacement is never deleted.
-        A mismatch remains quarantined and requires operational disposition.
+        The pre-delete checks and directory descriptor fail closed for ordinary
+        corruption/substitution.  They are not an inode-bound unlink primitive:
+        this boundary therefore requires a custody-controlled 0700 directory
+        with no hostile same-UID mutator and remains disabled pending target
+        custody review.
         """
         expected = self._path_for(intake_id, record.content_type)
         if record.path != expected:
@@ -283,9 +286,6 @@ class PayslipIntakeBoundary:
             raise PayslipIntakeError("payslip storage path is unavailable") from exc
         if not self._matches(record, metadata):
             raise PayslipIntakeError("payslip storage identity changed")
-        hook = self._before_quarantine
-        if hook is not None:
-            hook()
         try:
             os.rename(filename, quarantine, src_dir_fd=self._root_fd, dst_dir_fd=self._root_fd)
         except OSError as exc:
@@ -338,12 +338,11 @@ class PayslipIntakeBoundary:
         if changed != 1:
             raise PayslipIntakeError("payslip intake is unavailable")
 
-    def _mark_deleted(self, intake_id: str) -> None:
+    def _remove_completed_metadata(self, intake_id: str) -> None:
         with database._connection() as conn:
             conn.execute(
-                """UPDATE paye_payslip_intakes SET state='deleted', deleted_at=?
-                   WHERE storage_id=? AND state='deleting'""",
-                (self._timestamp(), intake_id),
+                "DELETE FROM paye_payslip_intakes WHERE storage_id=? AND state='deleting'",
+                (intake_id,),
             )
 
     def _record_from_row(self, row) -> tuple[str, _StoredPayslip] | None:
@@ -374,7 +373,8 @@ class PayslipIntakeBoundary:
         """Recover only records whose durable file identity still matches.
 
         A pre-metadata crash leaves no durable identity, so its unknown file is
-        intentionally quarantined rather than guessed at or deleted.  A
+        preserved for operational quarantine/disposition rather than guessed at
+        or deleted.  A
         ``deleting`` record has such an identity and may be deleted on recovery
         only after the same device/inode/size checks used at runtime.
         """
@@ -398,9 +398,9 @@ class PayslipIntakeBoundary:
                         self._delete(intake_id, record)
                     except PayslipIntakeError:
                         continue
-                    self._mark_deleted(intake_id)
+                    self._remove_completed_metadata(intake_id)
                 else:
-                    self._mark_missing_deleted(intake_id)
+                    self._remove_missing_metadata(intake_id)
                 continue
             except OSError:
                 continue
@@ -411,17 +411,15 @@ class PayslipIntakeBoundary:
                     self._delete(intake_id, record)
                 except PayslipIntakeError:
                     continue
-                self._mark_deleted(intake_id)
+                self._remove_completed_metadata(intake_id)
             else:
                 self._records[intake_id] = record
 
-    def _mark_missing_deleted(self, intake_id: str) -> None:
+    def _remove_missing_metadata(self, intake_id: str) -> None:
         with database._connection() as conn:
             conn.execute(
-                """UPDATE paye_payslip_intakes
-                   SET state='deleted', deletion_started_at=COALESCE(deletion_started_at, ?), deleted_at=?
-                   WHERE storage_id=? AND state='pending'""",
-                (self._timestamp(), self._timestamp(), intake_id),
+                "DELETE FROM paye_payslip_intakes WHERE storage_id=? AND state='pending'",
+                (intake_id,),
             )
 
     def _owned_record(self, *, handle: PayslipIntakeHandle, authenticated_user_id: object,
@@ -464,7 +462,7 @@ class PayslipIntakeBoundary:
         )
         self._mark_deleting(intake_id=intake_id, record=record)
         self._delete(intake_id, record)
-        self._mark_deleted(intake_id)
+        self._remove_completed_metadata(intake_id)
 
     def confirm(self, *, handle: PayslipIntakeHandle, authenticated_user_id: int,
                 session_binding: str, tax_year: str, decisions, confirmation_id: str,
@@ -494,7 +492,7 @@ class PayslipIntakeBoundary:
             raise PayslipIntakeError("payslip extraction or confirmation failed") from exc
         finally:
             self._delete(intake_id, record)
-            self._mark_deleted(intake_id)
+            self._remove_completed_metadata(intake_id)
 
     def erase_owner_session(self, *, authenticated_user_id: int, session_binding: str) -> int:
         """Delete all pending raw files for one owner and one signed session only."""
@@ -505,7 +503,7 @@ class PayslipIntakeBoundary:
         for intake_id, record in owned:
             self._mark_deleting(intake_id=intake_id, record=record)
             self._delete(intake_id, record)
-            self._mark_deleted(intake_id)
+            self._remove_completed_metadata(intake_id)
         return len(owned)
 
 
