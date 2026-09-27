@@ -9,7 +9,7 @@ source has precedence), and the repository deletion hooks.
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 import json
 from pathlib import Path
 import sqlite3
@@ -394,10 +394,15 @@ def test_revocation_serializes_after_inflight_partner_snapshot_and_blocks_future
 
     profile_read = Event()
     release_snapshot = Event()
+    revoke_started = Event()
 
     def pause_after_profile_read():
         profile_read.set()
         assert release_snapshot.wait(2)
+
+    def revoke_after_signal():
+        revoke_started.set()
+        return db.revoke_hicbc_link(owner, TAX_YEAR)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         snapshot_future = pool.submit(
@@ -407,8 +412,10 @@ def test_revocation_serializes_after_inflight_partner_snapshot_and_blocks_future
             _after_profile_read=pause_after_profile_read,
         )
         assert profile_read.wait(2)
-        revoke_future = pool.submit(db.revoke_hicbc_link, owner, TAX_YEAR)
-        assert not revoke_future.done()
+        revoke_future = pool.submit(revoke_after_signal)
+        assert revoke_started.wait(2)
+        with pytest.raises(FutureTimeoutError):
+            revoke_future.result(timeout=0.1)
         release_snapshot.set()
         snapshot = snapshot_future.result(timeout=2)
         assert snapshot is not None and snapshot["partner_id"] == partner
