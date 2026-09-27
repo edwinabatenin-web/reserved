@@ -101,7 +101,10 @@ class PayslipIntakeBoundary:
         root_fd = -1
         try:
             root_fd = os.open(self._root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-            if not stat.S_ISDIR(os.fstat(root_fd).st_mode):
+            root_stat = os.fstat(root_fd)
+            if (not stat.S_ISDIR(root_stat.st_mode)
+                    or root_stat.st_mode & 0o077
+                    or root_stat.st_uid != os.geteuid()):
                 raise PayslipIntakeError("payslip storage root is unavailable")
         except (OSError, PayslipIntakeError) as exc:
             if root_fd >= 0:

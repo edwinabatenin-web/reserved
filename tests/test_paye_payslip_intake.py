@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from datetime import date
 import hashlib
+import os
 import sqlite3
 
 import pytest
 
 import reserved.database as db
+import reserved.services.paye_payslip_intake as intake_module
 from reserved.engines.paye_evidence_capture import PayFrequency, PensionTreatment, SourceDocumentType
 from reserved.engines.paye_extraction_confirmation import (
     Decision,
@@ -255,6 +257,20 @@ def test_storage_root_symlink_is_rejected(tmp_path):
     root.symlink_to(target, target_is_directory=True)
     with pytest.raises(PayslipIntakeError, match="symlink"):
         PayslipIntakeBoundary(root, enabled=True)
+
+
+def test_preexisting_permissive_or_foreign_storage_root_is_rejected(tmp_path, monkeypatch):
+    permissive = tmp_path / "permissive-payslips"
+    permissive.mkdir(mode=0o700)
+    permissive.chmod(0o755)
+    with pytest.raises(PayslipIntakeError, match="root is unavailable"):
+        PayslipIntakeBoundary(permissive, enabled=True)
+
+    owned = tmp_path / "owned-payslips"
+    owned.mkdir(mode=0o700)
+    monkeypatch.setattr(intake_module.os, "geteuid", lambda: os.stat(owned).st_uid + 1)
+    with pytest.raises(PayslipIntakeError, match="root is unavailable"):
+        PayslipIntakeBoundary(owned, enabled=True)
 
 
 def test_restart_recovers_only_minimal_owner_bound_pending_handle(tmp_path):
