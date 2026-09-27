@@ -19,11 +19,16 @@ import pytest
 import reserved.database as db
 from reserved import create_app
 from reserved.auth import _SK_USER_ID
-from reserved.web.hicbc import build_responsibility
+from reserved.web.hicbc import _LINKED_SUBJECT_REFERENCE, build_responsibility
 
 ROOT = Path(__file__).resolve().parents[1]
 
 TAX_YEAR = "2026/27"
+
+
+def test_linked_subject_reference_is_generic_and_contains_no_person_identifier():
+    assert _LINKED_SUBJECT_REFERENCE == "linked_partner_subject"
+    assert not any(character.isdigit() for character in _LINKED_SUBJECT_REFERENCE)
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────

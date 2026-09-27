@@ -25,7 +25,6 @@ and neutral household messaging only.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from decimal import Decimal, InvalidOperation
@@ -74,6 +73,7 @@ hicbc = Blueprint("hicbc", __name__, url_prefix="/v2/hicbc")
 
 _SOURCE_KIND = "user_supplied_partner_estimate"
 _MERGED_SOURCE_KIND = "multiple_partner_sources"
+_LINKED_SUBJECT_REFERENCE = "linked_partner_subject"
 
 # Server-side session key holding a one-shot household responsibility transition.
 _TRANSITION_SESSION_KEY = "_hicbc_responsibility_transition"
@@ -334,12 +334,6 @@ def _child_benefit_amount_from_row(
     return annual_child_benefit_amount(children=children, weeks_entitled=weeks, tax_year=tax_year)
 
 
-def _opaque_subject_reference(partner_id: int) -> str:
-    """Return an opaque, stable reference that does not expose the raw user id."""
-    digest = hashlib.sha256(str(partner_id).encode("utf-8")).hexdigest()[:16]
-    return f"linked_partner:{digest}"
-
-
 def _linked_partner_evidence(user_id: int, tax_year: str) -> PartnerEvidence | None:
     """Return privacy-minimised linked partner evidence for a unique active link.
 
@@ -369,7 +363,10 @@ def _linked_partner_evidence(user_id: int, tax_year: str) -> PartnerEvidence | N
         evidence_id=f"linked_{link_id}_{tax_year.replace('/', '-')}",
         source_kind=SOURCE_LINKED_PARTNER,
         source_reference=f"link:{link_id}",
-        subject_reference=_opaque_subject_reference(partner_id),
+        # The calculation needs only the semantic role, not a stable person
+        # identifier.  A generic scoped value avoids retaining an enumerable
+        # pseudonym derived from the partner's sequential database id.
+        subject_reference=_LINKED_SUBJECT_REFERENCE,
         tax_year=tax_year,
         representation="point",
         point=partner_ani,
