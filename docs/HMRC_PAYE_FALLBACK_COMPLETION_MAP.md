@@ -169,12 +169,17 @@ The later checkpoint `4160155ad50eacb0d38f6a8084744aeb2f945c3c`
 refreshes the integrated route's exact source bindings; it is evidence
 reconciliation, not the product integration commit.
 
-The current route consumes only an injected exact durable runtime. A customer
-workflow and store to capture, replace, delete and supply confirmed future-pay
-facts is still absent, as are required-period/source coverage and target
-customer, privacy, security, operational and representative evidence. The
-canonical `paye_evidence_and_forecasting` row therefore remains
-`not_executable`, and no launch blocker is closed by this integration alone.
+The accepted local candidate at `d49a540d3e898f16b56acb69851fd269f5fa50d5`
+now adds the minimum durable store and a paid, authenticated, CSRF-protected
+customer create, exact-update, list and delete journey inside the existing
+manual-PAYE page. Browser input cannot select owner, business, tax year,
+nation, source identity or confirmation time. A validated employment slot maps
+to the same canonical employment identity as current evidence. Required
+employment/period/source coverage, representative customer-language/usability
+acceptance and target privacy, retention, datastore, operational and release
+evidence remain absent. The canonical `paye_evidence_and_forecasting` row
+therefore remains `not_executable`; the local journey does not close a launch
+blocker by itself.
 
 ## Accepted manual entry/review reconciliation — 5 September 2026
 
@@ -225,10 +230,10 @@ the integrated canonical run then passed 8,028 root, 13 artifact, 23 parity
 and 138 options tests, with RW3 true. These are immutable historical run
 identities, not a requirement that current HEAD equal either checkpoint.
 
-All broader incomplete gates remain: upload/extraction and secure raw-document
-deletion; physical owner/business/source binding; multi-employment and full-year
-orchestration; reconciliation/future-pay integration; minimum-completeness and
-recency validation; persistence, replacement/deletion, structured retention,
-account deletion and backup behavior; privacy/legal/security and target/human
-evidence; provider access and launch assurance. The canonical
+The Founder-approved structured manual path does not require raw-document
+upload/extraction. The remaining broader gates are complete multi-employment
+and required-period/source coverage; minimum-completeness and recency evidence;
+production retention, account-deletion/backup and datastore proof;
+representative privacy/legal/security/customer-language and target evidence;
+provider access where separately required; and launch assurance. The canonical
 `paye_evidence_and_forecasting` blocker is not closed by this manual sub-boundary.
