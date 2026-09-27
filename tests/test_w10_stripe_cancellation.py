@@ -80,6 +80,19 @@ def test_exact_scheduled_end_preserves_paid_period_and_exposes_no_actor(tmp_path
         assert set(details) == {'disposition', 'exclusive_service_end',
                                 'paid_receipt_id', 'paid_fact_id'}
         assert details['exclusive_service_end'] == before[-1][0]['service_end']
+        presentation = source.cancellation_presentation_facts(result.fact)
+        assert presentation == {
+            'owner': h.kwargs['owner'],
+            'billing_account': h.kwargs['billing_account'],
+            'subscription': h.kwargs['subscription'],
+            'paid_period_started_at_utc': before[-1][0].get(
+                'service_start', before[-1][0]['evidence']['service_start']),
+            'cancellation_verified_at_utc': h.cancellation_now().isoformat(),
+            'paid_through_exclusive_utc': before[-1][0]['service_end'],
+            'paid_receipt_id': details['paid_receipt_id'],
+            'paid_fact_id': details['paid_fact_id'],
+            'disposition': 'subscription_scheduled_to_end_at_paid_period_boundary',
+        }
     finally:
         h.repo.close()
 

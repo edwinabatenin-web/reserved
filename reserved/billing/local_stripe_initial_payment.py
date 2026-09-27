@@ -1263,8 +1263,8 @@ def _issue_cancellation_fact(authority, repository, snapshot, receipt, head):
     return value
 
 
-def cancellation_fact_details(fact):
-    """Return only the conservative effect after reauthenticating the live handle."""
+def _live_cancellation_control(fact):
+    """Reauthenticate and return the exact durable scheduled-end control."""
     with _LOCK:
         if type(fact) is not CancellationFact or fact not in _CANCELLATION_FACTS:
             raise InitialIngressError('not a live cancellation fact')
@@ -1278,10 +1278,36 @@ def cancellation_fact_details(fact):
             or not lineage):
         raise InitialIngressError('stale cancellation fact')
     _check(authority, snapshot)
+    return dict(control)
+
+
+def cancellation_fact_details(fact):
+    """Return only the conservative effect after reauthenticating the live handle."""
+    control = _live_cancellation_control(fact)
     return dict(disposition='subscription_scheduled_to_end_at_paid_period_boundary',
                 exclusive_service_end=control['service_end'],
                 paid_receipt_id=control['paid_receipt_id'],
                 paid_fact_id=control['paid_fact_id'])
+
+
+def cancellation_presentation_facts(fact):
+    """Project exact S6F facts from the reauthenticated paid+cancellation control."""
+    control = _live_cancellation_control(fact)
+    scope = control.get('scope')
+    if (type(scope) is not list or len(scope) != 3
+            or not all(type(value) is str and value for value in scope)
+            or control.get('owner') != scope[0]
+            or control.get('subscription') != scope[2]):
+        raise InitialIngressError('invalid cancellation presentation scope')
+    return dict(
+        owner=scope[0], billing_account=scope[1], subscription=scope[2],
+        paid_period_started_at_utc=control['service_start'],
+        cancellation_verified_at_utc=control['verification_completed_at'],
+        paid_through_exclusive_utc=control['service_end'],
+        paid_receipt_id=control['paid_receipt_id'],
+        paid_fact_id=control['paid_fact_id'],
+        disposition=control['disposition'],
+    )
 
 
 def ingest_scheduled_cancellation(authority, repository, raw_body, signature_header, *, clock):
