@@ -108,7 +108,7 @@ disposition forward by name alone.
     "FOUNDER_DECISIONS.md": "78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f",
     "docs/API_CONTRACT_GAP_REPORT.md": "b0eeeea6357e88dd1db59dd5ddf2d4e4e712f79f73d3a61c52838cda390ac85f",
     "docs/TECHNICAL_ARCHITECTURE.md": "7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79",
-    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "5c40a5ed5ff6a914b11d65cd1a9bebb70505c005f0a06cd7382d2ffe00cecae8",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "1d57f178865d8ca70f08ddd832848073aea95303ee28d1a39f18e2d670f531c9",
     "reserved/__init__.py": "fbcdbdc303783a0cfb1f8f1a69420beb331822b726786af6a442add3eb943a81",
     "reserved/providers/banking/yapily.py": "885d021f20f8a76b5f2d26ed692f1e2cae4a7c9764c885da286a61c1c2b68475",
     "reserved/security.py": "73a5d20f1aa69fafda1ab4a9d6c01668fc9a465686e2d8198f8649364e43ae2b",
@@ -118,9 +118,10 @@ disposition forward by name alone.
     "reserved/templates/tax_assurance.html": "ea7e838a32da6738be947892b6280b6e16367b369c43f85dc9dee74ce007b83e",
     "reserved/templates/v2/sandbox_checklist.html": "dad35c55d8557e114db120e9dfd8108503e3b8d5c834b0a48f5edb2bda1f6d38",
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
+    "reserved/web/hicbc.py": "efe0e59d6bd88ce44ae1f48a59aad9e01594b382c4b211a9a916508af6acd2f2",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
-    "reserved/web/v2.py": "a05903f84633669d716a8ac62cfa91a067662c9401fd1e98f648326fa07f4315",
-    "tests/test_w10_paid_surface_inventory.py": "bb97d300ac34bad4d5f87b89e21bdbf1730fc9a35ce4c8ca47cfbd032ef03bf9"
+    "reserved/web/v2.py": "e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16",
+    "tests/test_w10_paid_surface_inventory.py": "2a7c86ad7cfe994f622d1fe638c084d576aaa882ffa4108c406b1867be436609"
   },
   "s5c_implemented_treatments": {
     "web.calculate": {

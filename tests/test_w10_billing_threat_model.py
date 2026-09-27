@@ -24,8 +24,10 @@ CURRENT_ROUTES_COMMIT = "c5e560045ed3d62f02c894e931464c3d7294e99f"
 PAYE_V2_COMMIT = "f29a5a8d4acde639fb108f8f9eeaaa833b59dc4b"
 PAYE_V2_SHA256 = "be6247e5f9aa91cfbdc3a4d028fbf4b3c4911eaf98dcd1f7b383b28998838236"
 MTD_V2_COMMIT = "730db03e9d952a43df2f6d7b638b5a893600ec89"
-CURRENT_V2_COMMIT = "5c7428e23286d5f2506eb6c810b8eff534714f4b"
-CURRENT_V2_SHA256 = "a05903f84633669d716a8ac62cfa91a067662c9401fd1e98f648326fa07f4315"
+CURRENT_V2_COMMIT = "318fe2dabcef359dd4066fc207ad8a07395bbefd"
+CURRENT_V2_SHA256 = "e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16"
+CURRENT_HICBC_COMMIT = "cdb15db4f74a715f513a4882e5fbad086f17bee5"
+CURRENT_HICBC_SHA256 = "efe0e59d6bd88ce44ae1f48a59aad9e01594b382c4b211a9a916508af6acd2f2"
 MTD_V2_SHA256 = "15b0893514d4e6a5daab935d602aa1d2aa899617f401ed7dbabc704ab91ef563"
 
 EXPECTED_SOURCES = {
@@ -179,6 +181,12 @@ EXPECTED_SOURCES = {
         "20a754059b817eb33e5c83ae3edbe551c92c2bafbbbeeca39ed2c709900db3c8",
         "historical_at_cutoff",
     ),
+    "SRC-26": (
+        "reserved/web/hicbc.py",
+        CURRENT_HICBC_COMMIT,
+        CURRENT_HICBC_SHA256,
+        "live",
+    ),
 }
 
 EXPECTED_TITLES = (
@@ -329,7 +337,7 @@ def assert_exact_source_register(data):
     for source_id, (path, accepted_commit, expected_hash, binding) in sources.items():
         # MTD v2 and legacy routes have independent accepted live anchors;
         # neither is relabelled as assurance from the other's checkpoint.
-        descendant = (CURRENT_V2_COMMIT if source_id == "SRC-16" else CURRENT_ROUTES_COMMIT) if binding == "live" else HEAD
+        descendant = CURRENT_HICBC_COMMIT if binding == "live" else HEAD
         assert is_ancestor(
             accepted_commit, descendant
         ), f"non-ancestor evidence source: {source_id}"
@@ -368,7 +376,7 @@ def test_mtd_live_register_rejects_substituted_hash_commit_and_binding():
             raise AssertionError(f"substituted MTD source {field} was accepted")
 
 
-def test_mtd_paid_boundary_is_the_only_register_delta_from_prior_paye_binding():
+def test_live_route_bindings_are_the_only_register_delta_from_prior_paye_binding():
     previous = register_from_text(subprocess.run(
         ["git", "show", "6bba5575a69eaa3f60d23c9afa5cfd1b77fa4068:docs/W10_S7A_BILLING_THREAT_MODEL.md"],
         cwd=ROOT, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
@@ -381,6 +389,9 @@ def test_mtd_paid_boundary_is_the_only_register_delta_from_prior_paye_binding():
         accepted_commit="6f7ae44c4a037431b58ec0d8e5c4016278fa8b6a",
         sha256="9798dc5d489f4cb1e830dd444c1d40946588409607ad71f6c05b75b975247dc6",
     )
+    current["sources"] = [item for item in current["sources"] if item["id"] != "SRC-26"]
+    threat = next(item for item in current["threats"] if item["id"] == "BT-20")
+    threat["current_evidence"].remove("SRC-26")
     assert current == previous  # Every other source, topology, threat and gate is unchanged.
 
 
@@ -673,6 +684,7 @@ def test_reconciled_rows_bind_exact_new_evidence_and_preserved_open_gaps():
                 "SRC-23",
                 "SRC-24",
                 "SRC-25",
+                "SRC-26",
             ],
             [
                 "answered_Q2_against_accepted_S5A_inventory",

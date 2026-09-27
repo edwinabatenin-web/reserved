@@ -43,17 +43,17 @@ checkpoint from the commit that integrated identical package blobs.
 The live `SRC-24` route binding is refreshed at accepted integration commit
 `c5e560045ed3d62f02c894e931464c3d7294e99f`; the separate accepted S5C
 historical product checkpoint remains unchanged.
-The separate live `SRC-16` v2 binding now names the integrated paid durable HICBC
-annual-position checkpoint `5c7428e23286d5f2506eb6c810b8eff534714f4b`, with
-digest `a05903f84633669d716a8ac62cfa91a067662c9401fd1e98f648326fa07f4315`.
-That source retains the earlier paid durable PAYE forecast route while adding a
-static disabled-first HICBC annual-position route behind the same exact paid
-boundary. HICBC owner, business, tax year and nation remain server-owned; a
-complete injected runtime is required; and the bounded response has no payment,
-refund, reserve, transfer, filing or action authority.
-The earlier PAYE forecast product checkpoint remains
-`318fe2dabcef359dd4066fc207ad8a07395bbefd`; its v2 digest was
+The live `SRC-16` v2 binding retains the integrated paid durable PAYE forecast
+checkpoint `318fe2dabcef359dd4066fc207ad8a07395bbefd`, with digest
 `e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16`.
+The new live `SRC-26` HICBC binding names the corrected conditional route
+checkpoint `cdb15db4f74a715f513a4882e5fbad086f17bee5`, with digest
+`efe0e59d6bd88ce44ae1f48a59aad9e01594b382c4b211a9a916508af6acd2f2`.
+It adds the disabled-first HICBC annual-position route to the conditional HICBC
+blueprint behind the same exact paid boundary. Owner, business, tax year and
+nation remain server-owned; a complete injected runtime is required; and the
+bounded response has no payment, refund, reserve, transfer, filing or action
+authority.
 It keeps confirmed-input forecasting disabled by default and proves the route
 is available only after exact forecast dependencies and an owner-bound
 reconciled paid entitlement are both installed. The response remains limited to
@@ -217,8 +217,8 @@ source commit and digest rather than being relabelled as PAYE or MTD evidence.
     {
       "id": "SRC-16",
       "path": "reserved/web/v2.py",
-      "accepted_commit": "5c7428e23286d5f2506eb6c810b8eff534714f4b",
-      "sha256": "a05903f84633669d716a8ac62cfa91a067662c9401fd1e98f648326fa07f4315",
+      "accepted_commit": "318fe2dabcef359dd4066fc207ad8a07395bbefd",
+      "sha256": "e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16",
       "binding": "live"
     },
     {
@@ -283,6 +283,13 @@ source commit and digest rather than being relabelled as PAYE or MTD evidence.
       "accepted_commit": "3c63e64e478957ce04ee1154363c2eae94b82b30",
       "sha256": "20a754059b817eb33e5c83ae3edbe551c92c2bafbbbeeca39ed2c709900db3c8",
       "binding": "historical_at_cutoff"
+    },
+    {
+      "id": "SRC-26",
+      "path": "reserved/web/hicbc.py",
+      "accepted_commit": "cdb15db4f74a715f513a4882e5fbad086f17bee5",
+      "sha256": "efe0e59d6bd88ce44ae1f48a59aad9e01594b382c4b211a9a916508af6acd2f2",
+      "binding": "live"
     }
   ],
   "threats": [
@@ -576,7 +583,7 @@ source commit and digest rather than being relabelled as PAYE or MTD evidence.
       "title": "direct_url_api_or_route_classification_bypass",
       "assets": ["paid_surface_inventory", "server_route", "api", "entitlement_gate", "admin_boundary"],
       "attack_or_failure": "A user bypasses client hiding, reaches an unclassified/legacy/internal route, changes method/content negotiation or exploits inconsistent entitlement enforcement.",
-      "current_evidence": ["SRC-06", "SRC-10", "SRC-11", "SRC-14", "SRC-15", "SRC-16", "SRC-23", "SRC-24", "SRC-25"],
+      "current_evidence": ["SRC-06", "SRC-10", "SRC-11", "SRC-14", "SRC-15", "SRC-16", "SRC-23", "SRC-24", "SRC-25", "SRC-26"],
       "control_id": "BC-20",
       "implemented_control": "S5C implements the accepted fail-closed treatments for five legacy/internal routes: calculation and tax-assurance hard-404, connections and settings GET redirect to session-guarded v2 equivalents with settings POST hard-404, and sandbox checklist hard-404 in production.",
       "control_strength": "implemented_five_route_legacy_internal_hardening_without_paid_entitlement_gate",
