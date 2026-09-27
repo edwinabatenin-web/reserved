@@ -95,6 +95,16 @@ def test_disabled_and_csrf_rejections_never_consult_clearance_provider(prepared,
     assert client.post("/v2/account/local-tax-data-erasure", data={"csrf_token": token}).status_code == 404
     assert calls == []
 
+
+def test_query_or_body_extras_are_rejected_before_provider(prepared, monkeypatch):
+    app, owner, _, repository, boundary, clearances = prepared
+    calls = []; _install(app, repository, boundary, clearances, calls)
+    monkeypatch.setenv("LOCAL_TAX_DATA_ERASURE_ENABLED", "1")
+    client, token = _client(app, owner)
+    assert client.post("/v2/account/local-tax-data-erasure?x=1", data={"csrf_token": token}).status_code == 400
+    assert client.post("/v2/account/local-tax-data-erasure", data={"csrf_token": token, "x": "1"}).status_code == 400
+    assert calls == []
+
     monkeypatch.setenv("LOCAL_TAX_DATA_ERASURE_ENABLED", "1")
     # A route with no CSRF token is stopped by the application's global guard.
     client2 = app.test_client()

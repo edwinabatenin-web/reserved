@@ -487,6 +487,49 @@ def test_account_lifecycle_barrier_makes_concurrent_intake_post_linearization(tm
     assert upload_error and upload_done.is_set() and len(_files(tmp_path)) == 0
 
 
+def test_two_boundaries_and_restart_honor_erased_owner_tombstone(tmp_path):
+    first = _boundary(tmp_path)
+    second = _boundary(tmp_path)
+    _begin(first)
+    entered, release, refused = threading.Event(), threading.Event(), []
+    worker = threading.Thread(target=lambda: first.erase_owner_for_account_lifecycle_then(
+        authenticated_user_id=OWNER,
+        after_raw_erasure=lambda: (entered.set(), release.wait(2))[1],
+    ))
+    worker.start(); assert entered.wait(2)
+    contender = threading.Thread(target=lambda: _capture(refused, lambda: second.begin(
+        authenticated_user_id=OWNER, session_binding="second-boundary-000", tax_year=YEAR,
+        content_type="application/pdf", document_bytes=PDF)))
+    contender.start(); assert not refused
+    release.set(); worker.join(2); contender.join(2)
+    assert refused and isinstance(refused[0], PayslipIntakeError)
+    restarted = _boundary(tmp_path)
+    with pytest.raises(PayslipIntakeError, match="lifecycle"):
+        restarted.begin(authenticated_user_id=OWNER, session_binding="restart-boundary00", tax_year=YEAR,
+                        content_type="application/pdf", document_bytes=PDF)
+
+
+def _capture(target, operation):
+    try:
+        operation()
+    except PayslipIntakeError as exc:
+        target.append(exc)
+
+
+def test_failed_account_callback_blocks_then_retry_succeeds_and_keeps_quarantine(tmp_path):
+    boundary = _boundary(tmp_path)
+    sentinel = boundary._root / ".quarantine" / "unowned-sentinel"
+    sentinel.write_bytes(b"leave-me")
+    with pytest.raises(RuntimeError):
+        boundary.erase_owner_for_account_lifecycle_then(authenticated_user_id=OWNER,
+                                                        after_raw_erasure=lambda: (_ for _ in ()).throw(RuntimeError()))
+    with pytest.raises(PayslipIntakeError, match="lifecycle"):
+        _begin(boundary)
+    assert sentinel.read_bytes() == b"leave-me"
+    assert boundary.erase_owner_for_account_lifecycle_then(authenticated_user_id=OWNER,
+                                                            after_raw_erasure=lambda: "ok") == (0, "ok")
+
+
 def test_real_v15_upgrade_uses_no_action_intake_foreign_key(tmp_path, monkeypatch):
     """Exercise v16 migration itself, without fresh-schema DDL precreating it."""
     legacy = tmp_path / "real-v15.db"
