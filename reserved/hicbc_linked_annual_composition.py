@@ -1,4 +1,4 @@
-"""Disabled-first linked-HICBC composition over exact durable annual sources.
+"""Disabled-first linked-HICBC application service over durable annual sources.
 
 This service has no route or feature switch and cannot activate linked HICBC.
 It derives the partner only from a unique current same-year link, asks a trusted

@@ -595,7 +595,7 @@ def test_integration_gate_has_only_trusted_personalised_annual_callers():
     ]
     expected = {
         ROOT / "reserved" / "hicbc_durable_annual_bridge.py",
-        ROOT / "reserved" / "services" / "hicbc_linked_annual_composition.py",
+        ROOT / "reserved" / "hicbc_linked_annual_composition.py",
     }
     assert len(callers) == 2
     for path in expected:

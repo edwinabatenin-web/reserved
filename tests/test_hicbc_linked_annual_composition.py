@@ -10,14 +10,14 @@ from flask import Flask
 
 import reserved.auth as auth
 import reserved.database as db
-import reserved.services.hicbc_linked_annual_composition as linked
+import reserved.hicbc_linked_annual_composition as linked
 from reserved.annual_position_durable_repository import DurableGovernance
 from reserved.annual_position_repository_contract import (
     make_structural_candidate,
     prepare_annual_position_record,
 )
 from reserved.engines.annual_to_cash_integration import annual_to_cash_position_identity
-from reserved.services.hicbc_linked_annual_composition import (
+from reserved.hicbc_linked_annual_composition import (
     LinkedAnnualLiveSource,
     compose_linked_durable_authenticated_hicbc_preview,
 )
