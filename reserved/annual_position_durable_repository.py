@@ -304,6 +304,15 @@ class DurableAnnualPositionRepository:
         self._membership_issuer_reference = _reference(membership_issuer_reference, "membership:")
         self._lifecycle_issuer_reference = _reference(lifecycle_issuer_reference, "lifecycle:")
 
+    def assert_external_authority_available(self) -> None:
+        """Fail closed unless a separately supplied verifier is configured.
+
+        This proves capability presence only.  It does not convert an
+        in-process adapter into production authority; callers still need their
+        separately accepted invocation boundary and target evidence.
+        """
+        self._require_external_authority()
+
     def _require_external_authority(self) -> None:
         if not self._external_authority_available:
             raise DurableAnnualPositionError("external authority verifier is not configured; operation is disabled")
