@@ -45,7 +45,7 @@ The live `SRC-24` route binding is refreshed at accepted integration commit
 historical product checkpoint remains unchanged.
 The separate live `SRC-16` v2 binding now names the integrated production-shaped
 MTD current-evidence checkpoint `98008826dc9ff83c1d22953458720c23efe5e292`,
-with digest `da269a98691d6b1f19d88a201102dff9f4a0dfb1a7362bbb98b2d35615c5603d`.
+with digest `66697844f581226ea7817cd22d5f9c1728431499edf96c0968c6e00583c08560`.
 It keeps the manual indication disabled by default and proves the route is
 available in a production-shaped process only after an owner-bound reconciled
 paid entitlement. This synthetic binding does not replace target/provider,
@@ -207,8 +207,8 @@ source commit and digest rather than being relabelled as PAYE or MTD evidence.
     {
       "id": "SRC-16",
       "path": "reserved/web/v2.py",
-      "accepted_commit": "98008826dc9ff83c1d22953458720c23efe5e292",
-      "sha256": "da269a98691d6b1f19d88a201102dff9f4a0dfb1a7362bbb98b2d35615c5603d",
+      "accepted_commit": "8a28f783332b1fa6e23f1e3872424a5f135cacac",
+      "sha256": "66697844f581226ea7817cd22d5f9c1728431499edf96c0968c6e00583c08560",
       "binding": "live"
     },
     {

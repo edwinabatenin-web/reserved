@@ -453,7 +453,7 @@ def test_binding_revocation_during_reconciliation(harness, stage):
     assert harness.repo.empty()
 
 
-def test_all_30_actual_endpoints_deny_without_source(app, tmp_path):
+def test_all_31_actual_endpoints_deny_without_source(app, tmp_path):
     client, uid = dashboard._authenticated_client(app)
     h = Harness(tmp_path/'source.db', uid)
     try:
@@ -472,7 +472,7 @@ def test_all_30_actual_endpoints_deny_without_source(app, tmp_path):
                 old.denied(client.open(path, method=method))
         finally:
             sys.settrace(prior)
-        assert touched == [] and len(originals) == 30
+        assert touched == [] and len(originals) == 31
     finally:
         h.repo.close()
 
