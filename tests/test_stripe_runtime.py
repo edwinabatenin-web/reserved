@@ -8,6 +8,7 @@ import json
 from datetime import datetime, timezone
 
 import pytest
+from flask import Flask
 
 import reserved.database as db
 from reserved import create_app
@@ -99,6 +100,27 @@ def test_default_routes_are_truthfully_disabled_and_do_not_contact_a_provider(ap
     response = client.post("/v2/billing/checkout", json={"plan_key": "monthly"}, headers={"Idempotency-Key": "x" * 16})
     assert response.status_code == 404
     assert client.post("/v2/billing/webhook", data=b"{}", headers={"Stripe-Signature": "anything"}).status_code == 404
+
+
+def test_installation_preflight_leaves_no_partial_billing_runtime_without_paid_targets(tmp_path):
+    incomplete = Flask(__name__)
+    runtime, _ = _runtime(tmp_path)
+    with pytest.raises(BillingRuntimeError, match="paid endpoints"):
+        install_stripe_billing_runtime(incomplete, runtime)
+    assert "billing" not in incomplete.blueprints
+    assert "reserved.billing.stripe_runtime" not in incomplete.extensions
+    assert "reserved.billing.stripe_runtime.paid_surface" not in incomplete.extensions
+    assert not any(rule.rule.startswith("/v2/billing/") for rule in incomplete.url_map.iter_rules())
+
+
+def test_installation_rejects_one_missing_settled_paid_endpoint_without_partial_activation(app, tmp_path):
+    app.view_functions.pop("v2.mtd_manual_scope")
+    runtime, _ = _runtime(tmp_path)
+    with pytest.raises(BillingRuntimeError, match="incomplete"):
+        install_stripe_billing_runtime(app, runtime)
+    assert "billing" not in app.blueprints
+    assert "reserved.billing.stripe_runtime" not in app.extensions
+    assert "reserved.billing.stripe_runtime.paid_surface" not in app.extensions
 
 
 def test_incomplete_price_or_signature_configuration_cannot_create_a_runtime(tmp_path):

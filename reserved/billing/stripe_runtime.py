@@ -500,29 +500,40 @@ def install_stripe_billing_runtime(app: Flask, runtime: StripeBillingRuntime) ->
         raise BillingRuntimeError("an explicit complete billing runtime is required")
     if _RUNTIME_KEY in app.extensions or "billing" in app.blueprints:
         raise BillingRuntimeError("billing runtime already installed")
+    marker, replacements = _prepare_runtime_paid_surface_enforcement(app, runtime)
     app.register_blueprint(billing)
     app.extensions[_RUNTIME_KEY] = runtime
-    install_runtime_paid_surface_enforcement(app, runtime)
+    app.view_functions.update(replacements)
+    app.extensions[marker] = True
 
 
-def install_runtime_paid_surface_enforcement(app: Flask, runtime: StripeBillingRuntime) -> None:
-    """Install server-side paid access checks on the settled ordinary surfaces.
-
-    This is intentionally a separate explicit composition action: purchase,
-    portal, recovery and authentication routes remain outside the paid surface,
-    while every registered ordinary product endpoint denies when the own
-    reconciled state is absent, suspended or recovery-expired.
-    """
+def _prepare_runtime_paid_surface_enforcement(
+    app: Flask, runtime: StripeBillingRuntime
+) -> tuple[str, dict[str, object]]:
+    """Validate and construct every paid wrapper without mutating the app."""
     from reserved.billing.paid_access_guard import PAID_ENDPOINTS
 
+    if not isinstance(app, Flask) or not isinstance(runtime, StripeBillingRuntime):
+        raise BillingRuntimeError("explicit Flask app and billing runtime required")
     marker = _RUNTIME_KEY + ".paid_surface"
     if marker in app.extensions:
         raise BillingRuntimeError("paid-surface enforcement already installed")
-    targets = tuple(name for name in PAID_ENDPOINTS if name in app.view_functions)
-    if not targets:
+    hicbc_registered = "hicbc" in app.blueprints
+    expected = tuple(
+        endpoint for endpoint in PAID_ENDPOINTS
+        if hicbc_registered or not endpoint.startswith("hicbc.")
+    )
+    missing = tuple(
+        endpoint for endpoint in expected
+        if endpoint not in app.view_functions or not callable(app.view_functions[endpoint])
+    )
+    if missing:
+        raise BillingRuntimeError("settled paid endpoints are incomplete")
+    if not expected:
         raise BillingRuntimeError("no settled paid endpoints are registered")
+
     replacements = {}
-    for endpoint in targets:
+    for endpoint in expected:
         original = app.view_functions[endpoint]
 
         @wraps(original)
@@ -542,5 +553,17 @@ def install_runtime_paid_surface_enforcement(app: Flask, runtime: StripeBillingR
             return __original(*args, **kwargs)
 
         replacements[endpoint] = guarded
+    return marker, replacements
+
+
+def install_runtime_paid_surface_enforcement(app: Flask, runtime: StripeBillingRuntime) -> None:
+    """Install server-side paid access checks on the settled ordinary surfaces.
+
+    This is intentionally a separate explicit composition action: purchase,
+    portal, recovery and authentication routes remain outside the paid surface,
+    while every registered ordinary product endpoint denies when the own
+    reconciled state is absent, suspended or recovery-expired.
+    """
+    marker, replacements = _prepare_runtime_paid_surface_enforcement(app, runtime)
     app.view_functions.update(replacements)
     app.extensions[marker] = True
