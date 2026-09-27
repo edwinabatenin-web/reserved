@@ -129,6 +129,9 @@ def test_october_inventory_is_complete_and_fail_closed():
         "hicbc_annual_integration_assurance",
     ):
         assert required in ids
+    states = {item["id"]: item["state"] for item in octo["blocking_components"]}
+    assert states["paye_evidence_and_forecasting"] == "not_executable"
+    assert states["paye_payslip_manual_evidence_journey"] == "evidence_missing"
     assert octo["supported_calculation_families"] == [
         "paye_multiple_employment",
         "sole_trade",

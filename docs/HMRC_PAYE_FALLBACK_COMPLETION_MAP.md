@@ -101,9 +101,11 @@ PAYE, payment, refund, liability or provider data.
 Independent technical and security/privacy re-review both returned ACCEPT.
 Focused PAYE/billing tests passed 24/24, followed by a clean canonical gate with
 10,394 root tests plus all mandatory artefact, parity, RW3 and options checks.
-This makes the local manual current-position path executable; it does not supply
-external authority, target-runtime, representative-human, retention/backup or
-release evidence, so the canonical state advances only to `evidence_missing`.
+This makes the local manual current-position path executable; it does not make
+the separate future-pay composer executable through authenticated durable
+orchestration. Because the canonical row combines evidence and forecasting, it
+remains `not_executable`. The distinct structured-manual journey row advances
+to `evidence_missing`; neither row is complete or launch-ready.
 
 ## Explicit-confirmed-period future-pay forecast boundary
 
@@ -143,7 +145,8 @@ The package adds no provider or HMRC access, capture authority, persistence,
 route/authentication boundary, customer presentation, tax-liability
 determination, reserve recommendation, refund decision or payment authority.
 Accordingly, it does **not** close the canonical
-`paye_evidence_and_forecasting` blocker. Customer orchestration and
+`paye_evidence_and_forecasting` blocker. The combined row remains
+`not_executable`. Customer orchestration and
 owner/business binding, durable lifecycle/persistence, safe presentation,
 coverage of the required periods and sources, target UX/security evidence,
 integrated end-to-end assurance and launch enablement remain outstanding.
