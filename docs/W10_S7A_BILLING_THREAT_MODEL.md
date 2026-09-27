@@ -206,8 +206,8 @@ source commit and digest rather than being relabelled as PAYE or MTD evidence.
     {
       "id": "SRC-16",
       "path": "reserved/web/v2.py",
-      "accepted_commit": "730db03e9d952a43df2f6d7b638b5a893600ec89",
-      "sha256": "15b0893514d4e6a5daab935d602aa1d2aa899617f401ed7dbabc704ab91ef563",
+      "accepted_commit": "6f7ae44c4a037431b58ec0d8e5c4016278fa8b6a",
+      "sha256": "9798dc5d489f4cb1e830dd444c1d40946588409607ad71f6c05b75b975247dc6",
       "binding": "live"
     },
     {
