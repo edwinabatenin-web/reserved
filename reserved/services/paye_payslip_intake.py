@@ -6,16 +6,18 @@ boundary before that contract: it accepts an already-authenticated owner's
 small, recognised document, stores it under a server-generated name, and
 deletes it deterministically when it is consumed or cancelled.
 
-It has no Flask route, no database integration, no OCR implementation, and no
-network/provider imports.  Extraction is an injected adapter and is fail-closed
-when absent.  This is deliberately not a claim that backups, external OCR
-providers, or any wider account erasure have completed.
+It has no Flask route, OCR implementation, or network/provider imports.
+Extraction is an injected adapter and is fail-closed when absent.  Its SQLite
+metadata contains only redacted owner/session/file identity sufficient for
+crash recovery, never raw content or a client filename.  This is deliberately
+not a claim that backups, external OCR providers, or any wider account erasure
+have completed.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import datetime, timezone
 import hashlib
 import os
 from pathlib import Path
@@ -24,6 +26,7 @@ import secrets
 import stat
 from typing import Protocol
 
+from reserved import database
 from reserved.engines.paye_extraction_confirmation import (
     PayeExtractionCandidate,
     PayeExtractionConfirmation,
@@ -64,7 +67,7 @@ class PayslipIntakeHandle:
 @dataclass(frozen=True, slots=True)
 class _StoredPayslip:
     owner_user_id: int
-    session_binding: str
+    session_hash: str
     tax_year: str
     content_type: str
     path: Path
@@ -88,9 +91,38 @@ class PayslipIntakeBoundary:
         if root.is_symlink() or not root.is_dir():
             raise PayslipIntakeError("payslip storage root is unavailable")
         self._root = root.resolve()
+        if not hasattr(os, "O_DIRECTORY") or not hasattr(os, "O_NOFOLLOW"):
+            raise PayslipIntakeError("payslip storage platform protections are unavailable")
+        root_fd = -1
+        try:
+            root_fd = os.open(self._root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            if not stat.S_ISDIR(os.fstat(root_fd).st_mode):
+                raise PayslipIntakeError("payslip storage root is unavailable")
+        except (OSError, PayslipIntakeError) as exc:
+            if root_fd >= 0:
+                os.close(root_fd)
+            if isinstance(exc, PayslipIntakeError):
+                raise
+            raise PayslipIntakeError("payslip storage root is unavailable") from exc
+        self._root_fd = root_fd
         self._enabled = enabled
         self._extraction_adapter = extraction_adapter
         self._records: dict[str, _StoredPayslip] = {}
+        self._before_quarantine = None  # deterministic test seam; never set by a route.
+        database.init_db()
+        self._recover_after_restart()
+
+    def close(self) -> None:
+        """Release the private directory handle when the composed runtime stops."""
+        fd, self._root_fd = getattr(self, "_root_fd", -1), -1
+        if fd >= 0:
+            os.close(fd)
+
+    def __del__(self):  # pragma: no cover - best-effort interpreter cleanup
+        try:
+            self.close()
+        except OSError:
+            pass
 
     @staticmethod
     def _owner(value: object) -> int:
@@ -103,6 +135,11 @@ class PayslipIntakeBoundary:
         if type(value) is not str or _SESSION.fullmatch(value) is None:
             raise PayslipIntakeError("authenticated session binding is invalid")
         return value
+
+    @classmethod
+    def _session_hash(cls, value: object) -> str:
+        session = cls._session(value)
+        return hashlib.sha256(b"reserved:payslip-session:v1\0" + session.encode("ascii")).hexdigest()
 
     @staticmethod
     def _year(value: object) -> str:
@@ -118,6 +155,16 @@ class PayslipIntakeBoundary:
             raise PayslipIntakeError("payslip intake is disabled")
 
     @staticmethod
+    def _timestamp() -> str:
+        return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    @staticmethod
+    def _require_registered_owner(owner_user_id: int) -> None:
+        with database._connection() as conn:
+            if conn.execute("SELECT 1 FROM users WHERE id=?", (owner_user_id,)).fetchone() is None:
+                raise PayslipIntakeError("authenticated owner is unavailable")
+
+    @staticmethod
     def _validate_document(content_type: object, document_bytes: object) -> tuple[str, bytes]:
         if type(content_type) is not str or content_type not in _TYPES:
             raise PayslipIntakeError("unsupported payslip content type")
@@ -129,25 +176,28 @@ class PayslipIntakeBoundary:
             raise PayslipIntakeError("payslip bytes do not match the declared content type")
         return content_type, document_bytes
 
-    def _path_for(self, intake_id: str, content_type: str) -> Path:
+    def _filename_for(self, intake_id: str, content_type: str) -> str:
         if _STORAGE_ID.fullmatch(intake_id) is None:
             raise PayslipIntakeError("payslip storage identity is invalid")
         suffix = _TYPES[content_type][0]
-        path = self._root / f"{intake_id}.{suffix}"
-        # The id and suffix are server-controlled; the resolve check also
-        # rejects a hostile filesystem substitution before any I/O.
-        if path.parent != self._root or path.resolve().parent != self._root:
-            raise PayslipIntakeError("payslip storage path is unsafe")
-        return path
+        return f"{intake_id}.{suffix}"
 
-    def _write(self, path: Path, document_bytes: bytes) -> tuple[int, int, int, str]:
+    def _path_for(self, intake_id: str, content_type: str) -> Path:
+        # This is retained for diagnostics/tests only.  All filesystem I/O uses
+        # the persistent private directory descriptor, never this path string.
+        return self._root / self._filename_for(intake_id, content_type)
+
+    def _quarantine_filename(self, intake_id: str, content_type: str) -> str:
+        return ".deleting-" + self._filename_for(intake_id, content_type)
+
+    def _write(self, intake_id: str, content_type: str, document_bytes: bytes) -> tuple[int, int, int, str]:
+        filename = self._filename_for(intake_id, content_type)
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
+        flags |= os.O_NOFOLLOW
         fd = None
         created = False
         try:
-            fd = os.open(path, flags, 0o600)
+            fd = os.open(filename, flags, 0o600, dir_fd=self._root_fd)
             created = True
             with os.fdopen(fd, "wb") as output:
                 fd = None
@@ -166,7 +216,7 @@ class PayslipIntakeBoundary:
         except (OSError, PayslipIntakeError) as exc:
             if created:
                 try:
-                    path.unlink(missing_ok=True)
+                    os.unlink(filename, dir_fd=self._root_fd)
                 except OSError:
                     pass
             if isinstance(exc, PayslipIntakeError):
@@ -175,8 +225,7 @@ class PayslipIntakeBoundary:
         finally:
             if fd is not None:
                 os.close(fd)
-            if path.is_symlink():
-                raise PayslipIntakeError("payslip storage path is unsafe")
+            pass
 
     @staticmethod
     def _matches(record: _StoredPayslip, metadata: os.stat_result) -> bool:
@@ -189,11 +238,10 @@ class PayslipIntakeBoundary:
         if record.path != expected:
             raise PayslipIntakeError("payslip storage path is unsafe")
         flags = os.O_RDONLY
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
+        flags |= os.O_NOFOLLOW
         fd = None
         try:
-            fd = os.open(record.path, flags)
+            fd = os.open(self._filename_for(intake_id, record.content_type), flags, dir_fd=self._root_fd)
             before = os.fstat(fd)
             if not self._matches(record, before):
                 raise PayslipIntakeError("payslip storage identity changed")
@@ -215,24 +263,166 @@ class PayslipIntakeBoundary:
                 os.close(fd)
 
     def _delete(self, intake_id: str, record: _StoredPayslip) -> None:
-        # Reconstruct and validate the path rather than trusting retained input.
+        """Atomically quarantine then delete only the original verified object.
+
+        ``unlink`` has no inode-bound API on portable Python.  Renaming inside
+        the held directory descriptor makes the namespace transition atomic;
+        re-checking the quarantined object means a replacement is never deleted.
+        A mismatch remains quarantined and requires operational disposition.
+        """
         expected = self._path_for(intake_id, record.content_type)
         if record.path != expected:
             raise PayslipIntakeError("payslip storage path is unsafe")
+        filename = self._filename_for(intake_id, record.content_type)
+        quarantine = self._quarantine_filename(intake_id, record.content_type)
         try:
-            metadata = record.path.lstat()
+            metadata = os.stat(filename, dir_fd=self._root_fd, follow_symlinks=False)
         except FileNotFoundError:
-            self._records.pop(intake_id, None)
-            return
+            return self._delete_quarantined_or_finish(intake_id, record, quarantine)
         except OSError as exc:
             raise PayslipIntakeError("payslip storage path is unavailable") from exc
         if not self._matches(record, metadata):
             raise PayslipIntakeError("payslip storage identity changed")
+        hook = self._before_quarantine
+        if hook is not None:
+            hook()
         try:
-            record.path.unlink(missing_ok=True)
+            os.rename(filename, quarantine, src_dir_fd=self._root_fd, dst_dir_fd=self._root_fd)
+        except OSError as exc:
+            raise PayslipIntakeError("payslip document could not enter deletion quarantine") from exc
+        return self._delete_quarantined_or_finish(intake_id, record, quarantine)
+
+    def _delete_quarantined_or_finish(self, intake_id: str, record: _StoredPayslip, quarantine: str) -> None:
+        try:
+            metadata = os.stat(quarantine, dir_fd=self._root_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            self._records.pop(intake_id, None)
+            return
+        except OSError as exc:
+            raise PayslipIntakeError("payslip deletion quarantine is unavailable") from exc
+        if not self._matches(record, metadata):
+            raise PayslipIntakeError("payslip deletion quarantine identity changed")
+        try:
+            os.unlink(quarantine, dir_fd=self._root_fd)
         except OSError as exc:
             raise PayslipIntakeError("payslip document could not be deleted") from exc
         self._records.pop(intake_id, None)
+
+    def _persist_pending(self, intake_id: str, record: _StoredPayslip) -> None:
+        """Persist only redacted file identity after the private write succeeds."""
+        try:
+            with database._connection() as conn:
+                conn.execute(
+                    """INSERT INTO paye_payslip_intakes
+                       (storage_id,user_id,session_hash,tax_year,content_type,file_device,file_inode,
+                        byte_count,content_sha256,state,created_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,'pending',?)""",
+                    (intake_id, record.owner_user_id, record.session_hash, record.tax_year,
+                     record.content_type, record.device, record.inode, record.byte_count,
+                     record.content_sha256, self._timestamp()),
+                )
+        except Exception as exc:
+            # This is the ordinary non-crash failure path between file write and
+            # metadata commit: delete only the exact file we just verified.
+            self._delete(intake_id, record)
+            raise PayslipIntakeError("payslip intake metadata could not be stored") from exc
+
+    def _mark_deleting(self, *, intake_id: str, record: _StoredPayslip) -> None:
+        with database._connection() as conn:
+            changed = conn.execute(
+                """UPDATE paye_payslip_intakes
+                   SET state='deleting', deletion_started_at=?
+                   WHERE storage_id=? AND user_id=? AND session_hash=? AND tax_year=? AND state='pending'""",
+                (self._timestamp(), intake_id, record.owner_user_id, record.session_hash, record.tax_year),
+            ).rowcount
+        if changed != 1:
+            raise PayslipIntakeError("payslip intake is unavailable")
+
+    def _mark_deleted(self, intake_id: str) -> None:
+        with database._connection() as conn:
+            conn.execute(
+                """UPDATE paye_payslip_intakes SET state='deleted', deleted_at=?
+                   WHERE storage_id=? AND state='deleting'""",
+                (self._timestamp(), intake_id),
+            )
+
+    def _record_from_row(self, row) -> tuple[str, _StoredPayslip] | None:
+        try:
+            intake_id = row["storage_id"]
+            if type(intake_id) is not str or _STORAGE_ID.fullmatch(intake_id) is None:
+                return None
+            owner = self._owner(row["user_id"])
+            session_hash = row["session_hash"]
+            year = self._year(row["tax_year"])
+            content_type = row["content_type"]
+            if type(session_hash) is not str or re.fullmatch(r"[0-9a-f]{64}", session_hash) is None or content_type not in _TYPES:
+                return None
+            device, inode, byte_count, content_sha256 = (
+                row["file_device"], row["file_inode"], row["byte_count"], row["content_sha256"],
+            )
+            if (type(device) is not int or type(inode) is not int or type(byte_count) is not int
+                    or not 0 < byte_count <= MAX_PAYSLIP_BYTES
+                    or type(content_sha256) is not str or re.fullmatch(r"[0-9a-f]{64}", content_sha256) is None):
+                return None
+            path = self._path_for(intake_id, content_type)
+            return intake_id, _StoredPayslip(owner, session_hash, year, content_type, path,
+                                              device, inode, byte_count, content_sha256)
+        except (KeyError, PayslipIntakeError, TypeError):
+            return None
+
+    def _recover_after_restart(self) -> None:
+        """Recover only records whose durable file identity still matches.
+
+        A pre-metadata crash leaves no durable identity, so its unknown file is
+        intentionally quarantined rather than guessed at or deleted.  A
+        ``deleting`` record has such an identity and may be deleted on recovery
+        only after the same device/inode/size checks used at runtime.
+        """
+        with database._connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM paye_payslip_intakes WHERE state IN ('pending', 'deleting')"
+            ).fetchall()
+        for row in rows:
+            decoded = self._record_from_row(row)
+            if decoded is None:
+                continue
+            intake_id, record = decoded
+            try:
+                metadata = os.stat(
+                    self._filename_for(intake_id, record.content_type),
+                    dir_fd=self._root_fd, follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                if row["state"] == "deleting":
+                    try:
+                        self._delete(intake_id, record)
+                    except PayslipIntakeError:
+                        continue
+                    self._mark_deleted(intake_id)
+                else:
+                    self._mark_missing_deleted(intake_id)
+                continue
+            except OSError:
+                continue
+            if not self._matches(record, metadata):
+                continue
+            if row["state"] == "deleting":
+                try:
+                    self._delete(intake_id, record)
+                except PayslipIntakeError:
+                    continue
+                self._mark_deleted(intake_id)
+            else:
+                self._records[intake_id] = record
+
+    def _mark_missing_deleted(self, intake_id: str) -> None:
+        with database._connection() as conn:
+            conn.execute(
+                """UPDATE paye_payslip_intakes
+                   SET state='deleted', deletion_started_at=COALESCE(deletion_started_at, ?), deleted_at=?
+                   WHERE storage_id=? AND state='pending'""",
+                (self._timestamp(), self._timestamp(), intake_id),
+            )
 
     def _owned_record(self, *, handle: PayslipIntakeHandle, authenticated_user_id: object,
                       session_binding: object, tax_year: object) -> tuple[str, _StoredPayslip]:
@@ -240,12 +430,12 @@ class PayslipIntakeBoundary:
         if type(handle) is not PayslipIntakeHandle or _STORAGE_ID.fullmatch(handle.intake_id) is None:
             raise PayslipIntakeError("payslip intake handle is invalid")
         owner = self._owner(authenticated_user_id)
-        session = self._session(session_binding)
+        session_hash = self._session_hash(session_binding)
         year = self._year(tax_year)
         if handle.tax_year != year:
             raise PayslipIntakeError("payslip intake tax year does not match")
         record = self._records.get(handle.intake_id)
-        if record is None or (record.owner_user_id != owner or record.session_binding != session
+        if record is None or (record.owner_user_id != owner or record.session_hash != session_hash
                               or record.tax_year != year):
             raise PayslipIntakeError("payslip intake is unavailable")
         return handle.intake_id, record
@@ -254,14 +444,15 @@ class PayslipIntakeBoundary:
               content_type: str, document_bytes: bytes) -> PayslipIntakeHandle:
         """Store one bounded raw payslip under a server-generated identity."""
         self._require_enabled()
-        owner, session, year = self._owner(authenticated_user_id), self._session(session_binding), self._year(tax_year)
+        owner, session_hash, year = self._owner(authenticated_user_id), self._session_hash(session_binding), self._year(tax_year)
+        self._require_registered_owner(owner)
         content_type, document_bytes = self._validate_document(content_type, document_bytes)
         intake_id = secrets.token_hex(32)
         path = self._path_for(intake_id, content_type)
-        device, inode, byte_count, content_sha256 = self._write(path, document_bytes)
-        self._records[intake_id] = _StoredPayslip(
-            owner, session, year, content_type, path, device, inode, byte_count, content_sha256,
-        )
+        device, inode, byte_count, content_sha256 = self._write(intake_id, content_type, document_bytes)
+        record = _StoredPayslip(owner, session_hash, year, content_type, path, device, inode, byte_count, content_sha256)
+        self._persist_pending(intake_id, record)
+        self._records[intake_id] = record
         return PayslipIntakeHandle(intake_id=intake_id, tax_year=year)
 
     def cancel(self, *, handle: PayslipIntakeHandle, authenticated_user_id: int,
@@ -271,7 +462,9 @@ class PayslipIntakeBoundary:
             handle=handle, authenticated_user_id=authenticated_user_id,
             session_binding=session_binding, tax_year=tax_year,
         )
+        self._mark_deleting(intake_id=intake_id, record=record)
         self._delete(intake_id, record)
+        self._mark_deleted(intake_id)
 
     def confirm(self, *, handle: PayslipIntakeHandle, authenticated_user_id: int,
                 session_binding: str, tax_year: str, decisions, confirmation_id: str,
@@ -281,6 +474,7 @@ class PayslipIntakeBoundary:
             handle=handle, authenticated_user_id=authenticated_user_id,
             session_binding=session_binding, tax_year=tax_year,
         )
+        self._mark_deleting(intake_id=intake_id, record=record)
         try:
             if self._extraction_adapter is None:
                 raise PayslipIntakeError("payslip extraction adapter is not configured")
@@ -300,15 +494,18 @@ class PayslipIntakeBoundary:
             raise PayslipIntakeError("payslip extraction or confirmation failed") from exc
         finally:
             self._delete(intake_id, record)
+            self._mark_deleted(intake_id)
 
     def erase_owner_session(self, *, authenticated_user_id: int, session_binding: str) -> int:
         """Delete all pending raw files for one owner and one signed session only."""
         self._require_enabled()
-        owner, session = self._owner(authenticated_user_id), self._session(session_binding)
+        owner, session_hash = self._owner(authenticated_user_id), self._session_hash(session_binding)
         owned = tuple((intake_id, record) for intake_id, record in self._records.items()
-                      if record.owner_user_id == owner and record.session_binding == session)
+                      if record.owner_user_id == owner and record.session_hash == session_hash)
         for intake_id, record in owned:
+            self._mark_deleting(intake_id=intake_id, record=record)
             self._delete(intake_id, record)
+            self._mark_deleted(intake_id)
         return len(owned)
 
 
