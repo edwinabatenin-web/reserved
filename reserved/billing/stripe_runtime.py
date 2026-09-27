@@ -501,6 +501,16 @@ def install_stripe_billing_runtime(app: Flask, runtime: StripeBillingRuntime) ->
         raise BillingRuntimeError("an explicit complete billing runtime is required")
     if _RUNTIME_KEY in app.extensions or "billing" in app.blueprints:
         raise BillingRuntimeError("billing runtime already installed")
+    billing_endpoints = frozenset({
+        "billing.checkout", "billing.portal", "billing.webhook", "billing.status",
+    })
+    billing_rules = frozenset({
+        "/v2/billing/checkout", "/v2/billing/portal",
+        "/v2/billing/webhook", "/v2/billing/status",
+    })
+    if billing_endpoints.intersection(app.view_functions) or any(
+            rule.rule in billing_rules for rule in app.url_map.iter_rules()):
+        raise BillingRuntimeError("billing route collision")
     marker, replacements = _prepare_runtime_paid_surface_enforcement(app, runtime)
     app.register_blueprint(billing)
     app.extensions[_RUNTIME_KEY] = runtime

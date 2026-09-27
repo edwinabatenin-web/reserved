@@ -123,6 +123,18 @@ def test_installation_rejects_one_missing_settled_paid_endpoint_without_partial_
     assert "reserved.billing.stripe_runtime.paid_surface" not in app.extensions
 
 
+def test_installation_rejects_billing_endpoint_collision_before_any_mutation(app, tmp_path):
+    app.add_url_rule("/synthetic-collision", endpoint="billing.checkout", view_func=lambda: "collision")
+    runtime, _ = _runtime(tmp_path)
+    before_rules = tuple((rule.rule, rule.endpoint) for rule in app.url_map.iter_rules())
+    with pytest.raises(BillingRuntimeError, match="collision"):
+        install_stripe_billing_runtime(app, runtime)
+    assert tuple((rule.rule, rule.endpoint) for rule in app.url_map.iter_rules()) == before_rules
+    assert "billing" not in app.blueprints
+    assert "reserved.billing.stripe_runtime" not in app.extensions
+    assert "reserved.billing.stripe_runtime.paid_surface" not in app.extensions
+
+
 def test_incomplete_price_or_signature_configuration_cannot_create_a_runtime(tmp_path):
     provider = Provider()
     with pytest.raises(BillingRuntimeError, match="complete price"):
