@@ -776,6 +776,18 @@ class DurableAnnualPositionRepository:
             ).fetchall()
             if len(current) != 1:
                 raise DurableAnnualPositionError("current annual position is unavailable")
+            overlap = conn.execute(
+                "SELECT 1 FROM paye_confirmed_future_periods WHERE user_id=? "
+                "AND business_reference=? AND tax_year=? AND source_identity=? "
+                "AND period_start<=? AND period_end>=? "
+                "AND NOT (period_start=? AND period_end=?) LIMIT 1",
+                (
+                    authenticated_user_id, business_reference, tax_year, values[0],
+                    values[2], values[1], values[1], values[2],
+                ),
+            ).fetchone()
+            if overlap is not None:
+                raise DurableAnnualPositionError("future-pay periods overlap")
             conn.execute(
                 "INSERT INTO paye_confirmed_future_periods "
                 "(user_id,business_reference,tax_year,source_identity,period_start,period_end,"

@@ -612,7 +612,7 @@ def test_real_v15_upgrade_uses_no_action_intake_foreign_key(tmp_path, monkeypatc
     monkeypatch.setattr(db, "_DDL", "")
     db.init_db()
     with db._connection() as conn:
-        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 18
+        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == db._SCHEMA_VERSION == 19
         foreign_keys = conn.execute("PRAGMA foreign_key_list(paye_payslip_intakes)").fetchall()
         assert [(item["table"], item["on_delete"] ) for item in foreign_keys] == [("users", "NO ACTION")]
         conn.execute(

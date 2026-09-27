@@ -299,6 +299,21 @@ def test_repository_backed_confirmed_period_can_be_updated_deleted_and_forecast(
     assert len({fact.source_evidence_id for fact in two_periods}) == 2
     assert {fact.employment_id for fact in two_periods} == {source}
 
+    with pytest.raises(DurableAnnualPositionError, match="periods overlap"):
+        repository.save_confirmed_future_pay_period(
+            authenticated_user_id=owner, business_reference="business-1",
+            tax_year="2026/27", source_identity=source,
+            period_start=date(2026, 10, 20), period_end=date(2026, 11, 10),
+            expected_gross_pay=Decimal("2500.00"),
+            expected_tax_deducted=Decimal("375.00"),
+            audit_reference="audit:future-pay-overlap-create",
+        )
+    unchanged = repository.read_confirmed_future_pay_facts(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", nation="England", annual_position=annual,
+    )
+    assert len(unchanged) == 2
+
     repository.save_confirmed_future_pay_period(
         authenticated_user_id=owner, business_reference="business-1",
         tax_year="2026/27", source_identity=source,
@@ -312,6 +327,23 @@ def test_repository_backed_confirmed_period_can_be_updated_deleted_and_forecast(
         tax_year="2026/27", nation="England", annual_position=annual,
     )
     assert [fact.expected_tax_deduction for fact in updated] == [
+        Decimal("765.00"), Decimal("300.00"),
+    ]
+
+    with pytest.raises(DurableAnnualPositionError, match="periods overlap"):
+        repository.save_confirmed_future_pay_period(
+            authenticated_user_id=owner, business_reference="business-1",
+            tax_year="2026/27", source_identity=source,
+            period_start=date(2026, 10, 31), period_end=date(2026, 11, 2),
+            expected_gross_pay=Decimal("300.00"),
+            expected_tax_deducted=Decimal("45.00"),
+            audit_reference="audit:future-pay-overlap-update",
+        )
+    still_updated = repository.read_confirmed_future_pay_facts(
+        authenticated_user_id=owner, business_reference="business-1",
+        tax_year="2026/27", nation="England", annual_position=annual,
+    )
+    assert [fact.expected_tax_deduction for fact in still_updated] == [
         Decimal("765.00"), Decimal("300.00"),
     ]
 
