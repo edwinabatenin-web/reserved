@@ -193,6 +193,7 @@ def test_paid_production_owner_gets_current_year_indication_without_persisting_e
     _admit_paid_event(runtime, owner_id)
     page = client.get(URL)
     assert page.status_code == 200
+    assert page.get_data(as_text=True).count('value="2026-27"') == 1
     token = _csrf(page.get_data(as_text=True))
     with db._connection() as connection:
         before = tuple(connection.iterdump())

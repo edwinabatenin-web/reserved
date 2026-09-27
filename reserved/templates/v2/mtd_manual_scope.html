@@ -35,7 +35,7 @@
     <form method="post" action="{{ url_for('v2.mtd_manual_scope') }}" autocomplete="off" novalidate>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <fieldset><legend>Return, capacity and circumstances</legend>
-            <label for="assessment-year">Assessment tax year</label><select id="assessment-year" name="assessment_year"><option value="">Choose or leave unknown</option>{% for year, start, end, mandatory, boundary in metadata %}<option value="{{ year }}">{{ year|replace('-', '/') }} actuals</option>{% endfor %}<option value="2026-27">2026/27 current year to date</option></select>
+            <label for="assessment-year">Assessment tax year</label><select id="assessment-year" name="assessment_year"><option value="">Choose or leave unknown</option>{% for year, start, end, mandatory, boundary in metadata %}<option value="{{ year }}">{{ year|replace('-', '/') }} {% if year == '2026-27' %}current year to date{% else %}actuals{% endif %}</option>{% endfor %}</select>
             <label for="submitted-on">Date this original return was submitted (leave blank for 2026/27)</label><input id="submitted-on" name="submitted_on" type="date">
             {% for name, label, choices in questions %}
             <label for="{{ name }}">{{ label }}</label><select id="{{ name }}" name="{{ name }}"><option value="">Choose or leave unknown</option>{% for choice in choices %}<option value="{{ choice }}">{{ choice|replace('_', ' ')|capitalize }}</option>{% endfor %}</select>
