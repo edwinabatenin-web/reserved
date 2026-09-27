@@ -137,18 +137,18 @@ def test_unauthenticated_no_adapter_and_invalid_annual_never_reach_future_provid
     assert no_adapter_calls == []
 
 
-@pytest.mark.parametrize("invalid_annual", [
-    lambda: another_live_annual(annual=annual_position_with_plan_2("England")),
-    lambda: object.__new__(AnnualToCashPosition),
+@pytest.mark.parametrize("invalid_annual,assert_distinct_identity", [
+    (lambda: another_live_annual(annual=annual_position_with_plan_2("England")), True),
+    (lambda: object.__new__(AnnualToCashPosition), False),
 ])
 def test_unbound_or_forged_annual_is_rejected_before_future_provider(
-    prepared, monkeypatch, invalid_annual,
+    prepared, monkeypatch, invalid_annual, assert_distinct_identity,
 ):
     app, owner, _, annual, repository = prepared
     monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
     calls = []
     candidate = invalid_annual()
-    if type(candidate) is AnnualToCashPosition:
+    if assert_distinct_identity:
         assert annual_to_cash_position_identity(candidate) != annual_to_cash_position_identity(annual)
     _install(app, annual, repository,
              annual_provider=lambda *args: calls.append("annual") or candidate,
