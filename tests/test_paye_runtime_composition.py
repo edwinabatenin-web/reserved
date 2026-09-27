@@ -1,5 +1,6 @@
 """Production-shaped composition for the durable structured manual PAYE read."""
 
+from datetime import date
 from decimal import Decimal
 
 import reserved.database as db
@@ -29,6 +30,7 @@ def prepared(tmp_path, monkeypatch, *, paye=True, billing=True, production=True)
         annual_position_provider=lambda *_: annual,
         owner_scope_resolver=lambda _: ("business-1", "2026/27", "England"),
         reconciliation_policy=make_paye_reconciliation_policy(45, Decimal("1.00")),
+        clock=lambda: date(2027, 5, 20),
     )
     complete_billing = billing_runtime(tmp_path)
     app = create_app(
@@ -43,7 +45,8 @@ def prepared(tmp_path, monkeypatch, *, paye=True, billing=True, production=True)
 
 
 def test_complete_paye_runtime_remains_closed_without_billing_runtime(tmp_path, monkeypatch):
-    _, client, _, _ = prepared(tmp_path, monkeypatch, billing=False, production=False)
+    app, client, _, _ = prepared(tmp_path, monkeypatch, billing=False, production=False)
+    assert "reserved.paye.durable_endpoint" not in app.extensions
     assert client.get("/v2/paye/current-position").status_code == 404
 
 

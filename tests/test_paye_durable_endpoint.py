@@ -1,4 +1,5 @@
 """Real-request tests for disabled-first durable PAYE composition installation."""
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -11,6 +12,7 @@ from reserved.paye_durable_endpoint import (
     DurablePayeEndpointError, DurablePayeRuntime,
     install_durable_paye_composition_endpoint,
 )
+from tests.test_billing_composition import paid_event, runtime as billing_runtime
 from tests.test_paye_annual_bridge import durable_annual, entry
 
 
@@ -20,7 +22,8 @@ def prepared(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "_INSTANCE", tmp_path)
     monkeypatch.setenv("FLASK_ENV", "development")
     monkeypatch.delenv("PAYE_DURABLE_COMPOSITION_ENABLED", raising=False)
-    app = create_app()
+    billing = billing_runtime(tmp_path)
+    app = create_app(billing_runtime=billing)
     app.config.update(TESTING=True)
     owner = db.get_or_create_user("endpoint-owner", email="endpoint@example.test")
     other = db.get_or_create_user("endpoint-other", email="other@example.test")
@@ -28,15 +31,17 @@ def prepared(tmp_path, monkeypatch):
     stored = entry(1, "1200.00", user_id=owner)
     stored.pop("user_id")
     db.save_paye_manual_entry(owner, stored)
-    return app, owner, other, annual, repository
+    paid_event(billing, owner)
+    return app, owner, other, annual, repository, tmp_path
 
 
-def install(app, annual, repository, scope=None, provider=None):
+def install(app, annual, repository, scope=None, provider=None, clock=None):
     runtime = DurablePayeRuntime(
         repository=repository,
         annual_position_provider=provider or (lambda *_: annual),
         owner_scope_resolver=scope or (lambda _: ("business-1", "2026/27", "England")),
         reconciliation_policy=make_paye_reconciliation_policy(45, Decimal("1.00")),
+        clock=clock or (lambda: date(2027, 5, 20)),
     )
     return install_durable_paye_composition_endpoint(app, runtime)
 
@@ -49,7 +54,7 @@ def signed_client(app, owner):
 
 
 def test_disabled_route_is_value_free_and_enablement_is_explicit(prepared, monkeypatch):
-    app, owner, _, annual, repository = prepared
+    app, owner, _, annual, repository, _ = prepared
     install(app, annual, repository)
     client = signed_client(app, owner)
     assert client.get("/v2/paye/current-position").status_code == 404
@@ -63,25 +68,27 @@ def test_disabled_route_is_value_free_and_enablement_is_explicit(prepared, monke
 
 
 def test_owner_and_year_scope_mismatches_and_cross_session_fail_closed(prepared, monkeypatch):
-    app, owner, other, annual, repository = prepared
+    app, owner, other, annual, repository, tmp_path = prepared
     monkeypatch.setenv("PAYE_DURABLE_COMPOSITION_ENABLED", "1")
     install(app, annual, repository)
-    assert signed_client(app, other).get("/v2/paye/current-position").status_code == 404
+    assert signed_client(app, other).get("/v2/paye/current-position").status_code == 403
 
-    app2 = create_app(); app2.config.update(TESTING=True)
+    second_billing = billing_runtime(tmp_path / "second")
+    app2 = create_app(billing_runtime=second_billing); app2.config.update(TESTING=True)
+    paid_event(second_billing, owner)
     install(app2, annual, repository, scope=lambda _: ("business-1", "2025/26", "England"))
     assert signed_client(app2, owner).get("/v2/paye/current-position").status_code == 404
 
 
 def test_unavailable_or_identity_mismatched_annual_provider_fails_closed(prepared, monkeypatch):
-    app, owner, _, annual, repository = prepared
+    app, owner, _, annual, repository, _ = prepared
     monkeypatch.setenv("PAYE_DURABLE_COMPOSITION_ENABLED", "1")
     install(app, annual, repository, provider=lambda *_: None)
     assert signed_client(app, owner).get("/v2/paye/current-position").status_code == 404
 
 
 def test_invalid_installation_leaves_flask_unmodified(prepared):
-    app, _, _, annual, repository = prepared
+    app, _, _, annual, repository, _ = prepared
     before_rules = tuple((rule.rule, rule.endpoint) for rule in app.url_map.iter_rules())
     before_extensions = dict(app.extensions)
     with pytest.raises(DurablePayeEndpointError):
@@ -89,14 +96,37 @@ def test_invalid_installation_leaves_flask_unmodified(prepared):
             repository=repository, annual_position_provider=lambda *_: annual,
             owner_scope_resolver=lambda _: ("business-1", "2026/27", "England"),
             reconciliation_policy=object(),
+            clock=lambda: date(2027, 5, 20),
         )
     assert tuple((rule.rule, rule.endpoint) for rule in app.url_map.iter_rules()) == before_rules
     assert app.extensions == before_extensions
 
 
 def test_duplicate_runtime_installation_is_refused_without_replacement(prepared):
-    app, _, _, annual, repository = prepared
+    app, _, _, annual, repository, _ = prepared
     first = install(app, annual, repository)
     with pytest.raises(DurablePayeEndpointError):
         install(app, annual, repository)
     assert app.extensions["reserved.paye.durable_endpoint"] is first
+
+
+def test_runtime_installation_without_active_paid_boundary_is_refused(prepared):
+    _, _, _, annual, repository, _ = prepared
+    app = create_app()
+    runtime = DurablePayeRuntime(
+        repository=repository,
+        annual_position_provider=lambda *_: annual,
+        owner_scope_resolver=lambda _: ("business-1", "2026/27", "England"),
+        reconciliation_policy=make_paye_reconciliation_policy(45, Decimal("1.00")),
+        clock=lambda: date(2027, 5, 20),
+    )
+    with pytest.raises(DurablePayeEndpointError, match="paid-surface"):
+        install_durable_paye_composition_endpoint(app, runtime)
+    assert "reserved.paye.durable_endpoint" not in app.extensions
+
+
+def test_expired_annual_position_is_not_presented_as_current(prepared, monkeypatch):
+    app, owner, _, annual, repository, _ = prepared
+    monkeypatch.setenv("PAYE_DURABLE_COMPOSITION_ENABLED", "1")
+    install(app, annual, repository, clock=lambda: date(2027, 5, 21))
+    assert signed_client(app, owner).get("/v2/paye/current-position").status_code == 404
