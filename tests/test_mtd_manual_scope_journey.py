@@ -350,9 +350,18 @@ def test_strict_flag_and_dashboard_discovery(env, monkeypatch, flag):
 
 
 @pytest.mark.parametrize("key,value", [("FLASK_ENV", "production"), ("CLERK_PUBLISHABLE_KEY", "pk_live_synthetic")])
-def test_production_refuses_get_post_and_link(env, monkeypatch, key, value):
+def test_explicit_flag_is_not_overridden_by_environment_signal(env, monkeypatch, key, value):
     data = {**form(env[1]).fields, **valid()}
     monkeypatch.setenv(key, value)
+    assert env[1].get(URL).status_code == 200
+    response = env[1].post(URL, data=data)
+    assert response.status_code == 200 and "Worth reviewing" in response.get_data(as_text=True)
+    assert URL in Form(env[1].get("/v2/dashboard").get_data(as_text=True)).links
+
+
+@pytest.mark.parametrize("key,value", [("FLASK_ENV", "production"), ("CLERK_PUBLISHABLE_KEY", "pk_live_synthetic")])
+def test_environment_signal_never_enables_journey_without_exact_flag(env, monkeypatch, key, value):
+    monkeypatch.delenv("MTD_MANUAL_SCOPE_ENABLED", raising=False)
+    monkeypatch.setenv(key, value)
     assert env[1].get(URL).status_code == 404
-    assert env[1].post(URL, data=data).status_code == 404
     assert URL not in Form(env[1].get("/v2/dashboard").get_data(as_text=True)).links

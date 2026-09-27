@@ -580,7 +580,7 @@ def dashboard_view():
         is_demo        = _dash["is_demo"],
         paye_manual_available=(paye_manual_baseline_enabled() and not is_production_environment()),
         paye_manual_journey_available=paye_manual_journey_enabled(),
-        mtd_manual_available=(mtd_manual_scope_enabled() and not is_production_environment()),
+        mtd_manual_available=mtd_manual_scope_enabled(),
     )
 
 
@@ -673,7 +673,7 @@ def delete_paye_manual_journey_entry(evidence_id):
 @require_auth
 def mtd_manual_scope():
     """Self-reported completed-year scope only, no saved or formal MTD status."""
-    if is_production_environment() or not mtd_manual_scope_enabled():
+    if not mtd_manual_scope_enabled():
         abort(404)
     if type(g.user_id) is not int or g.user_id <= 0 or get_user(g.user_id) is None:
         abort(403)

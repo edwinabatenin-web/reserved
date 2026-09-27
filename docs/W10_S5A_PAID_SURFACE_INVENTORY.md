@@ -76,12 +76,12 @@ only when `HICBC_ENABLED` is explicitly enabled.
     "reserved/__init__.py": "5f35d6d88542218cd8d5dbdac9662ef6711768ae5a3749a92d779325b42a2f34",
     "reserved/api/routes.py": "9d865764b222c0985b27c23707a7cea8a8327152795deb14e91a27feef081364",
     "reserved/auth.py": "adfe50a348a94e1f1a7405a41d92ec39b5d1a9db8c92b64222410701af39ae91",
-    "reserved/config.py": "18b1414c9e1a6bcffea811175e3b823c68a5c7eb76b329f35eb1e88b259b3f81",
+    "reserved/config.py": "81e221c8ff7231f91dc7697a2010f1a560b6dc6f038b664683c7659aaa284c17",
     "reserved/extensions.py": "ef35d3ec969e299a1c8221b5636bcf44590189175b0ad0c83e88d38ded35b2a0",
     "reserved/web/founder.py": "f0568a760771f9847aeaa6f7e3349b7bda3a2fe861808f4ab3e856e40b90f67b",
     "reserved/web/hicbc.py": "a05f4a8916f04765cf7e0c05b4b86873f25446f3c9e4dacb25a090bf7cc9406a",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
-    "reserved/web/v2.py": "9798dc5d489f4cb1e830dd444c1d40946588409607ad71f6c05b75b975247dc6"
+    "reserved/web/v2.py": "a7f63da8f4baee9dcac64d03d7f83b7146aa5d9487605bc78a60af9d4b9720bb"
   },
   "routes": [
     {
@@ -362,7 +362,7 @@ only when `HICBC_ENABLED` is explicitly enabled.
       "guard": "customer_session",
       "csrf": "global",
       "classification": "authenticated_product_candidate_pending_founder_decision",
-      "note": "Independent strict switch and production denial; existing-user self-reported unsaved manual scope indication only. Paid classification, not runtime entitlement enforcement."
+      "note": "Independent strict disabled-first switch; existing-user self-reported unsaved manual scope indication only. Production-shaped access requires the separately installed owner-bound paid-entitlement runtime."
     },
     {
       "endpoint": "v2.demo_login",

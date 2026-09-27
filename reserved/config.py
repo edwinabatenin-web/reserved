@@ -32,7 +32,7 @@ def paye_manual_journey_enabled() -> bool:
 
 
 def mtd_manual_scope_enabled() -> bool:
-    """Independent local manual MTD journey; never enabled implicitly."""
+    """Independent disabled-first manual MTD journey; never enabled implicitly."""
     return os.environ.get("MTD_MANUAL_SCOPE_ENABLED", "") == "1"
 
 
