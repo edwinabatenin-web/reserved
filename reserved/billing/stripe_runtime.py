@@ -493,9 +493,9 @@ def status():
 def install_stripe_billing_runtime(app: Flask, runtime: StripeBillingRuntime) -> None:
     """Install the billing boundary only with all explicit dependencies.
 
-    ``create_app`` does not call this function.  An absent route is the normal
-    disabled state, so a configuration typo cannot expose a half-wired purchase
-    or webhook endpoint.
+    ``create_app`` calls this function only when an already-complete runtime is
+    explicitly injected.  An absent route is the normal disabled state, so a
+    configuration typo cannot expose a half-wired purchase or webhook endpoint.
     """
     if not isinstance(runtime, StripeBillingRuntime):
         raise BillingRuntimeError("an explicit complete billing runtime is required")

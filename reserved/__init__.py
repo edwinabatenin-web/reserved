@@ -69,8 +69,14 @@ def create_app(*, billing_runtime: object = None) -> Flask:
         install_disabled_paid_surface_enforcement,
         install_stripe_billing_runtime,
     )
-    install_disabled_paid_surface_enforcement(app)
-    if isinstance(billing_runtime, StripeBillingRuntime):
+    # Preserve explicit local component-test composition, while production is
+    # always closed by default.  Supplying any runtime candidate also installs
+    # the closed boundary first, so an invalid or failed injection cannot make
+    # a paid feature available.
+    billing_boundary_required = is_production_environment() or billing_runtime is not None
+    if billing_boundary_required:
+        install_disabled_paid_surface_enforcement(app)
+    if type(billing_runtime) is StripeBillingRuntime:
         try:
             install_stripe_billing_runtime(app, billing_runtime)
         except Exception:

@@ -59,10 +59,12 @@ def runtime(tmp_path):
     )
 
 
-def app_factory(tmp_path, monkeypatch, *, billing_runtime=None):
+def app_factory(tmp_path, monkeypatch, *, billing_runtime=None, production=False):
     monkeypatch.setattr(db, "_DB_FILE", tmp_path / "app.db")
     monkeypatch.setattr(db, "_INSTANCE", tmp_path)
-    monkeypatch.setenv("FLASK_ENV", "development")
+    monkeypatch.setenv("FLASK_ENV", "production" if production else "development")
+    if production:
+        monkeypatch.setenv("SESSION_SECRET", "synthetic-production-secret-for-tests")
     monkeypatch.setenv("MTD_MANUAL_SCOPE_ENABLED", "1")
     app = create_app(billing_runtime=billing_runtime)
     app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
@@ -92,7 +94,7 @@ def paid_event(runtime, owner):
 
 
 def test_absent_runtime_keeps_billing_and_enabled_paid_feature_unavailable(tmp_path, monkeypatch):
-    app = app_factory(tmp_path, monkeypatch)
+    app = app_factory(tmp_path, monkeypatch, production=True)
     client, _ = login(app)
     assert client.post("/v2/billing/checkout", json={"plan_key": "monthly"},
                        headers={"Idempotency-Key": "x" * 16}).status_code == 404
