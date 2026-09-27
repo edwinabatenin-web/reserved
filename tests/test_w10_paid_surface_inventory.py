@@ -248,11 +248,12 @@ def test_inventory_metadata_is_non_authorising_and_s5_remains_incomplete():
     assert data["integration_tree"] == "a68a1120dfcc98295839bbea1f1c65c223376ec0"
     assert data["inventory_status"] == "evidence_only_paid_boundary_settled_elsewhere"
     assert data["s5_status"] == (
-        "incomplete_guard_kernel_implemented_route_enforcement_not_started"
+        "local_runtime_enforcement_implemented_production_acceptance_open"
     )
     assert data["paid_boundary_status"] == "settled_by_w10_s2f"
     assert data["paid_entitlement_enforcement_status"] == (
-        "guard_kernel_only_runtime_adapter_and_route_wiring_not_started"
+        "local_disabled_first_runtime_and_route_wiring_implemented_"
+        "production_activation_not_authorized"
     )
     assert data["route_hardening_changes"] is True
 

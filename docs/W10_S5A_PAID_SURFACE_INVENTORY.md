@@ -13,9 +13,10 @@ or implement an entitlement gate.
 The S5C prerequisite route hardening is implemented and remains pinned to its
 historical product checkpoint `3c63e64e478957ce04ee1154363c2eae94b82b30`;
 the paid-boundary policy is settled by accepted W10-S2F and the route-less S5D
-guard kernel is implemented. The authoritative runtime adapter, route wiring
-and live paid-entitlement enforcement remain **not started**, and W10-S5
-remains incomplete. S5A is inventory evidence only.
+guard kernel is implemented. Disabled-first local runtime adapters, exact route
+wiring and paid-entitlement enforcement are implemented and tested. Production
+provider/target composition, operational acceptance and activation remain open,
+so W10-S5 remains incomplete. S5A is inventory evidence only.
 
 The registry has 50 always-registered rules. Enabling the disabled-by-default
 HICBC feature gate adds 11 owner-authenticated rules, producing 61 total. The
@@ -57,9 +58,9 @@ only when `HICBC_ENABLED` is explicitly enabled.
   "integration_commit": "91cb4c2f14bce089db1f92f656c8cbc1d85639b7",
   "integration_tree": "a68a1120dfcc98295839bbea1f1c65c223376ec0",
   "inventory_status": "evidence_only_paid_boundary_settled_elsewhere",
-  "s5_status": "incomplete_guard_kernel_implemented_route_enforcement_not_started",
+  "s5_status": "local_runtime_enforcement_implemented_production_acceptance_open",
   "paid_boundary_status": "settled_by_w10_s2f",
-  "paid_entitlement_enforcement_status": "guard_kernel_only_runtime_adapter_and_route_wiring_not_started",
+  "paid_entitlement_enforcement_status": "local_disabled_first_runtime_and_route_wiring_implemented_production_activation_not_authorized",
   "route_hardening_changes": true,
   "route_counts": {
     "always": 50,
