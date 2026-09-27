@@ -10,6 +10,18 @@
     </div>
 </section>
 
+{% if local_billing_initial_paid_copy is defined %}
+<section class="panel" aria-labelledby="w10-local-initial-paid-heading">
+    <h2 id="w10-local-initial-paid-heading">{{ local_billing_initial_paid_copy.heading }}</h2>
+    <p>{{ local_billing_initial_paid_copy.summary }}</p>
+    <p>{{ local_billing_initial_paid_copy.verification_label }}:
+        <time datetime="{{ local_billing_initial_paid_copy.verification_utc }}">{{ local_billing_initial_paid_copy.verification_display }}</time></p>
+    <p>{{ local_billing_initial_paid_copy.paid_period_message }}</p>
+    <p>{{ local_billing_initial_paid_copy.renewal_caveat }}</p>
+    <p>{{ local_billing_initial_paid_copy.access_message }}</p>
+</section>
+{% endif %}
+
 {% if local_billing_cancellation_copy is defined %}
 <section class="panel" aria-labelledby="w10-local-cancellation-heading">
     <h2 id="w10-local-cancellation-heading">{{ local_billing_cancellation_copy.heading }}</h2>

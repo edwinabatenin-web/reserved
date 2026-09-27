@@ -633,6 +633,54 @@ def _validate_live_fact(fact_state, now=None):
     _check(authority, snapshot)
 
 
+def _initial_payment_presentation_facts(fact_state, *, now):
+    """Bind safe customer-copy facts to one live exact initial paid receipt."""
+    exact.utc(now)
+    _validate_live_fact(fact_state, now=now)
+    authority, revision, current_head, owner, access_start, service_end, repository, material, sequence = fact_state
+    if sequence != 1:
+        raise InitialIngressError('initial payment fact required')
+    snapshot = authority.snapshot()
+    state = _check(authority, snapshot)
+    lineage, controls, lifecycle_head = repository.read_lifecycle_chain(
+        snapshot.instance, state['receipt_key'])
+    conflicts = repository.read_conflicts(snapshot.instance, key=state['receipt_key'])
+    if (snapshot.revision != revision or snapshot.lifecycle_head != current_head
+            or lifecycle_head != current_head or len(lineage) != 1 or controls
+            or conflicts):
+        raise InitialIngressError('initial payment history is not uniquely current')
+    receipt, head = lineage[0]
+    evidence = receipt.get('evidence')
+    scope = receipt.get('scope')
+    if (head != current_head or canonical(receipt) != material
+            or receipt.get('version') != 'reserved-initial-receipt/1'
+            or receipt.get('sequence') != 1
+            or receipt.get('disposition') != 'verified_initial_payment'
+            or type(scope) is not list or len(scope) != 3
+            or not all(type(value) is str and value for value in scope)
+            or scope[0] != owner or receipt.get('owner') != owner
+            or type(evidence) is not dict or evidence.get('plan') not in _PLANS
+            or snapshot.accepted != (repository.store_id, receipt['receipt_id'],
+                                      receipt['fact_id'], head)
+            or datetime.fromisoformat(receipt['access_start']) != access_start
+            or datetime.fromisoformat(receipt['service_end']) != service_end):
+        raise InitialIngressError('initial payment presentation provenance is invalid')
+    result = dict(
+        owner=scope[0], billing_account=scope[1], subscription=scope[2],
+        plan=evidence['plan'],
+        payment_verified_at_utc=receipt['verification_completed_at'],
+        paid_period_started_at_utc=evidence['service_start'],
+        access_started_at_utc=receipt['access_start'],
+        paid_through_exclusive_utc=receipt['service_end'],
+        receipt_id=receipt['receipt_id'], fact_id=receipt['fact_id'],
+        disposition=receipt['disposition'],
+    )
+    _validate_live_fact(fact_state, now=now)
+    if repository.read_conflicts(snapshot.instance, key=state['receipt_key']):
+        raise InitialIngressError('initial payment history became conflicting')
+    return result
+
+
 def allows_paid_request(authority, repository, *, user_id, now,
                         endpoint='v2.settings_page'):
     """Concrete exact admission then final independent currentness linearization."""
