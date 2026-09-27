@@ -43,9 +43,17 @@ checkpoint from the commit that integrated identical package blobs.
 The live `SRC-24` route binding is refreshed at accepted integration commit
 `c5e560045ed3d62f02c894e931464c3d7294e99f`; the separate accepted S5C
 historical product checkpoint remains unchanged.
-The separate live `SRC-16` v2 binding now names the integrated paid durable PAYE
-forecast checkpoint `318fe2dabcef359dd4066fc207ad8a07395bbefd`, with
-digest `e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16`.
+The separate live `SRC-16` v2 binding now names the integrated paid durable HICBC
+annual-position checkpoint `5c7428e23286d5f2506eb6c810b8eff534714f4b`, with
+digest `a05903f84633669d716a8ac62cfa91a067662c9401fd1e98f648326fa07f4315`.
+That source retains the earlier paid durable PAYE forecast route while adding a
+static disabled-first HICBC annual-position route behind the same exact paid
+boundary. HICBC owner, business, tax year and nation remain server-owned; a
+complete injected runtime is required; and the bounded response has no payment,
+refund, reserve, transfer, filing or action authority.
+The earlier PAYE forecast product checkpoint remains
+`318fe2dabcef359dd4066fc207ad8a07395bbefd`; its v2 digest was
+`e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16`.
 It keeps confirmed-input forecasting disabled by default and proves the route
 is available only after exact forecast dependencies and an owner-bound
 reconciled paid entitlement are both installed. The response remains limited to
@@ -209,8 +217,8 @@ source commit and digest rather than being relabelled as PAYE or MTD evidence.
     {
       "id": "SRC-16",
       "path": "reserved/web/v2.py",
-      "accepted_commit": "318fe2dabcef359dd4066fc207ad8a07395bbefd",
-      "sha256": "e2940b780b73fe8e583142fc35cbef53c983f2a0abdb2271bfd90e76e5ac6d16",
+      "accepted_commit": "5c7428e23286d5f2506eb6c810b8eff534714f4b",
+      "sha256": "a05903f84633669d716a8ac62cfa91a067662c9401fd1e98f648326fa07f4315",
       "binding": "live"
     },
     {
