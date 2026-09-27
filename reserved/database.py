@@ -458,6 +458,59 @@ CREATE TABLE IF NOT EXISTS invoice_matches (
     matched_amount REAL    NOT NULL,
     review_state   TEXT    NOT NULL DEFAULT 'pending_review'
 );
+
+-- ── W9: minimised owner-bound annual positions ──────────────────────────────
+-- This schema intentionally has no raw payslip or provider-payload column.
+CREATE TABLE IF NOT EXISTS owner_business_memberships (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    business_reference   TEXT NOT NULL,
+    membership_reference TEXT NOT NULL UNIQUE,
+    membership_version   INTEGER NOT NULL CHECK(membership_version >= 1),
+    status               TEXT NOT NULL CHECK(status IN ('active', 'revoked')),
+    authority_expires_at TEXT NOT NULL,
+    created_at           TEXT NOT NULL,
+    revoked_at           TEXT,
+    UNIQUE(user_id, business_reference)
+);
+
+CREATE TABLE IF NOT EXISTS annual_position_records (
+    record_identity        TEXT PRIMARY KEY,
+    user_id                INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    business_reference     TEXT NOT NULL,
+    tax_year               TEXT NOT NULL,
+    nation                 TEXT NOT NULL,
+    record_purpose         TEXT NOT NULL,
+    record_version         INTEGER NOT NULL CHECK(record_version >= 1),
+    predecessor_identity   TEXT REFERENCES annual_position_records(record_identity),
+    governance_fingerprint TEXT NOT NULL,
+    envelope_json          TEXT NOT NULL,
+    envelope_sha256        TEXT NOT NULL,
+    state                  TEXT NOT NULL CHECK(state IN ('current', 'superseded', 'deleted')),
+    created_at             TEXT NOT NULL,
+    deleted_at             TEXT,
+    UNIQUE(user_id, business_reference, tax_year, nation, record_purpose, record_version)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS annual_position_one_current_head
+    ON annual_position_records(user_id, business_reference, tax_year, nation, record_purpose)
+    WHERE state = 'current';
+
+CREATE TABLE IF NOT EXISTS annual_position_evidence_references (
+    record_identity      TEXT NOT NULL REFERENCES annual_position_records(record_identity) ON DELETE CASCADE,
+    position             INTEGER NOT NULL CHECK(position >= 0),
+    evidence_reference   TEXT NOT NULL,
+    PRIMARY KEY(record_identity, position),
+    UNIQUE(record_identity, evidence_reference)
+);
+
+CREATE TABLE IF NOT EXISTS annual_position_lifecycle_events (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_identity      TEXT REFERENCES annual_position_records(record_identity) ON DELETE SET NULL,
+    user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    event_kind           TEXT NOT NULL CHECK(event_kind IN ('created', 'superseded', 'erasure_planned', 'erased')),
+    audit_reference      TEXT NOT NULL,
+    occurred_at          TEXT NOT NULL
+);
 """
 
 
@@ -480,7 +533,7 @@ CREATE TABLE IF NOT EXISTS invoice_matches (
 # - The DDL block above always reflects the full target schema; migrations
 #   handle upgrade paths for databases created before the current DDL.
 #
-_SCHEMA_VERSION = 11   # increment when adding new migration entries below
+_SCHEMA_VERSION = 14   # increment when adding new migration entries below
 
 _MIGRATIONS: dict[int, list[str]] = {
     # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
@@ -647,6 +700,77 @@ _MIGRATIONS: dict[int, list[str]] = {
             expires_at       TEXT    NOT NULL
         )""",
     ],
+    # Version 12 — owner-bound, minimised annual-position projections.  These
+    # rows deliberately contain only the reviewed structural projection and
+    # references; originals such as payslips and provider payloads do not have
+    # a column in this schema.
+    12: [
+        """CREATE TABLE IF NOT EXISTS owner_business_memberships (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            business_reference   TEXT NOT NULL,
+            membership_reference TEXT NOT NULL UNIQUE,
+            membership_version   INTEGER NOT NULL CHECK(membership_version >= 1),
+            status               TEXT NOT NULL CHECK(status IN ('active', 'revoked')),
+            created_at           TEXT NOT NULL,
+            revoked_at           TEXT,
+            UNIQUE(user_id, business_reference)
+        )""",
+        """CREATE TABLE IF NOT EXISTS annual_position_records (
+            record_identity      TEXT PRIMARY KEY,
+            user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            business_reference   TEXT NOT NULL,
+            tax_year             TEXT NOT NULL,
+            nation               TEXT NOT NULL,
+            record_purpose       TEXT NOT NULL,
+            record_version       INTEGER NOT NULL CHECK(record_version >= 1),
+            predecessor_identity TEXT REFERENCES annual_position_records(record_identity),
+            governance_fingerprint TEXT NOT NULL,
+            envelope_json        TEXT NOT NULL,
+            envelope_sha256      TEXT NOT NULL,
+            state                TEXT NOT NULL CHECK(state IN ('current', 'superseded', 'deleted')),
+            created_at           TEXT NOT NULL,
+            deleted_at           TEXT,
+            UNIQUE(user_id, business_reference, tax_year, nation, record_purpose, record_version)
+        )""",
+        """CREATE UNIQUE INDEX IF NOT EXISTS annual_position_one_current_head
+            ON annual_position_records(user_id, business_reference, tax_year, nation, record_purpose)
+            WHERE state = 'current'""",
+        """CREATE TABLE IF NOT EXISTS annual_position_evidence_references (
+            record_identity      TEXT NOT NULL REFERENCES annual_position_records(record_identity) ON DELETE CASCADE,
+            position             INTEGER NOT NULL CHECK(position >= 0),
+            evidence_reference   TEXT NOT NULL,
+            PRIMARY KEY(record_identity, position),
+            UNIQUE(record_identity, evidence_reference)
+        )""",
+        """CREATE TABLE IF NOT EXISTS annual_position_lifecycle_events (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            record_identity      TEXT REFERENCES annual_position_records(record_identity) ON DELETE SET NULL,
+            user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            event_kind           TEXT NOT NULL CHECK(event_kind IN ('created', 'superseded', 'erasure_planned', 'erased')),
+            audit_reference      TEXT NOT NULL,
+            occurred_at          TEXT NOT NULL
+        )""",
+    ],
+    # Version 13 — append-only, redacted durable-record read audit.  This is
+    # separate from lifecycle events so v12's shipped event-kind constraint is
+    # never rewritten destructively.
+    13: [
+        """CREATE TABLE IF NOT EXISTS annual_position_read_audit (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            record_identity      TEXT NOT NULL REFERENCES annual_position_records(record_identity) ON DELETE CASCADE,
+            user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            business_reference   TEXT NOT NULL,
+            audit_reference      TEXT NOT NULL,
+            occurred_at          TEXT NOT NULL
+        )""",
+    ],
+    # Version 14 — authority lifetime is a required runtime access control.
+    # Existing rows receive NULL and therefore fail closed until independently
+    # renewed; no expiry date is invented during migration.
+    14: [
+        "ALTER TABLE owner_business_memberships ADD COLUMN authority_expires_at TEXT",
+    ],
 }
 
 
@@ -674,8 +798,18 @@ def init_db() -> None:
             for sql in _MIGRATIONS.get(version, []):
                 try:
                     conn.execute(sql)
-                except sqlite3.OperationalError:
-                    pass  # column already exists — idempotent no-op
+                except sqlite3.OperationalError as exc:
+                    # Only an additive ALTER re-applied to an already-upgraded
+                    # database is safe to ignore.  In particular, a failed
+                    # CREATE TABLE/INDEX must abort this transaction: stamping
+                    # the schema version after a partial W9 migration would
+                    # permanently hide missing owner/current-head controls.
+                    if (
+                        sql.lstrip().upper().startswith("ALTER TABLE")
+                        and "duplicate column name" in str(exc).lower()
+                    ):
+                        continue
+                    raise
 
         # Stamp with the current schema version so next init_db() is a no-op.
         if row is None:
