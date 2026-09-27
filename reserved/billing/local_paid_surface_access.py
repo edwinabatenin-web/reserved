@@ -29,6 +29,7 @@ _ROUTES = (
     ("v2.delete_paye_manual_journey_entry", "/v2/paye/manual/entries/<evidence_id>/delete", "POST"),
     ("v2.paye_durable_current_position", "/v2/paye/current-position", "GET"),
     ("v2.paye_durable_current_forecast", "/v2/paye/current-forecast", "GET"),
+    ("hicbc.durable_current_annual_position", "/v2/hicbc/current-annual-position", "GET"),
     ("v2.mtd_manual_scope", "/v2/mtd/scope-indication", "GET POST"),
     ("v2.invoices", "/v2/invoices", "GET"),
     ("v2.invoices_seed", "/v2/invoices/seed", "POST"),
@@ -53,7 +54,6 @@ _ROUTES = (
     ("hicbc.link_revoke", "/v2/hicbc/link/revoke", "POST"),
     ("hicbc.result_json", "/v2/hicbc/result", "GET"),
     ("hicbc.annual_preview", "/v2/hicbc/annual-preview", "POST"),
-    ("hicbc.durable_current_annual_position", "/v2/hicbc/current-annual-position", "GET"),
 )
 _FUNCTIONS = tuple((name, getattr(v2 if name.startswith("v2.") else hicbc,
                                  name.split(".")[1])) for name, _, _ in _ROUTES)
