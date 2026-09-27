@@ -370,7 +370,7 @@ def test_build_metadata_preserves_subscription_billing_blocker(canonical_result)
     )
 
     assert actual == expected
-    assert actual["state"] == "not_implemented"
+    assert actual["state"] == "not_executable"
 
 
 def test_build_metadata_preserves_poa_sa_customer_language_blocker(canonical_result):
