@@ -87,9 +87,9 @@ VALID_KINDS = {"pytest", "rw3"}
 # ``validate_october_inventory``), never silently made to look closer to ready.
 OCTOBER_LAUNCH_COMPONENTS = [
     {"id": "paye_evidence_and_forecasting", "state": "not_executable",
-     "note": "The integrated manual-PAYE annual bridge now requires an opaque repository-issued owner/year batch and enforces exact membership, annual-position and tax-year binding, but no production composition root supplies admitted live annual/membership/forecast inputs."},
+     "note": "A durable authenticated composition root now reads the current externally-authorised annual record and repository-issued owner/year PAYE batch with exact session, membership, annual identity and tax-year binding; route activation, independently supplied future-pay facts and target-runtime evidence remain absent."},
     {"id": "paye_payslip_manual_evidence_journey", "state": "not_executable",
-     "note": "An owner-bound structured manual PAYE fallback is integrated and regression-tested; canonical payslip upload/extraction/raw-file deletion and production entitlement/retention evidence remain absent."},
+     "note": "Structured manual PAYE and a disabled-first raw-payslip intake/deletion boundary are integrated with owner/session/year isolation and fail-closed injected extraction; authenticated route wiring, a reviewed extraction adapter, crash-durable pending-file metadata, private target storage and retention evidence remain absent."},
     {"id": "hmrc_integration", "state": "externally_blocked",
      "note": "No production-capable HMRC connection has been end-to-end verified."},
     {"id": "freeagent_integration", "state": "not_implemented",
@@ -107,7 +107,7 @@ OCTOBER_LAUNCH_COMPONENTS = [
     {"id": "poa_sa_cash_obligation_customer_language", "state": "evidence_missing",
      "note": "The Founder-required Payments on Account/Self Assessment cash-obligation capability lacks the representative customer-language/UX evidence required by W2 terminal check 12."},
     {"id": "evidence_persistence_and_deletion", "state": "evidence_missing",
-     "note": "Owner-bound durable annual-position storage, versioning, audit and clearance-gated erasure are implemented locally; approved retention/lawful-basis policy, external authority verifier, target datastore/key custody, legal-hold and backup-expiry evidence remain missing."},
+     "note": "Owner-bound durable annual-position storage, versioning and audit are implemented locally, together with physical local deletion of owned PAYE and annual-position rows after independently verified clearances; approved retention/lawful-basis policy, the external authority verifier, target datastore/key custody, and target backup/restore deletion evidence remain missing."},
     {"id": "privacy_security_review", "state": "evidence_missing",
      "note": "Privacy/security review evidence is not yet produced."},
     {"id": "target_environment_testing", "state": "evidence_missing",
