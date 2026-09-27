@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import weakref
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -35,6 +36,43 @@ from reserved.billing.event_inbox_contract import canonical_owner_id_from_users_
 
 class DurableAnnualPositionError(ValueError):
     """The authenticated durable annual-position boundary failed closed."""
+
+
+class DurablePayeReadSnapshot:
+    """Opaque, transaction-issued annual/PAYE authorization snapshot."""
+    __slots__ = ("__weakref__",)
+
+    def __new__(cls, *args, **kwargs):
+        raise TypeError("durable PAYE snapshots are repository-issued only")
+
+
+_PAYE_SNAPSHOTS: dict[int, tuple[weakref.ReferenceType, int, str, str, str, object, tuple[dict, ...]]] = {}
+
+
+def _issue_paye_snapshot(*, owner, business, tax_year, nation, record, entries):
+    snapshot = object.__new__(DurablePayeReadSnapshot)
+    key = id(snapshot)
+
+    def discard(_):
+        _PAYE_SNAPSHOTS.pop(key, None)
+
+    _PAYE_SNAPSHOTS[key] = (
+        weakref.ref(snapshot, discard), owner, business, tax_year, nation,
+        record, tuple(dict(entry) for entry in entries),
+    )
+    return snapshot
+
+
+def project_durable_paye_snapshot(snapshot, *, authenticated_user_id, business_reference,
+                                  tax_year, nation):
+    """Return the exact captured record/rows or reject replay/substitution."""
+    if type(snapshot) is not DurablePayeReadSnapshot:
+        raise DurableAnnualPositionError("durable PAYE snapshot is not repository-issued")
+    binding = _PAYE_SNAPSHOTS.get(id(snapshot))
+    if (binding is None or binding[0]() is not snapshot
+            or binding[1:5] != (authenticated_user_id, business_reference, tax_year, nation)):
+        raise DurableAnnualPositionError("durable PAYE snapshot scope is unavailable")
+    return binding[5], [dict(row) for row in binding[6]]
 
 
 _REFERENCE = re.compile(r"^[a-z][a-z0-9_-]{1,31}:[A-Za-z0-9][A-Za-z0-9._/-]{0,95}$")
@@ -587,6 +625,58 @@ class DurableAnnualPositionRepository:
                 return decoded
             except (ValueError, RepositoryContractError) as exc:
                 raise DurableAnnualPositionError("stored annual position failed canonical validation") from exc
+
+    def read_current_paye_snapshot(self, *, authenticated_user_id: int, business_reference: str,
+                                   tax_year: str, nation: str, record_purpose: str,
+                                   audit_reference: str):
+        """Atomically capture membership, current annual record and active PAYE rows.
+
+        ``BEGIN IMMEDIATE`` serialises this authorization read with membership
+        revocation and PAYE replacement/deletion writes. Consumers must use the
+        returned opaque snapshot rather than separately re-reading either
+        boundary.
+        """
+        self._audit(audit_reference)
+        if type(record_purpose) is not str or record_purpose != RECORD_PURPOSE:
+            raise DurableAnnualPositionError("annual-position record purpose is unavailable")
+        with database._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._require_user(conn, authenticated_user_id)
+            self._active_membership(conn, authenticated_user_id, business_reference)
+            found = conn.execute(
+                "SELECT record_identity,record_purpose,governance_fingerprint,envelope_json,envelope_sha256 "
+                "FROM annual_position_records WHERE user_id=? AND business_reference=? "
+                "AND tax_year=? AND nation=? AND record_purpose=? AND state='current'",
+                (authenticated_user_id, business_reference, tax_year, nation, record_purpose),
+            ).fetchall()
+            if len(found) != 1:
+                raise DurableAnnualPositionError("current annual position is unavailable")
+            identity, stored_purpose, stored_governance, raw, expected = found[0]
+            if (stored_purpose != record_purpose or stored_governance != self._governance.fingerprint
+                    or hashlib.sha256(raw.encode("ascii")).hexdigest() != expected):
+                raise DurableAnnualPositionError("stored annual position integrity check failed")
+            try:
+                decoded = decode_annual_position_record(
+                    _tuplify(json.loads(raw)), self._contract_governance, "audit:durable-paye-read"
+                )
+                if dict(project_annual_position_record(decoded)[2])["record_purpose"] != record_purpose:
+                    raise DurableAnnualPositionError("stored annual position purpose integrity check failed")
+            except (ValueError, RepositoryContractError) as exc:
+                raise DurableAnnualPositionError("stored annual position failed canonical validation") from exc
+            rows = [dict(row) for row in conn.execute(
+                "SELECT * FROM paye_manual_entries WHERE user_id=? AND tax_year=? "
+                "AND replaced_at IS NULL AND deleted_at IS NULL ORDER BY employment_slot,id",
+                (authenticated_user_id, tax_year),
+            ).fetchall()]
+            conn.execute(
+                "INSERT INTO annual_position_read_audit "
+                "(record_identity,user_id,business_reference,audit_reference,occurred_at) VALUES (?,?,?,?,?)",
+                (identity, authenticated_user_id, business_reference, audit_reference, _utc_now()),
+            )
+            return _issue_paye_snapshot(
+                owner=authenticated_user_id, business=business_reference, tax_year=tax_year,
+                nation=nation, record=decoded, entries=rows,
+            )
 
     def plan_account_erasure(self, *, authenticated_user_id: int, audit_reference: str) -> tuple[str, ...]:
         """Return only the owned records that require separately-cleared erasure execution."""
