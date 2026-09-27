@@ -332,12 +332,13 @@ def test_candidate_is_confined_to_exact_three_owned_paths_and_base():
 
 
 def test_paid_endpoint_boundary_is_exact_s5a_settled_class():
-    assert len(subject.PAID_ENDPOINTS) == 31
-    assert len(set(subject.PAID_ENDPOINTS)) == 31
+    assert len(subject.PAID_ENDPOINTS) == 32
+    assert len(set(subject.PAID_ENDPOINTS)) == 32
     assert "v2.paye_manual_baseline" in subject.PAID_ENDPOINTS
     assert "v2.paye_manual_journey" in subject.PAID_ENDPOINTS
     assert "v2.delete_paye_manual_journey_entry" in subject.PAID_ENDPOINTS
     assert "v2.paye_durable_current_position" in subject.PAID_ENDPOINTS
+    assert "v2.paye_durable_current_forecast" in subject.PAID_ENDPOINTS
     assert "v2.mtd_manual_scope" in subject.PAID_ENDPOINTS
     assert subject.PAID_ENDPOINTS == inventory_paid_endpoints()
     assert "v2.billing_plans" not in subject.PAID_ENDPOINTS

@@ -28,6 +28,7 @@ _ROUTES = (
     ("v2.paye_manual_journey", "/v2/paye/manual", "GET POST"),
     ("v2.delete_paye_manual_journey_entry", "/v2/paye/manual/entries/<evidence_id>/delete", "POST"),
     ("v2.paye_durable_current_position", "/v2/paye/current-position", "GET"),
+    ("v2.paye_durable_current_forecast", "/v2/paye/current-forecast", "GET"),
     ("v2.mtd_manual_scope", "/v2/mtd/scope-indication", "GET POST"),
     ("v2.invoices", "/v2/invoices", "GET"),
     ("v2.invoices_seed", "/v2/invoices/seed", "POST"),

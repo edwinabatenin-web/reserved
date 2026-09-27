@@ -6,10 +6,10 @@ the browser supplies no owner, scope, date, annual position or future facts.
 """
 from __future__ import annotations
 
-from flask import Flask, abort, jsonify, request
+from dataclasses import dataclass
 
-from reserved.auth import require_auth
-from reserved.config import durable_paye_forecast_enabled
+from flask import Flask
+
 from reserved.engines.annual_to_cash_integration import AnnualToCashPosition
 from reserved.engines.annual_to_cash_integration import (
     AnnualToCashStatus, annual_to_cash_position_identity,
@@ -25,18 +25,41 @@ from reserved.services.paye_future_pay_forecast import (
 
 _KEY = "reserved.paye.durable_forecast_endpoint"
 _RULE = "/v2/paye/current-forecast"
-_ENDPOINT = "paye_durable_current_forecast"
+_ENDPOINT = "v2.paye_durable_current_forecast"
 
 
 class DurablePayeForecastEndpointError(ValueError):
     """Installer validation failed before any Flask mutation."""
 
 
-class DurablePayeForecastEndpointHandle:
-    __slots__ = ()
+@dataclass(frozen=True, slots=True)
+class DurablePayeForecastRuntime:
+    """Complete server-owned dependencies for the forecast route."""
 
-    def __new__(cls):
-        raise TypeError("durable PAYE forecast endpoint handles are installer-issued only")
+    repository: object
+    annual_position_provider: object
+    future_facts_provider: object
+    owner_scope_resolver: object
+    reconciliation_policy: object
+    future_pay_policy: object
+
+    def __post_init__(self):
+        from reserved.annual_position_durable_repository import DurableAnnualPositionRepository
+
+        if type(self.repository) is not DurableAnnualPositionRepository:
+            raise DurablePayeForecastEndpointError("exact durable repository is required")
+        if not all(callable(value) for value in (
+            self.annual_position_provider, self.future_facts_provider,
+            self.owner_scope_resolver,
+        )):
+            raise DurablePayeForecastEndpointError(
+                "explicit annual, future-facts and scope dependencies are required"
+            )
+        if (type(self.reconciliation_policy) is not PayeReconciliationPolicy
+                or type(self.future_pay_policy) is not FuturePayForecastPolicy):
+            raise DurablePayeForecastEndpointError(
+                "exact reconciliation and future-pay policies are required"
+            )
 
 
 def _scope(value):
@@ -82,66 +105,77 @@ def _preflight_annual_matches_current_durable_record(record, annual, *, owner, b
         raise ValueError("live annual input is not current durable issuance")
 
 
+def current_forecast_payload(runtime: DurablePayeForecastRuntime, owner: int) -> dict:
+    """Compose the bounded response from exact server-owned dependencies."""
+    from reserved.annual_position_durable_repository import RECORD_PURPOSE
+
+    if type(runtime) is not DurablePayeForecastRuntime or type(owner) is not int or owner <= 0:
+        raise DurablePayeForecastEndpointError("durable PAYE forecast runtime is unavailable")
+    scope = _scope(runtime.owner_scope_resolver(owner))
+    if scope is None:
+        raise DurablePayeForecastEndpointError("owner scope is unavailable")
+    business, tax_year, nation = scope
+    runtime.repository.assert_external_authority_available()
+    record = runtime.repository.read_current(
+        authenticated_user_id=owner, business_reference=business,
+        tax_year=tax_year, nation=nation, record_purpose=RECORD_PURPOSE,
+        audit_reference="audit:paye-forecast-preflight",
+    )
+    annual = runtime.annual_position_provider(owner, business, tax_year, nation)
+    _preflight_annual_matches_current_durable_record(
+        record, annual, owner=owner, business=business, tax_year=tax_year, nation=nation,
+    )
+    facts = runtime.future_facts_provider(owner, business, tax_year, nation, annual)
+    if (type(facts) is not tuple or not facts
+            or any(type(item) is not ConfirmedFuturePayFact for item in facts)):
+        raise DurablePayeForecastEndpointError("future-pay facts are unavailable")
+    result = compose_durable_authenticated_paye_forecast(
+        repository=runtime.repository, annual_position=annual,
+        business_reference=business, tax_year=tax_year, nation=nation,
+        reconciliation_policy=runtime.reconciliation_policy,
+        future_pay_facts=facts, future_pay_policy=runtime.future_pay_policy,
+        audit_reference="audit:paye-forecast-current",
+    )
+    return _response(result.forecast)
+
+
 def install_durable_paye_forecast_endpoint(
-    app: Flask, *, repository, annual_position_provider, future_facts_provider,
-    owner_scope_resolver, reconciliation_policy, future_pay_policy,
+    app: Flask, runtime: DurablePayeForecastRuntime,
 ):
-    """Install a GET-only forecast endpoint after complete dependency preflight."""
-    from reserved.annual_position_durable_repository import DurableAnnualPositionRepository, RECORD_PURPOSE
+    """Bind complete dependencies to the pre-registered, paid-only route."""
 
-    if type(app) is not Flask or app._got_first_request or _KEY in app.extensions:
+    if (type(app) is not Flask or app._got_first_request or _KEY in app.extensions
+            or type(runtime) is not DurablePayeForecastRuntime):
         raise DurablePayeForecastEndpointError("exact pre-request Flask installation is required")
-    if type(repository) is not DurableAnnualPositionRepository:
-        raise DurablePayeForecastEndpointError("exact durable repository is required")
-    if not all(callable(value) for value in (annual_position_provider, future_facts_provider, owner_scope_resolver)):
-        raise DurablePayeForecastEndpointError("explicit annual, future-facts and scope dependencies are required")
-    if type(reconciliation_policy) is not PayeReconciliationPolicy or type(future_pay_policy) is not FuturePayForecastPolicy:
-        raise DurablePayeForecastEndpointError("exact reconciliation and future-pay policies are required")
-    if _ENDPOINT in app.view_functions or any(rule.rule == _RULE for rule in app.url_map.iter_rules()):
+    rules = tuple(
+        rule for rule in app.url_map.iter_rules()
+        if rule.endpoint == _ENDPOINT or rule.rule == _RULE
+    )
+    if (len(rules) != 1 or rules[0].endpoint != _ENDPOINT or rules[0].rule != _RULE
+            or rules[0].methods != {"GET", "HEAD", "OPTIONS"}):
         raise DurablePayeForecastEndpointError("PAYE forecast endpoint registration is ambiguous")
+    from reserved.billing.stripe_runtime import StripeBillingRuntime
 
-    @require_auth
-    def current_forecast():
-        if (not durable_paye_forecast_enabled() or request.args
-                or request.content_length not in (None, 0)):
-            abort(404)
-        from reserved.auth import current_user_id
-        try:
-            owner = current_user_id()
-            if type(owner) is not int or owner <= 0:
-                raise ValueError
-            scope = _scope(owner_scope_resolver(owner))
-            if scope is None:
-                raise ValueError
-            business, tax_year, nation = scope
-            # Provider calls are gated behind current verifier/membership/record.
-            repository.assert_external_authority_available()
-            record = repository.read_current(
-                authenticated_user_id=owner, business_reference=business,
-                tax_year=tax_year, nation=nation, record_purpose=RECORD_PURPOSE,
-                audit_reference="audit:paye-forecast-preflight",
-            )
-            annual = annual_position_provider(owner, business, tax_year, nation)
-            _preflight_annual_matches_current_durable_record(
-                record, annual, owner=owner, business=business, tax_year=tax_year, nation=nation,
-            )
-            facts = future_facts_provider(owner, business, tax_year, nation, annual)
-            if (type(facts) is not tuple or not facts
-                    or any(type(item) is not ConfirmedFuturePayFact for item in facts)):
-                raise ValueError
-            result = compose_durable_authenticated_paye_forecast(
-                repository=repository, annual_position=annual,
-                business_reference=business, tax_year=tax_year, nation=nation,
-                reconciliation_policy=reconciliation_policy,
-                future_pay_facts=facts, future_pay_policy=future_pay_policy,
-                audit_reference="audit:paye-forecast-current",
-            )
-            payload = _response(result.forecast)
-        except Exception:
-            abort(404)
-        return jsonify(payload)
+    billing_key = "reserved.billing.stripe_runtime"
+    originals = app.extensions.get(billing_key + ".paid_surface.disabled")
+    guarded = app.view_functions.get(_ENDPOINT)
+    if (
+        type(app.extensions.get(billing_key)) is not StripeBillingRuntime
+        or app.extensions.get(billing_key + ".paid_surface") is not True
+        or type(originals) is not dict
+        or _ENDPOINT not in originals
+        or not callable(originals[_ENDPOINT])
+        or not callable(guarded)
+        or getattr(guarded, "__wrapped__", None) is not originals[_ENDPOINT]
+    ):
+        raise DurablePayeForecastEndpointError(
+            "active exact paid-surface enforcement is required"
+        )
+    app.extensions[_KEY] = runtime
+    return runtime
 
-    app.add_url_rule(_RULE, endpoint=_ENDPOINT, view_func=current_forecast, methods=("GET",))
-    handle = object.__new__(DurablePayeForecastEndpointHandle)
-    app.extensions[_KEY] = handle
-    return handle
+
+__all__ = [
+    "DurablePayeForecastEndpointError", "DurablePayeForecastRuntime",
+    "current_forecast_payload", "install_durable_paye_forecast_endpoint",
+]

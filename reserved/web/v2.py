@@ -75,6 +75,7 @@ from reserved.database import (
 from reserved.extensions import csrf
 from reserved.config import (
     durable_paye_composition_enabled,
+    durable_paye_forecast_enabled,
     paye_manual_baseline_enabled,
     paye_manual_journey_enabled,
 )
@@ -692,6 +693,29 @@ def paye_durable_current_position():
         if type(g.user_id) is not int or g.user_id <= 0 or get_user(g.user_id) is None:
             raise ValueError
         payload = current_position_payload(runtime, g.user_id)
+    except Exception:
+        abort(404)
+    return jsonify(payload)
+
+
+@v2.get("/paye/current-forecast")
+@require_auth
+def paye_durable_current_forecast():
+    """Paid, disabled-first forecast over confirmed future-pay inputs only."""
+    if (not durable_paye_forecast_enabled() or request.args
+            or request.content_length not in (None, 0)):
+        abort(404)
+    from reserved.paye_forecast_endpoint import (
+        DurablePayeForecastRuntime,
+        current_forecast_payload,
+    )
+    try:
+        runtime = current_app.extensions.get("reserved.paye.durable_forecast_endpoint")
+        if type(runtime) is not DurablePayeForecastRuntime:
+            raise ValueError
+        if type(g.user_id) is not int or g.user_id <= 0 or get_user(g.user_id) is None:
+            raise ValueError
+        payload = current_forecast_payload(runtime, g.user_id)
     except Exception:
         abort(404)
     return jsonify(payload)

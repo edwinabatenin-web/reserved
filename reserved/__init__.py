@@ -17,7 +17,10 @@ from .api.routes import api
 log = logging.getLogger(__name__)
 
 
-def create_app(*, billing_runtime: object = None, paye_runtime: object = None) -> Flask:
+def create_app(
+    *, billing_runtime: object = None, paye_runtime: object = None,
+    paye_forecast_runtime: object = None,
+) -> Flask:
     # ── Logging ───────────────────────────────────────────────────────────────
     _log_level = logging.DEBUG if os.environ.get("FLASK_DEBUG") == "1" else logging.INFO
     logging.basicConfig(
@@ -74,7 +77,8 @@ def create_app(*, billing_runtime: object = None, paye_runtime: object = None) -
     # the closed boundary first, so an invalid or failed injection cannot make
     # a paid feature available.
     billing_boundary_required = (
-        is_production_environment() or billing_runtime is not None or paye_runtime is not None
+        is_production_environment() or billing_runtime is not None
+        or paye_runtime is not None or paye_forecast_runtime is not None
     )
     if billing_boundary_required:
         install_disabled_paid_surface_enforcement(app)
@@ -105,6 +109,24 @@ def create_app(*, billing_runtime: object = None, paye_runtime: object = None) -
                 log.exception("PAYE runtime installation failed; current position remains unavailable")
         else:
             log.error("Invalid PAYE runtime ignored; current position remains unavailable")
+
+    # Forecast composition is a separate explicit dependency set. It cannot
+    # install unless the exact paid-access wrapper is already active, and its
+    # feature switch never grants entitlement or supplies future-pay facts.
+    if paye_forecast_runtime is not None:
+        from .paye_forecast_endpoint import (
+            DurablePayeForecastRuntime,
+            install_durable_paye_forecast_endpoint,
+        )
+        if type(paye_forecast_runtime) is DurablePayeForecastRuntime:
+            try:
+                install_durable_paye_forecast_endpoint(app, paye_forecast_runtime)
+            except Exception:
+                log.exception(
+                    "PAYE forecast runtime installation failed; forecast remains unavailable"
+                )
+        else:
+            log.error("Invalid PAYE forecast runtime ignored; forecast remains unavailable")
 
     # ── Template globals ──────────────────────────────────────────────────────
     # Expose canonical_base and turnstile_site_key to every template so that

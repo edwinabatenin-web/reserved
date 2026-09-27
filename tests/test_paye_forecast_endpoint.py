@@ -13,7 +13,8 @@ from reserved.engines.annual_to_cash_integration import (
     AnnualToCashPosition, annual_to_cash_position_identity,
 )
 from reserved.paye_forecast_endpoint import (
-    DurablePayeForecastEndpointError, install_durable_paye_forecast_endpoint,
+    DurablePayeForecastEndpointError, DurablePayeForecastRuntime,
+    install_durable_paye_forecast_endpoint,
 )
 from reserved.services.paye_future_pay_forecast import (
     ConfirmedFuturePayFact, FuturePayFrequency, FuturePaySource,
@@ -25,6 +26,7 @@ from tests.test_paye_annual_bridge import durable_annual
 from tests.test_annual_to_cash_integration import (
     annual_position_with_plan_2, compose as another_live_annual,
 )
+from tests.test_billing_composition import paid_event, runtime as billing_runtime
 
 
 TODAY = date(2026, 10, 1)
@@ -65,23 +67,39 @@ def prepared(tmp_path, monkeypatch):
     monkeypatch.setenv("FLASK_ENV", "development")
     monkeypatch.delenv("PAYE_DURABLE_FORECAST_ENABLED", raising=False)
     monkeypatch.setattr(forecast_bridge, "_server_date", lambda: TODAY)
-    app = create_app(); app.config.update(TESTING=True)
+    billing = billing_runtime(tmp_path / "primary")
+    app = create_app(billing_runtime=billing); app.config.update(TESTING=True)
     owner = db.get_or_create_user("forecast-owner", email="forecast@example.test")
     other = db.get_or_create_user("forecast-other", email="other@example.test")
     annual, repository = durable_annual(owner)
     db.save_paye_manual_entry(owner, _entry())
-    return app, owner, other, annual, repository
+    paid_event(billing, owner)
+    return app, owner, other, annual, repository, tmp_path
 
 
-def _install(app, annual, repository, *, scope=None, annual_provider=None, future_provider=None):
-    return install_durable_paye_forecast_endpoint(
-        app, repository=repository,
+def _runtime(annual, repository, *, scope=None, annual_provider=None, future_provider=None):
+    return DurablePayeForecastRuntime(
+        repository=repository,
         annual_position_provider=annual_provider or (lambda *_: annual),
         future_facts_provider=future_provider or (lambda owner, *_: (_fact(owner),)),
         owner_scope_resolver=scope or (lambda _: ("business-1", "2026/27", "England")),
         reconciliation_policy=make_paye_reconciliation_policy(45, Decimal("1.00")),
         future_pay_policy=make_future_pay_forecast_policy(30, Decimal("100.00")),
     )
+
+
+def _install(app, annual, repository, **kwargs):
+    return install_durable_paye_forecast_endpoint(
+        app, _runtime(annual, repository, **kwargs)
+    )
+
+
+def _paid_app(tmp_path, name, owner):
+    billing = billing_runtime(tmp_path / name)
+    app = create_app(billing_runtime=billing)
+    app.config.update(TESTING=True)
+    paid_event(billing, owner)
+    return app
 
 
 def _client(app, owner):
@@ -92,13 +110,13 @@ def _client(app, owner):
 
 
 def test_disabled_and_preflight_failures_do_not_call_providers(prepared, monkeypatch):
-    app, owner, other, annual, repository = prepared
+    app, owner, other, annual, repository, _ = prepared
     calls = []
     _install(app, annual, repository,
              annual_provider=lambda *args: calls.append(("annual", args)) or annual,
              future_provider=lambda *args: calls.append(("future", args)) or (_fact(owner),))
     assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
-    assert _client(app, other).get("/v2/paye/current-forecast").status_code == 404
+    assert _client(app, other).get("/v2/paye/current-forecast").status_code == 403
     assert _client(app, owner).get("/v2/paye/current-forecast?year=2020").status_code == 404
     assert _client(app, owner).post("/v2/paye/current-forecast", json={}).status_code == 405
     assert calls == []
@@ -109,7 +127,7 @@ def test_disabled_and_preflight_failures_do_not_call_providers(prepared, monkeyp
 
 
 def test_unauthenticated_no_adapter_and_invalid_annual_never_reach_future_provider(prepared, monkeypatch):
-    app, owner, _, annual, repository = prepared
+    app, owner, _, annual, repository, tmp_path = prepared
     monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
     calls = []
     _install(app, annual, repository,
@@ -128,7 +146,7 @@ def test_unauthenticated_no_adapter_and_invalid_annual_never_reach_future_provid
         membership_issuer_reference="membership:approved-v1",
         lifecycle_issuer_reference="lifecycle:approved-v1",
     )
-    app2 = create_app(); app2.config.update(TESTING=True)
+    app2 = _paid_app(tmp_path, "no-adapter", owner)
     no_adapter_calls = []
     _install(app2, annual, no_adapter,
              annual_provider=lambda *args: no_adapter_calls.append("annual") or annual,
@@ -144,7 +162,7 @@ def test_unauthenticated_no_adapter_and_invalid_annual_never_reach_future_provid
 def test_unbound_or_forged_annual_is_rejected_before_future_provider(
     prepared, monkeypatch, invalid_annual, assert_distinct_identity,
 ):
-    app, owner, _, annual, repository = prepared
+    app, owner, _, annual, repository, _ = prepared
     monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
     calls = []
     candidate = invalid_annual()
@@ -158,7 +176,7 @@ def test_unbound_or_forged_annual_is_rejected_before_future_provider(
 
 
 def test_success_is_minimal_and_never_claims_liability_or_actions(prepared, monkeypatch):
-    app, owner, _, annual, repository = prepared
+    app, owner, _, annual, repository, _ = prepared
     monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
     _install(app, annual, repository)
     response = _client(app, owner).get("/v2/paye/current-forecast")
@@ -178,21 +196,21 @@ def test_success_is_minimal_and_never_claims_liability_or_actions(prepared, monk
 
 
 def test_bad_scope_or_invalid_provider_output_is_value_free(prepared, monkeypatch):
-    app, owner, _, annual, repository = prepared
+    app, owner, _, annual, repository, tmp_path = prepared
     monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
     _install(app, annual, repository, scope=lambda _: ("business-1", "2025/26", "England"))
     assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
-    app2 = create_app(); app2.config.update(TESTING=True)
+    app2 = _paid_app(tmp_path, "invalid-provider", owner)
     _install(app2, annual, repository, future_provider=lambda *_: [])
     assert _client(app2, owner).get("/v2/paye/current-forecast").status_code == 404
 
 
 def test_invalid_installation_does_not_mutate_flask(prepared):
-    app, _, _, annual, repository = prepared
+    app, _, _, annual, repository, _ = prepared
     rules, extensions = tuple((rule.rule, rule.endpoint) for rule in app.url_map.iter_rules()), dict(app.extensions)
     with pytest.raises(DurablePayeForecastEndpointError):
-        install_durable_paye_forecast_endpoint(
-            app, repository=repository, annual_position_provider=lambda *_: annual,
+        DurablePayeForecastRuntime(
+            repository=repository, annual_position_provider=lambda *_: annual,
             future_facts_provider=lambda *_: (), owner_scope_resolver=lambda _: ("business-1", "2026/27", "England"),
             reconciliation_policy=object(), future_pay_policy=object(),
         )
@@ -201,13 +219,54 @@ def test_invalid_installation_does_not_mutate_flask(prepared):
 
 
 def test_route_and_endpoint_collisions_do_not_mutate_flask(prepared):
-    app, _, _, annual, repository = prepared
+    app, _, _, annual, repository, _ = prepared
     _install(app, annual, repository)
     rules, extensions = tuple((rule.rule, rule.endpoint) for rule in app.url_map.iter_rules()), dict(app.extensions)
     with pytest.raises(DurablePayeForecastEndpointError):
         _install(app, annual, repository)
     assert tuple((rule.rule, rule.endpoint) for rule in app.url_map.iter_rules()) == rules
     assert app.extensions == extensions
+
+
+def test_direct_install_without_active_paid_boundary_is_refused(prepared):
+    _, _, _, annual, repository, _ = prepared
+    app = create_app()
+    with pytest.raises(DurablePayeForecastEndpointError, match="paid-surface"):
+        install_durable_paye_forecast_endpoint(app, _runtime(annual, repository))
+    assert "reserved.paye.durable_forecast_endpoint" not in app.extensions
+
+
+def test_application_factory_composes_only_complete_paid_forecast_runtime(
+    prepared, monkeypatch,
+):
+    _, owner, _, annual, repository, tmp_path = prepared
+    monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
+    billing = billing_runtime(tmp_path / "factory")
+    app = create_app(
+        billing_runtime=billing,
+        paye_forecast_runtime=_runtime(annual, repository),
+    )
+    app.config.update(TESTING=True)
+    client = _client(app, owner)
+    assert "reserved.paye.durable_forecast_endpoint" in app.extensions
+    assert client.get("/v2/paye/current-forecast").status_code == 403
+    paid_event(billing, owner)
+    assert client.get("/v2/paye/current-forecast").status_code == 200
+
+
+def test_forecast_runtime_without_billing_or_with_invalid_shape_remains_closed(
+    prepared, monkeypatch,
+):
+    _, owner, _, annual, repository, _ = prepared
+    monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
+    app = create_app(paye_forecast_runtime=_runtime(annual, repository))
+    app.config.update(TESTING=True)
+    assert "reserved.paye.durable_forecast_endpoint" not in app.extensions
+    assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
+    invalid = create_app(paye_forecast_runtime=object())
+    invalid.config.update(TESTING=True)
+    assert "reserved.paye.durable_forecast_endpoint" not in invalid.extensions
+    assert _client(invalid, owner).get("/v2/paye/current-forecast").status_code == 404
 
 
 class _TupleSubclass(tuple):
@@ -228,14 +287,14 @@ class _TupleSubclass(tuple):
     lambda owner: (_fact(owner, period_completeness=PeriodCompleteness.PARTIAL),),
 ])
 def test_invalid_future_fact_shapes_and_bindings_are_value_free(prepared, monkeypatch, factory):
-    app, owner, _, annual, repository = prepared
+    app, owner, _, annual, repository, _ = prepared
     monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
     _install(app, annual, repository, future_provider=lambda current, *_: factory(current))
     assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
 
 
 def test_duplicate_future_fact_identity_provenance_and_period_overlap_are_value_free(prepared, monkeypatch):
-    app, owner, _, annual, repository = prepared
+    app, owner, _, annual, repository, _ = prepared
     monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
     duplicate_id = _fact(owner, fact_id="future-pay-2", source_evidence_id="confirmation-2",
                          source_evidence_digest="b" * 64)
@@ -246,7 +305,7 @@ def test_duplicate_future_fact_identity_provenance_and_period_overlap_are_value_
 
 
 def test_switch_is_independent_and_response_uncertainties_are_fixed(prepared, monkeypatch):
-    app, owner, _, annual, repository = prepared
+    app, owner, _, annual, repository, _ = prepared
     monkeypatch.setenv("PAYE_DURABLE_COMPOSITION_ENABLED", "1")
     _install(app, annual, repository)
     assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
