@@ -212,6 +212,13 @@ class PayslipIntakeBoundary:
         ).hexdigest()
         return f"{digest}.state"
 
+    @classmethod
+    def _owner_flock_name(cls, owner: int) -> str:
+        # The flock inode must never be replaced when the durable state is
+        # atomically advanced.  Keeping it distinct from the state file makes
+        # the cross-process critical section stable across os.replace().
+        return cls._owner_state_name(owner).removesuffix(".state") + ".lock"
+
     def _read_owner_state(self, owner: int) -> str:
         name = self._owner_state_name(owner)
         try:
@@ -223,7 +230,9 @@ class PayslipIntakeBoundary:
         try:
             value = os.read(fd, 16)
             if value == b"":
-                return "open"
+                # A missing state file is the only open state.  An existing
+                # empty file can be a torn legacy truncate and must fail closed.
+                raise PayslipIntakeError("payslip owner lock state is invalid")
             if value not in (b"open\n", b"blocked\n", b"erased\n"):
                 raise PayslipIntakeError("payslip owner lock state is invalid")
             return value.decode("ascii").strip()
@@ -234,16 +243,34 @@ class PayslipIntakeBoundary:
         if state not in ("blocked", "erased"):
             raise PayslipIntakeError("payslip owner lock state is invalid")
         name = self._owner_state_name(owner)
+        temporary = f".{name}.{secrets.token_hex(16)}.tmp"
+        fd = -1
         try:
-            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                          0o600, dir_fd=self._locks_fd)
             try:
-                os.write(fd, (state + "\n").encode("ascii"))
+                payload = (state + "\n").encode("ascii")
+                written = 0
+                while written < len(payload):
+                    count = os.write(fd, payload[written:])
+                    if count <= 0:
+                        raise OSError("owner lifecycle state write was incomplete")
+                    written += count
                 os.fsync(fd)
             finally:
                 os.close(fd)
+                fd = -1
+            os.rename(temporary, name, src_dir_fd=self._locks_fd, dst_dir_fd=self._locks_fd)
             os.fsync(self._locks_fd)
         except OSError as exc:
+            if fd >= 0:
+                os.close(fd)
+            try:
+                os.unlink(temporary, dir_fd=self._locks_fd)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
             raise PayslipIntakeError("payslip owner lock state could not be persisted") from exc
 
     @contextmanager
@@ -251,13 +278,23 @@ class PayslipIntakeBoundary:
                      permit_erased: bool = False):
         """Cross-instance owner lock plus the local reentrant mutation lock."""
         with self._owner_lock(owner):
-            name = self._owner_state_name(owner)
+            name = self._owner_flock_name(owner)
             fd = -1
             try:
                 fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600,
                              dir_fd=self._locks_fd)
                 fcntl.flock(fd, fcntl.LOCK_EX)
-                state = self._read_owner_state(owner)
+                file_state = self._read_owner_state(owner)
+                with database._connection() as conn:
+                    row = conn.execute(
+                        "SELECT state FROM local_tax_data_erasure_states WHERE user_id=?", (owner,)
+                    ).fetchone()
+                database_state = "open" if row is None else row["state"]
+                # Any blocked source dominates.  An erased source then closes
+                # ordinary writes even if the other durable source was lost.
+                state = ("blocked" if "blocked" in (file_state, database_state)
+                         else "erased" if "erased" in (file_state, database_state)
+                         else "open")
                 if ((state == "erased" and not permit_erased)
                         or (state == "blocked" and not permit_blocked)):
                     raise PayslipIntakeError("payslip owner lifecycle is unavailable")
@@ -763,9 +800,12 @@ class PayslipIntakeBoundary:
             # A failed raw or structured phase deliberately leaves the durable
             # owner state blocked; only an entire retry may advance to erased.
             if prior_state != "erased":
+                # Persist the database tombstone first when the composition
+                # supplies one.  If the following filesystem state advance is
+                # interrupted, restart admission still fails closed.
+                if before_raw_erasure is not None:
+                    before_raw_erasure()
                 self._write_owner_state(owner, "blocked")
-            if before_raw_erasure is not None and prior_state != "erased":
-                before_raw_erasure()
             result = self._erase_owner_for_account_lifecycle_locked(owner, after_raw_erasure)
             if after_raw_erasure is not None and prior_state != "erased":
                 self._write_owner_state(owner, "erased")

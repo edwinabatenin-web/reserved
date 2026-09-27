@@ -509,6 +509,27 @@ def test_two_boundaries_and_restart_honor_erased_owner_tombstone(tmp_path):
                         content_type="application/pdf", document_bytes=PDF)
 
 
+def test_existing_empty_owner_state_from_torn_legacy_write_fails_closed(tmp_path):
+    boundary = _boundary(tmp_path)
+    state_path = boundary._root / ".locks" / boundary._owner_state_name(OWNER)
+    state_path.touch(mode=0o600)
+    restarted = _boundary(tmp_path)
+    with pytest.raises(PayslipIntakeError, match="state is invalid"):
+        _begin(restarted)
+    assert _files(tmp_path) == ()
+
+
+def test_database_tombstone_closes_restart_even_when_state_file_is_absent(tmp_path):
+    boundary = _boundary(tmp_path)
+    state_path = boundary._root / ".locks" / boundary._owner_state_name(OWNER)
+    db.block_local_tax_data_writes(OWNER)
+    assert not state_path.exists()
+    restarted = _boundary(tmp_path)
+    with pytest.raises(PayslipIntakeError, match="lifecycle"):
+        _begin(restarted)
+    assert _files(tmp_path) == ()
+
+
 def _capture(target, operation):
     try:
         operation()
