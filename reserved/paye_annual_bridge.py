@@ -1,6 +1,6 @@
-"""Internal fail-closed bridge from owner-bound manual PAYE facts to annual composition.
+"""Application-integration bridge from owner-bound PAYE facts to annual composition.
 
-This engine-layer bridge does not discover an owner, business, annual position, policy or
+This bridge does not discover an owner, business, annual position, policy or
 future-pay fact. Callers must supply each already-admitted dependency. It only
 composes facts after proving that the current membership decision, persisted
 annual projection and live annual-to-cash result describe the same owner,

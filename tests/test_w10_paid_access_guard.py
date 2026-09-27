@@ -300,7 +300,7 @@ def test_candidate_is_confined_to_exact_three_owned_paths_and_base():
             "reserved/billing/local_paid_surface_access.py",
             "reserved/billing/paid_access_guard.py",
             "reserved/config.py", "reserved/database.py",
-            "reserved/engines/paye_annual_bridge.py",
+            "reserved/paye_annual_bridge.py",
             "reserved/services/paye_customer_orchestration.py",
             "reserved/services/paye_manual_baseline.py",
             "reserved/templates/v2/dashboard.html",

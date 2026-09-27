@@ -12,7 +12,7 @@ from reserved.owner_business_membership_contract import (
     InMemoryOwnerBusinessMembershipFake, MembershipStatus,
     OwnerBusinessMembershipRecord, evaluate_authenticated_owner_business_membership,
 )
-from reserved.engines.paye_annual_bridge import compose_authenticated_manual_paye
+from reserved.paye_annual_bridge import compose_authenticated_manual_paye
 from reserved.services.w8_annual_cash_customer_handoff import compose_w8_annual_cash_customer_handoff
 from tests.test_annual_to_cash_integration import compose
 from tests.test_w8_annual_cash_customer_handoff import references
