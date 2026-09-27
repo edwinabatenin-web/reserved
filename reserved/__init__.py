@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 def create_app(
     *, billing_runtime: object = None, paye_runtime: object = None,
     paye_forecast_runtime: object = None, hicbc_runtime: object = None,
+    erasure_runtime: object = None,
 ) -> Flask:
     # ── Logging ───────────────────────────────────────────────────────────────
     _log_level = logging.DEBUG if os.environ.get("FLASK_DEBUG") == "1" else logging.INFO
@@ -146,6 +147,25 @@ def create_app(
                 )
         else:
             log.error("Invalid HICBC runtime ignored; annual position remains unavailable")
+
+    # Local tax-data erasure is an authenticated account-lifecycle control, not
+    # a paid feature. It remains absent unless one complete exact runtime is
+    # injected, and request execution still requires its independent disabled-
+    # first switch plus current external legal-hold and backup clearances.
+    if erasure_runtime is not None:
+        from .services.local_tax_data_erasure import (
+            LocalTaxDataErasureRuntime,
+            install_local_tax_data_erasure_runtime,
+        )
+        if type(erasure_runtime) is LocalTaxDataErasureRuntime:
+            try:
+                install_local_tax_data_erasure_runtime(app, erasure_runtime)
+            except Exception:
+                log.exception(
+                    "Local tax-data erasure runtime installation failed; erasure remains unavailable"
+                )
+        else:
+            log.error("Invalid local tax-data erasure runtime ignored; erasure remains unavailable")
 
     # ── Template globals ──────────────────────────────────────────────────────
     # Expose canonical_base and turnstile_site_key to every template so that

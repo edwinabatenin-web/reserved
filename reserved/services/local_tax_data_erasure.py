@@ -9,6 +9,7 @@ claim about backups, quarantine, or a whole-account erasure.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from flask import Flask, abort, jsonify, request
 
@@ -26,6 +27,20 @@ _KEY = "reserved.local_tax_data_erasure"
 
 class LocalTaxDataErasureInstallationError(ValueError):
     """Installation was rejected before changing the Flask application."""
+
+
+@dataclass(frozen=True, slots=True)
+class LocalTaxDataErasureRuntime:
+    """Complete server-owned dependencies for the dormant erasure route."""
+
+    durable_repository: object
+    payslip_boundary: object
+    clearance_provider: object
+
+    def __post_init__(self) -> None:
+        _require_dependencies(
+            self.durable_repository, self.payslip_boundary, self.clearance_provider,
+        )
 
 
 def _complete_structured(owner: int, callback):
@@ -140,4 +155,23 @@ def install_local_tax_data_erasure(app, *, durable_repository, payslip_boundary,
     app.extensions[_KEY] = object()
 
 
-__all__ = ["LocalTaxDataErasureInstallationError", "install_local_tax_data_erasure"]
+def install_local_tax_data_erasure_runtime(
+    app: Flask, runtime: LocalTaxDataErasureRuntime,
+) -> None:
+    """Install only one exact, fully validated dependency bundle."""
+    if type(runtime) is not LocalTaxDataErasureRuntime:
+        raise LocalTaxDataErasureInstallationError(
+            "exact local tax-data erasure runtime is required"
+        )
+    install_local_tax_data_erasure(
+        app,
+        durable_repository=runtime.durable_repository,
+        payslip_boundary=runtime.payslip_boundary,
+        clearance_provider=runtime.clearance_provider,
+    )
+
+
+__all__ = [
+    "LocalTaxDataErasureInstallationError", "LocalTaxDataErasureRuntime",
+    "install_local_tax_data_erasure", "install_local_tax_data_erasure_runtime",
+]

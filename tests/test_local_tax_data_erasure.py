@@ -15,7 +15,8 @@ from reserved.annual_position_durable_repository import (
     DurableAnnualPositionRepository, DurableGovernance, ExternalAuthorityAdapter,
 )
 from reserved.services.local_tax_data_erasure import (
-    LocalTaxDataErasureInstallationError, install_local_tax_data_erasure,
+    LocalTaxDataErasureInstallationError, LocalTaxDataErasureRuntime,
+    install_local_tax_data_erasure,
 )
 from reserved.services.paye_payslip_intake import PayslipIntakeBoundary
 
@@ -89,6 +90,13 @@ def _install(app, repository, boundary, clearances, calls):
     )
 
 
+def _runtime(repository, boundary, clearances, calls):
+    def provider(*, authenticated_user_id):
+        calls.append(authenticated_user_id)
+        return clearances
+    return LocalTaxDataErasureRuntime(repository, boundary, provider)
+
+
 def _seed_structured(owner, other):
     """Seed only the rows needed to prove route-level physical scope/counts."""
     with db._connection() as conn:
@@ -123,6 +131,46 @@ def test_disabled_and_csrf_rejections_never_consult_clearance_provider(prepared,
     client, token = _client(app, owner)
     assert client.post("/v2/account/local-tax-data-erasure", data={"csrf_token": token}).status_code == 404
     assert calls == []
+
+
+def test_application_factory_composes_only_one_exact_disabled_first_runtime(
+    prepared, monkeypatch,
+):
+    _app, owner, _other, repository, boundary, clearances = prepared
+    calls = []
+    invalid = create_app(erasure_runtime=object())
+    invalid.config.update(TESTING=True)
+    invalid_client, invalid_token = _client(invalid, owner)
+    assert invalid_client.post(
+        "/v2/account/local-tax-data-erasure", data={"csrf_token": invalid_token},
+    ).status_code == 404
+
+    runtime = _runtime(repository, boundary, clearances, calls)
+    composed = create_app(erasure_runtime=runtime)
+    composed.config.update(TESTING=True)
+    client, token = _client(composed, owner)
+    assert client.post(
+        "/v2/account/local-tax-data-erasure", data={"csrf_token": token},
+    ).status_code == 404
+    assert calls == []
+
+    monkeypatch.setenv("LOCAL_TAX_DATA_ERASURE_ENABLED", "1")
+    response = client.post(
+        "/v2/account/local-tax-data-erasure", data={"csrf_token": token},
+    )
+    assert response.status_code == 200
+    assert response.get_json()["scope"] == "local_tax_data_only"
+    assert calls == [owner]
+
+
+def test_erasure_runtime_rejects_incomplete_dependencies_before_app_mutation(prepared):
+    _app, _owner, _other, repository, boundary, clearances = prepared
+    with pytest.raises(LocalTaxDataErasureInstallationError):
+        LocalTaxDataErasureRuntime(object(), boundary, lambda **_: clearances)
+    with pytest.raises(LocalTaxDataErasureInstallationError):
+        LocalTaxDataErasureRuntime(repository, object(), lambda **_: clearances)
+    with pytest.raises(LocalTaxDataErasureInstallationError):
+        LocalTaxDataErasureRuntime(repository, boundary, object())
 
 
 def test_query_or_body_extras_are_rejected_before_provider(prepared, monkeypatch):
