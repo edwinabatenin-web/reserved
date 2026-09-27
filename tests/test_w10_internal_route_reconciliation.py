@@ -45,6 +45,9 @@ EXPECTED_PRODUCT_PATH_HASHES = {
 CURRENT_ROUTES_SHA256 = (
     "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd"
 )
+CURRENT_APP_FACTORY_SHA256 = (
+    "25a98af64723c8ea911c72b2382886515fd30a9accc7c86d2acfd3e03857ffc7"
+)
 
 EXPECTED = {
     "web.calculate": (
@@ -356,6 +359,14 @@ def test_every_reviewed_source_is_exactly_hash_bound():
             # still invalidates the evidence exactly as before.
             actual_hash = hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest()
         assert actual_hash == expected_hash, f"stale S5B source: {relative_path}"
+
+
+def test_app_factory_binding_tracks_the_approved_digest():
+    assert s5a()["source_sha256"]["reserved/__init__.py"] == CURRENT_APP_FACTORY_SHA256
+    assert s5b()["source_sha256"]["reserved/__init__.py"] == CURRENT_APP_FACTORY_SHA256
+    assert hashlib.sha256((ROOT / "reserved/__init__.py").read_bytes()).hexdigest() == (
+        CURRENT_APP_FACTORY_SHA256
+    )
 
 
 def test_historical_completion_map_is_verified_from_exact_git_blob_and_rejects_forgery():

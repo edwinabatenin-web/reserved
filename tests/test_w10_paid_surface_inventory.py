@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "docs" / "W10_S5A_PAID_SURFACE_INVENTORY.md"
 START = "<!-- W10-S5A-INVENTORY-BEGIN -->"
 END = "<!-- W10-S5A-INVENTORY-END -->"
+CURRENT_APP_FACTORY_SHA256 = (
+    "25a98af64723c8ea911c72b2382886515fd30a9accc7c86d2acfd3e03857ffc7"
+)
 
 CLASSIFICATIONS = {
     "public_infrastructure_auth_legal_support",
@@ -259,6 +262,8 @@ def test_inventory_metadata_is_non_authorising_and_s5_remains_incomplete():
 
 
 def test_bound_route_auth_and_csrf_sources_have_not_changed():
+    assert (inventory()["source_sha256"]["reserved/__init__.py"]
+            == CURRENT_APP_FACTORY_SHA256)
     for relative_path, expected_digest in inventory()["source_sha256"].items():
         actual_digest = hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest()
         assert actual_digest == expected_digest, f"stale inventory source: {relative_path}"

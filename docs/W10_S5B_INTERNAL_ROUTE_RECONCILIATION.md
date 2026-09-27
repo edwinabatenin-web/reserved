@@ -71,8 +71,8 @@ rather than being silently reinterpreted as current runtime evidence.
 
 | Evidence | SHA-256 | Use |
 |---|---|---|
-| `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `790195a603d66b78c2b46e65e00b366990cc2c18afba08463649e0f69d87071b` | Current candidate inventory including the disabled-first local linked-HICBC route and exact paid surface; production provider/target composition and activation remain open. |
-| `tests/test_w10_paid_surface_inventory.py` | `3098d5bb055e5162c8c31162af6d335258684892755da1c46f84a79833ce8452` | Current inventory/source/registry freshness assurance. |
+| `docs/W10_S5A_PAID_SURFACE_INVENTORY.md` | `1b66a49ff19b1f2d497b59cabc64fb82a417b199e674c2866ba83f4eef1b185c` | Current candidate inventory including the disabled-first local linked-HICBC route and exact paid surface; production provider/target composition and activation remain open. |
+| `tests/test_w10_paid_surface_inventory.py` | `dd1328149e74dddb3f3850e190596fde8225d19fa5557bae9f5d84579b8fd85c` | Current inventory/source/registry freshness assurance. |
 | `5612f7a...:docs/W10_SUBSCRIPTION_BILLING_COMPLETION_MAP.md` | `7af205f420c2cf3a9039fff7aad1af65e55221005231b2fabe3bd99c94f96c4d` | Historical W10 state and explicit S5B next action, verified from the Git blob. |
 | `FOUNDER_DECISIONS.md` | `78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f` | Current October scope, paid-subscription lifecycle/withdrawal authority and ordinary-engineering authority at the refreshed repository identity. |
 | `docs/TECHNICAL_ARCHITECTURE.md` | `7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79` | Capital Gains dormant/out-of-scope and launch-layer boundary. |
@@ -109,8 +109,8 @@ disposition forward by name alone.
     "FOUNDER_DECISIONS.md": "78d0cbafe38e266b77c38198012b37d74042ee274a8f892bfca456f4a3ef584f",
     "docs/API_CONTRACT_GAP_REPORT.md": "b0eeeea6357e88dd1db59dd5ddf2d4e4e712f79f73d3a61c52838cda390ac85f",
     "docs/TECHNICAL_ARCHITECTURE.md": "7307e93ff4a169516041a86485a1e994c52ed0afd2e120631257041b3fa09e79",
-    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "790195a603d66b78c2b46e65e00b366990cc2c18afba08463649e0f69d87071b",
-    "reserved/__init__.py": "affaa48b467b6f0e5a54121af40a3da7092356e85601bb39a376db1e088d0fd1",
+    "docs/W10_S5A_PAID_SURFACE_INVENTORY.md": "1b66a49ff19b1f2d497b59cabc64fb82a417b199e674c2866ba83f4eef1b185c",
+    "reserved/__init__.py": "25a98af64723c8ea911c72b2382886515fd30a9accc7c86d2acfd3e03857ffc7",
     "reserved/providers/banking/yapily.py": "885d021f20f8a76b5f2d26ed692f1e2cae4a7c9764c885da286a61c1c2b68475",
     "reserved/security.py": "73a5d20f1aa69fafda1ab4a9d6c01668fc9a465686e2d8198f8649364e43ae2b",
     "reserved/templates/connections.html": "e58bf5d92892dd5c88f4df1dce6dc7b91b2fea30ebbe9878b8240e22262511e6",
@@ -122,7 +122,7 @@ disposition forward by name alone.
     "reserved/web/hicbc.py": "efe0e59d6bd88ce44ae1f48a59aad9e01594b382c4b211a9a916508af6acd2f2",
     "reserved/web/routes.py": "cbac0af6c8e7fa7ef43017ba54dab0186330b556a6c9dd946e8cfcbd3fa0e9fd",
     "reserved/web/v2.py": "0324464e3cbbfad4e3d2207fe8db76a6e486083b8e604c561676dfff4e82aa69",
-    "tests/test_w10_paid_surface_inventory.py": "3098d5bb055e5162c8c31162af6d335258684892755da1c46f84a79833ce8452"
+    "tests/test_w10_paid_surface_inventory.py": "dd1328149e74dddb3f3850e190596fde8225d19fa5557bae9f5d84579b8fd85c"
   },
   "s5c_implemented_treatments": {
     "web.calculate": {
