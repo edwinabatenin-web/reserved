@@ -11,6 +11,9 @@ from flask import Flask, abort, jsonify, request
 from reserved.auth import require_auth
 from reserved.config import durable_paye_forecast_enabled
 from reserved.engines.annual_to_cash_integration import AnnualToCashPosition
+from reserved.engines.annual_to_cash_integration import (
+    AnnualToCashStatus, annual_to_cash_position_identity,
+)
 from reserved.engines.paye_reconciliation import PayeReconciliationPolicy
 from reserved.paye_durable_forecast_bridge import (
     compose_durable_authenticated_paye_forecast,
@@ -63,6 +66,22 @@ def _response(forecast):
     }
 
 
+def _preflight_annual_matches_current_durable_record(record, annual, *, owner, business, tax_year, nation):
+    """Bind the provider-issued annual input before any future-facts call."""
+    from reserved.annual_position_repository_contract import project_annual_position_record
+
+    if (type(annual) is not AnnualToCashPosition
+            or annual.status is not AnnualToCashStatus.QUALIFIED_LOCAL_RESULT
+            or annual.tax_year != tax_year or annual.nation != nation
+            or "annual_liability_is_local_estimate_not_hmrc_issued" not in annual.limitations):
+        raise ValueError("live annual input is unavailable")
+    row = dict(project_annual_position_record(record)[2])
+    if (row.get("user_id") != str(owner) or row.get("business_id") != business
+            or row.get("tax_year") != tax_year or row.get("nation") != nation
+            or row.get("annual_cash_identity") != annual_to_cash_position_identity(annual)):
+        raise ValueError("live annual input is not current durable issuance")
+
+
 def install_durable_paye_forecast_endpoint(
     app: Flask, *, repository, annual_position_provider, future_facts_provider,
     owner_scope_resolver, reconciliation_policy, future_pay_policy,
@@ -97,14 +116,15 @@ def install_durable_paye_forecast_endpoint(
             business, tax_year, nation = scope
             # Provider calls are gated behind current verifier/membership/record.
             repository.assert_external_authority_available()
-            repository.read_current(
+            record = repository.read_current(
                 authenticated_user_id=owner, business_reference=business,
                 tax_year=tax_year, nation=nation, record_purpose=RECORD_PURPOSE,
                 audit_reference="audit:paye-forecast-preflight",
             )
             annual = annual_position_provider(owner, business, tax_year, nation)
-            if type(annual) is not AnnualToCashPosition:
-                raise ValueError
+            _preflight_annual_matches_current_durable_record(
+                record, annual, owner=owner, business=business, tax_year=tax_year, nation=nation,
+            )
             facts = future_facts_provider(owner, business, tax_year, nation, annual)
             if (type(facts) is not tuple or not facts
                     or any(type(item) is not ConfirmedFuturePayFact for item in facts)):

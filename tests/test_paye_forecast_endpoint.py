@@ -9,6 +9,7 @@ import reserved.paye_durable_forecast_bridge as forecast_bridge
 from reserved import create_app
 from reserved.auth import _SK_USER_ID
 from reserved.engines.paye_reconciliation import make_paye_reconciliation_policy
+from reserved.engines.annual_to_cash_integration import AnnualToCashPosition
 from reserved.paye_forecast_endpoint import (
     DurablePayeForecastEndpointError, install_durable_paye_forecast_endpoint,
 )
@@ -19,6 +20,7 @@ from reserved.services.paye_future_pay_forecast import (
 from reserved.annual_position_durable_repository import DurableAnnualPositionRepository
 from tests.test_annual_position_durable_repository import _governance, _policy
 from tests.test_paye_annual_bridge import durable_annual
+from tests.test_annual_to_cash_integration import compose as another_live_annual
 
 
 TODAY = date(2026, 10, 1)
@@ -129,6 +131,23 @@ def test_unauthenticated_no_adapter_and_invalid_annual_never_reach_future_provid
              future_provider=lambda *args: no_adapter_calls.append("future") or (_fact(owner),))
     assert _client(app2, owner).get("/v2/paye/current-forecast").status_code == 404
     assert no_adapter_calls == []
+
+
+@pytest.mark.parametrize("invalid_annual", [
+    lambda: another_live_annual(),
+    lambda: object.__new__(AnnualToCashPosition),
+])
+def test_unbound_or_forged_annual_is_rejected_before_future_provider(
+    prepared, monkeypatch, invalid_annual,
+):
+    app, owner, _, annual, repository = prepared
+    monkeypatch.setenv("PAYE_DURABLE_FORECAST_ENABLED", "1")
+    calls = []
+    _install(app, annual, repository,
+             annual_provider=lambda *args: calls.append("annual") or invalid_annual(),
+             future_provider=lambda *args: calls.append("future") or (_fact(owner),))
+    assert _client(app, owner).get("/v2/paye/current-forecast").status_code == 404
+    assert calls == ["annual"]
 
 
 def test_success_is_minimal_and_never_claims_liability_or_actions(prepared, monkeypatch):
