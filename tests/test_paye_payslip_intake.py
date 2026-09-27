@@ -530,6 +530,28 @@ def test_database_tombstone_closes_restart_even_when_state_file_is_absent(tmp_pa
     assert _files(tmp_path) == ()
 
 
+def test_raw_lifecycle_torn_state_rename_stays_closed_via_database(tmp_path, monkeypatch):
+    boundary = _boundary(tmp_path)
+    handle = _begin(boundary)
+    original_rename = intake_module.os.rename
+
+    def interrupt_state_rename(source, destination, **kwargs):
+        if str(source).endswith(".tmp") and str(destination).endswith(".state"):
+            raise OSError("synthetic interruption before owner state rename")
+        return original_rename(source, destination, **kwargs)
+
+    monkeypatch.setattr(intake_module.os, "rename", interrupt_state_rename)
+    with pytest.raises(PayslipIntakeError, match="could not be persisted"):
+        boundary.erase_owner_for_account_lifecycle(authenticated_user_id=OWNER)
+    monkeypatch.setattr(intake_module.os, "rename", original_rename)
+
+    restarted = _boundary(tmp_path)
+    with pytest.raises(PayslipIntakeError, match="lifecycle"):
+        restarted.begin(authenticated_user_id=OWNER, session_binding="post-crash-session",
+                        tax_year=YEAR, content_type="application/pdf", document_bytes=PDF)
+    assert _metadata(handle.intake_id) is not None and len(_files(tmp_path)) == 1
+
+
 def _capture(target, operation):
     try:
         operation()

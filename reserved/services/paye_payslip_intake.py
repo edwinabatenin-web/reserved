@@ -776,9 +776,14 @@ class PayslipIntakeBoundary:
 
         This is intentionally distinct from session cleanup.  Metadata remains
         if verification or deletion fails, and no other owner's row is read.
+        It leaves the shared local-tax lifecycle blocked: only the composed
+        account-erasure path may delete structured rows and advance it to
+        erased.
         """
+        owner = self._owner(authenticated_user_id)
         return self.erase_owner_for_account_lifecycle_then(
-            authenticated_user_id=authenticated_user_id, after_raw_erasure=None,
+            authenticated_user_id=owner, after_raw_erasure=None,
+            before_raw_erasure=lambda: database.block_local_tax_data_writes(owner),
         )
 
     def erase_owner_for_account_lifecycle_then(self, *, authenticated_user_id: int,
