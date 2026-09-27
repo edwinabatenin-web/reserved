@@ -60,6 +60,23 @@ def invoice_raw():
     }
 
 
+def multiline_invoice_raw():
+    raw = invoice_raw()
+    raw["Line"] = [
+        {"Id": "line-1", "DetailType": "SalesItemLineDetail",
+         "Amount": Decimal("40.00"), "SalesItemLineDetail": {
+             "ItemRef": {"value": "item-1"}, "TaxCodeRef": {"value": "TAX"},
+         }},
+        {"Id": "line-2", "DetailType": "SalesItemLineDetail",
+         "Amount": Decimal("60.00"), "SalesItemLineDetail": {
+             "ItemRef": {"value": "item-2"}, "TaxCodeRef": {"value": "TAX"},
+         }},
+        {"Id": "subtotal-1", "DetailType": "SubTotalLineDetail",
+         "Amount": Decimal("100.00"), "SubTotalLineDetail": {}},
+    ]
+    return raw
+
+
 def payment_raw():
     return {
         "Id": "payment-1", "SyncToken": "2",
@@ -118,6 +135,42 @@ def test_exact_invoice_maps_to_canonical_v3_without_subtotal_double_counting():
     assert document.canonical_state is CanonicalDocumentState.UNKNOWN
     assert document.provenance.revision_id == "7"
     assert document.provenance.source_record_digest == result.observation.provenance.source_record_digest
+
+
+def test_bounded_same_code_multiline_invoice_maps_each_exact_tax_exclusive_line():
+    result = mapped_invoice(multiline_invoice_raw())
+    document = result.document
+    assert (document.net_amount, document.vat_amount, document.gross_amount) == (
+        Decimal("100.00"), Decimal("20.00"), Decimal("120.00"))
+    assert [(line.line_id, line.tax.net_amount, line.tax.vat_amount,
+             line.money.original_amount, line.tax.vat_code, line.tax.vat_rate)
+            for line in document.lines] == [
+        ("line-1", Decimal("40.00"), Decimal("8.00"), Decimal("48.00"),
+         "TAX", Decimal("0.20")),
+        ("line-2", Decimal("60.00"), Decimal("12.00"), Decimal("72.00"),
+         "TAX", Decimal("0.20")),
+    ]
+    assert document.canonical_state is CanonicalDocumentState.UNKNOWN
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda raw: raw["Line"][1]["SalesItemLineDetail"]["TaxCodeRef"].__setitem__("value", "OTHER"),
+    lambda raw: raw["TxnTaxDetail"]["TaxLine"][0]["TaxLineDetail"].pop("TaxPercent"),
+    lambda raw: raw["Line"][1].__setitem__("Id", "line-1"),
+    lambda raw: raw["Line"].insert(2, {"Id": "line-3", "DetailType": "SalesItemLineDetail",
+                                         "Amount": Decimal("1.00"), "SalesItemLineDetail": {
+                                             "ItemRef": {"value": "item-3"},
+                                             "TaxCodeRef": {"value": "TAX"}}}),
+    lambda raw: raw["Line"].__setitem__(1, {"Id": "subtotal-middle",
+                                               "DetailType": "SubTotalLineDetail",
+                                               "Amount": Decimal("40.00"),
+                                               "SubTotalLineDetail": {}}),
+    lambda raw: raw["Line"][-1].__setitem__("Amount", Decimal("99.99")),
+])
+def test_multiline_mixed_ambiguous_or_out_of_bound_shapes_fail_closed(mutation):
+    raw = multiline_invoice_raw(); mutation(raw)
+    with pytest.raises(QuickBooksAdapterError):
+        mapped_invoice(raw)
 
 
 def test_payment_maps_once_preserves_unapplied_and_uses_allocation_settlement():

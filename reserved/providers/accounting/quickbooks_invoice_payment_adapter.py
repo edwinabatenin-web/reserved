@@ -32,13 +32,14 @@ from .quickbooks_observation_contract import (
 from .quickbooks_oauth_contract import RealmBinding
 
 
-ADAPTER_VERSION = "quickbooks-qs5a-v1"
+ADAPTER_VERSION = "quickbooks-qs5a-v2"
 SCHEMA_ID = "quickbooks-qbo-qs4-observation-qs5a-2026-09-01"
 API_NAME = "QuickBooks Online Accounting API"
 API_VERSION = "v3/minorversion-75"
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,511}\Z")
 _MAX_INTEGRITY_NODES = 100_000
 _MAX_BINDING_TEXT = 512
+_MAX_SALES_LINES = 3
 
 
 class QuickBooksAdapterError(ValueError):
@@ -88,6 +89,14 @@ def _decimal(value: Any, field: str) -> Decimal:
     if not result.is_finite() or result < 0:
         raise _fail(f"{field} must be nonnegative and finite")
     return result
+
+
+def _derived_money(value: Decimal, field: str) -> Decimal:
+    """Normalize only representational trailing zeroes; never round a value."""
+    pennies = value.quantize(Decimal("0.01"))
+    if pennies != value:
+        raise _fail(f"{field} requires rounding")
+    return _money(pennies, field)
 
 
 def _object(value: Any, field: str) -> FrozenEvidence:
@@ -407,7 +416,7 @@ def adapt_invoice(observation: InvoiceObservation, *, binding: RealmBinding,
                   import_run_id: str,
                   evidence_state: EvidenceState = EvidenceState.SELECTED
                   ) -> InvoiceAdapterResult:
-    """Map the single reviewed tax-exclusive invoice shape or fail closed."""
+    """Map the bounded reviewed tax-exclusive invoice shape or fail closed."""
     raw = _assert_observation(
         observation, InvoiceObservation, evidence_state, binding)
     _safe_id(observation.customer_reference_value, "CustomerRef.value")
@@ -421,24 +430,35 @@ def adapt_invoice(observation: InvoiceObservation, *, binding: RealmBinding,
         raise _fail("observed TotalAmt mismatch")
 
     raw_lines = _sequence(_member(raw, "Line"), "Line")
-    if len(raw_lines) not in (1, 2):
-        raise _fail("exactly one economic line and optional subtotal are required")
-    sales = _object(raw_lines[0], "SalesItem line")
-    if sales.get("DetailType") != "SalesItemLineDetail":
-        raise _fail("first and only economic line must be SalesItemLineDetail")
-    line_id = _safe_id(_member(sales, "Id"), "Line.Id")
-    net = _money(_member(sales, "Amount"), "Line.Amount")
-    sales_detail = _object(_member(sales, "SalesItemLineDetail"),
-                           "SalesItemLineDetail")
-    tax_code = _safe_id(_member(_object(_member(sales_detail, "TaxCodeRef"),
-                                        "TaxCodeRef"), "value"),
-                        "TaxCodeRef.value")
-    if len(raw_lines) == 2:
-        subtotal = _object(raw_lines[1], "subtotal line")
+    has_subtotal = _object(raw_lines[-1], "last line").get("DetailType") == "SubTotalLineDetail"
+    sales_lines = raw_lines[:-1] if has_subtotal else raw_lines
+    if not 1 <= len(sales_lines) <= _MAX_SALES_LINES:
+        raise _fail("one to three sales lines and optional subtotal are required")
+    parsed_sales: list[tuple[str, Decimal, str]] = []
+    for raw_sales in sales_lines:
+        sales = _object(raw_sales, "SalesItem line")
+        if sales.get("DetailType") != "SalesItemLineDetail":
+            raise _fail("each economic line must be SalesItemLineDetail")
+        line_id = _safe_id(_member(sales, "Id"), "Line.Id")
+        line_net = _money(_member(sales, "Amount"), "Line.Amount")
+        sales_detail = _object(_member(sales, "SalesItemLineDetail"),
+                               "SalesItemLineDetail")
+        tax_code = _safe_id(_member(_object(_member(sales_detail, "TaxCodeRef"),
+                                            "TaxCodeRef"), "value"),
+                            "TaxCodeRef.value")
+        parsed_sales.append((line_id, line_net, tax_code))
+    if len({line_id for line_id, _, _ in parsed_sales}) != len(parsed_sales):
+        raise _fail("duplicate sales line identifiers are unsupported")
+    net = sum((line_net for _, line_net, _ in parsed_sales), Decimal("0"))
+    tax_code = parsed_sales[0][2]
+    if any(line_tax_code != tax_code for _, _, line_tax_code in parsed_sales):
+        raise _fail("mixed sales TaxCodeRef values are unsupported")
+    if has_subtotal:
+        subtotal = _object(raw_lines[-1], "subtotal line")
         if subtotal.get("DetailType") != "SubTotalLineDetail":
-            raise _fail("second line must be a terminal SubTotalLineDetail")
+            raise _fail("last line must be a terminal SubTotalLineDetail")
         if _money(_member(subtotal, "Amount"), "subtotal Amount") != net:
-            raise _fail("subtotal does not equal the economic line")
+            raise _fail("subtotal does not equal the sales-line sum")
 
     tax_detail = _object(_member(raw, "TxnTaxDetail"), "TxnTaxDetail")
     total_tax = _money(_member(tax_detail, "TotalTax"), "TotalTax")
@@ -462,21 +482,32 @@ def adapt_invoice(observation: InvoiceObservation, *, binding: RealmBinding,
         rate = provider_percent / Decimal("100")
         if taxable * rate != tax_amount:
             raise _fail("TaxPercent does not reconcile exactly")
+    if len(parsed_sales) > 1 and rate is None:
+        raise _fail("multiple sales lines require exact TaxPercent")
     if taxable != net or tax_amount != total_tax or net + total_tax != total:
         raise _fail("invoice tax arithmetic does not reconcile exactly")
 
-    gross = net + total_tax
+    lines = []
+    for line_id, line_net, _ in parsed_sales:
+        # Multi-line tax allocation is accepted only when the one explicit rate
+        # produces an exact, two-decimal amount for every source sales line.
+        line_tax = (total_tax if len(parsed_sales) == 1
+                    else _derived_money(line_net * rate, "derived line tax"))
+        line_gross = _derived_money(line_net + line_tax, "derived line gross")
+        lines.append(AccountingLine(
+            line_id=line_id, money=Money(line_gross, currency),
+            tax=TaxBreakdown(line_net, line_tax, line_gross,
+                             TaxAmountSemantics.EXCLUSIVE,
+                             vat_code=tax_code, vat_rate=rate),
+            provider_category_id=None,
+            value_semantics=LineValueSemantics.EXCLUSIVE,
+        ))
+    if sum((line.tax.vat_amount for line in lines), Decimal("0")) != total_tax:
+        raise _fail("per-line tax allocation does not reconcile")
     provenance = _provenance(observation, raw, import_run_id, "Invoice")
     source = SourceObservation(
         f"quickbooks:invoice:{observation.entity_id}:{observation.source_digest[:16]}",
         provenance, evidence_state=evidence_state,
-    )
-    line = AccountingLine(
-        line_id=line_id, money=Money(gross, currency),
-        tax=TaxBreakdown(net, total_tax, gross, TaxAmountSemantics.EXCLUSIVE,
-                         vat_code=tax_code, vat_rate=rate),
-        provider_category_id=None,
-        value_semantics=LineValueSemantics.EXCLUSIVE,
     )
     provider_status = raw.get("EmailStatus", "")
     if provider_status != "":
@@ -487,7 +518,7 @@ def adapt_invoice(observation: InvoiceObservation, *, binding: RealmBinding,
         document_type=DocumentType.INVOICE,
         issue_date=observation.transaction_date, due_date=observation.due_date,
         currency=currency, gross_amount=total, net_amount=net,
-        vat_amount=total_tax, lines=(line,), provider_status=provider_status,
+        vat_amount=total_tax, lines=tuple(lines), provider_status=provider_status,
         canonical_state=CanonicalDocumentState.UNKNOWN,
         canonical_state_reason="Q-S5A does not infer lifecycle from balance",
         economic_direction=EconomicDirection.RECEIVABLE,
@@ -498,7 +529,7 @@ def adapt_invoice(observation: InvoiceObservation, *, binding: RealmBinding,
     )
     semantic = SemanticAdapterResult(
         source.observation_id, ADAPTER_VERSION,
-        "one tax-exclusive sales line; subtotal non-economic",
+        "one to three tax-exclusive same-code sales lines; subtotal non-economic",
         document_candidate=candidate,
         provider_assertions=(("Balance retained as corroboration only",)
                              if observation.balance is not None else ()),
