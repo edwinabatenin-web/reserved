@@ -89,7 +89,7 @@ OCTOBER_LAUNCH_COMPONENTS = [
     {"id": "paye_evidence_and_forecasting", "state": "not_executable",
      "note": "A disabled-first authenticated endpoint now consumes one transaction-serialized snapshot of current membership, the durable annual record and owner/year PAYE rows with exact session, annual identity and tax-year binding; activation, independently supplied future-pay facts, external authority composition and target-runtime evidence remain absent."},
     {"id": "paye_payslip_manual_evidence_journey", "state": "not_executable",
-     "note": "Structured manual PAYE and a disabled-first raw-payslip boundary now provide owner/session/year isolation, fail-closed injected extraction, crash-durable minimal lifecycle metadata and verified local cleanup; authenticated route wiring, a reviewed extraction adapter, custody-controlled private target storage, operational orphan disposition and retention/backup evidence remain absent."},
+     "note": "Structured manual PAYE and a disabled-first raw-payslip boundary now provide owner/session/year isolation, fail-closed injected extraction, crash-durable minimal lifecycle metadata, startup quarantine inventory and verified local cleanup; authenticated route wiring, a reviewed extraction adapter, custody-controlled private target storage, quarantine disposition policy and retention/backup evidence remain absent."},
     {"id": "hmrc_integration", "state": "externally_blocked",
      "note": "No production-capable HMRC connection has been end-to-end verified."},
     {"id": "freeagent_integration", "state": "not_implemented",
