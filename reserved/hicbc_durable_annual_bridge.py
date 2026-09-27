@@ -17,7 +17,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Callable
 
 from reserved import database
 from reserved.annual_position_durable_repository import (
@@ -80,6 +79,24 @@ def _unavailable(tax_year: str) -> DurableHicbcAnnualPreview:
     )
 
 
+def _server_date() -> date:
+    """Return the server-owned calendar date; never accept request time."""
+    return date.today()
+
+
+def _is_fresh(*, annual_as_of: date, stored_as_of: object,
+              stale_after_days: object, now: object) -> bool:
+    return (
+        type(stored_as_of) is date
+        and type(stale_after_days) is int
+        and stale_after_days >= 0
+        and type(now) is date
+        and annual_as_of == stored_as_of
+        and now >= annual_as_of
+        and now <= annual_as_of + timedelta(days=stale_after_days)
+    )
+
+
 def _current_owner() -> int:
     from reserved.auth import current_user_id
 
@@ -137,7 +154,6 @@ def compose_durable_authenticated_hicbc_preview(
     business_reference: str,
     tax_year: str,
     nation: str,
-    clock: Callable[[], date],
     audit_reference: str,
 ) -> DurableHicbcAnnualPreview:
     """Compose a minimal HICBC estimate from an exact durable/live annual pair.
@@ -154,11 +170,10 @@ def compose_durable_authenticated_hicbc_preview(
         raise TypeError("annual cash input must be an exact annual-to-cash position")
     if type(annual_tax_position) is not AnnualPositionResult:
         raise TypeError("annual tax input must be an exact annual producer result")
-    if (type(business_reference) is not str or type(tax_year) is not str or type(nation) is not str
-            or not callable(clock)):
+    if type(business_reference) is not str or type(tax_year) is not str or type(nation) is not str:
         raise ValueError("durable HICBC scope is invalid")
     try:
-        as_of = clock()
+        as_of = _server_date()
     except Exception as exc:
         raise ValueError("trusted HICBC server clock is unavailable") from exc
     if type(as_of) is not date:
@@ -201,12 +216,11 @@ def compose_durable_authenticated_hicbc_preview(
         stale_after_days = durable_row["stale_after_days"]
     except (KeyError, TypeError, ValueError):
         return _unavailable(tax_year)
-    if (type(stored_as_of) is not date or type(stale_after_days) is not int
-            or stale_after_days < 0
-            or annual_position.status is not AnnualToCashStatus.QUALIFIED_LOCAL_RESULT
-            or annual_position.as_of != stored_as_of
-            or as_of < annual_position.as_of
-            or as_of > annual_position.as_of + timedelta(days=stale_after_days)):
+    if (annual_position.status is not AnnualToCashStatus.QUALIFIED_LOCAL_RESULT
+            or not _is_fresh(
+                annual_as_of=annual_position.as_of, stored_as_of=stored_as_of,
+                stale_after_days=stale_after_days, now=as_of,
+            )):
         return _unavailable(tax_year)
 
     # The final transaction ties a still-current durable record, membership and
@@ -227,6 +241,15 @@ def compose_durable_authenticated_hicbc_preview(
     result = built["result"]
     contribution = integrate_hicbc(result, PERSONALISED_ESTIMATE)
     if not contribution.included:
+        return _unavailable(tax_year)
+    try:
+        final_as_of = _server_date()
+    except Exception as exc:
+        raise ValueError("trusted HICBC server clock is unavailable") from exc
+    if not _is_fresh(
+        annual_as_of=annual_position.as_of, stored_as_of=stored_as_of,
+        stale_after_days=stale_after_days, now=final_as_of,
+    ):
         return _unavailable(tax_year)
     return DurableHicbcAnnualPreview(
         tax_year=tax_year,

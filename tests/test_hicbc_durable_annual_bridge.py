@@ -10,6 +10,7 @@ from flask import Flask
 
 import reserved.auth as auth
 import reserved.database as db
+import reserved.hicbc_durable_annual_bridge as bridge
 from reserved.annual_position_durable_repository import DurableAnnualPositionRepository, DurableGovernance
 from reserved.annual_position_repository_contract import (
     make_structural_candidate,
@@ -52,6 +53,11 @@ def app(tmp_path, monkeypatch):
     application = Flask(__name__)
     application.config["SECRET_KEY"] = "synthetic"
     return application
+
+
+@pytest.fixture(autouse=True)
+def server_date(monkeypatch):
+    monkeypatch.setattr(bridge, "_server_date", lambda: AS_OF)
 
 
 def _live_annual():
@@ -129,7 +135,6 @@ def _compose(app, repository, annual, tax):
     return compose_durable_authenticated_hicbc_preview(
         repository=repository, annual_position=annual, annual_tax_position=tax,
         business_reference=BUSINESS, tax_year=YEAR, nation=NATION,
-        clock=lambda: annual.as_of,
         audit_reference="audit:hicbc-read",
     )
 
@@ -149,7 +154,7 @@ def test_live_durable_annual_source_allows_only_minimal_determinate_hicbc(app):
     assert not {"payment", "refund", "reserve", "source", "action"} & set(result.public_value())
 
 
-def test_cross_owner_year_and_live_identity_substitution_fail_closed(app):
+def test_cross_owner_year_and_live_identity_substitution_fail_closed(app, monkeypatch):
     tax, annual, repository = _durable(41)
     _seed(41)
     with app.test_request_context("/"):
@@ -162,27 +167,51 @@ def test_cross_owner_year_and_live_identity_substitution_fail_closed(app):
             compose_durable_authenticated_hicbc_preview(
                 repository=repository, annual_position=annual, annual_tax_position=tax,
                 business_reference=BUSINESS, tax_year="2025/26", nation=NATION,
-                clock=lambda: annual.as_of,
                 audit_reference="audit:hicbc-read",
             )
         other_tax = calculate_annual_position({"employment_income": "70001", "country": NATION})
         with pytest.raises(ValueError, match="identity"):
             _compose(app, repository, annual, other_tax)
+        monkeypatch.setattr(bridge, "_server_date", lambda: annual.as_of + timedelta(days=46))
         expired = compose_durable_authenticated_hicbc_preview(
             repository=repository, annual_position=annual, annual_tax_position=tax,
             business_reference=BUSINESS, tax_year=YEAR, nation=NATION,
-            clock=lambda: annual.as_of + timedelta(days=46), audit_reference="audit:hicbc-read",
+            audit_reference="audit:hicbc-read",
         )
     assert expired.projected_user_hicbc is None
     assert expired.possible_charge_low is None and expired.possible_charge_high is None
+    monkeypatch.setattr(bridge, "_server_date", lambda: "not-a-date")
     with app.test_request_context("/"):
         auth.set_user_session(41, "user_41")
         with pytest.raises(ValueError, match="server clock"):
             compose_durable_authenticated_hicbc_preview(
                 repository=repository, annual_position=annual, annual_tax_position=tax,
                 business_reference=BUSINESS, tax_year=YEAR, nation=NATION,
-                clock=lambda: "not-a-date", audit_reference="audit:hicbc-read",
+                audit_reference="audit:hicbc-read",
             )
+    with app.test_request_context("/"):
+        auth.set_user_session(41, "user_41")
+        with pytest.raises(TypeError):
+            compose_durable_authenticated_hicbc_preview(
+                repository=repository, annual_position=annual, annual_tax_position=tax,
+                business_reference=BUSINESS, tax_year=YEAR, nation=NATION,
+                clock=lambda: annual.as_of, audit_reference="audit:hicbc-read",
+            )
+
+
+def test_server_date_is_rechecked_before_determinate_result_is_released(app, monkeypatch):
+    tax, annual, repository = _durable(41)
+    _seed(41)
+    dates = iter((annual.as_of, annual.as_of + timedelta(days=46)))
+    monkeypatch.setattr(bridge, "_server_date", lambda: next(dates))
+    with app.test_request_context("/"):
+        auth.set_user_session(41, "user_41")
+        result = _compose(app, repository, annual, tax)
+    assert result.public_value() == {
+        "tax_year": YEAR, "calculation_status": "insufficient_facts",
+        "responsibility_status": None, "projected_user_hicbc": None,
+        "possible_charge_low": None, "possible_charge_high": None,
+    }
 
 
 def test_missing_or_unavailable_external_verifier_cannot_read_persisted_hicbc(app):
