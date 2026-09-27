@@ -4,6 +4,7 @@ No threshold calculation, filing, provider verification or durable identities.
 Only the existing captured issuer creates the result handle.
 """
 from datetime import date
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 from uuid import uuid4
 
@@ -12,6 +13,7 @@ from reserved.services.mtd_scope_indication import MtdScopeCompleteness, present
 
 
 YEARS = ("2024-25", "2025-26")
+CURRENT_YEAR = "2026-27"
 _MANDATORY_YEARS = {year: MTD_THRESHOLD_RULES[year].mandatory_from_tax_year for year in YEARS}
 TRI = ("yes", "no", "unknown")
 QUESTIONS = (
@@ -47,6 +49,8 @@ _ENUMS = {name: choices for name, _, choices in QUESTIONS}
 _ENUMS.update({f"{name}_{year}": TRI for year in SCREEN_YEARS for name, _ in SPECIAL_FACTS})
 _FIXED = frozenset(_ENUMS) | {"assessment_year", "submitted_on"}
 _ROW_KEY = re.compile(r"source_([1-9][0-9]?)_(kind|gross_income|period_start|period_end|lifecycle|amount_basis)\Z")
+_MONEY = re.compile(r"(?:0|[1-9][0-9]{0,9})(?:\.[0-9]{1,2})?\Z")
+_PENNY = Decimal("0.01")
 
 
 def _date(value):
@@ -70,8 +74,78 @@ def manual_year_metadata(as_of):
     return tuple(rows)
 
 
-def admit_manual_mtd(values, *, as_of):
-    """Return a genuinely issued handle and whether the manual subset is supported."""
+def tax_year_day_counts(*, assessment_year, as_of):
+    """Return inclusive elapsed and total days for a bounded tax year.
+
+    The current-year route is intentionally the only caller.  Keeping the
+    calculation calendar-based rather than hard-coding 365 makes the boundary
+    safe for tax years which include 29 February.
+    """
+    if type(assessment_year) is not str or re.fullmatch(r"[0-9]{4}-[0-9]{2}", assessment_year) is None:
+        raise ValueError("Invalid assessment year")
+    if type(as_of) is not date:
+        raise ValueError("Invalid server date")
+    start_year = int(assessment_year[:4])
+    if int(assessment_year[5:]) != (start_year + 1) % 100:
+        raise ValueError("Invalid assessment year")
+    start = date(start_year, 4, 6)
+    end = date(start_year + 1, 4, 5)
+    if not start <= as_of <= end:
+        raise ValueError("Server date is outside assessment year")
+    return (as_of - start).days + 1, (end - start).days + 1
+
+
+def annualise_current_year_gross(gross, *, as_of):
+    """Annualise one admitted 2026-27 YTD own-gross amount to pennies.
+
+    Decimal arithmetic and explicit half-up penny rounding give customers a
+    stable display while ensuring that only the rounded derived amount reaches
+    the existing readiness issuer.
+    """
+    if type(gross) is not str or _MONEY.fullmatch(gross) is None:
+        raise ValueError("Invalid gross amount")
+    elapsed, total = tax_year_day_counts(assessment_year=CURRENT_YEAR, as_of=as_of)
+    try:
+        amount = Decimal(gross)
+    except InvalidOperation as error:
+        raise ValueError("Invalid gross amount") from error
+    return (amount * Decimal(total) / Decimal(elapsed)).quantize(_PENNY, rounding=ROUND_HALF_UP)
+
+
+def _current_year_display(rows, *, as_of):
+    """Build request-local customer display facts; never persist identifiers."""
+    elapsed, total = tax_year_day_counts(assessment_year=CURRENT_YEAR, as_of=as_of)
+    totals = {}
+    ytd_total = Decimal("0")
+    annualised_total = Decimal("0")
+    labels = {
+        "sole_trade": "Self-employment",
+        "uk_property": "UK property",
+        "foreign_property": "Foreign property",
+    }
+    for row in rows:
+        ytd = Decimal(row["gross_income"])
+        annualised = annualise_current_year_gross(row["gross_income"], as_of=as_of)
+        ytd_total += ytd
+        annualised_total += annualised
+        label = labels[row["kind"]]
+        prior_ytd, prior_annualised = totals.get(label, (Decimal("0"), Decimal("0")))
+        totals[label] = (prior_ytd + ytd, prior_annualised + annualised)
+    return {
+        "as_of": as_of.isoformat(),
+        "elapsed_days": elapsed,
+        "tax_year_days": total,
+        "source_totals": tuple(
+            (label, ytd.quantize(_PENNY, rounding=ROUND_HALF_UP), annualised.quantize(_PENNY, rounding=ROUND_HALF_UP))
+            for label, (ytd, annualised) in totals.items()
+        ),
+        "ytd_total": ytd_total.quantize(_PENNY, rounding=ROUND_HALF_UP),
+        "annualised_total": annualised_total.quantize(_PENNY, rounding=ROUND_HALF_UP),
+    }
+
+
+def _admit_manual_mtd(values, *, as_of):
+    """Issue one request-local indication and optional current-year display facts."""
     if type(values) is not dict or any(type(k) is not str or type(v) is not str or len(v) > 100 for k, v in values.items()):
         raise ValueError("Invalid bounded fields")
     row_numbers = set()
@@ -91,9 +165,18 @@ def admit_manual_mtd(values, *, as_of):
     metadata = {row[0]: row for row in manual_year_metadata(as_of)}
     period = metadata.get(year)
     submitted = _date(values.get("submitted_on", ""))
-    timing = bool(period and submitted and period[2] < submitted <= period[4]
-                  and period[2] < as_of and values.get("source_basis") == "submitted_return"
-                  and values.get("return_revision") == "original_unamended")
+    current = year == CURRENT_YEAR
+    if current:
+        # The server controls as_of.  No client clock, return date or estimate
+        # is accepted as a substitute for an exact YTD coverage period.
+        tax_year_day_counts(assessment_year=CURRENT_YEAR, as_of=as_of)
+        timing = (values.get("source_basis") == "year_to_date"
+                  and values.get("return_revision") == "original_unamended"
+                  and not submitted)
+    else:
+        timing = bool(period and submitted and period[2] < submitted <= period[4]
+                      and period[2] < as_of and values.get("source_basis") == "submitted_return"
+                      and values.get("return_revision") == "original_unamended")
     residence = (values.get("acting_capacity") == "own_individual"
                  and values.get("relevant_tax_region") in ("england", "wales", "northern_ireland")
                  and values.get("residence") == "ordinary_uk"
@@ -108,6 +191,7 @@ def admit_manual_mtd(values, *, as_of):
                  and values.get("source_version_conflict") == "no"
                  and all(number <= 12 for number in row_numbers))
     sources = []
+    admitted_rows = []
     property_kinds = set()
     for number in sorted(row_numbers):
         row = {key: values.get(f"source_{number}_{key}", "") for key in ROW_FIELDS}
@@ -117,10 +201,13 @@ def admit_manual_mtd(values, *, as_of):
             if row[name] not in ("",) + choices:
                 raise ValueError("Invalid source category")
         gross = row["gross_income"]
-        if gross and re.fullmatch(r"(?:0|[1-9][0-9]{0,9})(?:\.[0-9]{1,2})?", gross) is None:
+        if gross and _MONEY.fullmatch(gross) is None:
             raise ValueError("Invalid gross amount")
         start, end = _date(row["period_start"]), _date(row["period_end"])
-        timing = timing and bool(period and start == period[1] and end == period[2])
+        if current:
+            timing = timing and start == date(2026, 4, 6) and end == as_of
+        else:
+            timing = timing and bool(period and start == period[1] and end == period[2])
         continuation = continuation and row["lifecycle"] == "active_throughout_and_still_continuing"
         known_kind = row["kind"] in ("sole_trade", "uk_property", "foreign_property")
         inventory = inventory and known_kind and bool(gross) and row["amount_basis"] == "own_gross_before_expenses"
@@ -129,11 +216,33 @@ def admit_manual_mtd(values, *, as_of):
             property_kinds.add(row["kind"])
         if known_kind and number <= 12:
             identity = "manual-" + uuid4().hex
-            sources.append(IncomeSource(identity, IncomeKind(row["kind"]), gross or None, identity, bool(gross)))
-    actuals = bool(period and period[2] < as_of and values.get("source_basis") == "submitted_return")
+            issued_gross = annualise_current_year_gross(gross, as_of=as_of) if current and gross else gross or None
+            sources.append(IncomeSource(identity, IncomeKind(row["kind"]), issued_gross, identity, bool(gross)))
+            if current and known_kind and gross:
+                admitted_rows.append(row)
+    actuals = (values.get("source_basis") == "year_to_date" if current
+               else bool(period and period[2] < as_of and values.get("source_basis") == "submitted_return"))
     support = MtdScopeCompleteness(residence and eligibility, inventory, timing, continuation, actuals)
     supported = residence and eligibility and inventory and timing and continuation and actuals
-    handle = _issue(tuple(sources), assessment_tax_year=year, completeness=support,
+    # A failed 2026-27 admission must not pass a partial, stale or otherwise
+    # unsupported source collection into the issuer.  Completed-return years
+    # retain their established incomplete-result behaviour unchanged.
+    issued_sources = tuple(sources) if not current or supported else ()
+    handle = _issue(issued_sources, assessment_tax_year=year, completeness=support,
                     registered_for_self_assessment=True if eligibility else None,
                     exemption_applies=False if eligibility else None)
+    return handle, supported, (_current_year_display(admitted_rows, as_of=as_of) if current and supported else None)
+
+
+def admit_manual_mtd(values, *, as_of):
+    """Return a genuinely issued handle and whether the manual subset is supported."""
+    handle, supported, _display = _admit_manual_mtd(values, as_of=as_of)
     return handle, supported
+
+
+def admit_current_year_mtd(values, *, as_of):
+    """Admit only supported 2026-27 YTD evidence with request-local totals."""
+    handle, supported, display = _admit_manual_mtd(values, as_of=as_of)
+    if values.get("assessment_year") != CURRENT_YEAR:
+        return handle, False, None
+    return handle, supported, display

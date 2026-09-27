@@ -9,11 +9,25 @@
     {% if fragment is not none %}
         {% if explanation %}<div class="flash flash-error" role="alert">{{ explanation }}</div>{% endif %}
         {{ fragment }}
-        <p>Only the named supported manual circumstances have been checked. Other source treatments, current-year annualisation, amendments and existing MTD continuation need separate supported evidence.</p>
+        {% if current_year_display %}
+        <section class="panel" aria-labelledby="current-year-annualised-heading">
+            <h2 id="current-year-annualised-heading">Early annualised planning indication</h2>
+            <p>For 2026/27, the included figures cover 6 April 2026 to {{ current_year_display.as_of }} exactly. The indication annualises each included year-to-date own-gross amount using {{ current_year_display.elapsed_days }} inclusive tax-year days out of {{ current_year_display.tax_year_days }}, then rounds each result to the nearest penny.</p>
+            <dl>
+                <dt>Included year-to-date gross total</dt><dd>£{{ "{:,.2f}".format(current_year_display.ytd_total) }}</dd>
+                <dt>Included annualised gross total</dt><dd>£{{ "{:,.2f}".format(current_year_display.annualised_total) }}</dd>
+            </dl>
+            <h3>Included source totals</h3>
+            <ul>{% for label, ytd, annualised in current_year_display.source_totals %}<li>{{ label }}: £{{ "{:,.2f}".format(ytd) }} year to date; £{{ "{:,.2f}".format(annualised) }} annualised.</li>{% endfor %}</ul>
+            <p>Material exclusions: employment income, dividends, savings interest, capital gains, partnership profit and any unresolved or special treatment are not included in this indication.</p>
+            <p>This is an early annualised planning indication only. It does not determine whether Making Tax Digital applies.</p>
+        </section>
+        {% endif %}
+        <p>Only the named supported manual circumstances have been checked. Other source treatments, amendments and existing MTD continuation need separate supported evidence.</p>
         <a href="{{ url_for('v2.mtd_manual_scope') }}">Change facts or start a fresh indication</a>
     {% else %}
-    <h2>Completed-year facts</h2>
-    <p>Use an original, unamended submitted return. Drafts, forecasts, partial-year records and uncertain circumstances cannot produce a numeric indication in this pathway.</p>
+    <h2>Completed-year facts or current-year evidence</h2>
+    <p>For 2024/25 or 2025/26, use an original, unamended submitted return. For 2026/27, select year-to-date, leave the return-submission date blank, and give each included source's exact period from 6 April 2026 to today. Drafts, forecasts, partial-year records and uncertain circumstances cannot produce a numeric indication in this pathway.</p>
     <table><caption>Use the dates for your selected assessment tax year</caption><thead><tr><th>Assessment tax year</th><th>Source period</th><th>Applicable mandatory start</th><th>NI/return submission boundary</th></tr></thead><tbody>
     {% for year, start, end, mandatory, boundary in metadata %}<tr><td>{{ year|replace('-', '/') }}</td><td>{{ start }} to {{ end }}</td><td>{{ mandatory }}</td><td>{{ boundary }}</td></tr>{% endfor %}
     </tbody></table>
@@ -21,8 +35,8 @@
     <form method="post" action="{{ url_for('v2.mtd_manual_scope') }}" autocomplete="off" novalidate>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <fieldset><legend>Return, capacity and circumstances</legend>
-            <label for="assessment-year">Assessment tax year</label><select id="assessment-year" name="assessment_year"><option value="">Choose or leave unknown</option>{% for year, start, end, mandatory, boundary in metadata %}<option value="{{ year }}">{{ year|replace('-', '/') }} actuals</option>{% endfor %}</select>
-            <label for="submitted-on">Date this original return was submitted</label><input id="submitted-on" name="submitted_on" type="date">
+            <label for="assessment-year">Assessment tax year</label><select id="assessment-year" name="assessment_year"><option value="">Choose or leave unknown</option>{% for year, start, end, mandatory, boundary in metadata %}<option value="{{ year }}">{{ year|replace('-', '/') }} actuals</option>{% endfor %}<option value="2026-27">2026/27 current year to date</option></select>
+            <label for="submitted-on">Date this original return was submitted (leave blank for 2026/27)</label><input id="submitted-on" name="submitted_on" type="date">
             {% for name, label, choices in questions %}
             <label for="{{ name }}">{{ label }}</label><select id="{{ name }}" name="{{ name }}"><option value="">Choose or leave unknown</option>{% for choice in choices %}<option value="{{ choice }}">{{ choice|replace('_', ' ')|capitalize }}</option>{% endfor %}</select>
             {% endfor %}

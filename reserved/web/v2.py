@@ -80,7 +80,8 @@ from reserved.services.paye_customer_orchestration import (
 )
 from reserved.config import mtd_manual_scope_enabled
 from reserved.services.mtd_manual_source_admission import (
-    admit_manual_mtd, manual_year_metadata, QUESTIONS as MTD_QUESTIONS,
+    CURRENT_YEAR as MTD_CURRENT_YEAR, admit_current_year_mtd, admit_manual_mtd,
+    manual_year_metadata, QUESTIONS as MTD_QUESTIONS,
     SPECIAL_FACTS as MTD_SPECIAL_FACTS, SCREEN_YEARS as MTD_SCREEN_YEARS,
     ROW_CHOICES as MTD_ROW_CHOICES,
 )
@@ -682,6 +683,7 @@ def mtd_manual_scope():
     as_of = datetime.now(timezone.utc).date()
     fragment = None
     explanation = None
+    current_year_display = None
     status = 200
     if request.method == "POST":
         try:
@@ -691,19 +693,24 @@ def mtd_manual_scope():
                 raise ValueError("Invalid form")
             fields = request.form.to_dict()
             fields.pop("csrf_token", None)
-            handle, supported = admit_manual_mtd(fields, as_of=as_of)
+            if fields.get("assessment_year") == MTD_CURRENT_YEAR:
+                handle, supported, current_year_display = admit_current_year_mtd(fields, as_of=as_of)
+            else:
+                handle, supported = admit_manual_mtd(fields, as_of=as_of)
+                current_year_display = None
             if not supported:
-                explanation = "This manual pathway needs complete submitted, unamended full-year actuals and the supported individual, residence, exemption and continuing-source facts. Check unknown or unsupported answers; this is not a finding that you are exempt."
+                explanation = "This manual pathway needs complete submitted-return actuals, or exact current-year-to-date evidence, plus the supported individual, residence, exemption and continuing-source facts. Check unknown or unsupported answers; this is not a finding that you are exempt."
         except (ValueError, TypeError, InvalidOperation):
             status = 400
             explanation = "We could not use that form. Check the dates, gross amounts and choices. Do not include identifiers, calculated results or extra fields."
             handle, _ = admit_manual_mtd({}, as_of=as_of)
+            current_year_display = None
         # Only the genuine live issuer handle enters the accepted renderer.
         fragment = Markup(_render_manual_mtd(handle))
     return render_template("v2/mtd_manual_scope.html", fragment=fragment, explanation=explanation,
                            as_of=as_of, metadata=manual_year_metadata(as_of), questions=MTD_QUESTIONS,
                            special_facts=MTD_SPECIAL_FACTS, screen_years=MTD_SCREEN_YEARS,
-                           row_choices=MTD_ROW_CHOICES), status
+                           row_choices=MTD_ROW_CHOICES, current_year_display=current_year_display), status
 
 
 @v2.get("/connections")
