@@ -35,6 +35,26 @@
 </section>
 {% endif %}
 
+{% if local_billing_full_withdrawal_copy is defined %}
+<section class="panel" aria-labelledby="w10-local-full-withdrawal-heading">
+    <h2 id="w10-local-full-withdrawal-heading">{{ local_billing_full_withdrawal_copy.heading }}</h2>
+    <p>{{ local_billing_full_withdrawal_copy.summary }}</p>
+    <p>{{ local_billing_full_withdrawal_copy.verification_label }}:
+        <time datetime="{{ local_billing_full_withdrawal_copy.verification_utc }}">{{ local_billing_full_withdrawal_copy.verification_display }}</time></p>
+</section>
+{% endif %}
+
+{% if local_billing_later_period_restoration_copy is defined %}
+<section class="panel" aria-labelledby="w10-local-later-period-restoration-heading">
+    <h2 id="w10-local-later-period-restoration-heading">{{ local_billing_later_period_restoration_copy.heading }}</h2>
+    <p>{{ local_billing_later_period_restoration_copy.summary }}</p>
+    <p>{{ local_billing_later_period_restoration_copy.verification_label }}:
+        <time datetime="{{ local_billing_later_period_restoration_copy.verification_utc }}">{{ local_billing_later_period_restoration_copy.verification_display }}</time></p>
+    <p>{{ local_billing_later_period_restoration_copy.interval_label }}:
+        <time datetime="{{ local_billing_later_period_restoration_copy.access_start_utc }}">{{ local_billing_later_period_restoration_copy.interval_display }}</time></p>
+</section>
+{% endif %}
+
 {% if local_billing_successful_renewal_copy is defined %}
 <section class="panel" aria-labelledby="w10-local-successful-renewal-heading">
     <h2 id="w10-local-successful-renewal-heading">{{ local_billing_successful_renewal_copy.heading }}</h2>

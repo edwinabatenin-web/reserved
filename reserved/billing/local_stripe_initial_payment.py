@@ -2081,6 +2081,38 @@ def full_withdrawal_fact_details(fact):
         receipt_id=control['receipt_id'], fact_id=control['fact_id'], lifecycle_head=head)
 
 
+def full_withdrawal_presentation_facts(fact, *, now):
+    """Return only a current, conflict-free full-withdrawal copy projection."""
+    now = exact.utc(now)
+    state, control, head = _withdrawal_fact_state(fact)
+    with _LOCK:
+        authority, repository, _, _, _ = _WITHDRAWAL_FACTS[fact]
+    snapshot = authority.snapshot()
+    scope = control.get('scope')
+    if (type(scope) is not list or len(scope) != 3
+            or not all(type(value) is str and value for value in scope)
+            or control.get('owner') != scope[0]
+            or control.get('subscription') != scope[2]
+            or control.get('version') != 'reserved-full-withdrawal-receipt/1'
+            or control.get('disposition') != 'verified_full_withdrawal'
+            or control.get('source_shape') != 'successful_full_refund'
+            or snapshot.lifecycle_head != head
+            or repository.read_conflicts(snapshot.instance,
+                                         key=state['receipt_key'])):
+        raise InitialIngressError('invalid full-withdrawal presentation provenance')
+    verified = exact.utc(datetime.fromisoformat(control['withdrawal_verified_at_utc']))
+    start = exact.utc(datetime.fromisoformat(control['paid_service_start']))
+    end = exact.utc(datetime.fromisoformat(control['paid_service_end']))
+    if not start <= verified <= now < end:
+        raise InitialIngressError('full withdrawal is not current')
+    _withdrawal_fact_state(fact)
+    if repository.read_conflicts(snapshot.instance, key=state['receipt_key']):
+        raise InitialIngressError('full-withdrawal history became conflicting')
+    return dict(owner=scope[0], billing_account=scope[1], subscription=scope[2],
+                withdrawal_verified_at_utc=control['withdrawal_verified_at_utc'],
+                disposition=control['disposition'])
+
+
 _WITHDRAWAL_ADMISSION_FIELDS = frozenset({
     'withdrawal_verified_at_utc', 'receipt_id', 'fact_id',
 })
@@ -2420,6 +2452,40 @@ def later_period_restoration_fact_details(fact):
         fact_id=receipt['fact_id'], lifecycle_head=head,
         withdrawal_receipt_id=withdrawal['receipt_id'],
         withdrawal_fact_id=withdrawal['fact_id'])
+
+
+def later_period_restoration_presentation_facts(fact, *, now):
+    """Return only a current, conflict-free restored paid interval for copy."""
+    now = exact.utc(now)
+    state, receipt, withdrawal, head = _restoration_fact_state(fact)
+    with _LOCK:
+        authority, repository, _, _, _ = _RESTORATION_FACTS[fact]
+    snapshot = authority.snapshot()
+    scope = receipt.get('scope')
+    if (type(scope) is not list or len(scope) != 3
+            or not all(type(value) is str and value for value in scope)
+            or receipt.get('owner') != scope[0]
+            or receipt.get('version') != 'reserved-later-period-restoration-receipt/1'
+            or receipt.get('disposition') != 'verified_later_period_restoration'
+            or withdrawal.get('version') != 'reserved-full-withdrawal-receipt/1'
+            or snapshot.lifecycle_head != head
+            or repository.read_conflicts(snapshot.instance,
+                                         key=state['receipt_key'])):
+        raise InitialIngressError('invalid restoration presentation provenance')
+    verified = exact.utc(datetime.fromisoformat(receipt['restoration_verified_at_utc']))
+    service_start = exact.utc(datetime.fromisoformat(receipt['service_start']))
+    access_start = exact.utc(datetime.fromisoformat(receipt['access_start']))
+    end = exact.utc(datetime.fromisoformat(receipt['service_end']))
+    if not service_start <= access_start <= now < end or verified > now:
+        raise InitialIngressError('restoration is not currently effective')
+    _restoration_fact_state(fact)
+    if repository.read_conflicts(snapshot.instance, key=state['receipt_key']):
+        raise InitialIngressError('restoration history became conflicting')
+    return dict(owner=scope[0], billing_account=scope[1], subscription=scope[2],
+                restoration_verified_at_utc=receipt['restoration_verified_at_utc'],
+                access_start_utc=receipt['access_start'],
+                service_end_exclusive_utc=receipt['service_end'],
+                disposition=receipt['disposition'])
 
 
 def ingest_later_period_restoration(authority, repository, raw_body,
