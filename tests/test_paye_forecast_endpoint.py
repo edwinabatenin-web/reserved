@@ -368,7 +368,7 @@ def test_coverage_view_reports_only_observed_slots_exact_intervals_and_gaps():
     assert view["employment_universe_status"] == "unverified"
     assert tuple(item["employment_slot"] for item in view["observed_employments"]) == (1, 2)
     first, second = view["observed_employments"]
-    assert first["latest_current_evidence_date"] == "2026-09-30"
+    assert first["latest_current_effective_through"] == "2026-09-30"
     assert first["current_evidence_coverage_status"] == "point_in_time_observation_only"
     assert first["confirmed_future_intervals"] == (
         {"period_start": "2026-10-02", "period_end": "2026-10-31"},
@@ -378,7 +378,7 @@ def test_coverage_view_reports_only_observed_slots_exact_intervals_and_gaps():
         {"period_start": "2026-04-06", "period_end": "2026-10-01"},
         {"period_start": "2026-12-01", "period_end": "2027-04-05"},
     )
-    assert second["latest_current_evidence_date"] is None
+    assert second["latest_current_effective_through"] is None
     assert second["current_evidence_coverage_status"] == "not_recorded"
     assert second["uncovered_intervals"] == (
         {"period_start": "2026-04-06", "period_end": "2026-11-30"},
@@ -395,7 +395,7 @@ def test_partial_current_observation_never_implies_started_later_date_coverage()
         {"tax_year": "2026/27", "periods": ()},
     )
     employment = view["observed_employments"][0]
-    assert employment["latest_current_evidence_date"] == "2026-12-15"
+    assert employment["latest_current_effective_through"] == "2026-12-15"
     assert employment["current_evidence_coverage_status"] == "point_in_time_observation_only"
     assert employment["uncovered_intervals"] == (
         {"period_start": "2026-04-06", "period_end": "2027-04-05"},

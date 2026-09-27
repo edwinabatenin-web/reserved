@@ -44,7 +44,8 @@ membership fail closed.
 
 The same page derives a read-only factual coverage view from already-recorded
 current cumulative evidence and confirmed future intervals. It groups only
-observed employment slots, reports the latest current-evidence observation date,
+observed employment slots, reports the date the latest current figures are
+effective through,
 lists the exact saved future intervals and shows tax-year dates without an
 explicit confirmed interval. A partial current cumulative observation is never
 expanded backwards to the tax-year start or an inferred employment start. Its

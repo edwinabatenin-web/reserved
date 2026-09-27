@@ -213,7 +213,7 @@ def observed_future_pay_coverage(current_entries: list[dict], future_context: di
             uncovered.append((cursor, year_end))
         observed.append({
             "employment_slot": slot,
-            "latest_current_evidence_date": current.isoformat() if current else None,
+            "latest_current_effective_through": current.isoformat() if current else None,
             "current_evidence_coverage_status": (
                 "point_in_time_observation_only" if current else "not_recorded"
             ),
