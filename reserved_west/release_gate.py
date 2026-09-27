@@ -86,10 +86,10 @@ VALID_KINDS = {"pytest", "rw3"}
 # complete founder-required blocker inventory; omission is enforced (see
 # ``validate_october_inventory``), never silently made to look closer to ready.
 OCTOBER_LAUNCH_COMPONENTS = [
-    {"id": "paye_evidence_and_forecasting", "state": "not_executable",
-     "note": "A disabled-first authenticated endpoint now consumes one transaction-serialized snapshot of current membership, the durable annual record and owner/year PAYE rows with exact session, annual identity and tax-year binding; activation, independently supplied future-pay facts, external authority composition and target-runtime evidence remain absent."},
-    {"id": "paye_payslip_manual_evidence_journey", "state": "not_executable",
-     "note": "Structured manual PAYE and a disabled-first raw-payslip boundary now provide owner/session/year isolation, fail-closed injected extraction, crash-durable minimal lifecycle metadata, startup quarantine inventory and verified local cleanup; authenticated route wiring, a reviewed extraction adapter, custody-controlled private target storage, quarantine disposition policy and retention/backup evidence remain absent."},
+    {"id": "paye_evidence_and_forecasting", "state": "evidence_missing",
+     "note": "The paid, disabled-first authenticated current-position endpoint now executes locally over one transaction-serialized snapshot of current membership, the durable annual record and owner/year PAYE rows with exact session, annual identity, tax-year and producer-issued freshness binding. Unknown future pay remains explicitly unknown; external authority composition, target-runtime and representative customer evidence remain absent."},
+    {"id": "paye_payslip_manual_evidence_journey", "state": "evidence_missing",
+     "note": "The Founder-approved structured manual PAYE route now executes locally with owner/session/year isolation, durable replacement and deletion, paid access and current-position composition. Raw payslip upload/extraction is outside the authorised manual October scope unless separately approved; target custody, retention/backup, privacy/security and representative journey evidence remain absent."},
     {"id": "hmrc_integration", "state": "externally_blocked",
      "note": "No production-capable HMRC connection has been end-to-end verified."},
     {"id": "freeagent_integration", "state": "not_implemented",

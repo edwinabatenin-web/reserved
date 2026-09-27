@@ -8,11 +8,11 @@ integration, independent review, or launch readiness.
 | S1 structured capture/minimisation boundary | Yes | Yes | Yes | No | Privacy/security controls, usability and launch assurance remain |
 | S2A extraction-confirmation contract (pure, network-inert) | Yes | Yes | Yes | No | Document-processing integration plus privacy/security controls remain |
 | PAYE reconciliation trust, explicit-policy issuance and authoritative projection | Yes | Yes | Yes | No | Integrated at `c23d343`; customer orchestration, persistence, UX/security evidence and launch assurance remain |
-| Customer-safe PAYE reconciliation evidence presentation (route-less) | Yes | Yes | Yes | No | Integrated at `14cc0d8`; route/auth binding and target UX/security evidence remain |
+| Customer-safe PAYE reconciliation evidence presentation | Yes | Yes | Yes | No | Paid authenticated durable current-position route accepted at `c6f5e4a`; target UX/security evidence remains |
 | Explicit-confirmed-period future-pay forecast composition (detached) | Yes | Yes | Yes | No | Authenticated owner/business orchestration, persistence, customer-safe presentation, full-period coverage and launch assurance remain |
-| Authenticated manual single-employment cumulative entry and partial review (request-local) | Yes | Yes | Yes | No | Accepted at `f29a5a8`; no persistence, reconciliation/forecast composition or production activation; durable owner/business/source binding and wider journey assurance remain |
+| Authenticated manual multi-employment cumulative entry, durable replacement/deletion and partial review | Yes | Yes | Yes | No | Durable paid composition accepted at `c6f5e4a`; target custody, retention/backup, privacy/security and representative journey evidence remain |
 | Upload, extraction, customer confirmation, and secure raw-document deletion | No | No | No | No | Document-processing integration plus privacy/security controls |
-| Customer journey, persistence, replacement/deletion actions, structured retention, account deletion, and backups | No | No | No | No | Product, data, privacy, legal, and platform implementation |
+| Customer journey, persistence, replacement/deletion actions, structured retention, account deletion, and backups | Partial | Partial | Partial | No | Manual PAYE persistence/replacement/deletion exists; target retention, account deletion, backups and wider product evidence remain |
 | Independently reviewed usability of the payslip/manual journey | No | No | No | No | Representative journey implementation and independent usability evidence |
 | HMRC source contract, adapter, production-access facts, and sandbox work | No | No | No | No | Exact externally gated API contract, access, credentials, eligibility, and sandbox validation |
 | Integrated E2E, privacy, security, operations, and launch enablement | No | No | No | No | All preceding boundaries plus the applicable launch-assurance gates |
@@ -20,8 +20,9 @@ integration, independent review, or launch readiness.
 The manual entry/review row records a sub-boundary of the broader customer
 journey, not a new completion denominator or completion of that composite row.
 The existing customer-journey/lifecycle row remains incomplete; it must not be
-read as saying that no manual customer interface exists. The reconciliation
-presentation above remains route-less: the manual review does not invoke it.
+read as saying that no manual customer interface exists. The accepted paid
+current-position route now invokes the durable reconciliation bridge, while raw
+payslip upload/extraction remains outside the authorised manual October scope.
 
 ## S1 boundary
 
@@ -76,7 +77,7 @@ closure-bound immutable projectors as the authoritative read surface. It does
 not acquire evidence, set a universal operating policy, forecast payroll,
 persist state, render customer copy or establish release readiness.
 
-The route-less presentation consumes only the captured authoritative
+The presentation consumes only the captured authoritative
 `project_paye_reconciliation` output from an exact live result. It validates
 the current ordered projection, suppresses unsafe point values for bank
 inference and conflicts, and renders fixed autoescaped customer HTML. It adds
@@ -84,8 +85,25 @@ no route, authentication, source orchestration, upload/deletion, persistence,
 provider access, payment action, activation or launch claim. Fresh independent
 review and controlled integration were completed at local
 checkpoint `14cc0d8c6a3723c5b2e3c654103a71ea043ecc8b`. Its table state remains
-not launch-ready because route/auth binding and target UX/security evidence are
-still outstanding.
+not launch-ready because target UX/security evidence is still outstanding. The
+later paid authenticated route composition is recorded below.
+
+## Durable structured-manual PAYE composition — 27 September 2026
+
+The exact integrated correction commit `c6f5e4ad36da8c37e946b7a0b5d9913f95e01b22`
+binds the existing owner-scoped durable manual entries and admitted annual
+position to `GET /v2/paye/current-position`. Installation requires the exact
+active paid-access wrapper. The route uses only server-owned owner/business/year
+scope and a producer-issued annual freshness horizon; missing, future or expired
+evidence fails closed. The bounded response exposes status only and never raw
+PAYE, payment, refund, liability or provider data.
+
+Independent technical and security/privacy re-review both returned ACCEPT.
+Focused PAYE/billing tests passed 24/24, followed by a clean canonical gate with
+10,394 root tests plus all mandatory artefact, parity, RW3 and options checks.
+This makes the local manual current-position path executable; it does not supply
+external authority, target-runtime, representative-human, retention/backup or
+release evidence, so the canonical state advances only to `evidence_missing`.
 
 ## Explicit-confirmed-period future-pay forecast boundary
 
