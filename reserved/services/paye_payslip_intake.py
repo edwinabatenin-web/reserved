@@ -150,8 +150,8 @@ class PayslipIntakeBoundary:
         self._enabled = enabled
         self._extraction_adapter = extraction_adapter
         self._records: dict[str, _StoredPayslip] = {}
-        # Process-local linearization only.  Target storage custody and
-        # cross-process exclusion remain separately required before activation.
+        # The per-owner RLock complements the durable fd-held flock below;
+        # target storage custody remains separately required before activation.
         self._owner_locks_guard = threading.Lock()
         self._owner_locks: dict[int, threading.RLock] = {}
         database.init_db()
@@ -743,7 +743,8 @@ class PayslipIntakeBoundary:
         )
 
     def erase_owner_for_account_lifecycle_then(self, *, authenticated_user_id: int,
-                                               after_raw_erasure: Callable[[], object] | None):
+                                               after_raw_erasure: Callable[[], object] | None,
+                                               before_raw_erasure: Callable[[], None] | None = None):
         """Hold one owner's admission barrier through a supplied next phase.
 
         The callback is for the immediately-following structured local-data
@@ -753,11 +754,15 @@ class PayslipIntakeBoundary:
         self._require_enabled()
         if after_raw_erasure is not None and not callable(after_raw_erasure):
             raise PayslipIntakeError("account lifecycle continuation is unavailable")
+        if before_raw_erasure is not None and not callable(before_raw_erasure):
+            raise PayslipIntakeError("account lifecycle continuation is unavailable")
         owner = self._owner(authenticated_user_id)
         with self._owner_guard(owner, permit_blocked=True):
             # A failed raw or structured phase deliberately leaves the durable
             # owner state blocked; only an entire retry may advance to erased.
             self._write_owner_state(owner, "blocked")
+            if before_raw_erasure is not None:
+                before_raw_erasure()
             result = self._erase_owner_for_account_lifecycle_locked(owner, after_raw_erasure)
             if after_raw_erasure is not None:
                 self._write_owner_state(owner, "erased")

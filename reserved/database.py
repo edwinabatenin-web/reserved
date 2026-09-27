@@ -509,6 +509,12 @@ CREATE TABLE IF NOT EXISTS paye_payslip_intakes (
 CREATE INDEX IF NOT EXISTS idx_paye_payslip_intakes_pending_owner
     ON paye_payslip_intakes(user_id, session_hash, state);
 
+CREATE TABLE IF NOT EXISTS local_tax_data_erasure_states (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id),
+    state TEXT NOT NULL CHECK(state IN ('blocked', 'erased')),
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS paye_payslip_quarantine_receipts (
     receipt_key       TEXT PRIMARY KEY,
     storage_id        TEXT,
@@ -595,7 +601,7 @@ CREATE TABLE IF NOT EXISTS annual_position_lifecycle_events (
 # - The DDL block above always reflects the full target schema; migrations
 #   handle upgrade paths for databases created before the current DDL.
 #
-_SCHEMA_VERSION = 17   # increment when adding new migration entries below
+_SCHEMA_VERSION = 18   # increment when adding new migration entries below
 
 _MIGRATIONS: dict[int, list[str]] = {
     # Version 1 — Workstream 5: add user_id FK to pre-existing tables.
@@ -889,6 +895,13 @@ _MIGRATIONS: dict[int, list[str]] = {
             content_sha256 TEXT
         )""",
     ],
+    18: [
+        """CREATE TABLE IF NOT EXISTS local_tax_data_erasure_states (
+            user_id INTEGER PRIMARY KEY REFERENCES users(id),
+            state TEXT NOT NULL CHECK(state IN ('blocked', 'erased')),
+            updated_at TEXT NOT NULL
+        )""",
+    ],
 }
 
 
@@ -946,6 +959,29 @@ def init_db() -> None:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def require_local_tax_writes_open(conn, user_id: int) -> None:
+    row = conn.execute("SELECT state FROM local_tax_data_erasure_states WHERE user_id=?", (user_id,)).fetchone()
+    if row is not None:
+        raise ValueError("local tax-data lifecycle blocks new structured writes")
+
+
+def block_local_tax_data_writes(user_id: int) -> None:
+    with _connection() as conn:
+        if conn.execute("SELECT 1 FROM users WHERE id=?", (user_id,)).fetchone() is None:
+            raise ValueError("Unknown local tax-data owner")
+        conn.execute("INSERT INTO local_tax_data_erasure_states(user_id,state,updated_at) VALUES (?, 'blocked', ?) "
+                     "ON CONFLICT(user_id) DO UPDATE SET state='blocked',updated_at=excluded.updated_at",
+                     (user_id, _now()))
+
+
+def complete_local_tax_data_erasure(user_id: int) -> None:
+    with _connection() as conn:
+        changed = conn.execute("UPDATE local_tax_data_erasure_states SET state='erased',updated_at=? "
+                               "WHERE user_id=? AND state='blocked'", (_now(), user_id)).rowcount
+        if changed != 1:
+            raise ValueError("local tax-data lifecycle is unavailable")
 
 
 def _iso_now_plus_minutes(minutes: int) -> str:
@@ -1680,6 +1716,7 @@ def save_paye_manual_entry(user_id: int, data: dict) -> None:
     validate_admitted_manual_entry(data)
     now = _now()
     with _connection() as conn:
+        require_local_tax_writes_open(conn, user_id)
         if conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
             raise ValueError("Unknown PAYE entry owner")
         # A confirmed correction replaces only the active entry in the same

@@ -14,6 +14,7 @@ from flask import Flask, abort, jsonify, request
 
 from reserved.auth import current_user_id, require_auth
 from reserved.config import local_tax_data_erasure_enabled
+from reserved import database
 from reserved.services.paye_payslip_intake import PayslipIntakeError
 
 
@@ -25,6 +26,12 @@ _KEY = "reserved.local_tax_data_erasure"
 
 class LocalTaxDataErasureInstallationError(ValueError):
     """Installation was rejected before changing the Flask application."""
+
+
+def _complete_structured(owner: int, callback):
+    result = callback()
+    database.complete_local_tax_data_erasure(owner)
+    return result
 
 
 def _require_dependencies(repository, payslip_boundary, clearance_provider) -> None:
@@ -105,7 +112,9 @@ def install_local_tax_data_erasure(app, *, durable_repository, payslip_boundary,
                 )
 
             raw_files, result = payslip_boundary.erase_owner_for_account_lifecycle_then(
-                authenticated_user_id=owner, after_raw_erasure=erase_structured,
+                authenticated_user_id=owner,
+                before_raw_erasure=lambda: database.block_local_tax_data_writes(owner),
+                after_raw_erasure=lambda: _complete_structured(owner, erase_structured),
             )
         except PayslipIntakeError:
             abort(409)

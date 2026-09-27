@@ -460,7 +460,7 @@ def test_account_lifecycle_barrier_makes_concurrent_intake_post_linearization(tm
     boundary = _boundary(tmp_path)
     _begin(boundary)
     callback_started, release_callback, upload_done = threading.Event(), threading.Event(), threading.Event()
-    erased, uploaded = [], []
+    erased, upload_error = [], []
 
     def erase():
         erased.append(boundary.erase_owner_for_account_lifecycle_then(
@@ -469,10 +469,13 @@ def test_account_lifecycle_barrier_makes_concurrent_intake_post_linearization(tm
         ))
 
     def upload():
-        uploaded.append(boundary.begin(
-            authenticated_user_id=OWNER, session_binding="session-owner-later", tax_year=YEAR,
-            content_type="application/pdf", document_bytes=PDF,
-        ))
+        try:
+            boundary.begin(
+                authenticated_user_id=OWNER, session_binding="session-owner-later", tax_year=YEAR,
+                content_type="application/pdf", document_bytes=PDF,
+            )
+        except PayslipIntakeError as exc:
+            upload_error.append(str(exc))
         upload_done.set()
 
     first = threading.Thread(target=erase); first.start()
@@ -481,7 +484,7 @@ def test_account_lifecycle_barrier_makes_concurrent_intake_post_linearization(tm
     assert not upload_done.wait(0.1)
     release_callback.set(); first.join(2); second.join(2)
     assert erased == [(1, "structured")]
-    assert len(uploaded) == 1 and upload_done.is_set() and len(_files(tmp_path)) == 1
+    assert upload_error and upload_done.is_set() and len(_files(tmp_path)) == 0
 
 
 def test_real_v15_upgrade_uses_no_action_intake_foreign_key(tmp_path, monkeypatch):

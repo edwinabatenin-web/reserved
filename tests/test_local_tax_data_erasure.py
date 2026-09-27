@@ -107,7 +107,7 @@ def test_disabled_and_csrf_rejections_never_consult_clearance_provider(prepared,
 def test_enabled_route_erases_owned_raw_first_and_reports_only_local_scope(prepared, monkeypatch):
     app, owner, _, repository, boundary, clearances = prepared
     calls = []; _install(app, repository, boundary, clearances, calls)
-    handle = boundary.begin(authenticated_user_id=owner, session_binding="route-session-1",
+    handle = boundary.begin(authenticated_user_id=owner, session_binding="route_session_0001",
                             tax_year="2026/27", content_type="application/pdf", document_bytes=b"%PDF-1.7\nsynthetic")
     monkeypatch.setenv("LOCAL_TAX_DATA_ERASURE_ENABLED", "1")
     client, token = _client(app, owner)
@@ -127,10 +127,10 @@ def test_enabled_route_erases_owned_raw_first_and_reports_only_local_scope(prepa
 def test_bad_raw_identity_stops_before_structured_erasure(prepared, monkeypatch):
     app, owner, _, repository, boundary, clearances = prepared
     calls = []; _install(app, repository, boundary, clearances, calls)
-    handle = boundary.begin(authenticated_user_id=owner, session_binding="route-session-2",
+    handle = boundary.begin(authenticated_user_id=owner, session_binding="route_session_0002",
                             tax_year="2026/27", content_type="application/pdf", document_bytes=b"%PDF-1.7\nsynthetic")
     _, record = boundary._owned_record(handle=handle, authenticated_user_id=owner,
-                                       session_binding="route-session-2", tax_year="2026/27")
+                                       session_binding="route_session_0002", tax_year="2026/27")
     path = record.path
     path.unlink(); path.write_bytes(b"%PDF-1.7\nreplacement")
     monkeypatch.setenv("LOCAL_TAX_DATA_ERASURE_ENABLED", "1")

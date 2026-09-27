@@ -540,6 +540,7 @@ class DurableAnnualPositionRepository:
         self._audit(audit_reference)
         with database._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            database.require_local_tax_writes_open(conn, authenticated_user_id)
             self._require_user(conn, authenticated_user_id)
             self._active_membership(conn, authenticated_user_id, business_reference)
             row, envelope, encoded, digest = self._decode_owned(
@@ -572,6 +573,7 @@ class DurableAnnualPositionRepository:
             raise DurableAnnualPositionError("exact expected current identity is required")
         with database._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            database.require_local_tax_writes_open(conn, authenticated_user_id)
             self._require_user(conn, authenticated_user_id)
             self._active_membership(conn, authenticated_user_id, business_reference)
             row, envelope, _encoded, digest = self._decode_owned(
