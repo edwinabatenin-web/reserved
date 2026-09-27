@@ -447,16 +447,17 @@ def test_internal_and_legacy_class_membership_remains_exact_after_reconciliation
     }
 
 
-def test_evidence_contains_settled_policy_and_no_live_enforcement_claim():
+def test_evidence_contains_settled_policy_and_bounded_local_enforcement_claim():
     text = EVIDENCE.read_text(encoding="utf-8")
     assert "That Founder question is closed." in text
     assert "The accepted S5D kernel represents the policy" in text
     assert "itself does not decide which customer" in text
-    assert "live paid-entitlement enforcement remain **not started**" in text
-    assert "W10-S5\nremains incomplete" in text
+    assert "local runtime adapters, exact route\nwiring" in text
+    assert "so W10-S5 remains incomplete" in text
     assert "S5C prerequisite route hardening is implemented" in text
     assert "no registered subscription checkout" in text
     assert "does not independently settle policy" in text
+    assert "no production enforcement or activation claim" in text
 
 
 @pytest.mark.parametrize(

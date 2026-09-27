@@ -739,19 +739,19 @@ CSRF control. Treat `internal_admin_unknown_requiring_reconciliation` according
 to its accepted S5B/S5C route-specific fail-closed treatment, never as an
 implicit paid or free customer class.
 
-The consequence is that customer-session authentication alone would no longer
-authorise product access: a future server-side S5 implementation would also need
-an approved, owner-bound entitlement decision and would fail closed for missing,
+The consequence is that customer-session authentication alone does not
+authorise product access: the current local server-side enforcement also needs
+an owner-bound admitted entitlement decision and fails closed for missing,
 unknown, stale or unreconciled entitlement. Public/auth/legal/support and future
 purchase/return/recovery paths would remain reachable enough to authenticate,
 buy or recover, but would not gain product entitlement. Client-side hiding would
 never substitute for server enforcement.
 
-That Founder question is closed. The accepted S5D kernel represents the policy
-without route authority. Remaining work is engineering: supply an authoritative
-runtime-entitlement adapter and wire the guard to this exact paid route set,
-with independent review and integrated assurance. No live enforcement claim is
-made here.
+That Founder question is closed. The accepted S5D kernel represents the policy,
+and reviewed disabled-first local runtime composition wires the guard to this
+exact paid route set. Remaining work is production provider/target composition,
+operational and customer acceptance, activation and release authority. This
+inventory makes no production enforcement or activation claim.
 
 ## Assurance and limits
 
