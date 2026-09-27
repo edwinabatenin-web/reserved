@@ -1665,7 +1665,13 @@ def delete_paye_manual_entry(user_id: int, tax_year: str, evidence_id: str) -> b
 
 
 def delete_all_paye_manual_entries_for_user(user_id: int) -> int:
-    """Account-erasure hook for structured PAYE entries; no raw document exists."""
+    """Soft-remove current PAYE entries; retained rows are not account erasure.
+
+    Whole-account physical erasure occurs only when an independently authorised
+    account-deletion lifecycle deletes the owning ``users`` row and SQLite
+    applies the foreign-key cascade.  This helper does not perform that
+    lifecycle and deliberately makes no retention or backup-erasure claim.
+    """
     if type(user_id) is not int or user_id <= 0:
         raise ValueError("Invalid PAYE deletion owner")
     with _connection() as conn:
