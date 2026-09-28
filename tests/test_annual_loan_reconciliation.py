@@ -140,7 +140,7 @@ def test_separate_employment_evidence_is_summed_without_losing_provenance():
 def test_conflicting_same_period_cumulative_evidence_is_not_selected():
     result = reconcile_annual_student_loans(
         basis(), [2], [
-            deduction(LoanComponent.PLAN_2, "2900", "E-SL-A"),
+            deduction(LoanComponent.PLAN_2, "999", "E-SL-A"),
             deduction(LoanComponent.PLAN_2, "3000", "E-SL-B"),
         ]
     )
@@ -148,7 +148,7 @@ def test_conflicting_same_period_cumulative_evidence_is_not_selected():
     assert component.calculation_status == "conflict_requires_review"
     assert component.evidenced_deductions is None
     assert component.retained_evidence_ids == ("E-SL-A", "E-SL-B")
-    assert component.conflict_candidate_amounts == (Decimal("2900.00"), Decimal("3000.00"))
+    assert component.conflict_candidate_amounts == (Decimal("999.00"), Decimal("3000.00"))
     assert component.conflict_difference == Decimal("100.00")
     assert component.remaining_amount_low == Decimal("3625.00")
     assert component.remaining_amount_high == Decimal("3725.00")
@@ -246,7 +246,7 @@ def test_multi_employment_conflict_range_includes_non_conflicting_selected_deduc
     result = reconcile_annual_student_loans(
         basis(), [2], [
             deduction(LoanComponent.PLAN_2, "1000", "E-JOB-A", employment="job-a"),
-            deduction(LoanComponent.PLAN_2, "2900", "E-JOB-B-1", employment="job-b"),
+            deduction(LoanComponent.PLAN_2, "999", "E-JOB-B-1", employment="job-b"),
             deduction(LoanComponent.PLAN_2, "3000", "E-JOB-B-2", employment="job-b"),
         ], declared_employment_ids=("job-a", "job-b"),
     )
@@ -257,7 +257,7 @@ def test_multi_employment_conflict_range_includes_non_conflicting_selected_deduc
     decisions = {item.evidence_id: item for item in component.evidence_decisions}
     assert decisions["E-JOB-A"].decision == "selected"
     assert decisions["E-JOB-B-1"].decision == "conflict"
-    assert decisions["E-JOB-B-1"].original_amount == Decimal("2900.00")
+    assert decisions["E-JOB-B-1"].original_amount == Decimal("999.00")
     assert component.range_completeness == "complete_for_identified_conflicts_only"
 
 

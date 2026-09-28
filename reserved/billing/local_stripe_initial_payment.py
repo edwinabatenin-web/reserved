@@ -37,8 +37,13 @@ _RECOVERY_FACTS = weakref.WeakKeyDictionary()
 _WITHDRAWAL_FACTS = weakref.WeakKeyDictionary()
 _RESTORATION_FACTS = weakref.WeakKeyDictionary()
 _ID = re.compile(r'[a-z][a-z0-9]*_[A-Za-z0-9]{1,100}\Z')
-_PLANS = {'monthly': (2900, 'month', 1), 'six_month': (15600, 'month', 6),
-          'yearly': (28800, 'year', 1)}
+_PLANS = {
+    'standard_monthly': (999, 'month', 1),
+    'premium_monthly': (1999, 'month', 1),
+    'free_tier_under_25': (0, 'month', 12),
+    'launch_offer_month_1': (0, 'month', 1),
+    'launch_offer_months_2_6': (499, 'month', 5),
+}
 
 
 class InitialIngressError(ValueError):

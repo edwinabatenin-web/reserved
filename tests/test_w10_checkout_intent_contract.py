@@ -172,9 +172,11 @@ def test_exact_base_contract_sources_and_no_completion_claim():
 
 def test_exact_server_rederived_catalogue_and_fixed_logical_return_allowlist():
     assert contract()["gross_catalogue"] == (
-        ("monthly", 2900, "GBP", "month", 1),
-        ("six_month", 15600, "GBP", "month", 6),
-        ("yearly", 28800, "GBP", "year", 1),
+        ("standard_monthly", 999, "GBP", "month", 1),
+        ("premium_monthly", 1999, "GBP", "month", 1),
+        ("free_tier_under_25", 0, "GBP", "month", 12),
+        ("launch_offer_month_1", 0, "GBP", "month", 1),
+        ("launch_offer_months_2_6", 499, "GBP", "month", 5),
     )
     assert contract()["return_destination_allowlist"] == (RETURN_DESTINATION,)
     assert contract()["maximum_candidate_lifetime_seconds"] == 300
@@ -183,9 +185,11 @@ def test_exact_server_rederived_catalogue_and_fixed_logical_return_allowlist():
 @pytest.mark.parametrize(
     ("plan_key", "amount", "interval", "count"),
     (
-        ("monthly", 2900, "month", 1),
-        ("six_month", 15600, "month", 6),
-        ("yearly", 28800, "year", 1),
+        ("standard_monthly", 999, "month", 1),
+        ("premium_monthly", 1999, "month", 1),
+        ("free_tier_under_25", 0, "month", 12),
+        ("launch_offer_month_1", 0, "month", 1),
+        ("launch_offer_months_2_6", 499, "month", 5),
     ),
 )
 def test_valid_candidate_rederives_price_cadence_and_is_structural_only(
@@ -443,7 +447,7 @@ def test_zero_partial_extra_duplicate_and_positional_substitution_fail_closed():
             7, **(facts | {"authenticated_owner_user_id": 7})
         )
     with pytest.raises(TypeError, match="unsupported fact"):
-        subject.create_checkout_request_candidate(7, **(facts | {"amount": 2900}))
+        subject.create_checkout_request_candidate(7, **(facts | {"amount": 999}))
     with pytest.raises(TypeError, match="exactly 1 positional"):
         subject.validate_checkout_request_candidate(make_candidate(), make_candidate())
     with pytest.raises(TypeError, match="unsupported fact"):
@@ -459,7 +463,7 @@ def test_input_mutation_after_creation_cannot_change_detached_candidate():
     projected = dict(candidate)
     assert projected["authenticated_owner_user_id"] == 7
     assert projected["plan_key"] == "monthly"
-    assert projected["unit_amount_minor"] == 2900
+    assert projected["unit_amount_minor"] == 999
 
 
 @pytest.mark.parametrize(

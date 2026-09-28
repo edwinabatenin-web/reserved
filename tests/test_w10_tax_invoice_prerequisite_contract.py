@@ -47,8 +47,8 @@ EXPECTED_REPOSITORY_SOURCES = (
 )
 EXPECTED_PRICES = (
     {
-        "plan_key": "monthly",
-        "gross_amount_minor": 2900,
+        "plan_key": "standard_monthly",
+        "gross_amount_minor": 999,
         "currency": "GBP",
         "cadence_count": 1,
         "cadence_unit": "month",
@@ -56,8 +56,8 @@ EXPECTED_PRICES = (
         "simplified_invoice_authority": False,
     },
     {
-        "plan_key": "six_month",
-        "gross_amount_minor": 15600,
+        "plan_key": "premium_monthly",
+        "gross_amount_minor": 1999,
         "currency": "GBP",
         "cadence_count": 6,
         "cadence_unit": "month",
@@ -65,8 +65,8 @@ EXPECTED_PRICES = (
         "simplified_invoice_authority": False,
     },
     {
-        "plan_key": "yearly",
-        "gross_amount_minor": 28800,
+        "plan_key": "launch_offer_months_2_6",
+        "gross_amount_minor": 499,
         "currency": "GBP",
         "cadence_count": 1,
         "cadence_unit": "year",
@@ -118,8 +118,8 @@ def candidate_facts(**overrides):
         "document_id": "document.001",
         "document_kind": "payment_receipt_candidate",
         "owner_reference": "owner.001",
-        "plan_key": "monthly",
-        "gross_amount_minor": 2900,
+        "plan_key": "standard_monthly",
+        "gross_amount_minor": 999,
         "currency": "GBP",
         "recorded_at": datetime(2026, 9, 4, 12, 0, tzinfo=timezone.utc),
         "evidence_reference": "billing.observation.001",
@@ -283,7 +283,7 @@ def test_official_sources_are_exact_urls_with_bounded_findings():
 
 @pytest.mark.parametrize(
     ("plan_key", "amount", "limb"),
-    (("monthly", 2900, True), ("six_month", 15600, True), ("yearly", 28800, False)),
+    (("standard_monthly", 999, True), ("premium_monthly", 1999, True), ("free_tier_under_25", 0, True)),
 )
 def test_candidate_factory_retains_only_exact_gross_plan_facts(plan_key, amount, limb):
     handle = make_candidate(plan_key=plan_key, gross_amount_minor=amount)
@@ -616,8 +616,8 @@ def test_saved_protocol_resists_public_global_rebinding(monkeypatch):
         document_id="document.002",
         document_kind="invoice_candidate",
         owner_reference="owner.001",
-        plan_key="yearly",
-        gross_amount_minor=28800,
+        plan_key="launch_offer_months_2_6",
+        gross_amount_minor=499,
         currency="GBP",
         recorded_at=datetime(2026, 9, 4, 13, 0, tzinfo=timezone.utc),
         evidence_reference="billing.observation.002",
@@ -752,8 +752,8 @@ def test_supported_protocol_performs_no_file_io(monkeypatch):
         document_id="document.099",
         document_kind="invoice_candidate",
         owner_reference="owner.001",
-        plan_key="monthly",
-        gross_amount_minor=2900,
+        plan_key="standard_monthly",
+        gross_amount_minor=999,
         currency="GBP",
         recorded_at=datetime(2026, 9, 4, 14, 0, tzinfo=timezone.utc),
         evidence_reference="billing.observation.099",

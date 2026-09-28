@@ -151,7 +151,7 @@ def test_conflict_provenance_bounds_and_decisions_are_preserved_losslessly():
         )),
         [2],
         [
-            LoanDeductionEvidence("E-A", LoanComponent.PLAN_2, "2900", "2026/27", date(2027, 4, 5), date(2027, 4, 5), "job-a", DeductionRepresentation.EMPLOYMENT_CUMULATIVE, True, "document", "synthetic://a"),
+            LoanDeductionEvidence("E-A", LoanComponent.PLAN_2, "999", "2026/27", date(2027, 4, 5), date(2027, 4, 5), "job-a", DeductionRepresentation.EMPLOYMENT_CUMULATIVE, True, "document", "synthetic://a"),
             LoanDeductionEvidence("E-B", LoanComponent.PLAN_2, "3000", "2026/27", date(2027, 4, 5), date(2027, 4, 5), "job-a", DeductionRepresentation.EMPLOYMENT_CUMULATIVE, True, "document", "synthetic://b"),
         ],
         as_of=date(2027, 4, 5),
@@ -165,7 +165,7 @@ def test_conflict_provenance_bounds_and_decisions_are_preserved_losslessly():
     component = result.student_loans.components[0]
     assert result.composition_status == "conflict_requires_review"
     assert component.retained_evidence_ids == ("E-A", "E-B")
-    assert component.conflict_candidate_amounts == (Decimal("2900.00"), Decimal("3000.00"))
+    assert component.conflict_candidate_amounts == (Decimal("999.00"), Decimal("3000.00"))
     assert component.conflict_difference == Decimal("100.00")
     assert (component.remaining_amount_low, component.remaining_amount_high) == (
         Decimal("3625.00"), Decimal("3725.00")

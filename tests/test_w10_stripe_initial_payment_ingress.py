@@ -42,8 +42,8 @@ def one(value):
 
 
 def objects(plan='monthly'):
-    amount, interval, count = {'monthly': (2900, 'month', 1), 'six_month': (15600, 'month', 6),
-                               'yearly': (28800, 'year', 1)}[plan]
+    amount, interval, count = {'monthly': (999, 'month', 1), 'six_month': (1999, 'month', 6),
+                               'yearly': (499, 'year', 1)}[plan]
     end = ENDS[plan]
     invoice = dict(id='in_Synthetic', object='invoice', livemode=False, customer='cus_Synthetic',
         status='paid', billing_reason='subscription_create', currency='gbp', collection_method='charge_automatically',

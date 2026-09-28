@@ -33,14 +33,18 @@ from reserved.extensions import csrf
 
 
 PLAN_PRICES = {
-    "monthly": (2900, "month", 1),
-    "six_month": (15600, "month", 6),
-    "yearly": (28800, "year", 1),
+    "standard_monthly": (999, "month", 1),
+    "premium_monthly": (1999, "month", 1),
+    "free_tier_under_25": (0, "month", 12),
+    "launch_offer_month_1": (0, "month", 1),
+    "launch_offer_months_2_6": (499, "month", 5),
 }
 PLAN_LABELS = {
-    "monthly": "£29 per month",
-    "six_month": "£156 for six months",
-    "yearly": "£288 per year",
+    "standard_monthly": "£9.99 per month",
+    "premium_monthly": "£19.99 per month",
+    "free_tier_under_25": "Free (under 25)",
+    "launch_offer_month_1": "Free first month",
+    "launch_offer_months_2_6": "£4.99 per month",
 }
 _RUNTIME_KEY = "reserved.billing.stripe_runtime"
 _DISABLED_PAID_SURFACE_KEY = _RUNTIME_KEY + ".paid_surface.disabled"

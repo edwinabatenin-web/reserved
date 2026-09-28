@@ -88,9 +88,11 @@ def _build_offer_configuration_contract():
     ).search
 
     _catalogue = (
-        ("monthly", 2900, "GBP"),
-        ("six_month", 15600, "GBP"),
-        ("yearly", 28800, "GBP"),
+        ("standard_monthly", 999, "GBP"),
+        ("premium_monthly", 1999, "GBP"),
+        ("free_tier_under_25", 0, "GBP"),
+        ("launch_offer_month_1", 0, "GBP"),
+        ("launch_offer_months_2_6", 499, "GBP"),
     )
     _duration_units = ("calendar_days", "calendar_months", "billing_periods")
     _source_bindings = (

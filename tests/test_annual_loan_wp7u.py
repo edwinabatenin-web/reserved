@@ -70,7 +70,7 @@ def test_stale_effect_and_excess_not_refund_are_separate_point_effects():
 
 
 def test_conflict_retains_candidates_and_bounded_residual_range():
-    envelope = emit(reconcile([evidence("E-A", "2900"), evidence("E-B", "3000")]))
+    envelope = emit(reconcile([evidence("E-A", "999"), evidence("E-B", "3000")]))
     assert envelope.calculation_status is CalculationStatus.CONFLICT_REQUIRES_REVIEW
     assert (envelope.lower_bound, envelope.upper_bound) == (Decimal("3625.00"), Decimal("3725.00"))
     deduction_items = [item for item in envelope.evidence if item.evidence_id != "E-BASIS"]
@@ -188,8 +188,8 @@ def test_exclusion_selection_uses_structured_reason_and_conflict_basis_names_can
     excluded = emit(incomplete).evidence[-1]
     assert excluded.selection is EvidenceSelection.OUTSIDE_PERIOD
 
-    conflict = emit(reconcile([evidence("E-A", "2900"), evidence("E-B", "3000")]))
-    assert "E-A=2900.00" in conflict.bound_basis
+    conflict = emit(reconcile([evidence("E-A", "999"), evidence("E-B", "3000")]))
+    assert "E-A=999.00" in conflict.bound_basis
     assert "E-B=3000.00" in conflict.bound_basis
     assert "range_completeness:complete_for_identified_conflicts_only" in conflict.limitation_references
 

@@ -11,7 +11,7 @@ from tests.test_w10_stripe_initial_payment_ingress import (
 
 
 class WithdrawalHarness(Harness):
-    def prepare_withdrawal(self, *, event_id='evt_FullWithdrawal', split=(2900,)):
+    def prepare_withdrawal(self, *, event_id='evt_FullWithdrawal', split=(999,)):
         paid, _ = self.repo.read(self.authority.snapshot().instance, RECEIPT_KEY)
         charge_id = paid['evidence']['charge']
         intent_id = paid['evidence']['intent']
@@ -47,7 +47,7 @@ def withdrawal(tmp_path):
     value.repo.close()
 
 
-@pytest.mark.parametrize('split', [(2900,), (1000, 1900), (900, 1000, 1000)])
+@pytest.mark.parametrize('split', [(999,), (1000, 1900), (900, 1000, 1000)])
 def test_one_and_multiple_successful_refunds_admit_exact_suspension(tmp_path, split):
     h = WithdrawalHarness(tmp_path/(str(len(split)) + '.db'))
     try:
@@ -88,7 +88,7 @@ def test_incomplete_or_contradictory_refund_shapes_have_no_head_effect(
     elif mutation == 'wrong_intent': item['payment_intent'] = 'pi_Other'
     elif mutation == 'wrong_currency': item['currency'] = 'usd'
     elif mutation == 'boolean_amount': item['amount'] = True
-    elif mutation == 'float_amount': item['amount'] = 2900.0
+    elif mutation == 'float_amount': item['amount'] = 999.0
     elif mutation == 'zero_amount': item['amount'] = 0
     elif mutation == 'charge_partial': charge['refunded'] = False
     elif mutation == 'charge_disputed': charge['disputed'] = True
@@ -140,7 +140,7 @@ def test_reconciled_event_id_cannot_change_into_later_admission(withdrawal):
     assert first.disposition == 'reconciliation_required' and first.committed is True
     assert withdrawal.withdraw().disposition == 'reconciliation_required'
 
-    withdrawal.data['/v1/refunds']['data'][0]['amount'] = 2900
+    withdrawal.data['/v1/refunds']['data'][0]['amount'] = 999
     withdrawal.event['pending_webhooks'] = 0
     changed = withdrawal.withdraw()
     assert changed.disposition == 'refused' and changed.committed is False

@@ -235,7 +235,7 @@ def test_changed_scope_plan_item_or_price_refuses_without_head_change(renewal, c
         renewal.data['/v1/invoices/in_Renewal/lines']['data'][0]['pricing'][
             'price_details']['price'] = 'price_Other'
     else:
-        renewal.data['/v1/prices/price_Synthetic']['unit_amount'] = 28800
+        renewal.data['/v1/prices/price_Synthetic']['unit_amount'] = 499
     result = renewal.renew()
     assert result.disposition == 'refused' and result.fact is None
     assert renewal.authority.snapshot() == before

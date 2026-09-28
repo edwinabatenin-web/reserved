@@ -51,9 +51,9 @@ def runtime(tmp_path):
     return StripeBillingRuntime(
         SQLiteBillingRuntimeRepository(tmp_path / "billing.db"), Provider(), verifier,
         Reconciler(), (
-            PriceBinding("monthly", "price_monthly", "GBP", 2900, "month", 1),
-            PriceBinding("six_month", "price_six_month", "GBP", 15600, "month", 6),
-            PriceBinding("yearly", "price_yearly", "GBP", 28800, "year", 1),
+            PriceBinding("monthly", "price_monthly", "GBP", 999, "month", 1),
+            PriceBinding("six_month", "price_six_month", "GBP", 1999, "month", 6),
+            PriceBinding("yearly", "price_yearly", "GBP", 499, "year", 1),
         ), HostedUrlPolicy(("checkout.example.test",), ("portal.example.test",)),
         clock=lambda: datetime.fromtimestamp(NOW, timezone.utc),
     )

@@ -224,8 +224,8 @@ def test_sl_plan2_income_between_thresholds_triggers_only_in_2025_26():
     2026/27: chargeable = max(0, 29,000 − 29,385) = 0 → £0.00
     """
     profile = {**_ZERO, "student_loan_plans": [2]}
-    r25 = estimate_incremental_liability("29000", profile, tax_year="2025/26")
-    r26 = estimate_incremental_liability("29000", profile, tax_year="2026/27")
+    r25 = estimate_incremental_liability("9990", profile, tax_year="2025/26")
+    r26 = estimate_incremental_liability("9990", profile, tax_year="2026/27")
     assert r25["student_loan"] == D("47.00"), r25["student_loan"]
     assert r26["student_loan"] == D("0.00"),  r26["student_loan"]
 

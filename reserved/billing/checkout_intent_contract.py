@@ -64,9 +64,11 @@ def _build_checkout_intent_contract():
     _max_lifetime = _Timedelta(minutes=5)
 
     _catalogue = (
-        ("monthly", 2900, "GBP", "month", 1),
-        ("six_month", 15600, "GBP", "month", 6),
-        ("yearly", 28800, "GBP", "year", 1),
+        ("standard_monthly", 999, "GBP", "month", 1),
+        ("premium_monthly", 1999, "GBP", "month", 1),
+        ("free_tier_under_25", 0, "GBP", "month", 12),
+        ("launch_offer_month_1", 0, "GBP", "month", 1),
+        ("launch_offer_months_2_6", 499, "GBP", "month", 5),
     )
     _source_bindings = (
         (

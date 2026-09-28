@@ -86,9 +86,9 @@ def _runtime(tmp_path, clock=None):
     return StripeBillingRuntime(
         SQLiteBillingRuntimeRepository(tmp_path / "billing.db"), provider, verifier,
         Reconciler(), (
-            PriceBinding("monthly", "price_monthly", "GBP", 2900, "month", 1),
-            PriceBinding("six_month", "price_six_month", "GBP", 15600, "month", 6),
-            PriceBinding("yearly", "price_yearly", "GBP", 28800, "year", 1),
+            PriceBinding("standard_monthly", "price_standard_monthly", "GBP", 999, "month", 1),
+            PriceBinding("premium_monthly", "price_premium_monthly", "GBP", 1999, "month", 1),
+            PriceBinding("free_tier_under_25", "price_free_tier", "GBP", 0, "month", 12),
         ), HostedUrlPolicy(("checkout.example.test",), ("portal.example.test",)),
         clock=clock or (lambda: datetime.now(timezone.utc)),
     ), provider
@@ -139,28 +139,28 @@ def test_incomplete_price_or_signature_configuration_cannot_create_a_runtime(tmp
     provider = Provider()
     with pytest.raises(BillingRuntimeError, match="complete price"):
         StripeBillingRuntime(SQLiteBillingRuntimeRepository(tmp_path / "billing.db"), provider,
-                             lambda *_: True, Reconciler(), (PriceBinding("monthly", "price_monthly", "GBP", 2900, "month", 1),),
+                             lambda *_: True, Reconciler(), (PriceBinding("standard_monthly", "price_standard_monthly", "GBP", 999, "month", 1),),
                              HostedUrlPolicy(("checkout.example.test",), ("portal.example.test",)))
 
 
 @pytest.mark.parametrize("bad", [
-    PriceBinding("monthly", "price_monthly", "USD", 2900, "month", 1),
+    PriceBinding("standard_monthly", "price_standard_monthly", "USD", 999, "month", 1),
     PriceBinding("monthly", "price_monthly", "GBP", 2901, "month", 1),
-    PriceBinding("monthly", "price_monthly", "GBP", 2900, "year", 1),
-    PriceBinding("monthly", "price_monthly", "GBP", 2900, "month", 2),
+    PriceBinding("standard_monthly", "price_standard_monthly", "GBP", 999, "year", 1),
+    PriceBinding("standard_monthly", "price_standard_monthly", "GBP", 999, "month", 2),
 ])
 def test_price_binding_rejects_wrong_currency_amount_or_period(tmp_path, bad):
-    bindings = (bad, PriceBinding("six_month", "price_six_month", "GBP", 15600, "month", 6),
-                PriceBinding("yearly", "price_yearly", "GBP", 28800, "year", 1))
+    bindings = (bad, PriceBinding("premium_monthly", "price_premium_monthly", "GBP", 1999, "month", 1),
+                PriceBinding("free_tier_under_25", "price_free_tier", "GBP", 0, "month", 12))
     with pytest.raises(BillingRuntimeError):
         StripeBillingRuntime(SQLiteBillingRuntimeRepository(tmp_path / "billing.db"), Provider(), lambda *_: True, Reconciler(), bindings,
                              HostedUrlPolicy(("checkout.example.test",), ("portal.example.test",)))
 
 
 def test_price_binding_rejects_duplicate_provider_price_id(tmp_path):
-    bindings = (PriceBinding("monthly", "price_duplicate", "GBP", 2900, "month", 1),
-                PriceBinding("six_month", "price_duplicate", "GBP", 15600, "month", 6),
-                PriceBinding("yearly", "price_yearly", "GBP", 28800, "year", 1))
+    bindings = (PriceBinding("standard_monthly", "price_duplicate", "GBP", 999, "month", 1),
+                PriceBinding("premium_monthly", "price_duplicate", "GBP", 1999, "month", 1),
+                PriceBinding("free_tier_under_25", "price_free_tier", "GBP", 0, "month", 12))
     with pytest.raises(BillingRuntimeError):
         StripeBillingRuntime(SQLiteBillingRuntimeRepository(tmp_path / "billing.db"), Provider(), lambda *_: True, Reconciler(), bindings,
                              HostedUrlPolicy(("checkout.example.test",), ("portal.example.test",)))

@@ -269,9 +269,9 @@ def test_static_and_candidate_authority_flags_are_all_exact_false():
 @pytest.mark.parametrize(
     ("plan_key", "base_amount", "proposed_amount"),
     (
-        ("monthly", 2900, 2800),
-        ("six_month", 15600, 15000),
-        ("yearly", 28800, 28000),
+        ("standard_monthly", 999, 950),
+        ("premium_monthly", 1999, 1950),
+        ("free_tier_under_25", 0, 0),
     ),
 )
 def test_complete_future_policy_facts_form_only_an_unadmitted_candidate(
@@ -355,7 +355,7 @@ def test_policy_provenance_and_candidate_output_are_fully_detached():
         False,
         0,
         -1,
-        2900,
+        999,
         3000,
         28.0,
         float("nan"),
